@@ -663,7 +663,7 @@ if sondeo:
         avis_text, avis_color = generar_avis_localitat(parametros)
         st.markdown(f'<div class="avis-box" style="border-color: {avis_color}; background-color: {avis_color}20;">{avis_text}</div>', unsafe_allow_html=True)
 
-        tab_list = ["🗨️ Anàlisi Detallada", "📊 Paràmetres", "🗺️ Mapes de Vents", "🔄 Hodògraf", "🏔️ Sondeig", "🗺️ Orografia", "☁️ Visualització"]
+        tab_list = ["🗨️ Anàlisi Detallada", "📊 Paràmetres", "🗺️ Mapes de Vents", "🧭Hodògraf", "📍Sondeig", "🏔️ Orografia", "☁️ Visualització"]
         selected_tab = st.radio("Navegació:", tab_list, index=0, horizontal=True)
         
         if selected_tab == tab_list[0]:
