@@ -325,8 +325,8 @@ def crear_skewt(p, T, Td, u, v):
             prof = mpcalc.parcel_profile(p, T[0], Td[0]); skew.plot(p, prof, 'k', lw=2, ls='--', label='Parcela')
             wet_bulb_prof = mpcalc.wet_bulb_temperature(p, T, Td); skew.plot(p, wet_bulb_prof, color='purple', lw=1.5, label='Tª Humida')
             cape, cin = mpcalc.cape_cin(p, T, Td, prof)
-            if cape.m > 0: skew.shade_cape(p, T, prof, alpha=0.4, color='khaki')
-            if cin.m != 0: skew.shade_cin(p, T, prof, alpha=0.83, color='gray')
+            if cape.m > 0: skew.shade_cape(p, T, prof, alpha=0.6, color='khaki')
+            if cin.m != 0: skew.shade_cin(p, T, prof, alpha=1.83, color='gray')
             lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); lfc_p, _ = mpcalc.lfc(p, T, Td, prof); el_p, _ = mpcalc.el(p, T, Td, prof)
             if lcl_p: skew.ax.axhline(lcl_p.m, color='purple', linestyle='--', label='LCL')
             if lfc_p: skew.ax.axhline(lfc_p.m, color='darkred', linestyle='--', label='LFC')
@@ -507,7 +507,7 @@ def obtener_dades_mapa_vents(hora, nivell):
     except:
         return None, None, None, None
 
-def crear_mapa_vents(lats, lons, u_comp, v_comp, comarcas, nivell):
+def crear_mapa_vents(lats, lons, u_comp, v_comp, nivell, lat_sel, lon_sel, nom_poble_sel):
     fig = plt.figure(figsize=(9, 9), dpi=150)
     ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
     ax.set_extent([0, 3.5, 40.4, 43], crs=ccrs.PlateCarree())
@@ -540,6 +540,15 @@ def crear_mapa_vents(lats, lons, u_comp, v_comp, comarcas, nivell):
     ax.streamplot(grid_lon, grid_lat, u_grid, v_grid,
                   color="#000000", density=5.9, linewidth=0.5,
                   arrowsize=0.50, zorder=4, transform=ccrs.PlateCarree())
+    
+    # Afegir el marcador per a la localitat seleccionada. [1, 3]
+    ax.plot(lon_sel, lat_sel, 'o', markersize=12, markerfacecolor='yellow',
+            markeredgecolor='black', markeredgewidth=2,
+            transform=ccrs.Geodetic(), zorder=5)
+    
+    ax.text(lon_sel + 0.05, lat_sel + 0.05, nom_poble_sel,
+            transform=ccrs.Geodetic(), zorder=6,
+            bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2'))
         
     ax.set_title(f"Flux i focus de convergència a {nivell}hPa", weight='bold')
     return fig
@@ -680,7 +689,7 @@ if sondeo:
                     speeds_ms = (np.array(speeds_map) * 1000 / 3600) * units('m/s')
                     dirs_deg = np.array(dirs_map) * units.degrees
                     u_map, v_map = mpcalc.wind_components(speeds_ms, dirs_deg)
-                    fig_vents = crear_mapa_vents(lats_map, lons_map, u_map, v_map, pobles_data, nivell_global)
+                    fig_vents = crear_mapa_vents(lats_map, lons_map, u_map, v_map, nivell_global, lat_sel, lon_sel, poble_sel)
                     st.pyplot(fig_vents)
                 else:
                     st.error("No s'han pogut obtenir les dades per al mapa de vents o no hi ha prous punts de dades per a aquest nivell i hora.")
