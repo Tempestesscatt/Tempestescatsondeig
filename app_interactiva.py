@@ -26,6 +26,9 @@ from datetime import datetime, timedelta
 import pytz
 
 # --- CARREGA DE DADES DE LES LOCALITATS ---
+# Com has sol·licitat, s'ha omès la llista de pobles.
+# ENGANXA AQUÍ EL DICCIONARI 'pobles_data' AMB LES COORDENADES DE CADA LOCALITAT.
+# Ex: pobles_data = { 'Barcelona': {'lat': 41.387, 'lon': 2.168}, ... }
 pobles_data = {
     'Abella de la Conca': {'lat': 42.163, 'lon': 1.092},
     'Abrera': {'lat': 41.517, 'lon': 1.901},
@@ -891,7 +894,6 @@ pobles_data = {
     'Vinebre': {'lat': 41.196, 'lon': 0.589},
     'Vinyols i els Arcs': {'lat': 41.118, 'lon': 1.041},
 }
-
 # --- CONFIGURACIÓ INICIAL ---
 st.set_page_config(layout="wide", page_title="Tempestes.cat")
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
@@ -1027,12 +1029,12 @@ def generar_analisi_detallada(params):
         else: yield from stream_text("Entorn favorable per a xàfecs o tempestes unicel·lulars.")
 
 @st.cache_data
-def obtener_sondeo_atmosferico(lat, lon):
+def obtener_sondeo_atmosferico(lat, lon, forecast_days):
     url = "https://api.open-meteo.com/v1/forecast"
     p_levels = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
     h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
     h_press = [f"{v}_{p}hPa" for v in ["temperature", "dew_point", "wind_speed", "wind_direction", "geopotential_height"] for p in p_levels]
-    params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_france", "timezone": "auto", "forecast_days": 1}
+    params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_france", "timezone": "auto", "forecast_days": forecast_days}
     try: r = openmeteo.weather_api(url, params=params); return r[0] if r else None, p_levels
     except Exception as e: st.error(f"Error a l'API d'Open-Meteo: {e}"); return None, None
 
@@ -1065,7 +1067,6 @@ def calculate_parameters(p, T, Td, u, v, h):
     except: pass
     return params
 
-# --- (Les funcions de creació de gràfics es mantenen igual) ---
 def crear_hodograf(p, u, v, h):
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
     hodo = Hodograph(ax, component_range=40.); hodo.add_grid(increment=10)
@@ -1177,16 +1178,16 @@ def crear_grafic_nuvol(params, H, u, v, is_convergence_active):
     return fig
 
 @st.cache_data
-def obtener_dades_mapa_vents(hora, nivell):
+def obtener_dades_mapa_vents(hourly_index, nivell, forecast_days):
     lats, lons = np.linspace(40.5, 42.8, 12), np.linspace(0.2, 3.3, 12)
     lon_grid, lat_grid = np.meshgrid(lons, lats)
-    params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"], "models": "arome_france", "timezone": "auto", "forecast_days": 1}
+    params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"], "models": "arome_france", "timezone": "auto", "forecast_days": forecast_days}
     try:
         url = "https://api.open-meteo.com/v1/forecast"
         responses = openmeteo.weather_api(url, params=params)
         lats_out, lons_out, speeds_out, dirs_out = [], [], [], []
         for r in responses:
-            hourly = r.Hourly(); speed, direction = hourly.Variables(0).ValuesAsNumpy()[hora], hourly.Variables(1).ValuesAsNumpy()[hora]
+            hourly = r.Hourly(); speed, direction = hourly.Variables(0).ValuesAsNumpy()[hourly_index], hourly.Variables(1).ValuesAsNumpy()[hourly_index]
             if not np.isnan(speed) and not np.isnan(direction):
                 lats_out.append(r.Latitude()); lons_out.append(r.Longitude()); speeds_out.append(speed); dirs_out.append(direction)
         return lats_out, lons_out, speeds_out, dirs_out
@@ -1214,8 +1215,8 @@ def crear_mapa_vents(lats, lons, u_comp, v_comp, nivell, lat_sel, lon_sel, nom_p
     return fig
 
 @st.cache_data
-def encontrar_localitats_con_convergencia(hora, nivell, localitats, threshold):
-    lats, lons, speeds, dirs = obtener_dades_mapa_vents(hora, nivell)
+def encontrar_localitats_con_convergencia(hourly_index, nivell, localitats, threshold, forecast_days):
+    lats, lons, speeds, dirs = obtener_dades_mapa_vents(hourly_index, nivell, forecast_days)
     if not lats or len(lats) < 4: return set()
     speeds_ms = (np.array(speeds) * 1000 / 3600) * units('m/s'); dirs_deg = np.array(dirs) * units.degrees
     u_comp, v_comp = mpcalc.wind_components(speeds_ms, dirs_deg)
@@ -1233,11 +1234,11 @@ def encontrar_localitats_con_convergencia(hora, nivell, localitats, threshold):
             localitats_en_convergencia.add(nom_poble)
     return localitats_en_convergencia
 
-def processar_sondeig_per_hora(sondeo, hora, p_levels):
+def processar_sondeig_per_hora(sondeo, hourly_index, p_levels):
     try:
-        hourly = sondeo.Hourly(); T_s, Td_s, P_s = (hourly.Variables(i).ValuesAsNumpy()[hora] for i in range(3))
+        hourly = sondeo.Hourly(); T_s, Td_s, P_s = (hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i in range(3))
         if np.isnan(P_s): return None
-        s_idx, n_plvls = 3, len(p_levels); T_p, Td_p, Ws_p, Wd_p, H_p = ([hourly.Variables(s_idx + i*n_plvls + j).ValuesAsNumpy()[hora] for j in range(n_plvls)] for i in range(5))
+        s_idx, n_plvls = 3, len(p_levels); T_p, Td_p, Ws_p, Wd_p, H_p = ([hourly.Variables(s_idx + i*n_plvls + j).ValuesAsNumpy()[hourly_index] for j in range(n_plvls)] for i in range(5))
         def interpolate_sfc(sfc_val, p_sfc, p_api, d_api):
             valid_p, valid_d = [p for p, t in zip(p_api, d_api) if not np.isnan(t)], [t for t in d_api if not np.isnan(t)]
             if np.isnan(sfc_val) and len(valid_p) > 1:
@@ -1256,7 +1257,7 @@ def processar_sondeig_per_hora(sondeo, hora, p_levels):
     except Exception: return None
 
 @st.cache_data
-def precalcular_disparadors_actius(hora, localitats_convergencia):
+def precalcular_disparadors_actius(hourly_index, localitats_convergencia, forecast_days):
     if not localitats_convergencia: return set()
     disparadors = set()
     lats_conv = [pobles_data[p]['lat'] for p in localitats_convergencia]
@@ -1265,12 +1266,12 @@ def precalcular_disparadors_actius(hora, localitats_convergencia):
     
     url, p_levels = "https://api.open-meteo.com/v1/forecast", [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
     h_base, h_press = ["temperature_2m", "dew_point_2m", "surface_pressure"], [f"{v}_{p}hPa" for v in ["temperature", "dew_point", "wind_speed", "wind_direction", "geopotential_height"] for p in p_levels]
-    params = {"latitude": lats_conv, "longitude": lons_conv, "hourly": h_base + h_press, "models": "arome_france", "timezone": "auto", "forecast_days": 1}
+    params = {"latitude": lats_conv, "longitude": lons_conv, "hourly": h_base + h_press, "models": "arome_france", "timezone": "auto", "forecast_days": forecast_days}
     try:
         responses = openmeteo.weather_api(url, params=params)
         for i, sondeo in enumerate(responses):
             nom_poble = names_conv[i]
-            profiles = processar_sondeig_per_hora(sondeo, hora, p_levels)
+            profiles = processar_sondeig_per_hora(sondeo, hourly_index, p_levels)
             if profiles:
                 parametros = calculate_parameters(*profiles)
                 cape_u = parametros.get('CAPE_Utilitzable', {}).get('value', 0)
@@ -1285,7 +1286,7 @@ st.markdown("""
 <style>
 .main-title { font-size: 3.5em; font-weight: bold; text-align: center; margin-bottom: -10px; color: #FFFFFF; }
 .subtitle { font-size: 1.2em; text-align: center; color: #A0A0A0; margin-bottom: 25px; }
-.chat-bubble { background-color:#262D31; border-radius:15px; padding:12px 18px; margin-bottom:10px; max-width:95%; border:1px solid rgba(255,255,255,0.1); }
+.update-info { text-align: center; color: gray; font-style: italic; margin-top: 5px; margin-bottom: 20px; }
 .avis-box { 
     padding: 18px; 
     border-radius: 12px; 
@@ -1306,28 +1307,65 @@ st.markdown("""
     font-size: 1.3em;
     font-weight: 500;
 }
-.update-info { text-align: center; color: gray; font-style: italic; margin-top: -15px; margin-bottom: 20px; }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">⚡ Tempestes.cat</p>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle">Eina d\'Anàlisi i Previsió de Fenòmens Severs a Catalunya</p>', unsafe_allow_html=True)
 
-col1, col2 = st.columns(2)
-with col1:
-    try: tz = pytz.timezone('Europe/Madrid'); now_local = datetime.now(tz); default_hour_index = now_local.hour
-    except: default_hour_index = 12
-    hour_options = [f"{h:02d}:00h" for h in range(24)]; hora_sel_str = st.radio("Hora del pronòstic (Local):", hour_options, index=default_hour_index, horizontal=True)
-    hora = int(hora_sel_str.split(':')[0])
-with col2:
-    p_levels_all = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]; nivell_global = st.selectbox("Nivell d'anàlisi de vents:", p_levels_all, index=p_levels_all.index(850))
+# --- LAYOUT DE SELECCIÓ (NET I ALINEAT) ---
+with st.container(border=True):
+    col1, col2, col3 = st.columns([1, 1, 1], gap="large")
+    try:
+        tz = pytz.timezone('Europe/Madrid')
+        now_local = datetime.now(tz)
+        default_hour_index = now_local.hour
+    except Exception:
+        now_local = datetime.now()
+        default_hour_index = 12
+
+    with col1:
+        hour_options = [f"{h:02d}:00h" for h in range(24)]
+        hora_sel_str = st.selectbox(
+            "Hora del pronòstic (Local):",
+            options=hour_options,
+            index=default_hour_index,
+            key="hora_selector"
+        )
+        hora = int(hora_sel_str.split(':')[0])
+
+    with col2:
+        data_sel = st.date_input(
+            "Dia de les dades:",
+            value=now_local.date(),
+            min_value=now_local.date(),
+            max_value=now_local.date() + timedelta(days=2),
+            key="date_selector"
+        )
+
+    with col3:
+        p_levels_all = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
+        nivell_global = st.selectbox(
+            "Nivell d'anàlisi de vents:",
+            p_levels_all,
+            index=p_levels_all.index(850)
+        )
+
+# --- CÀLCUL DEL NOU ÍNDEX HORARI BASAT EN DATA I HORA ---
+day_offset = (data_sel - now_local.date()).days
+if day_offset < 0:
+    st.error("Data invàlida. Si us plau, seleccioneu una data actual o futura.")
+    st.stop()
+
+forecast_days_needed = day_offset + 1
+hourly_index = day_offset * 24 + hora
 
 st.markdown(f'<p class="update-info">🕒 {get_next_arome_update_time()}</p>', unsafe_allow_html=True)
 
 with st.spinner("Analitzant tot el territori..."):
     conv_threshold = -5.5
-    localitats_convergencia = encontrar_localitats_con_convergencia(hora, nivell_global, pobles_data, conv_threshold)
-    disparadors_actius = precalcular_disparadors_actius(hora, localitats_convergencia)
+    localitats_convergencia = encontrar_localitats_con_convergencia(hourly_index, nivell_global, pobles_data, conv_threshold, forecast_days_needed)
+    disparadors_actius = precalcular_disparadors_actius(hourly_index, localitats_convergencia, forecast_days_needed)
 
 def update_poble_selection():
     poble_display = st.session_state.poble_selector
@@ -1345,12 +1383,12 @@ poble_sel_display = st.selectbox('Selecciona una localitat:', options=opciones_d
 poble_sel = st.session_state.poble_seleccionat
 lat_sel, lon_sel = pobles_data[poble_sel]['lat'], pobles_data[poble_sel]['lon']
 
-sondeo, p_levels = obtener_sondeo_atmosferico(lat_sel, lon_sel)
+sondeo, p_levels = obtener_sondeo_atmosferico(lat_sel, lon_sel, forecast_days_needed)
 
 if sondeo:
     data_is_valid = False
     with st.spinner(f"Processant dades per a {poble_sel}..."):
-        profiles = processar_sondeig_per_hora(sondeo, hora, p_levels)
+        profiles = processar_sondeig_per_hora(sondeo, hourly_index, p_levels)
         if profiles:
             p, T, Td, u, v, H = profiles; parametros = calculate_parameters(p, T, Td, u, v, H)
             zero_iso_h_agl = None
@@ -1376,13 +1414,15 @@ if sondeo:
         elif selected_tab == "🗺️ Mapa de Vents":
             st.subheader(f"Vents i Convergència a {nivell_global}hPa")
             with st.spinner("Generant mapa de vents..."):
-                lats_map, lons_map, speeds_map, dirs_map = obtener_dades_mapa_vents(hora, nivell_global)
+                lats_map, lons_map, speeds_map, dirs_map = obtener_dades_mapa_vents(hourly_index, nivell_global, forecast_days_needed)
                 if lats_map and len(lats_map) > 4:
                     speeds_ms = (np.array(speeds_map) * 1000 / 3600) * units('m/s'); dirs_deg = np.array(dirs_map) * units.degrees
                     u_map, v_map = mpcalc.wind_components(speeds_ms, dirs_deg); st.pyplot(crear_mapa_vents(lats_map, lons_map, u_map, v_map, nivell_global, lat_sel, lon_sel, poble_sel))
                 else: st.error("No s'han pogut obtenir les dades per al mapa de vents.")
         elif selected_tab == "🧭Hodògraf": st.subheader("Hodògraf (0-10 km)"); st.pyplot(crear_hodograf(p, u, v, H))
-        elif selected_tab == "📍Sondeig": st.subheader(f"Sondeig per a {poble_sel} ({hora}:00h Local)"); st.pyplot(crear_skewt(p, T, Td, u, v))
+        elif selected_tab == "📍Sondeig":
+            st.subheader(f"Sondeig per a {poble_sel} ({data_sel.strftime('%d/%m/%Y')} - {hora:02d}:00h Local)")
+            st.pyplot(crear_skewt(p, T, Td, u, v))
         elif selected_tab == "🏔️ Orografia":
             st.subheader("Potencial d'Activació per Orografia")
             if (fig_oro := crear_grafic_orografia(parametros, zero_iso_h_agl)): st.pyplot(fig_oro)
@@ -1392,5 +1432,5 @@ if sondeo:
                 st.subheader("Visualització del Núvol")
                 if (fig_nuvol := crear_grafic_nuvol(parametros, H, u, v, is_convergence_active=is_conv_active)): st.pyplot(fig_nuvol)
                 else: st.info("No hi ha LCL o EL per visualitzar l'estructura del núvol.")
-    else: st.warning(f"No s'han pogut calcular els paràmetres per a les {hora}:00h. Prova amb una altra hora o localitat.")
-else: st.error("No s'han pogut obtenir dades. Pot ser que la localitat estigui fora de la cobertura del model AROME.")
+    else: st.warning(f"No s'han pogut calcular els paràmetres per a les {hora:02d}:00h del {data_sel.strftime('%d/%m/%Y')}. Proveu amb una altra hora, data o localitat.")
+else: st.error("No s'han pogut obtenir dades. Pot ser que la localitat estigui fora de la cobertura del model AROME o que no hi hagi dades disponibles per a la data seleccionada.")
