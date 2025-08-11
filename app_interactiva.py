@@ -24,13 +24,6 @@ import cartopy.io.img_tiles as cimgt
 from datetime import datetime, timedelta
 import pytz
 
-# --- CONFIGURACIÓ INICIAL ---
-st.set_page_config(layout="wide", page_title="Tempestes.cat")
-cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
-retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
-openmeteo = openmeteo_requests.Client(session=retry_session)
-
-# --- DATOS DE LES LOCALITATS (LLISTA DEFINITIVA I COMPLETA) ---
 pobles_data = {
     'Amposta': {'lat': 40.707, 'lon': 0.579},
     'Arbúcies': {'lat': 41.815, 'lon': 2.515},
@@ -126,6 +119,17 @@ pobles_data = {
     'Vilassar de Mar': {'lat': 41.506, 'lon': 2.392},
 }
 
+
+# --- CONFIGURACIÓ INICIAL ---
+st.set_page_config(layout="wide", page_title="Tempestes.cat")
+cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
+retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
+openmeteo = openmeteo_requests.Client(session=retry_session)
+
+# --- INICIALITZACIÓ DEL SESSION STATE ---
+if 'poble_seleccionat' not in st.session_state:
+    st.session_state.poble_seleccionat = 'Barcelona' # Valor per defecte
+
 # --- FUNCIONS ---
 def get_next_arome_update_time():
     now_utc = datetime.now(pytz.utc)
@@ -194,6 +198,25 @@ def generar_avis_localitat(params):
 
     return ("Risc Baix: Possibles xàfecs o tempestes febles i aïllades (unicel·lulars).", "#4682B4")
 
+def generar_avis_convergencia(params, is_convergence_active):
+    if not is_convergence_active:
+        return None, None
+
+    cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0)
+    cin = params.get('CIN_Fre', {}).get('value')
+
+    if cape_u > 500 and (cin is None or cin > -50):
+        missatge = f"ALERTA DE CONVERGÈNCIA: S'observa un focus de convergència de vents a nivells baixos que pot actuar com a disparador. Amb un CAPE de {cape_u:.0f} J/kg i una 'tapa' (CIN) feble o inexistent, hi ha un **alt potencial que les tempestes s'iniciïn de manera explosiva** en aquesta zona."
+        color = "#FF4500" # Taronja intens
+        return missatge, color
+    elif cape_u > 200 and cin is not None and -100 < cin <= -50:
+        missatge = f"ATENCIÓ A LA CONVERGÈNCIA: Hi ha convergència de vents, un possible mecanisme per trencar la 'tapa' atmosfèrica (CIN de {cin:.0f} J/kg). Si ho aconsegueix, s'alliberaria una energia de {cape_u:.0f} J/kg, donant lloc a tempestes."
+        color = "#FFA500" # Taronja-groc
+        return missatge, color
+
+    return None, None
+
+
 def generar_analisi_detallada(params):
     conversa = []
     cape, cin, cape_u, pwat = (params.get(k, {}).get('value') for k in ['CAPE_Brut', 'CIN_Fre', 'CAPE_Utilitzable', 'PWAT_Total'])
@@ -204,7 +227,7 @@ def generar_analisi_detallada(params):
     if cape is None or cape < 100:
         conversa.append("L'atmosfera és estable o quasi estable. El CAPE és pràcticament inexistent, per la qual cosa no s'espera la formació de tempestes significatives.")
         return conversa
-    
+
     cape_text = "feble" if cape < 1000 else "moderada" if cape < 2500 else "forta" if cape < 3500 else "extrema"
     conversa.append(f"Tenim un CAPE de {cape:.0f} J/kg, un potencial energètic que indica inestabilitat {cape_text}.")
 
@@ -215,11 +238,11 @@ def generar_analisi_detallada(params):
             conversa.append(f"La 'tapa' (CIN) de {cin:.0f} J/kg és considerable. Això pot retardar la convecció, però si es trenca, pot donar lloc a un desenvolupament explosiu. El CAPE utilitzable real és de {cape_u:.0f} J/kg.")
         else:
             conversa.append("La 'tapa' (CIN) és feble. L'energia està fàcilment disponible.")
-    
+
     if pwat is not None:
         pwat_text = "molt seca" if pwat < 15 else "modesta, suficient per a xàfecs" if pwat < 30 else "abundant, ideal per a pluges fortes o torrencials"
         conversa.append(f"El contingut d'aigua precipitable (PWAT) és de {pwat:.1f} mm. Això indica una atmosfera {pwat_text}.")
-        
+
     if lfc_agl is not None and lfc_agl > 3000:
          conversa.append(f"⚠️ Factor limitant clau: El nivell d'inici de convecció (LFC) està a {lfc_agl:.0f} m, una altura molt elevada. Això dificulta enormement la formació de tempestes des de la superfície.")
     elif lcl_agl is not None and lfc_agl is not None:
@@ -247,7 +270,7 @@ def generar_analisi_detallada(params):
         riscos = "calamarsa grossa, fortes ratxes de vent destructives i pluges torrencials"
         if srh1 > 250 and lcl_agl is not None and lcl_agl < 1200:
             riscos += ", amb un risc destacat de formació de tornados"
-        conversa.append(f"L'entorn és altament favorable per a la formació de supercèl·lules**. El principal risc és {riscos}.")
+        conversa.append(f"**L'entorn és altament favorable per a la formació de supercèl·lules**. El principal risc és {riscos}.")
     elif shear6 is not None and shear6 > 12 and cape_u > 500:
         conversa.append("La combinació d'energia i cisallament és òptima per a sistemes multicel·lulars organitzats. El risc principal seran les fortes pluges, calamarsa de mida mitjana i ratxes de vent fortes.")
     else:
@@ -262,16 +285,16 @@ def obtener_sondeo_atmosferico(lat, lon):
     h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
     h_press = [f"{v}_{p}hPa" for v in ["temperature", "dew_point", "wind_speed", "wind_direction", "geopotential_height"] for p in p_levels]
     params = {
-        "latitude": lat, "longitude": lon, 
-        "hourly": h_base + h_press, 
-        "models": "arome_france", 
-        "timezone": "auto", 
+        "latitude": lat, "longitude": lon,
+        "hourly": h_base + h_press,
+        "models": "arome_france",
+        "timezone": "auto",
         "forecast_days": 1
     }
-    try: 
+    try:
         r = openmeteo.weather_api(url, params=params)
         return r[0] if r else None, p_levels
-    except Exception as e: 
+    except Exception as e:
         st.error(f"Error a l'API d'Open-Meteo: {e}")
         return None, None
 
@@ -339,7 +362,7 @@ def display_metrics(params_dict):
     param_map = [('CIN (Fre)', 'CIN_Fre'), ('CAPE (Brut)', 'CAPE_Brut'), ('Shear 0-6km', 'Shear_0-6km'), ('CAPE Utilitzable', 'CAPE_Utilitzable'), ('LCL (AGL)', 'LCL_AGL'), ('LFC (AGL)', 'LFC_AGL'), ('EL (MSL)', 'EL_MSL'), ('SRH 0-1km', 'SRH_0-1km'), ('SRH 0-3km', 'SRH_0-3km'), ('PWAT Total', 'PWAT_Total')]
     st.markdown("""<style>.metric-container{border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px;margin-bottom:10px;}</style>""", unsafe_allow_html=True)
     available_params = [ (label, key) for label, key in param_map ]
-    
+
     cols = st.columns(min(4, len(available_params)))
     for i, (label, key) in enumerate(available_params):
         param = params_dict.get(key, {})
@@ -357,7 +380,7 @@ def display_metrics(params_dict):
             units_display = units_str
             border_color, emoji = get_parameter_style(key, value)
             val_color = border_color
-        
+
         with cols[i % 4]:
             html = f"""
             <div class="metric-container" style="border-color:{border_color};">
@@ -426,38 +449,38 @@ def crear_grafic_nuvol(params, H, u, v, is_convergence_active):
     el_msl_km = params.get('EL_MSL', {}).get('value')
     cape = params.get('CAPE_Brut', {}).get('value', 0)
     srh1 = params.get('SRH_0-1km', {}).get('value')
-    
+
     if lcl_agl is None or el_msl_km is None: return None
-    
+
     fig, ax = plt.subplots(figsize=(6, 9), dpi=120)
     ax.set_facecolor('#4F94CD'); sky_cmap = mcolors.LinearSegmentedColormap.from_list("sky", ["#4F94CD", "#B0E0E6"])
     ax.imshow(np.linspace(0, 1, 256).reshape(-1, 1), aspect='auto', cmap=sky_cmap, origin='lower', extent=[-5, 5, 0, 16])
     ax.add_patch(Polygon([(-5, 0), (5, 0), (5, 0.5), (-5, 0.5)], color='#3A1F04'))
-    
+
     lcl_km = lcl_agl / 1000
     el_km = el_msl_km - (H[0].m / 1000)
-    
+
     for _ in range(70):
         x, y = -5 + random.random() * 10, lcl_km + (random.random() - 0.5) * 0.3
         ax.add_patch(Circle((x, y), 0.3 + random.random() * 0.7, color='white', alpha=0.3, lw=0))
-    
+
     if srh1 is not None and srh1 > 250 and lcl_km < 1.2: base_txt = "Potencial de Wall Cloud i Funnels (Tornados)"
     elif srh1 is not None and srh1 > 150 and lcl_km < 1.5: base_txt = "Potencial de Bases Giratories (Mesocicló)"
     elif cape > 1500: base_txt = "Bases Turbulentes (Shelf Cloud / Arcus)"
     else: base_txt = "Base Plana (Sense organització rotacional)"
     ax.text(0, -0.5, base_txt, color='white', ha='center', weight='bold', fontsize=12)
-    
+
     if is_convergence_active and lfc_agl is not None and np.isfinite(lfc_agl):
         lfc_km = lfc_agl / 1000
         y_points = np.linspace(lfc_km, el_km, 100)
         cloud_width = 1.0 + np.sin(np.pi * (y_points - lfc_km) / (el_km - lfc_km)) * (1 + cape/2500)
-        
+
         for y, width in zip(y_points, cloud_width):
             center_x = np.interp(y*1000, H.m, u.m) / 15
             for _ in range(30):
                 offset_x, offset_y = (random.random() - 0.5) * width, (random.random() - 0.5) * 0.4
                 ax.add_patch(Circle((center_x + offset_x, y + offset_y), 0.2 + random.random() * 0.4, color='white', alpha=0.15, lw=0))
-        
+
         anvil_wind_u = np.interp(el_km*1000, H.m, u.m) / 10
         anvil_center_x = np.interp(el_km*1000, H.m, u.m) / 15
         for _ in range(100):
@@ -483,7 +506,7 @@ def obtener_dades_mapa_vents(hora, nivell):
     lats = np.linspace(40.5, 42.8, 12)
     lons = np.linspace(0.2, 3.3, 12)
     lon_grid, lat_grid = np.meshgrid(lons, lats)
-    
+
     params = {
         "latitude": lat_grid.flatten().tolist(),
         "longitude": lon_grid.flatten().tolist(),
@@ -530,9 +553,9 @@ def crear_mapa_vents(lats, lons, u_comp, v_comp, nivell, lat_sel, lon_sel, nom_p
     conv_threshold = -5.5
     divergence_values = divergence.m
     divergence_strong_conv = np.ma.masked_where(divergence_values > conv_threshold, divergence_values)
-    
+
     levels = np.linspace(-15.0, conv_threshold, 10)
-    
+
     cs = ax.contourf(X, Y, divergence_strong_conv,
                      levels=levels, cmap='Reds_r', alpha=0.6,
                      zorder=2, transform=ccrs.PlateCarree(), extend='min')
@@ -540,16 +563,15 @@ def crear_mapa_vents(lats, lons, u_comp, v_comp, nivell, lat_sel, lon_sel, nom_p
     ax.streamplot(grid_lon, grid_lat, u_grid, v_grid,
                   color="#000000", density=5.9, linewidth=0.5,
                   arrowsize=0.50, zorder=4, transform=ccrs.PlateCarree())
-    
-    # Afegir el marcador per a la localitat seleccionada. [1, 3]
+
     ax.plot(lon_sel, lat_sel, 'o', markersize=12, markerfacecolor='yellow',
             markeredgecolor='black', markeredgewidth=2,
             transform=ccrs.Geodetic(), zorder=5)
-    
+
     ax.text(lon_sel + 0.05, lat_sel + 0.05, nom_poble_sel,
             transform=ccrs.Geodetic(), zorder=6,
             bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2'))
-        
+
     ax.set_title(f"Flux i focus de convergència a {nivell}hPa", weight='bold')
     return fig
 
@@ -561,16 +583,16 @@ def encontrar_localitats_con_convergencia(hora, nivell, localitats, threshold):
     speeds_ms = (np.array(speeds) * 1000 / 3600) * units('m/s')
     dirs_deg = np.array(dirs) * units.degrees
     u_comp, v_comp = mpcalc.wind_components(speeds_ms, dirs_deg)
-    
+
     grid_lon = np.linspace(min(lons), max(lons), 100)
     grid_lat = np.linspace(min(lats), max(lats), 100)
     X, Y = np.meshgrid(grid_lon, grid_lat)
-    
+
     points = np.vstack((lons, lats)).T
     u_grid = griddata(points, u_comp.m, (X, Y), method='cubic')
     v_grid = griddata(points, v_comp.m, (X, Y), method='cubic')
     u_grid, v_grid = np.nan_to_num(u_grid), np.nan_to_num(v_grid)
-    
+
     dx, dy = mpcalc.lat_lon_grid_deltas(X, Y)
     divergence = mpcalc.divergence(u_grid * units('m/s'), v_grid * units('m/s'), dx=dx, dy=dy) * 1e5
     divergence_values = divergence.m
@@ -580,10 +602,10 @@ def encontrar_localitats_con_convergencia(hora, nivell, localitats, threshold):
         lon_idx = (np.abs(grid_lon - coords['lon'])).argmin()
         lat_idx = (np.abs(grid_lat - coords['lat'])).argmin()
         valor_convergencia = divergence_values[lat_idx, lon_idx]
-        
+
         if valor_convergencia < threshold:
             localitats_en_convergencia.append(nom_poble)
-            
+
     return localitats_en_convergencia
 
 # --- INTERFAZ PRINCIPAL ---
@@ -607,8 +629,8 @@ with col1:
         now_local = datetime.now(tz)
         default_hour_index = now_local.hour
     except:
-        default_hour_index = 12 
-        
+        default_hour_index = 12
+
     hour_options = [f"{h:02d}:00h" for h in range(24)]
     hora_sel_str = st.radio("Hora del pronòstic (Local):", hour_options, index=default_hour_index, horizontal=True)
     hora = int(hora_sel_str.split(':')[0])
@@ -623,15 +645,39 @@ with st.spinner(f"Analitzant convergències a {nivell_global}hPa per a les {hora
     conv_threshold = -5.5
     localitats_convergencia = encontrar_localitats_con_convergencia(hora, nivell_global, pobles_data, conv_threshold)
 
+# --- Selector de localitat que desa l'estat ---
+def update_poble_selection():
+    poble_display = st.session_state.poble_selector
+    st.session_state.poble_seleccionat = poble_display.replace('📍 ', '').split(' (')[0]
+
 opciones_display = []
-for nom_poble in sorted(pobles_data.keys()):
+sorted_pobles = sorted(pobles_data.keys())
+default_index = sorted_pobles.index(st.session_state.poble_seleccionat) if st.session_state.poble_seleccionat in sorted_pobles else 0
+
+for nom_poble in sorted_pobles:
     if nom_poble in localitats_convergencia:
         opciones_display.append(f"📍 {nom_poble} (Convergència a les {hora}:00h)")
     else:
         opciones_display.append(nom_poble)
 
-poble_sel_display = st.selectbox('Selecciona una localitat:', options=opciones_display)
-poble_sel = poble_sel_display.replace('📍 ', '').split(' (')[0]
+# Reconstruir l'índex per al widget selectbox
+try:
+    current_selection_display = next(s for s in opciones_display if st.session_state.poble_seleccionat in s)
+    default_index_display = opciones_display.index(current_selection_display)
+except StopIteration:
+    default_index_display = 0 # Si no el troba, torna al principi
+
+
+poble_sel_display = st.selectbox(
+    'Selecciona una localitat:',
+    options=opciones_display,
+    index=default_index_display,
+    key='poble_selector', # Clau del widget
+    on_change=update_poble_selection # Funció a cridar quan canvia
+)
+
+# El nom del poble real sempre es llegeix del session_state
+poble_sel = st.session_state.poble_seleccionat
 lat_sel, lon_sel = pobles_data[poble_sel]['lat'], pobles_data[poble_sel]['lon']
 
 sondeo, p_levels = obtener_sondeo_atmosferico(lat_sel, lon_sel)
@@ -669,12 +715,19 @@ if sondeo:
                 except Exception: pass
                 parametros = calculate_parameters(p, T, Td, u, v, H); data_is_valid = True
     if data_is_valid:
+        is_conv_active = poble_sel in localitats_convergencia
+        
+        # Generar i mostrar els avisos
+        avis_conv_text, avis_conv_color = generar_avis_convergencia(parametros, is_conv_active)
+        if avis_conv_text:
+            st.markdown(f'<div class="avis-box" style="border-color: {avis_conv_color}; background-color: {avis_conv_color}20;">{avis_conv_text}</div>', unsafe_allow_html=True)
+        
         avis_text, avis_color = generar_avis_localitat(parametros)
         st.markdown(f'<div class="avis-box" style="border-color: {avis_color}; background-color: {avis_color}20;">{avis_text}</div>', unsafe_allow_html=True)
 
         tab_list = ["🗨️ Anàlisi Detallada", "📊 Paràmetres", "🗺️ Mapes de Vents", "🧭Hodògraf", "📍Sondeig", "🏔️ Orografia", "☁️ Visualització"]
         selected_tab = st.radio("Navegació:", tab_list, index=0, horizontal=True)
-        
+
         if selected_tab == tab_list[0]:
             conversa = generar_analisi_detallada(parametros)
             for msg in conversa:
@@ -705,7 +758,6 @@ if sondeo:
         elif selected_tab == tab_list[6]:
             with st.spinner("Dibuixant la possible estructura del núvol... ☁️⚡️"):
                 st.subheader("Visualització del Núvol")
-                is_conv_active = poble_sel in localitats_convergencia
                 fig_nuvol = crear_grafic_nuvol(parametros, H, u, v, is_convergence_active=is_conv_active)
                 if fig_nuvol: st.pyplot(fig_nuvol)
                 else: st.info("No hi ha LCL o EL, per tant no es pot visualitzar l'estructura del núvol.")
