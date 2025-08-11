@@ -120,9 +120,6 @@ pobles_data = {
     'Vilanova i la Geltrú': {'lat': 41.224, 'lon': 1.725},
     'Vilassar de Mar': {'lat': 41.506, 'lon': 2.392},
 }
-
-
-
 # --- CONFIGURACIÓ INICIAL ---
 st.set_page_config(layout="wide", page_title="Tempestes.cat")
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
@@ -188,6 +185,7 @@ def generar_avis_localitat(params):
     srh1 = params.get('SRH_0-1km', {}).get('value')
     lcl_agl = params.get('LCL_AGL', {}).get('value', 9999)
     lfc_agl = params.get('LFC_AGL', {}).get('value', 9999)
+    w_max = params.get('W_MAX', {}).get('value')
 
     if cape_u < 100:
         return ("Sense risc de tempestes significatives. Atmosfera estable.", "#3CB371")
@@ -195,12 +193,21 @@ def generar_avis_localitat(params):
         return ("Sense risc de tempestes. La 'tapa' atmosfèrica (CIN) és massa forta per permetre el seu desenvolupament.", "#3CB371")
     if lfc_agl > 3000:
         return ("Risc molt baix de tempestes. El nivell d'inici de la convecció (LFC) és massa alt i difícil d'assolir.", "#4682B4")
+
+    w_max_text = ""
+    if w_max:
+        if w_max > 50: # ~180 km/h
+            w_max_text = " amb corrents ascendents **violents**"
+        elif w_max > 25: # ~90 km/h
+            w_max_text = " amb corrents ascendents **molt forts**"
+
     if shear is not None and shear > 20 and cape_u > 1500 and srh1 is not None and srh1 > 250 and lcl_agl < 1200:
-        return ("RISC ALT: Condicions favorables per a SUPERCL·LULES amb potencial de TORNADOS.", "#DC143C")
+        return (f"RISC ALT: Condicions per a SUPERCL·LULES{w_max_text}. Potencial de TORNADOS, calamarsa grossa i vent destructiu.", "#DC143C")
     if shear is not None and shear > 18 and cape_u > 1000:
-        return ("AVÍS: Potencial per a SUPERCL·LULES. Risc de calamarsa grossa i fortes ratxes de vent.", "#FF8C00")
+        return (f"AVÍS: Potencial per a SUPERCL·LULES{w_max_text}. Risc de calamarsa grossa i fortes ratxes de vent.", "#FF8C00")
     if shear is not None and shear > 12 and cape_u > 500:
-        return ("PRECAUCIÓ: Risc de TEMPESTES ORGANITZADES (multicèl·lules). Possibles fortes pluges i calamarsa.", "#FFD700")
+        return (f"PRECAUCIÓ: Risc de TEMPESTES ORGANITZADES (multicèl·lules){w_max_text}. Possibles fortes pluges i calamarsa.", "#FFD700")
+    
     return ("Risc Baix: Possibles xàfecs o tempestes febles i aïllades (unicel·lulars).", "#4682B4")
 
 def generar_avis_convergencia(params, is_convergence_active):
@@ -241,6 +248,13 @@ def generar_analisi_detallada(params):
         return
     cape_text = "feble" if cape < 1000 else "moderada" if cape < 2500 else "forta" if cape < 3500 else "extrema"
     yield from stream_text(f"Tenim un CAPE de **{cape:.0f} J/kg**, un potencial energètic que indica inestabilitat **{cape_text}**.")
+    
+    if w_max:
+        w_max_kmh = w_max * 3.6
+        w_max_desc = "molt forts" if w_max_kmh > 90 else "forts"
+        if w_max_kmh > 180: w_max_desc = "extremadament violents"
+        yield from stream_text(f"Aquest valor de CAPE es tradueix en un potencial de corrents ascendents **{w_max_desc}**, amb velocitats màximes teòriques que podrien assolir els **{w_max:.1f} m/s** (~{w_max_kmh:.0f} km/h). Això és un indicador directe de la potència de la tempesta i la seva capacitat per generar calamarsa de gran mida.")
+    
     if cin is not None:
         if cin < -100:
             yield from stream_text(f"⚠️ **Factor limitant clau:** La 'tapa' d'inversió (CIN) és molt forta ({cin:.0f} J/kg). Serà extremadament difícil que es formin tempestes.")
@@ -279,8 +293,6 @@ def generar_analisi_detallada(params):
             yield from stream_text("La combinació d'energia i cisallament és **òptima per a sistemes multicel·lulars organitzats**. El risc principal seran les fortes pluges, calamarsa i ratxes de vent.")
         else:
             yield from stream_text("L'entorn afavoreix **xàfecs o tempestes unicel·lulars**. Poden produir localment pluja intensa i calamarsa petita.")
-        if w_max:
-             yield from stream_text(f"Els corrents ascendents podrien assolir velocitats màximes teòriques de fins a **{w_max:.1f} m/s** (uns {w_max*3.6:.0f} km/h).")
 
 @st.cache_data
 def obtener_sondeo_atmosferico(lat, lon):
@@ -364,7 +376,7 @@ def crear_skewt(p, T, Td, u, v):
 def display_metrics(params_dict):
     param_map = [
         ('CIN (Fre)', 'CIN_Fre'), ('CAPE (Brut)', 'CAPE_Brut'),
-        ('Shear 0-6km', 'Shear_0-6km'), ('Velocitat ascendent estimada.', 'W_MAX'),
+        ('Shear 0-6km', 'Shear_0-6km'), ('Vel. Asc. Màx.', 'W_MAX'),
         ('CAPE Utilitzable', 'CAPE_Utilitzable'), ('LCL (AGL)', 'LCL_AGL'),
         ('LFC (AGL)', 'LFC_AGL'), ('EL (MSL)', 'EL_MSL'),
         ('SRH 0-1km', 'SRH_0-1km'), ('SRH 0-3km', 'SRH_0-3km'),
@@ -505,34 +517,22 @@ def crear_mapa_vents(lats, lons, u_comp, v_comp, nivell, lat_sel, lon_sel, nom_p
 
 @st.cache_data
 def encontrar_localitats_con_convergencia(hora, nivell, localitats, threshold):
-    # LÍNIA CORREGIDA: Ara desempaquetem els 4 valors correctament
     lats, lons, speeds, dirs = obtener_dades_mapa_vents(hora, nivell)
-    
-    if not lats or len(lats) < 4:
-        return []
-
-    speeds_ms = (np.array(speeds) * 1000 / 3600) * units('m/s')
-    dirs_deg = np.array(dirs) * units.degrees
+    if not lats or len(lats) < 4: return []
+    speeds_ms = (np.array(speeds) * 1000 / 3600) * units('m/s'); dirs_deg = np.array(dirs) * units.degrees
     u_comp, v_comp = mpcalc.wind_components(speeds_ms, dirs_deg)
-    
     grid_lon, grid_lat = np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100)
     X, Y = np.meshgrid(grid_lon, grid_lat)
-    
     points = np.vstack((lons, lats)).T
-    u_grid = griddata(points, u_comp.m, (X, Y), method='cubic')
-    v_grid = griddata(points, v_comp.m, (X, Y), method='cubic')
+    u_grid, v_grid = griddata(points, u_comp.m, (X, Y), method='cubic'), griddata(points, v_comp.m, (X, Y), method='cubic')
     u_grid, v_grid = np.nan_to_num(u_grid), np.nan_to_num(v_grid)
-    
     dx, dy = mpcalc.lat_lon_grid_deltas(X, Y)
     divergence = mpcalc.divergence(u_grid * units('m/s'), v_grid * units('m/s'), dx=dx, dy=dy) * 1e5
-    
     localitats_en_convergencia = []
     for nom_poble, coords in localitats.items():
-        lon_idx = (np.abs(grid_lon - coords['lon'])).argmin()
-        lat_idx = (np.abs(grid_lat - coords['lat'])).argmin()
+        lon_idx, lat_idx = (np.abs(grid_lon - coords['lon'])).argmin(), (np.abs(grid_lat - coords['lat'])).argmin()
         if divergence.m[lat_idx, lon_idx] < threshold:
             localitats_en_convergencia.append(nom_poble)
-            
     return localitats_en_convergencia
 
 # --- INTERFAZ PRINCIPAL ---
