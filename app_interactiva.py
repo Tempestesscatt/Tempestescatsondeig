@@ -210,7 +210,7 @@ def generar_analisi_detallada(params):
 
     if cin is not None:
         if cin < -100:
-            conversa.append(f"⚠️ **Factor limitant clau:** La 'tapa' d'inversió (CIN) és molt forta ({cin:.0f} J/kg). Serà extremadament difícil que es formin tempestes, ja que es necessitaria un mecanisme de dispar molt potent per trencar-la.")
+            conversa.append(f"⚠️ Factor limitant clau: La 'tapa' d'inversió (CIN) és molt forta ({cin:.0f} J/kg). Serà extremadament difícil que es formin tempestes, ja que es necessitaria un mecanisme de dispar molt potent per trencar-la.")
         elif cin < -25:
             conversa.append(f"La 'tapa' (CIN) de {cin:.0f} J/kg és considerable. Això pot retardar la convecció, però si es trenca, pot donar lloc a un desenvolupament explosiu. El CAPE utilitzable real és de {cape_u:.0f} J/kg.")
         else:
@@ -221,7 +221,7 @@ def generar_analisi_detallada(params):
         conversa.append(f"El contingut d'aigua precipitable (PWAT) és de {pwat:.1f} mm. Això indica una atmosfera {pwat_text}.")
         
     if lfc_agl is not None and lfc_agl > 3000:
-         conversa.append(f"⚠️ **Factor limitant clau:** El nivell d'inici de convecció (LFC) està a {lfc_agl:.0f} m, una altura molt elevada. Això dificulta enormement la formació de tempestes des de la superfície.")
+         conversa.append(f"⚠️ Factor limitant clau: El nivell d'inici de convecció (LFC) està a {lfc_agl:.0f} m, una altura molt elevada. Això dificulta enormement la formació de tempestes des de la superfície.")
     elif lcl_agl is not None and lfc_agl is not None:
          conversa.append(f"La base del núvol (LCL) se situa a {lcl_agl:.0f} m, i el nivell on la convecció es dispara (LFC) a {lfc_agl:.0f} m.")
 
@@ -246,12 +246,12 @@ def generar_analisi_detallada(params):
     elif shear6 is not None and shear6 > 18 and cape_u > 1000 and srh1 is not None and srh1 > 150:
         riscos = "calamarsa grossa, fortes ratxes de vent destructives i pluges torrencials"
         if srh1 > 250 and lcl_agl is not None and lcl_agl < 1200:
-            riscos += ", amb un **risc destacat de formació de tornados**"
-        conversa.append(f"L'entorn és altament favorable per a la formació de **supercèl·lules**. El principal risc és {riscos}.")
+            riscos += ", amb un risc destacat de formació de tornados"
+        conversa.append(f"L'entorn és altament favorable per a la formació de supercèl·lules**. El principal risc és {riscos}.")
     elif shear6 is not None and shear6 > 12 and cape_u > 500:
-        conversa.append("La combinació d'energia i cisallament és òptima per a **sistemes multicel·lulars organitzats**. El risc principal seran les fortes pluges, calamarsa de mida mitjana i ratxes de vent fortes.")
+        conversa.append("La combinació d'energia i cisallament és òptima per a sistemes multicel·lulars organitzats. El risc principal seran les fortes pluges, calamarsa de mida mitjana i ratxes de vent fortes.")
     else:
-        conversa.append("L'entorn afavoreix **xàfecs o tempestes unicel·lulars**. Aquestes seran generalment desorganitzades i de curta durada, tot i que poden produir localment pluja intensa i calamarsa petita.")
+        conversa.append("L'entorn afavoreix xàfecs o tempestes unicel·lulars. Aquestes seran generalment desorganitzades i de curta durada, tot i que poden produir localment pluja intensa i calamarsa petita.")
 
     return conversa
 
@@ -326,7 +326,7 @@ def crear_skewt(p, T, Td, u, v):
             wet_bulb_prof = mpcalc.wet_bulb_temperature(p, T, Td); skew.plot(p, wet_bulb_prof, color='purple', lw=1.5, label='Tª Humida')
             cape, cin = mpcalc.cape_cin(p, T, Td, prof)
             if cape.m > 0: skew.shade_cape(p, T, prof, alpha=0.4, color='khaki')
-            if cin.m != 0: skew.shade_cin(p, T, prof, alpha=0.3, color='lightgray')
+            if cin.m != 0: skew.shade_cin(p, T, prof, alpha=0.83, color='lightgray')
             lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); lfc_p, _ = mpcalc.lfc(p, T, Td, prof); el_p, _ = mpcalc.el(p, T, Td, prof)
             if lcl_p: skew.ax.axhline(lcl_p.m, color='purple', linestyle='--', label='LCL')
             if lfc_p: skew.ax.axhline(lfc_p.m, color='darkred', linestyle='--', label='LFC')
@@ -471,7 +471,7 @@ def crear_grafic_nuvol(params, H, u, v, is_convergence_active):
 
     barb_heights_km = np.arange(1, 15, 1)
     u_barbs, v_barbs = (np.interp(barb_heights_km * 1000, H.m, comp.to('kt').m) for comp in (u, v))
-    ax.barbs(np.full_like(barb_heights_km, 4.5), barb_heights_km, u_barbs, v_barbs, length=7, color='white')
+    ax.barbs(np.full_like(barb_heights_km, 4.5), barb_heights_km, u_barbs, v_barbs, length=7, color='black')
 
     ax.set_ylim(0, 16); ax.set_xlim(-5, 5)
     ax.set_ylabel("Altitud sobre el terra (km)"); ax.set_title("Visualització del Núvol", weight='bold')
