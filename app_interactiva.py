@@ -326,7 +326,7 @@ def crear_skewt(p, T, Td, u, v):
             wet_bulb_prof = mpcalc.wet_bulb_temperature(p, T, Td); skew.plot(p, wet_bulb_prof, color='purple', lw=1.5, label='Tª Humida')
             cape, cin = mpcalc.cape_cin(p, T, Td, prof)
             if cape.m > 0: skew.shade_cape(p, T, prof, alpha=0.4, color='khaki')
-            if cin.m != 0: skew.shade_cin(p, T, prof, alpha=0.83, color='lightgray')
+            if cin.m != 0: skew.shade_cin(p, T, prof, alpha=0.83, color='gray')
             lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); lfc_p, _ = mpcalc.lfc(p, T, Td, prof); el_p, _ = mpcalc.el(p, T, Td, prof)
             if lcl_p: skew.ax.axhline(lcl_p.m, color='purple', linestyle='--', label='LCL')
             if lfc_p: skew.ax.axhline(lfc_p.m, color='darkred', linestyle='--', label='LFC')
