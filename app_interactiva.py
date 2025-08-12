@@ -529,19 +529,62 @@ def crear_grafic_orografia(params, zero_iso_h_agl):
     fig.tight_layout(pad=0.5); return fig
 
 def crear_grafic_nuvol(params, H, u, v, is_convergence_active):
-    lcl_agl,el_msl_km,cape=(params.get(k,{}).get('value') for k in ['LCL_AGL','EL_MSL','CAPE_Brut'])
-    if lcl_agl is None or el_msl_km is None: return None
-    cape=cape or 0; fig,ax=plt.subplots(figsize=(6,9),dpi=120); ax.set_facecolor('#4F94CD'); lcl_km=lcl_agl/1000; el_km=el_msl_km
+    lcl_agl, el_msl_km, cape = (params.get(k, {}).get('value') for k in ['LCL_AGL', 'EL_MSL', 'CAPE_Brut'])
+    if lcl_agl is None or el_msl_km is None:
+        return None
+
+    cape = cape or 0
+    fig, ax = plt.subplots(figsize=(6, 9), dpi=120)
+    ax.set_facecolor('#4F94CD')
+    lcl_km = lcl_agl / 1000
+    el_km = el_msl_km
+
+    # --- CANVI CLAU: Definim el centre del gràfic ---
+    center_x_base = 5.0
+
     if is_convergence_active and cape > 100:
-        y_points=np.linspace(lcl_km,el_km,100); cloud_width=1.0+np.sin(np.pi*(y_points-lcl_km)/(el_km-lcl_km))*(1+cape/2000)
-        for y,width in zip(y_points,cloud_width):
-            center_x=np.interp(y*1000,H.m,u.m)/15
-            for _ in range(25): ax.add_patch(Circle((center_x+(random.random()-0.5)*width,y+(random.random()-0.5)*0.4),0.2+random.random()*0.4,color='white',alpha=0.15,lw=0))
-        anvil_wind_u=np.interp(el_km*1000,H.m,u.m)/10; anvil_center_x=np.interp(el_km*1000,H.m,u.m)/15
-        for _ in range(80): ax.add_patch(Circle((anvil_center_x+(random.random()-0.2)*4+anvil_wind_u,el_km+(random.random()-0.5)*0.5),0.2+random.random()*0.6,color='white',alpha=0.2,lw=0))
-        if cape>2500: ax.add_patch(Circle((anvil_center_x,el_km+cape/5000),0.4,color='white',alpha=0.5))
-    else: ax.text(5,8,"Sense disparador o energia\nsuficient per a convecció profunda.",ha='center',va='center',color='black',fontsize=16,weight='bold',bbox=dict(facecolor='lightblue',alpha=0.7,boxstyle='round,pad=0.5'))
-    barb_heights_km=np.arange(1,16,1); u_barbs=np.interp(barb_heights_km*1000,H.m,u.to('kt').m); v_barbs=np.interp(barb_heights_km*1000,H.m,v.to('kt').m); ax.barbs(np.full_like(barb_heights_km,9.5),barb_heights_km,u_barbs,v_barbs,length=7,color='black'); ax.set_ylim(0,16); ax.set_xlim(0,10); ax.set_ylabel("Altitud (km, MSL)"); ax.set_title("Visualització del Núvol",weight='bold'); ax.set_xticks([]); ax.grid(axis='y',linestyle='--',alpha=0.3); return fig
+        y_points = np.linspace(lcl_km, el_km, 100)
+        cloud_width = 1.0 + np.sin(np.pi * (y_points - lcl_km) / (el_km - lcl_km)) * (1 + cape / 2000)
+
+        for y, width in zip(y_points, cloud_width):
+            # --- CANVI CLAU: Calculem la inclinació com un 'offset' i l'afegim a la base ---
+            tilt_offset = np.interp(y * 1000, H.m, u.m) / 15
+            center_x = center_x_base + tilt_offset
+            for _ in range(25):
+                ax.add_patch(Circle((center_x + (random.random() - 0.5) * width, y + (random.random() - 0.5) * 0.4),
+                                    0.2 + random.random() * 0.4, color='white', alpha=0.15, lw=0))
+
+        # L'enclusa ha de començar des de la part superior del núvol inclinat
+        top_cloud_tilt_offset = np.interp(el_km * 1000, H.m, u.m) / 15
+        anvil_center_x = center_x_base + top_cloud_tilt_offset
+
+        # L'expansió de l'enclusa depèn del vent a aquella alçada
+        anvil_wind_spread = np.interp(el_km * 1000, H.m, u.m) / 10
+        for _ in range(80):
+            ax.add_patch(Circle((anvil_center_x + (random.random() - 0.2) * 4 + anvil_wind_spread, el_km + (random.random() - 0.5) * 0.5),
+                                0.2 + random.random() * 0.6, color='white', alpha=0.2, lw=0))
+
+        # Cim depassant (overshooting top)
+        if cape > 2500:
+            ax.add_patch(Circle((anvil_center_x, el_km + cape / 5000), 0.4, color='white', alpha=0.5))
+    else:
+        # --- CANVI CLAU: Centrem el text d'avís ---
+        ax.text(center_x_base, 8, "Sense disparador o energia\nsuficient per a convecció profunda.", ha='center', va='center',
+                color='black', fontsize=16, weight='bold', bbox=dict(facecolor='lightblue', alpha=0.7, boxstyle='round,pad=0.5'))
+
+    # Dibuixem les barbes de vent a la dreta (això ja estava bé)
+    barb_heights_km = np.arange(1, 16, 1)
+    u_barbs = np.interp(barb_heights_km * 1000, H.m, u.to('kt').m)
+    v_barbs = np.interp(barb_heights_km * 1000, H.m, v.to('kt').m)
+    ax.barbs(np.full_like(barb_heights_km, 9.5), barb_heights_km, u_barbs, v_barbs, length=7, color='black')
+    
+    ax.set_ylim(0, 16)
+    ax.set_xlim(0, 10)
+    ax.set_ylabel("Altitud (km, MSL)")
+    ax.set_title("Visualització del Núvol", weight='bold')
+    ax.set_xticks([])
+    ax.grid(axis='y', linestyle='--', alpha=0.3)
+    return fig
 
 
 # --- 3. INTERFÍCIE I FLUX PRINCIPAL DE L'APLICACIÓ ---
