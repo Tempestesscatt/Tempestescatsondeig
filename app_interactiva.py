@@ -498,11 +498,11 @@ def crear_grafic_orografia(params, zero_iso_h_agl):
     # --- 1. Gradient del Cel ---
     sky_gradient = np.linspace(0.6, 1.0, 256).reshape(-1, 1)
     sky_gradient = np.vstack((sky_gradient, sky_gradient))
-    ax.imshow(sky_gradient, aspect='auto', cmap='Blues_r', extent=[0, 10, 0, 12], zorder=0)
+    # S'ajusta l'extensió del cel al límit superior final per evitar talls
+    ax.imshow(sky_gradient, aspect='auto', cmap='Blues_r', extent=[0, 10, 0, 14], zorder=0)
 
     # --- 2. Perfil de la Muntanya Conceptual ---
     has_lfc = lfc_agl is not None and np.isfinite(lfc_agl)
-    # L'altura del pic representat s'ajusta a l'LFC per a la visualització
     peak_h_m = lfc_agl if has_lfc and lfc_agl > 1000 else (lcl_agl * 1.5 if lcl_agl > 1000 else 2000)
     peak_h_km = min(peak_h_m / 1000.0, 8.0)
 
@@ -512,19 +512,22 @@ def crear_grafic_orografia(params, zero_iso_h_agl):
     mountain_poly = Polygon(np.vstack([x_mountain, y_mountain]).T, facecolor='#6B8E23', edgecolor='#3A4D14', lw=2, zorder=2)
     ax.add_patch(mountain_poly)
     
-    # --- 3. Línies de LCL i LFC ---
+    # --- 3. Línies de LCL i LFC (ETIQUETES DINS DEL GRÀFIC) ---
     line_outline_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
     
     lcl_km = lcl_agl / 1000
     ax.axhline(lcl_km, color='white', linestyle='--', lw=2, zorder=3, path_effects=line_outline_effect)
-    ax.text(10.1, lcl_km, f" condensació: {lcl_agl:.0f} m)", color='black', backgroundcolor='white', ha='left', va='center', weight='bold')
+    # ETIQUETA MOVUDA A DINS (dreta)
+    ax.text(9.9, lcl_km, f"Base del núvol (LCL): {lcl_agl:.0f} m ", color='black', backgroundcolor='white', ha='right', va='center', weight='bold')
+    
     cloud_base = patches.Rectangle((0, lcl_km), 10, 0.2, facecolor='white', alpha=0.4, zorder=1)
     ax.add_patch(cloud_base)
 
     if has_lfc:
         lfc_km = lfc_agl / 1000
         ax.axhline(lfc_km, color='#FFD700', linestyle='--', lw=2.5, zorder=3, path_effects=line_outline_effect)
-        ax.text(-0.1, lfc_km, f"Altura Clau (LFC: {lfc_agl:.0f} m) ", color='black', backgroundcolor='#FFD700', ha='right', va='center', weight='bold')
+        # ETIQUETA MOVUDA A DINS (esquerra)
+        ax.text(0.1, lfc_km, f" Disparador de tempesta (LFC): {lfc_agl:.0f} m", color='black', backgroundcolor='#FFD700', ha='left', va='center', weight='bold')
 
     # --- 4. Anotacions i Elements Visuals ---
     main_text_effect = [path_effects.Stroke(linewidth=4, foreground='black'), path_effects.Normal()]
@@ -538,23 +541,18 @@ def crear_grafic_orografia(params, zero_iso_h_agl):
 
     # --- TEXT D'ANÀLISI FINAL I CLARIFICAT ---
     if has_lfc:
-        # La muntanya representada supera l'LFC
         if peak_h_m >= lfc_agl:
             ax.plot(mountain_lfc_intersect_x, lfc_km, '*', markersize=20, color='yellow', markeredgecolor='red', zorder=5)
-            # AQUEST ÉS EL TEXT CLAU
             analysis_text_content = f"DISPARADOR OROGRÀFIC POTENCIAL!\nUna muntanya de {lfc_agl:.0f} m o més seria suficient."
             analysis_text = ax.text(5, max(peak_h_km, lfc_km) + 1, analysis_text_content,
                                     ha='center', va='center', fontsize=14, weight='bold', color='white')
             analysis_text.set_path_effects(main_text_effect)
-        # La muntanya representada NO supera l'LFC
         else:
             ax.plot(x_mountain[np.argmax(y_mountain)], peak_h_km, 'X', markersize=15, color='red', markeredgecolor='white', zorder=5)
-            # AQUEST ÉS L'ALTRE TEXT CLAU
             analysis_text_content = f"L'OROGRAFIA NO ÉS SUFICIENT.\nEs necessita una muntanya de {lfc_agl:.0f} m per disparar la tempesta."
             analysis_text = ax.text(5, peak_h_km + 1, analysis_text_content,
                                     ha='center', va='center', color='yellow', weight='bold', fontsize=12)
             analysis_text.set_path_effects(main_text_effect)
-    # Cas on no hi ha LFC
     else:
         analysis_text_content = "No hi ha un LFC accessible.\nL'atmosfera és massa estable."
         analysis_text = ax.text(5, 4, analysis_text_content,
@@ -562,8 +560,9 @@ def crear_grafic_orografia(params, zero_iso_h_agl):
         analysis_text.set_path_effects(main_text_effect)
 
 
-    # --- Ajust final dels límits ---
-    final_ylim = max(peak_h_km, (lfc_km if has_lfc else 0)) + 2.5
+    # --- AJUST FINAL DELS LÍMITS (MÉS AJUSTAT) ---
+    # S'ha reduït el padding superior de 2.5 a 2.0 per compactar el gràfic
+    final_ylim = max(peak_h_km, (lfc_km if has_lfc else 0)) + 2.0
     ax.set_ylim(0, final_ylim)
     
     # --- ETIQUETES DELS EIXOS DINS DEL GRÀFIC ---
@@ -572,7 +571,7 @@ def crear_grafic_orografia(params, zero_iso_h_agl):
     y_label_text.set_path_effects(main_text_effect)
 
     for y_tick in ax.get_yticks():
-        if y_tick > 0:
+        if y_tick > 0 and y_tick < final_ylim: # Assegurem que el tick estigui dins
             tick_label = ax.text(0.15, y_tick, f'{int(y_tick)}',
                                  ha='left', va='center',
                                  color='white', weight='bold', fontsize=9)
