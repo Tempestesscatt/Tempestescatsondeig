@@ -667,25 +667,77 @@ with st.spinner("Buscant hores amb avisos a tot el territori..."):
     avisos_hores = precalcular_avisos_hores(totes_les_dades, p_levels)
 
 def update_from_avis_selector():
-    poble_avis = st.session_state.avis_selector
-    if poble_avis in avisos_hores:
-        hora_avis = avisos_hores[poble_avis]
-        st.session_state.hora_seleccionada_str = f"{hora_avis:02d}:00h"
-        st.session_state.poble_seleccionat = poble_avis
+    """
+    Aquesta funció s'activa quan l'usuari tria una opció del selector d'avisos.
+    Llegeix el text formatejat, extreu el nom del poble i l'hora,
+    i actualitza l'estat de l'aplicació.
+    """
+    # 1. Llegim el valor seleccionat del 'session_state'.
+    # Aquest valor ara és, per exemple, "Vic (Avís a les 16:00h)"
+    poble_avis_format = st.session_state.avis_selector
+    
+    # 2. Comprovem si s'ha seleccionat una opció vàlida (que no sigui la primera línia d'instruccions).
+    # La manera més segura és comprovar si conté el text clau.
+    if "(Avís a les" in poble_avis_format:
+        
+        # 3. Extraiem el nom del poble real, que és tot el que hi ha abans del primer parèntesi.
+        nom_poble_real = poble_avis_format.split(' (')[0]
+        
+        # 4. Busquem l'hora corresponent al diccionari original d'avisos.
+        if nom_poble_real in avisos_hores:
+            hora_avis = avisos_hores[nom_poble_real]
+            
+            # 5. Actualitzem TANT l'hora COM el poble al session_state de l'aplicació.
+            st.session_state.hora_seleccionada_str = f"{hora_avis:02d}:00h"
+            st.session_state.poble_seleccionat = nom_poble_real
 
 with st.container(border=True):
     col1, col2 = st.columns([1, 1], gap="large")
     hour_options = [f"{h:02d}:00h" for h in range(24)]
+
+    # Selector d'hora
     with col1:
-        index_hora = hour_options.index(st.session_state.hora_seleccionada_str)
-        hora_sel_str = st.selectbox("Hora del pronòstic (Local):", options=hour_options, index=index_hora, key="hora_selector")
-        st.session_state.hora_seleccionada_str = hora_sel_str
+        # Trobem l'índex de l'hora actual per mostrar-la per defecte
+        try:
+            index_hora = hour_options.index(st.session_state.hora_seleccionada_str)
+        except ValueError:
+            index_hora = 0 # Si hi ha algun error, tornem a les 00:00h
+        
+        # Guardem la selecció de l'usuari directament al session_state
+        st.session_state.hora_seleccionada_str = st.selectbox(
+            "Hora del pronòstic (Local):", 
+            options=hour_options, 
+            index=index_hora, 
+            key="hora_selector"
+        )
+
+    # Selector de nivell de vents
     with col2:
         p_levels_all = p_levels if p_levels else [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
-        nivell_global = st.selectbox("Nivell d'anàlisi de vents:", p_levels_all, index=p_levels_all.index(850))
+        nivell_global = st.selectbox(
+            "Nivell d'anàlisi de vents:", 
+            p_levels_all, 
+            index=p_levels_all.index(850)
+        )
+
+    # Selector intel·ligent d'avisos (si n'hi ha)
     if avisos_hores:
-        opcions_avis = ["--- 🔥 Selecciona una localitat amb avís per anar-hi directament ---"] + list(avisos_hores.keys())
-        st.selectbox("Localitats amb previsió d'avís:", options=opcions_avis, key='avis_selector', on_change=update_from_avis_selector)
+        # Creem una llista de textos més descriptius, incloent l'hora de l'avís
+        opcions_avis_formatejades = [
+            f"{poble} (Avís a les {hora:02d}:00h)" 
+            for poble, hora in avisos_hores.items()
+        ]
+
+        # La primera opció continua sent la d'instruccions
+        opcions_avis = ["--- 🔥 Selecciona una localitat amb avís per anar-hi directament ---"] + opcions_avis_formatejades
+        
+        # Mostrem el selector
+        st.selectbox(
+            "Localitats amb previsió d'avís:", 
+            options=opcions_avis, 
+            key='avis_selector', 
+            on_change=update_from_avis_selector # Aquesta funció s'ha d'haver definit abans
+        )
 
 st.markdown(f'<p class="update-info">🕒 {get_next_arome_update_time()}</p>', unsafe_allow_html=True)
 hourly_index = int(st.session_state.hora_seleccionada_str.split(':')[0])
