@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import streamlit as st
 import openmeteo_requests
 import requests_cache
@@ -5,10 +6,8 @@ from retry_requests import retry
 import numpy as np
 import pandas as pd
 import random
-import os
 import time
 import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, BoundaryNorm
 import matplotlib.colors as mcolors
 import matplotlib.lines as mlines
 import matplotlib.patches as patches
@@ -21,11 +20,19 @@ from matplotlib.patches import Circle, Polygon
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from scipy.interpolate import griddata
-import cartopy.io.img_tiles as cimgt
 from datetime import datetime, timedelta
 import pytz
 
-# --- CARREGA DE DADES DE LES LOCALITATS ---
+# --- CONFIGURACIÓ INICIAL ---
+st.set_page_config(layout="wide", page_title="Tempestes.cat")
+
+cache_session = requests_cache.CachedSession('.cache', expire_after=18000) # 5 hores
+retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
+openmeteo = openmeteo_requests.Client(session=retry_session)
+
+FORECAST_DAYS = 1
+
+# --- DICCIONARI DE LOCALITATS DE CATALUNYA ---
 pobles_data = {
     'Abella de la Conca': {'lat': 42.163, 'lon': 1.092},
     'Abrera': {'lat': 41.517, 'lon': 1.901},
@@ -892,22 +899,76 @@ pobles_data = {
     'Vinyols i els Arcs': {'lat': 41.118, 'lon': 1.041},
 }
 
-# --- CONFIGURACIÓ INICIAL ---
-FORECAST_DAYS = 1 # Fixem el pronòstic a només 1 dia.
-st.set_page_config(layout="wide", page_title="Tempestes.cat")
-cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
-retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
-openmeteo = openmeteo_requests.Client(session=retry_session)
+
+
+if not pobles_data:
+    # Afegeixo un petit diccionari per si l'usuari s'oblida d'enganxar el seu, per evitar que l'app peti.
+    st.warning("La llista de localitats està buida. S'està utilitzant una llista de mostra.")
+    pobles_data = {
+        'Barcelona': {'lat': 41.387, 'lon': 2.168}, 'Girona': {'lat': 41.983, 'lon': 2.824},
+        'Lleida': {'lat': 41.617, 'lon': 0.622}, 'Tarragona': {'lat': 41.118, 'lon': 1.245},
+        'Puigcerdà': {'lat': 42.432, 'lon': 1.928}, 'Vielha': {'lat': 42.702, 'lon': 0.796},
+        'Tortosa': {'lat': 40.812, 'lon': 0.521}
+    }
+
 
 # --- INICIALITZACIÓ DEL SESSION STATE ---
 if 'poble_seleccionat' not in st.session_state:
-    st.session_state.poble_seleccionat = 'Barcelona'
+    st.session_state.poble_seleccionat = next(iter(pobles_data)) # Selecciona el primer poble de la llista per defecte
 
-# --- FUNCIONS (Es mantenen igual) ---
+# --- 1. LÒGICA DE CÀRREGA DE DADES ROBUSTA ---
+
+def chunker(seq, size):
+    """Funció d'ajuda per dividir una llista en trossos més petits."""
+    return (seq[pos:pos + size] for pos in range(0, len(seq), size))
+
+@st.cache_data(ttl=18000)
+def carregar_dades_lot(_chunk_locations):
+    """Carrega les dades per a UN ÚNIC LOT de localitats amb lògica de reintent."""
+    p_levels = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
+    h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
+    h_press = [f"{v}_{p}hPa" for v in ["temperature", "dew_point", "wind_speed", "wind_direction", "geopotential_height"] for p in p_levels]
+    chunk_noms, chunk_lats, chunk_lons = zip(*_chunk_locations)
+    params = { "latitude": list(chunk_lats), "longitude": list(chunk_lons), "hourly": h_base + h_press, "models": "arome_france", "timezone": "auto", "forecast_days": FORECAST_DAYS }
+    intents_restants = 3
+    while intents_restants > 0:
+        try:
+            url = "https://api.open-meteo.com/v1/forecast"
+            respostes_chunk = openmeteo.weather_api(url, params=params)
+            lot_dict = {chunk_noms[i]: respostes_chunk[i] for i in range(len(respostes_chunk))}
+            return lot_dict, p_levels, None
+        except openmeteo_requests.exceptions.ApiError as e:
+            if "Minutely API request limit exceeded" in str(e):
+                intents_restants -= 1
+                if intents_restants > 0:
+                    print(f"Límit de l'API assolit. Esperant 61 segons abans de reintentar...")
+                    time.sleep(61)
+                else: return None, None, str(e)
+            else: return None, None, str(e)
+        except Exception as e: return None, None, str(e)
+
+@st.cache_data(ttl=18000)
+def obtener_dades_mapa_vents(hourly_index, nivell, forecast_days):
+    lats, lons = np.linspace(40.5, 42.8, 12), np.linspace(0.2, 3.3, 12)
+    lon_grid, lat_grid = np.meshgrid(lons, lats)
+    params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"], "models": "arome_france", "timezone": "auto", "forecast_days": forecast_days}
+    try:
+        url = "https://api.open-meteo.com/v1/forecast"
+        responses = openmeteo.weather_api(url, params=params)
+        lats_out, lons_out, speeds_out, dirs_out = [], [], [], []
+        for r in responses:
+            hourly = r.Hourly(); speed, direction = hourly.Variables(0).ValuesAsNumpy()[hourly_index], hourly.Variables(1).ValuesAsNumpy()[hourly_index]
+            if not np.isnan(speed) and not np.isnan(direction):
+                lats_out.append(r.Latitude()); lons_out.append(r.Longitude()); speeds_out.append(speed); dirs_out.append(direction)
+        return lats_out, lons_out, speeds_out, dirs_out, None
+    except Exception as e:
+        return None, None, None, None, str(e)
+
+# --- 2. FUNCIONS DE CÀLCUL I VISUALITZACIÓ ---
+
 def get_next_arome_update_time():
     now_utc = datetime.now(pytz.utc)
-    run_hours_utc = [0, 6, 12, 18]
-    availability_delay = timedelta(hours=4)
+    run_hours_utc = [0, 6, 12, 18]; availability_delay = timedelta(hours=4)
     next_update_time = None
     for run_hour in run_hours_utc:
         run_datetime = now_utc.replace(hour=run_hour, minute=0, second=0, microsecond=0)
@@ -921,6 +982,28 @@ def get_next_arome_update_time():
     local_tz = pytz.timezone('Europe/Madrid')
     next_update_local = next_update_time.astimezone(local_tz)
     return f"Pròxima actualització de dades (model AROME) estimada a les {next_update_local.strftime('%H:%Mh')}"
+
+def display_avis_principal(titol_avís, text_avís, color_avís):
+    """Mostra un quadre d'avís modern i visualment atractiu."""
+    icon_map = { "ESTABLE": "☀️", "RISC BAIX": "☁️", "PRECAUCIÓ": "⚡️", "AVÍS": "⚠️", "RISC ALT": "🌪️", "ALERTA DE DISPARADOR": "🎯" }
+    icona = icon_map.get(titol_avís, "ℹ️")
+    st.markdown(f"""
+    <style>
+    .avis-container-pretty {{ padding: 1rem; border-radius: 0.5rem; background-color: #262730; border-left: 8px solid {color_avís}; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem; }}
+    .avis-icon-pretty {{ font-size: 3.5em; line-height: 1; }}
+    .avis-text-pretty h3 {{ color: {color_avís}; margin-top: 0; margin-bottom: 0.5rem; font-weight: bold; }}
+    .avis-text-pretty p {{ margin-bottom: 0; color: #FAFAFA; }}
+    </style>
+    """, unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="avis-container-pretty">
+        <div class="avis-icon-pretty">{icona}</div>
+        <div class="avis-text-pretty">
+            <h3>{titol_avís}</h3>
+            <p>{text_avís}</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 def get_parameter_style(param_name, value):
     color = "white"; emoji = ""
@@ -985,7 +1068,7 @@ def generar_avis_convergencia(params, is_convergence_active):
 
 def generar_analisi_detallada(params):
     def stream_text(text):
-        for word in text.split(): yield word + " "; time.sleep(0.05)
+        for word in text.split(): yield word + " "; time.sleep(0.02)
         yield "\n\n"
     cape, cin, cape_u = (params.get(k, {}).get('value') for k in ['CAPE_Brut', 'CIN_Fre', 'CAPE_Utilitzable'])
     shear6, srh1 = (params.get(k, {}).get('value') for k in ['Shear_0-6km', 'SRH_0-1km'])
@@ -1027,16 +1110,6 @@ def generar_analisi_detallada(params):
         elif shear6 is not None and shear6 > 12 and cape_u > 500: yield from stream_text("Entorn òptim per a sistemes multicel·lulars. Risc de fortes pluges, calamarsa i ratxes de vent.")
         else: yield from stream_text("Entorn favorable per a xàfecs o tempestes unicel·lulars.")
 
-@st.cache_data
-def obtener_sondeo_atmosferico(lat, lon, forecast_days):
-    url = "https://api.open-meteo.com/v1/forecast"
-    p_levels = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
-    h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
-    h_press = [f"{v}_{p}hPa" for v in ["temperature", "dew_point", "wind_speed", "wind_direction", "geopotential_height"] for p in p_levels]
-    params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_france", "timezone": "auto", "forecast_days": forecast_days}
-    try: r = openmeteo.weather_api(url, params=params); return r[0] if r else None, p_levels
-    except Exception as e: st.error(f"Error a l'API d'Open-Meteo: {e}"); return None, None
-
 def calculate_parameters(p, T, Td, u, v, h):
     params = {}
     def get_val(qty, unit=None):
@@ -1065,6 +1138,64 @@ def calculate_parameters(p, T, Td, u, v, h):
     try: pwat = mpcalc.precipitable_water(p, Td); params['PWAT_Total'] = {'value': get_val(pwat, 'mm'), 'units': 'mm'}
     except: pass
     return params
+
+def processar_sondeig_per_hora(sondeo, hourly_index, p_levels):
+    try:
+        hourly = sondeo.Hourly(); T_s, Td_s, P_s = (hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i in range(3))
+        if np.isnan(P_s): return None
+        s_idx, n_plvls = 3, len(p_levels); T_p, Td_p, Ws_p, Wd_p, H_p = ([hourly.Variables(s_idx + i*n_plvls + j).ValuesAsNumpy()[hourly_index] for j in range(n_plvls)] for i in range(5))
+        def interpolate_sfc(sfc_val, p_sfc, p_api, d_api):
+            valid_p, valid_d = [p for p, t in zip(p_api, d_api) if not np.isnan(t)], [t for t in d_api if not np.isnan(t)]
+            if np.isnan(sfc_val) and len(valid_p) > 1:
+                p_sorted, d_sorted = zip(*sorted(zip(valid_p, valid_d))); return np.interp(p_sfc, p_sorted, d_sorted)
+            return sfc_val
+        T_s, Td_s = interpolate_sfc(T_s, P_s, p_levels, T_p), interpolate_sfc(Td_s, P_s, p_levels, Td_p)
+        if np.isnan(T_s) or np.isnan(Td_s): return None
+        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [P_s], [T_s], [Td_s], [0.0], [0.0], [mpcalc.pressure_to_height_std(P_s*units.hPa).m]
+        for i, p_level in enumerate(p_levels):
+            if p_level < P_s and not np.isnan(T_p[i]):
+                p_profile.append(p_level); T_profile.append(T_p[i]); Td_profile.append(Td_p[i]); h_profile.append(H_p[i])
+                u_comp, v_comp = mpcalc.wind_components(Ws_p[i]*units.knots, Wd_p[i]*units.degrees)
+                u_profile.append(u_comp.to('m/s').m); v_profile.append(v_comp.to('m/s').m)
+        return (np.array(p_profile)*units.hPa, np.array(T_profile)*units.degC, np.array(Td_profile)*units.degC,
+                np.array(u_profile)*units.m/units.s, np.array(v_profile)*units.m/units.s, np.array(h_profile)*units.m)
+    except Exception: return None
+
+@st.cache_data(ttl=18000)
+def encontrar_localitats_con_convergencia(_hourly_index, _nivell, _localitats, _threshold, _forecast_days):
+    lats, lons, speeds, dirs, error = obtener_dades_mapa_vents(_hourly_index, _nivell, _forecast_days)
+    if error or not lats or len(lats) < 4: return set()
+    speeds_ms = (np.array(speeds) * 1000 / 3600) * units('m/s'); dirs_deg = np.array(dirs) * units.degrees
+    u_comp, v_comp = mpcalc.wind_components(speeds_ms, dirs_deg)
+    grid_lon, grid_lat = np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100)
+    X, Y = np.meshgrid(grid_lon, grid_lat)
+    points = np.vstack((lons, lats)).T
+    u_grid, v_grid = griddata(points, u_comp.m, (X, Y), method='cubic'), griddata(points, v_comp.m, (X, Y), method='cubic')
+    u_grid, v_grid = np.nan_to_num(u_grid), np.nan_to_num(v_grid)
+    dx, dy = mpcalc.lat_lon_grid_deltas(X, Y)
+    divergence = mpcalc.divergence(u_grid * units('m/s'), v_grid * units('m/s'), dx=dx, dy=dy) * 1e5
+    localitats_en_convergencia = set()
+    for nom_poble, coords in _localitats.items():
+        lon_idx, lat_idx = (np.abs(grid_lon - coords['lon'])).argmin(), (np.abs(grid_lat - coords['lat'])).argmin()
+        if divergence.m[lat_idx, lon_idx] < _threshold:
+            localitats_en_convergencia.add(nom_poble)
+    return localitats_en_convergencia
+
+@st.cache_data(ttl=18000)
+def precalcular_disparadors_actius(_totes_les_dades, _p_levels, _hourly_index, _localitats_convergencia):
+    if not _localitats_convergencia: return set()
+    disparadors = set()
+    for nom_poble in _localitats_convergencia:
+        sondeo = _totes_les_dades.get(nom_poble)
+        if sondeo:
+            profiles = processar_sondeig_per_hora(sondeo, _hourly_index, _p_levels)
+            if profiles:
+                parametros = calculate_parameters(*profiles)
+                cape_u = parametros.get('CAPE_Utilitzable', {}).get('value', 0)
+                cin = parametros.get('CIN_Fre', {}).get('value')
+                if cape_u > 500 and cin is not None and cin > -50:
+                    disparadors.add(nom_poble)
+    return disparadors
 
 def crear_hodograf(p, u, v, h):
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
@@ -1109,6 +1240,27 @@ def display_metrics(params_dict):
         with cols[i % 4]:
             html = f"""<div class="metric-container" style="border-color:{border_color};"><div style="font-size:0.9em;color:gray;">{label}</div><div style="font-size:1.25em;font-weight:bold;color:{border_color};">{val_str} <span style='font-size:0.8em;color:gray;'>{units_str}</span> {emoji}</div></div>"""
             st.markdown(html, unsafe_allow_html=True)
+
+def crear_mapa_vents(lats, lons, u_comp, v_comp, nivell, lat_sel, lon_sel, nom_poble_sel):
+    fig = plt.figure(figsize=(9, 9), dpi=150)
+    ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+    ax.set_extent([0, 3.5, 40.4, 43], crs=ccrs.PlateCarree())
+    ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0); ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
+    ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.5, zorder=1); ax.add_feature(cfeature.BORDERS, linestyle=':', edgecolor='black', zorder=1)
+    grid_lon, grid_lat = np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100)
+    X, Y = np.meshgrid(grid_lon, grid_lat)
+    points = np.vstack((lons, lats)).T
+    u_grid, v_grid = griddata(points, u_comp.m, (X, Y), method='cubic'), griddata(points, v_comp.m, (X, Y), method='cubic')
+    u_grid, v_grid = np.nan_to_num(u_grid), np.nan_to_num(v_grid)
+    dx, dy = mpcalc.lat_lon_grid_deltas(X, Y)
+    divergence = mpcalc.divergence(u_grid * units('m/s'), v_grid * units('m/s'), dx=dx, dy=dy) * 1e5
+    divergence_values = np.ma.masked_where(divergence.m > -5.5, divergence.m)
+    ax.contourf(X, Y, divergence_values, levels=np.linspace(-15.0, -5.5, 10), cmap='Reds_r', alpha=0.6, zorder=2, transform=ccrs.PlateCarree(), extend='min')
+    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="#000000", density=5.9, linewidth=0.5, arrowsize=0.50, zorder=4, transform=ccrs.PlateCarree())
+    ax.plot(lon_sel, lat_sel, 'o', markersize=12, markerfacecolor='yellow', markeredgecolor='black', markeredgewidth=2, transform=ccrs.Geodetic(), zorder=5)
+    ax.text(lon_sel + 0.05, lat_sel + 0.05, nom_poble_sel, transform=ccrs.Geodetic(), zorder=6, bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2'))
+    ax.set_title(f"Flux i focus de convergència a {nivell}hPa", weight='bold')
+    return fig
 
 def crear_grafic_orografia(params, zero_iso_h_agl):
     lcl_agl = params.get('LCL_AGL', {}).get('value')
@@ -1176,179 +1328,70 @@ def crear_grafic_nuvol(params, H, u, v, is_convergence_active):
     ax.set_ylim(0, 16); ax.set_xlim(-5, 5); ax.set_ylabel("Altitud (km)"); ax.set_title("Visualització del Núvol", weight='bold'); ax.set_xticks([]); ax.grid(axis='y', linestyle='--', alpha=0.3)
     return fig
 
-@st.cache_data
-def obtener_dades_mapa_vents(hourly_index, nivell, forecast_days):
-    lats, lons = np.linspace(40.5, 42.8, 12), np.linspace(0.2, 3.3, 12)
-    lon_grid, lat_grid = np.meshgrid(lons, lats)
-    params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"], "models": "arome_france", "timezone": "auto", "forecast_days": forecast_days}
-    try:
-        url = "https://api.open-meteo.com/v1/forecast"
-        responses = openmeteo.weather_api(url, params=params)
-        lats_out, lons_out, speeds_out, dirs_out = [], [], [], []
-        for r in responses:
-            hourly = r.Hourly(); speed, direction = hourly.Variables(0).ValuesAsNumpy()[hourly_index], hourly.Variables(1).ValuesAsNumpy()[hourly_index]
-            if not np.isnan(speed) and not np.isnan(direction):
-                lats_out.append(r.Latitude()); lons_out.append(r.Longitude()); speeds_out.append(speed); dirs_out.append(direction)
-        return lats_out, lons_out, speeds_out, dirs_out
-    except: return None, None, None, None
-
-def crear_mapa_vents(lats, lons, u_comp, v_comp, nivell, lat_sel, lon_sel, nom_poble_sel):
-    fig = plt.figure(figsize=(9, 9), dpi=150)
-    ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
-    ax.set_extent([0, 3.5, 40.4, 43], crs=ccrs.PlateCarree())
-    ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0); ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
-    ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.5, zorder=1); ax.add_feature(cfeature.BORDERS, linestyle=':', edgecolor='black', zorder=1)
-    grid_lon, grid_lat = np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100)
-    X, Y = np.meshgrid(grid_lon, grid_lat)
-    points = np.vstack((lons, lats)).T
-    u_grid, v_grid = griddata(points, u_comp.m, (X, Y), method='cubic'), griddata(points, v_comp.m, (X, Y), method='cubic')
-    u_grid, v_grid = np.nan_to_num(u_grid), np.nan_to_num(v_grid)
-    dx, dy = mpcalc.lat_lon_grid_deltas(X, Y)
-    divergence = mpcalc.divergence(u_grid * units('m/s'), v_grid * units('m/s'), dx=dx, dy=dy) * 1e5
-    divergence_values = np.ma.masked_where(divergence.m > -5.5, divergence.m)
-    ax.contourf(X, Y, divergence_values, levels=np.linspace(-15.0, -5.5, 10), cmap='Reds_r', alpha=0.6, zorder=2, transform=ccrs.PlateCarree(), extend='min')
-    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="#000000", density=5.9, linewidth=0.5, arrowsize=0.50, zorder=4, transform=ccrs.PlateCarree())
-    ax.plot(lon_sel, lat_sel, 'o', markersize=12, markerfacecolor='yellow', markeredgecolor='black', markeredgewidth=2, transform=ccrs.Geodetic(), zorder=5)
-    ax.text(lon_sel + 0.05, lat_sel + 0.05, nom_poble_sel, transform=ccrs.Geodetic(), zorder=6, bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2'))
-    ax.set_title(f"Flux i focus de convergència a {nivell}hPa", weight='bold')
-    return fig
-
-@st.cache_data
-def encontrar_localitats_con_convergencia(hourly_index, nivell, localitats, threshold, forecast_days):
-    lats, lons, speeds, dirs = obtener_dades_mapa_vents(hourly_index, nivell, forecast_days)
-    if not lats or len(lats) < 4: return set()
-    speeds_ms = (np.array(speeds) * 1000 / 3600) * units('m/s'); dirs_deg = np.array(dirs) * units.degrees
-    u_comp, v_comp = mpcalc.wind_components(speeds_ms, dirs_deg)
-    grid_lon, grid_lat = np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100)
-    X, Y = np.meshgrid(grid_lon, grid_lat)
-    points = np.vstack((lons, lats)).T
-    u_grid, v_grid = griddata(points, u_comp.m, (X, Y), method='cubic'), griddata(points, v_comp.m, (X, Y), method='cubic')
-    u_grid, v_grid = np.nan_to_num(u_grid), np.nan_to_num(v_grid)
-    dx, dy = mpcalc.lat_lon_grid_deltas(X, Y)
-    divergence = mpcalc.divergence(u_grid * units('m/s'), v_grid * units('m/s'), dx=dx, dy=dy) * 1e5
-    localitats_en_convergencia = set()
-    for nom_poble, coords in localitats.items():
-        lon_idx, lat_idx = (np.abs(grid_lon - coords['lon'])).argmin(), (np.abs(grid_lat - coords['lat'])).argmin()
-        if divergence.m[lat_idx, lon_idx] < threshold:
-            localitats_en_convergencia.add(nom_poble)
-    return localitats_en_convergencia
-
-def processar_sondeig_per_hora(sondeo, hourly_index, p_levels):
-    try:
-        hourly = sondeo.Hourly(); T_s, Td_s, P_s = (hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i in range(3))
-        if np.isnan(P_s): return None
-        s_idx, n_plvls = 3, len(p_levels); T_p, Td_p, Ws_p, Wd_p, H_p = ([hourly.Variables(s_idx + i*n_plvls + j).ValuesAsNumpy()[hourly_index] for j in range(n_plvls)] for i in range(5))
-        def interpolate_sfc(sfc_val, p_sfc, p_api, d_api):
-            valid_p, valid_d = [p for p, t in zip(p_api, d_api) if not np.isnan(t)], [t for t in d_api if not np.isnan(t)]
-            if np.isnan(sfc_val) and len(valid_p) > 1:
-                p_sorted, d_sorted = zip(*sorted(zip(valid_p, valid_d))); return np.interp(p_sfc, p_sorted, d_sorted)
-            return sfc_val
-        T_s, Td_s = interpolate_sfc(T_s, P_s, p_levels, T_p), interpolate_sfc(Td_s, P_s, p_levels, Td_p)
-        if np.isnan(T_s) or np.isnan(Td_s): return None
-        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [P_s], [T_s], [Td_s], [0.0], [0.0], [mpcalc.pressure_to_height_std(P_s*units.hPa).m]
-        for i, p_level in enumerate(p_levels):
-            if p_level < P_s and not np.isnan(T_p[i]):
-                p_profile.append(p_level); T_profile.append(T_p[i]); Td_profile.append(Td_p[i]); h_profile.append(H_p[i])
-                u_comp, v_comp = mpcalc.wind_components(Ws_p[i]*units.knots, Wd_p[i]*units.degrees)
-                u_profile.append(u_comp.to('m/s').m); v_profile.append(v_comp.to('m/s').m)
-        return (np.array(p_profile)*units.hPa, np.array(T_profile)*units.degC, np.array(Td_profile)*units.degC,
-                np.array(u_profile)*units.m/units.s, np.array(v_profile)*units.m/units.s, np.array(h_profile)*units.m)
-    except Exception: return None
-
-@st.cache_data
-def precalcular_disparadors_actius(hourly_index, localitats_convergencia, forecast_days):
-    if not localitats_convergencia: return set()
-    disparadors = set()
-    lats_conv = [pobles_data[p]['lat'] for p in localitats_convergencia]
-    lons_conv = [pobles_data[p]['lon'] for p in localitats_convergencia]
-    names_conv = list(localitats_convergencia)
-    
-    url, p_levels = "https://api.open-meteo.com/v1/forecast", [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
-    h_base, h_press = ["temperature_2m", "dew_point_2m", "surface_pressure"], [f"{v}_{p}hPa" for v in ["temperature", "dew_point", "wind_speed", "wind_direction", "geopotential_height"] for p in p_levels]
-    params = {"latitude": lats_conv, "longitude": lons_conv, "hourly": h_base + h_press, "models": "arome_france", "timezone": "auto", "forecast_days": forecast_days}
-    try:
-        responses = openmeteo.weather_api(url, params=params)
-        for i, sondeo in enumerate(responses):
-            nom_poble = names_conv[i]
-            profiles = processar_sondeig_per_hora(sondeo, hourly_index, p_levels)
-            if profiles:
-                parametros = calculate_parameters(*profiles)
-                cape_u = parametros.get('CAPE_Utilitzable', {}).get('value', 0)
-                cin = parametros.get('CIN_Fre', {}).get('value')
-                if cape_u > 500 and cin is not None and cin > -50:
-                    disparadors.add(nom_poble)
-    except Exception: return set()
-    return disparadors
-
-# --- INTERFAZ PRINCIPAL ---
-st.markdown("""
-<style>
-.main-title { font-size: 3.5em; font-weight: bold; text-align: center; margin-bottom: -10px; color: #FFFFFF; }
-.subtitle { font-size: 1.2em; text-align: center; color: #A0A0A0; margin-bottom: 25px; }
-.update-info { text-align: center; color: gray; font-style: italic; margin-top: 5px; margin-bottom: 20px; }
-.avis-box { 
-    padding: 18px; 
-    border-radius: 12px; 
-    border: 2px solid; 
-    margin-bottom: 20px; 
-    text-align: left; 
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-}
-.avis-title {
-    font-size: 1em;
-    font-weight: bold;
-    margin-bottom: 8px;
-    padding-bottom: 5px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-    display: block;
-}
-.avis-content {
-    font-size: 1.3em;
-    font-weight: 500;
-}
-</style>
-""", unsafe_allow_html=True)
+# --- 5. INTERFAZ PRINCIPAL D'STREAMLIT ---
+st.markdown("""<style>...</style>""", unsafe_allow_html=True) # El teu CSS aquí
 
 st.markdown('<p class="main-title">⚡ Tempestes.cat</p>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle">Eina d\'Anàlisi i Previsió de Fenòmens Severs a Catalunya</p>', unsafe_allow_html=True)
 
-# --- LAYOUT DE SELECCIÓ SIMPLIFICAT ---
+# --- Bucle principal de càrrega amb barra de progrés ---
+totes_les_dades = {}
+p_levels = []
+error_carrega = None
+
+locations_list = list(pobles_data.items())
+locations_data = [(k, v['lat'], v['lon']) for k, v in locations_list]
+chunk_size = 50 
+chunks = list(chunker(locations_data, chunk_size))
+num_chunks = len(chunks)
+
+progress_bar = st.progress(0, text="Iniciant la càrrega de dades...")
+
+for i, chunk in enumerate(chunks):
+    progress_bar.progress((i) / num_chunks, text=f"Carregant lot {i+1} de {num_chunks}...")
+    
+    dades_lot, p_levels_lot, error_lot = carregar_dades_lot(tuple(chunk))
+    
+    if error_lot:
+        error_carrega = error_lot
+        break 
+    
+    totes_les_dades.update(dades_lot)
+    if not p_levels: p_levels = p_levels_lot
+
+progress_bar.empty()
+
+if error_carrega:
+    st.error(f"No s'ha pogut carregar la informació base. L'aplicació no pot continuar. Error: {error_carrega}")
+    st.stop()
+
+st.toast("Dades de sondeig carregades correctament!", icon="✅")
+
 with st.container(border=True):
     col1, col2 = st.columns([1, 1], gap="large")
     try:
-        tz = pytz.timezone('Europe/Madrid')
-        default_hour_index = datetime.now(tz).hour
-    except Exception:
-        default_hour_index = 12
+        tz = pytz.timezone('Europe/Madrid'); default_hour_index = datetime.now(tz).hour
+    except Exception: default_hour_index = 12
 
     with col1:
         hour_options = [f"{h:02d}:00h" for h in range(24)]
-        hora_sel_str = st.selectbox(
-            "Hora del pronòstic (Local):",
-            options=hour_options,
-            index=default_hour_index,
-            key="hora_selector"
-        )
+        hora_sel_str = st.selectbox("Hora del pronòstic (Local):", options=hour_options, index=default_hour_index, key="hora_selector")
         hourly_index = int(hora_sel_str.split(':')[0])
 
     with col2:
-        p_levels_all = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
-        nivell_global = st.selectbox(
-            "Nivell d'anàlisi de vents:",
-            p_levels_all,
-            index=p_levels_all.index(850)
-        )
+        p_levels_all = p_levels if p_levels else [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
+        nivell_global = st.selectbox("Nivell d'anàlisi de vents:", p_levels_all, index=p_levels_all.index(850))
 
 st.markdown(f'<p class="update-info">🕒 {get_next_arome_update_time()}</p>', unsafe_allow_html=True)
 
 with st.spinner("Analitzant tot el territori..."):
     conv_threshold = -5.5
     localitats_convergencia = encontrar_localitats_con_convergencia(hourly_index, nivell_global, pobles_data, conv_threshold, FORECAST_DAYS)
-    disparadors_actius = precalcular_disparadors_actius(hourly_index, localitats_convergencia, FORECAST_DAYS)
+    disparadors_actius = precalcular_disparadors_actius(totes_les_dades, p_levels, hourly_index, localitats_convergencia)
 
 def update_poble_selection():
     poble_display = st.session_state.poble_selector
-    st.session_state.poble_seleccionat = poble_display.replace("⚠️⛈️ ", "").split(" (")[0]
+    st.session_state.poble_seleccionat = poble_display.replace("⚠️⛈️ ", "").replace(" (disparador actiu)", "")
 
 sorted_pobles = sorted(pobles_data.keys())
 opciones_display = [f"⚠️⛈️ {p} (disparador actiu)" if p in disparadors_actius else p for p in sorted_pobles]
@@ -1362,7 +1405,7 @@ poble_sel_display = st.selectbox('Selecciona una localitat:', options=opciones_d
 poble_sel = st.session_state.poble_seleccionat
 lat_sel, lon_sel = pobles_data[poble_sel]['lat'], pobles_data[poble_sel]['lon']
 
-sondeo, p_levels = obtener_sondeo_atmosferico(lat_sel, lon_sel, FORECAST_DAYS)
+sondeo = totes_les_dades.get(poble_sel)
 
 if sondeo:
     data_is_valid = False
@@ -1378,29 +1421,34 @@ if sondeo:
                     zero_iso_h_agl = (h_zero_iso_msl - H_m[0]) * units.m
             except Exception: pass
             data_is_valid = True
+            
     if data_is_valid:
         is_conv_active = poble_sel in localitats_convergencia
         avis_conv_titol, avis_conv_text, avis_conv_color = generar_avis_convergencia(parametros, is_conv_active)
-        if avis_conv_titol: st.markdown(f'<div class="avis-box" style="border-color: {avis_conv_color}; background-color: {avis_conv_color}20;"><span class="avis-title">{avis_conv_titol}</span><span class="avis-content">{avis_conv_text}</span></div>', unsafe_allow_html=True)
+        if avis_conv_titol:
+            display_avis_principal(avis_conv_titol, avis_conv_text, avis_conv_color)
         
         avis_titol, avis_text, avis_color = generar_avis_localitat(parametros)
-        st.markdown(f'<div class="avis-box" style="border-color: {avis_color}; background-color: {avis_color}20;"><span class="avis-title">AVÍS PRINCIPAL: {avis_titol}</span><span class="avis-content">{avis_text}</span></div>', unsafe_allow_html=True)
+        display_avis_principal(avis_titol, avis_text, avis_color)
         
         tab_list = ["🗨️ Anàlisi en Directe", "📊 Paràmetres", "🗺️ Mapa de Vents", "🧭Hodògraf", "📍Sondeig", "🏔️ Orografia", "☁️ Visualització"]
         selected_tab = st.radio("Navegació:", tab_list, index=0, horizontal=True, key="main_tabs")
+        
         if selected_tab == "🗨️ Anàlisi en Directe": st.write_stream(generar_analisi_detallada(parametros))
         elif selected_tab == "📊 Paràmetres": st.subheader("Paràmetres Clau"); display_metrics(parametros)
         elif selected_tab == "🗺️ Mapa de Vents":
             st.subheader(f"Vents i Convergència a {nivell_global}hPa")
             with st.spinner("Generant mapa de vents..."):
-                lats_map, lons_map, speeds_map, dirs_map = obtener_dades_mapa_vents(hourly_index, nivell_global, FORECAST_DAYS)
-                if lats_map and len(lats_map) > 4:
+                lats_map, lons_map, speeds_map, dirs_map, error_mapa = obtener_dades_mapa_vents(hourly_index, nivell_global, FORECAST_DAYS)
+                if error_mapa:
+                    st.error(f"No s'han pogut obtenir les dades per al mapa de vents. Error: {error_mapa}")
+                elif lats_map and len(lats_map) > 4:
                     speeds_ms = (np.array(speeds_map) * 1000 / 3600) * units('m/s'); dirs_deg = np.array(dirs_map) * units.degrees
                     u_map, v_map = mpcalc.wind_components(speeds_ms, dirs_deg); st.pyplot(crear_mapa_vents(lats_map, lons_map, u_map, v_map, nivell_global, lat_sel, lon_sel, poble_sel))
-                else: st.error("No s'han pogut obtenir les dades per al mapa de vents.")
+                else: st.error("No s'han pogut obtenir les dades per al mapa de vents (raó desconeguda).")
         elif selected_tab == "🧭Hodògraf": st.subheader("Hodògraf (0-10 km)"); st.pyplot(crear_hodograf(p, u, v, H))
         elif selected_tab == "📍Sondeig":
-            st.subheader(f"Sondeig per a {poble_sel} ({datetime.now().strftime('%d/%m/%Y')} - {hourly_index:02d}:00h Local)")
+            st.subheader(f"Sondeig per a {poble_sel} ({datetime.now(pytz.timezone('Europe/Madrid')).strftime('%d/%m/%Y')} - {hourly_index:02d}:00h Local)")
             st.pyplot(crear_skewt(p, T, Td, u, v))
         elif selected_tab == "🏔️ Orografia":
             st.subheader("Potencial d'Activació per Orografia")
@@ -1411,5 +1459,7 @@ if sondeo:
                 st.subheader("Visualització del Núvol")
                 if (fig_nuvol := crear_grafic_nuvol(parametros, H, u, v, is_convergence_active=is_conv_active)): st.pyplot(fig_nuvol)
                 else: st.info("No hi ha LCL o EL per visualitzar l'estructura del núvol.")
-    else: st.warning(f"No s'han pogut calcular els paràmetres per a les {hourly_index:02d}:00h. Proveu amb una altra hora o localitat.")
-else: st.error("No s'han pogut obtenir dades. Pot ser que la localitat estigui fora de la cobertura del model AROME o que no hi hagi dades disponibles.")
+    else:
+        st.warning(f"No s'han pogut calcular els paràmetres per a les {hourly_index:02d}:00h. Proveu amb una altra hora o localitat.")
+else:
+    st.error(f"No s'han pogut obtenir dades per a '{poble_sel}'. Pot ser que estigui fora de la cobertura del model AROME o que hi hagi un problema amb la connexió.")
