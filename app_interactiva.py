@@ -517,7 +517,7 @@ def crear_grafic_orografia(params, zero_iso_h_agl):
     
     lcl_km = lcl_agl / 1000
     ax.axhline(lcl_km, color='white', linestyle='--', lw=2, zorder=3, path_effects=line_outline_effect)
-    ax.text(10.1, lcl_km, f" Inici de la condensació estable: {lcl_agl:.0f} m)", color='black', backgroundcolor='white', ha='left', va='center', weight='bold')
+    ax.text(10.1, lcl_km, f" condensació: {lcl_agl:.0f} m)", color='black', backgroundcolor='white', ha='left', va='center', weight='bold')
     cloud_base = patches.Rectangle((0, lcl_km), 10, 0.2, facecolor='white', alpha=0.4, zorder=1)
     ax.add_patch(cloud_base)
 
