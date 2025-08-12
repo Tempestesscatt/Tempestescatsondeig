@@ -1,1 +1,1 @@
-libproj-dev proj-data proj-bin libgeos-dev cython
+libproj-dev proj-data proj-bin libgeos-dev python3-cython
