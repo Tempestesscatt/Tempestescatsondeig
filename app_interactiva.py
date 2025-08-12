@@ -35,183 +35,44 @@ FORECAST_DAYS = 1
 
 # --- DADES DE LOCALITATS ---
 pobles_data = {
-    # ALT PIRINEU I ARAN
-    'Bossòst': {'lat': 42.785, 'lon': 0.690},
-    'El Pont de Suert': {'lat': 42.409, 'lon': 0.742},
-    'La Seu d\'Urgell': {'lat': 42.358, 'lon': 1.463},
-    'Llavorsí': {'lat': 42.493, 'lon': 1.218},
-    'Puigcerdà': {'lat': 42.432, 'lon': 1.928},
-    'Sort': {'lat': 42.413, 'lon': 1.129},
-    'Tremp': {'lat': 42.166, 'lon': 0.894},
-    'Vielha e Mijaran': {'lat': 42.702, 'lon': 0.796},
-
-    # ÀMBIT DE PONENT (LLEIDA)
-    'Agramunt': {'lat': 41.784, 'lon': 1.096},
-    'Alcarràs': {'lat': 41.562, 'lon': 0.525},
-    'Alfarràs': {'lat': 41.829, 'lon': 0.573},
-    'Balaguer': {'lat': 41.790, 'lon': 0.810},
-    'Bellpuig': {'lat': 41.624, 'lon': 1.011},
-    'Cervera': {'lat': 41.666, 'lon': 1.272},
-    'Guissona': {'lat': 41.783, 'lon': 1.288},
-    'Les Borges Blanques': {'lat': 41.522, 'lon': 0.869},
-    'Lleida': {'lat': 41.617, 'lon': 0.622},
-    'Mollerussa': {'lat': 41.631, 'lon': 0.895},
-    'Tàrrega': {'lat': 41.646, 'lon': 1.141},
-
-    # CATALUNYA CENTRAL
-    'Artés': {'lat': 41.798, 'lon': 1.954},
-    'Berga': {'lat': 42.103, 'lon': 1.845},
-    'Calaf': {'lat': 41.731, 'lon': 1.512},
-    'Cardona': {'lat': 41.914, 'lon': 1.679},
-    'Gironella': {'lat': 42.037, 'lon': 1.882},
-    'Guardiola de Berguedà': {'lat': 42.233, 'lon': 1.881},
-    'Igualada': {'lat': 41.580, 'lon': 1.616},
-    'Manresa': {'lat': 41.727, 'lon': 1.825},
-    'Moià': {'lat': 41.810, 'lon': 2.096},
-    'Navàs': {'lat': 41.900, 'lon': 1.878},
-    'Piera': {'lat': 41.520, 'lon': 1.748},
-    'Prats de Lluçanès': {'lat': 42.011, 'lon': 2.031},
-    'Solsona': {'lat': 41.992, 'lon': 1.516},
-    'Súria': {'lat': 41.832, 'lon': 1.748},
-
-    # CAMP DE TARRAGONA
-    'Alcover': {'lat': 41.263, 'lon': 1.171},
-    'Calafell': {'lat': 41.199, 'lon': 1.567},
-    'Cambrils': {'lat': 41.066, 'lon': 1.056},
-    'Constantí': {'lat': 41.155, 'lon': 1.216},
-    'Cunit': {'lat': 41.197, 'lon': 1.635},
-    'El Vendrell': {'lat': 41.219, 'lon': 1.534},
-    'L\'Arboç': {'lat': 41.267, 'lon': 1.603},
-    'Montblanc': {'lat': 41.375, 'lon': 1.161},
-    'Reus': {'lat': 41.155, 'lon': 1.107},
-    'Roda de Berà': {'lat': 41.186, 'lon': 1.458},
-    'Salou': {'lat': 41.076, 'lon': 1.140},
-    'Tarragona': {'lat': 41.118, 'lon': 1.245},
-    'Torredembarra': {'lat': 41.144, 'lon': 1.398},
-    'Valls': {'lat': 41.286, 'lon': 1.250},
-    'Vila-seca': {'lat': 41.111, 'lon': 1.144},
-
-    # TERRES DE L'EBRE
-    'Alcanar': {'lat': 40.544, 'lon': 0.481},
-    'Amposta': {'lat': 40.709, 'lon': 0.579},
-    'Batea': {'lat': 41.094, 'lon': 0.310},
-    'Deltebre': {'lat': 40.719, 'lon': 0.710},
-    'El Perelló': {'lat': 40.874, 'lon': 0.717},
-    'Falset': {'lat': 41.144, 'lon': 0.819},
-    'Flix': {'lat': 41.231, 'lon': 0.548},
-    'Gandesa': {'lat': 41.052, 'lon': 0.436},
-    'Horta de Sant Joan': {'lat': 40.956, 'lon': 0.315},
-    'L\'Ametlla de Mar': {'lat': 40.883, 'lon': 0.802},
-    'L\'Ampolla': {'lat': 40.812, 'lon': 0.709},
-    'Móra d\'Ebre': {'lat': 41.092, 'lon': 0.643},
-    'Móra la Nova': {'lat': 41.106, 'lon': 0.655},
-    'Sant Carles de la Ràpita': {'lat': 40.618, 'lon': 0.593},
-    'Tortosa': {'lat': 40.812, 'lon': 0.521},
-    'Ulldecona': {'lat': 40.598, 'lon': 0.449},
-
-    # COMARQUES GIRONINES
-    'Amer': {'lat': 42.008, 'lon': 2.602},
-    'Anglès': {'lat': 41.956, 'lon': 2.641},
-    'Arbúcies': {'lat': 41.816, 'lon': 2.515},
-    'Banyoles': {'lat': 42.119, 'lon': 2.766},
-    'Besalú': {'lat': 42.199, 'lon': 2.698},
-    'Blanes': {'lat': 41.674, 'lon': 2.793},
-    'Cadaqués': {'lat': 42.288, 'lon': 3.277},
-    'Caldes de Malavella': {'lat': 41.836, 'lon': 2.810},
-    'Camprodon': {'lat': 42.313, 'lon': 2.365},
-    'Cassà de la Selva': {'lat': 41.890, 'lon': 2.875},
-    'Castell-Platja d\'Aro': {'lat': 41.818, 'lon': 3.067},
-    'Castellfollit de la Roca': {'lat': 42.220, 'lon': 2.551},
-    'Celrà': {'lat': 42.022, 'lon': 2.876},
-    'Figueres': {'lat': 42.266, 'lon': 2.962},
-    'Girona': {'lat': 41.983, 'lon': 2.824},
-    'Hostalric': {'lat': 41.748, 'lon': 2.636},
-    'La Bisbal d\'Empordà': {'lat': 41.958, 'lon': 3.037},
-    'La Jonquera': {'lat': 42.419, 'lon': 2.875},
-    'L\'Escala': {'lat': 42.122, 'lon': 3.131},
-    'Llagostera': {'lat': 41.828, 'lon': 2.892},
-    'Llançà': {'lat': 42.370, 'lon': 3.155},
-    'Lloret de Mar': {'lat': 41.700, 'lon': 2.845},
-    'Olot': {'lat': 42.181, 'lon': 2.490},
-    'Palafrugell': {'lat': 41.918, 'lon': 3.163},
-    'Palamós': {'lat': 41.846, 'lon': 3.128},
-    'Puigcerdà': {'lat': 42.432, 'lon': 1.928},
-    'Ripoll': {'lat': 42.201, 'lon': 2.190},
-    'Roses': {'lat': 42.262, 'lon': 3.175},
-    'Salt': {'lat': 41.974, 'lon': 2.794},
-    'Sant Feliu de Guíxols': {'lat': 41.780, 'lon': 3.028},
-    'Sant Hilari Sacalm': {'lat': 41.880, 'lon': 2.508},
-    'Santa Coloma de Farners': {'lat': 41.859, 'lon': 2.668},
-    'Sarrià de Ter': {'lat': 42.010, 'lon': 2.819},
-    'Torroella de Montgrí': {'lat': 42.043, 'lon': 3.127},
-    'Tossa de Mar': {'lat': 41.720, 'lon': 2.932},
-
-    # ÀMBIT METROPOLITÀ DE BARCELONA I PENEDÈS
-    'Abrera': {'lat': 41.517, 'lon': 1.901},
-    'Alella': {'lat': 41.494, 'lon': 2.295},
-    'Arenys de Mar': {'lat': 41.581, 'lon': 2.550},
-    'Badalona': {'lat': 41.450, 'lon': 2.247},
-    'Barberà del Vallès': {'lat': 41.518, 'lon': 2.124},
-    'Barcelona': {'lat': 41.387, 'lon': 2.168},
-    'Caldes de Montbui': {'lat': 41.633, 'lon': 2.166},
-    'Calella': {'lat': 41.614, 'lon': 2.664},
-    'Canet de Mar': {'lat': 41.590, 'lon': 2.580},
-    'Canovelles': {'lat': 41.617, 'lon': 2.294},
-    'Cardedeu': {'lat': 41.640, 'lon': 2.358},
-    'Castellar del Vallès': {'lat': 41.618, 'lon': 2.088},
-    'Castelldefels': {'lat': 41.279, 'lon': 1.975},
-    'Cerdanyola del Vallès': {'lat': 41.491, 'lon': 2.141},
-    'Cornellà de Llobregat': {'lat': 41.355, 'lon': 2.069},
-    'Cubelles': {'lat': 41.208, 'lon': 1.674},
-    'El Masnou': {'lat': 41.481, 'lon': 2.318},
-    'El Prat de Llobregat': {'lat': 41.326, 'lon': 2.095},
-    'Esparreguera': {'lat': 41.536, 'lon': 1.868},
-    'Esplugues de Llobregat': {'lat': 41.375, 'lon': 2.086},
-    'Gavà': {'lat': 41.305, 'lon': 2.001},
-    'Granollers': {'lat': 41.608, 'lon': 2.289},
-    'L\'Hospitalet de Llobregat': {'lat': 41.357, 'lon': 2.105},
-    'La Garriga': {'lat': 41.683, 'lon': 2.282},
-    'La Llagosta': {'lat': 41.516, 'lon': 2.193},
-    'Lliçà d\'Amunt': {'lat': 41.597, 'lon': 2.241},
-    'Malgrat de Mar': {'lat': 41.645, 'lon': 2.741},
-    'Manlleu': {'lat': 42.000, 'lon': 2.283},
-    'Martorell': {'lat': 41.474, 'lon': 1.927},
-    'Mataró': {'lat': 41.538, 'lon': 2.445},
-    'Molins de Rei': {'lat': 41.414, 'lon': 2.016},
-    'Mollet del Vallès': {'lat': 41.539, 'lon': 2.213},
-    'Monistrol de Montserrat': {'lat': 41.610, 'lon': 1.844},
-    'Montcada i Reixac': {'lat': 41.485, 'lon': 2.187},
-    'Montgat': {'lat': 41.464, 'lon': 2.279},
-    'Olesa de Montserrat': {'lat': 41.545, 'lon': 1.894},
-    'Palau-solità i Plegamans': {'lat': 41.583, 'lon': 2.179},
-    'Pallejà': {'lat': 41.411, 'lon': 1.996},
-    'Parets del Vallès': {'lat': 41.573, 'lon': 2.233},
-    'Premià de Mar': {'lat': 41.491, 'lon': 2.359},
-    'Ripollet': {'lat': 41.498, 'lon': 2.158},
-    'Rubí': {'lat': 41.493, 'lon': 2.032},
-    'Sabadell': {'lat': 41.547, 'lon': 2.108},
-    'Sant Adrià de Besòs': {'lat': 41.428, 'lon': 2.219},
-    'Sant Andreu de la Barca': {'lat': 41.447, 'lon': 1.979},
-    'Sant Boi de Llobregat': {'lat': 41.346, 'lon': 2.041},
-    'Sant Celoni': {'lat': 41.691, 'lon': 2.491},
-    'Sant Cugat del Vallès': {'lat': 41.472, 'lon': 2.085},
-    'Sant Feliu de Llobregat': {'lat': 41.381, 'lon': 2.045},
-    'Sant Joan Despí': {'lat': 41.368, 'lon': 2.057},
-    'Sant Pere de Ribes': {'lat': 41.259, 'lon': 1.769},
-    'Sant Sadurní d\'Anoia': {'lat': 41.428, 'lon': 1.785},
-    'Sant Vicenç dels Horts': {'lat': 41.392, 'lon': 2.008},
-    'Santa Coloma de Gramenet': {'lat': 41.454, 'lon': 2.213},
-    'Santa Perpètua de Mogoda': {'lat': 41.536, 'lon': 2.182},
-    'Sitges': {'lat': 41.235, 'lon': 1.811},
-    'Terrassa': {'lat': 41.561, 'lon': 2.008},
-    'Tordera': {'lat': 41.702, 'lon': 2.719},
-    'Torelló': {'lat': 42.048, 'lon': 2.262},
-    'Vallirana': {'lat': 41.386, 'lon': 1.932},
-    'Vic': {'lat': 41.930, 'lon': 2.255},
-    'Vilafranca del Penedès': {'lat': 41.346, 'lon': 1.698},
-    'Vilanova i la Geltrú': {'lat': 41.224, 'lon': 1.725},
-    'Vilassar de Mar': {'lat': 41.506, 'lon': 2.392},
+    'Abella de la Conca': {'lat': 42.163, 'lon': 1.092}, 'Abrera': {'lat': 41.517, 'lon': 1.901}, 'Àger': {'lat': 42.002, 'lon': 0.763},
+    'Agramunt': {'lat': 41.784, 'lon': 1.096}, 'Aguilar de Segarra': {'lat': 41.737, 'lon': 1.626}, 'Agullana': {'lat': 42.395, 'lon': 2.846},
+    'Aiguafreda': {'lat': 41.768, 'lon': 2.251}, 'Aiguamúrcia': {'lat': 41.332, 'lon': 1.359}, 'Aiguaviva': {'lat': 41.936, 'lon': 2.766},
+    'Aitona': {'lat': 41.498, 'lon': 0.457}, 'Alàs i Cerc': {'lat': 42.358, 'lon': 1.488}, 'Albagés, L\'': {'lat': 41.428, 'lon': 0.732},
+    'Albanyà': {'lat': 42.306, 'lon': 2.720}, 'Albatàrrec': {'lat': 41.564, 'lon': 0.601}, 'Albesa': {'lat': 41.751, 'lon': 0.672},
+    'Albi, L\'': {'lat': 41.422, 'lon': 0.940}, 'Albinyana': {'lat': 41.242, 'lon': 1.484}, 'Albiol, L\'': {'lat': 41.258, 'lon': 1.109},
+    'Albons': {'lat': 42.106, 'lon': 3.079}, 'Alcanar': {'lat': 40.544, 'lon': 0.481}, 'Alcanó': {'lat': 41.488, 'lon': 0.598},
+    'Alcarràs': {'lat': 41.562, 'lon': 0.525}, 'Alcoletge': {'lat': 41.644, 'lon': 0.697}, 'Alcover': {'lat': 41.263, 'lon': 1.171},
+    'Aldea, L\'': {'lat': 40.748, 'lon': 0.602}, 'Aldover': {'lat': 40.893, 'lon': 0.505}, 'Aleixar, L\'': {'lat': 41.211, 'lon': 1.060},
+    'Alella': {'lat': 41.494, 'lon': 2.295}, 'Alfara de Carles': {'lat': 40.889, 'lon': 0.400}, 'Alfarràs': {'lat': 41.829, 'lon': 0.573},
+    'Vilanova i la Geltrú': {'lat': 41.224, 'lon': 1.725}, 'Vilassar de Dalt': {'lat': 41.517, 'lon': 2.358}, 'Vilassar de Mar': {'lat': 41.506, 'lon': 2.392},
+    'Valls': {'lat': 41.286, 'lon': 1.250}, 'Vic': {'lat': 41.930, 'lon': 2.255}, 'Vielha e Mijaran': {'lat': 42.702, 'lon': 0.796}, 'Vila-seca': {'lat': 41.111, 'lon': 1.144},
+    'Badalona': {'lat': 41.450, 'lon': 2.247}, 'Balaguer': {'lat': 41.790, 'lon': 0.810}, 'Banyoles': {'lat': 42.119, 'lon': 2.766}, 'Barcelona': {'lat': 41.387, 'lon': 2.168},
+    'Berga': {'lat': 42.103, 'lon': 1.845}, 'Besalú': {'lat': 42.199, 'lon': 2.698}, 'Blanes': {'lat': 41.674, 'lon': 2.793}, 'Borges Blanques, Les': {'lat': 41.522, 'lon': 0.869},
+    'Cadaqués': {'lat': 42.288, 'lon': 3.277}, 'Calafell': {'lat': 41.199, 'lon': 1.567}, 'Caldes de Montbui': {'lat': 41.633, 'lon': 2.166}, 'Calella': {'lat': 41.614, 'lon': 2.664},
+    'Cambrils': {'lat': 41.066, 'lon': 1.056}, 'Canet de Mar': {'lat': 41.590, 'lon': 2.580}, 'Cardedeu': {'lat': 41.640, 'lon': 2.358}, 'Cardona': {'lat': 41.914, 'lon': 1.679},
+    'Castell-Platja d\'Aro': {'lat': 41.818, 'lon': 3.067}, 'Castelldefels': {'lat': 41.279, 'lon': 1.975}, 'Castellfollit de la Roca': {'lat': 42.220, 'lon': 2.551}, 'Cerdanyola del Vallès': {'lat': 41.491, 'lon': 2.141},
+    'Cervera': {'lat': 41.666, 'lon': 1.272}, 'Cornellà de Llobregat': {'lat': 41.355, 'lon': 2.069}, 'Cubelles': {'lat': 41.208, 'lon': 1.674}, 'Cunit': {'lat': 41.197, 'lon': 1.635},
+    'Deltebre': {'lat': 40.719, 'lon': 0.710}, 'El Masnou': {'lat': 41.481, 'lon': 2.318}, 'El Prat de Llobregat': {'lat': 41.326, 'lon': 2.095}, 'Esparreguera': {'lat': 41.536, 'lon': 1.868},
+    'Esplugues de Llobregat': {'lat': 41.375, 'lon': 2.086}, 'Falset': {'lat': 41.144, 'lon': 0.819}, 'Figueres': {'lat': 42.266, 'lon': 2.962}, 'Gandesa': {'lat': 41.052, 'lon': 0.436},
+    'Gavà': {'lat': 41.305, 'lon': 2.001}, 'Girona': {'lat': 41.983, 'lon': 2.824}, 'Granollers': {'lat': 41.608, 'lon': 2.289}, 'Guissona': {'lat': 41.783, 'lon': 1.288}, 'Hostalric': {'lat': 41.748, 'lon': 2.636},
+    'Igualada': {'lat': 41.580, 'lon': 1.616}, 'La Garriga': {'lat': 41.683, 'lon': 2.282}, 'La Jonquera': {'lat': 42.419, 'lon': 2.875}, 'La Llagosta': {'lat': 41.516, 'lon': 2.193}, 'La Pobla de Segur': {'lat': 42.247, 'lon': 0.968},
+    'La Roca del Vallès': {'lat': 41.587, 'lon': 2.327}, 'La Seu d\'Urgell': {'lat': 42.358, 'lon': 1.463}, 'L\'Ametlla de Mar': {'lat': 40.883, 'lon': 0.802}, 'L\'Ampolla': {'lat': 40.812, 'lon': 0.709}, 'L\'Escala': {'lat': 42.122, 'lon': 3.131},
+    'Lleida': {'lat': 41.617, 'lon': 0.622}, 'Lliçà d\'Amunt': {'lat': 41.597, 'lon': 2.241}, 'Lloret de Mar': {'lat': 41.700, 'lon': 2.845}, 'Malgrat de Mar': {'lat': 41.645, 'lon': 2.741}, 'Manlleu': {'lat': 42.000, 'lon': 2.283},
+    'Manresa': {'lat': 41.727, 'lon': 1.825}, 'Martorell': {'lat': 41.474, 'lon': 1.927}, 'Mataró': {'lat': 41.538, 'lon': 2.445}, 'Moià': {'lat': 41.810, 'lon': 2.096}, 'Molins de Rei': {'lat': 41.414, 'lon': 2.016},
+    'Mollerussa': {'lat': 41.631, 'lon': 0.895}, 'Mollet del Vallès': {'lat': 41.539, 'lon': 2.213}, 'Montblanc': {'lat': 41.375, 'lon': 1.161}, 'Montcada i Reixac': {'lat': 41.485, 'lon': 2.187}, 'Montgat': {'lat': 41.464, 'lon': 2.279},
+    'Monistrol de Montserrat': {'lat': 41.610, 'lon': 1.844}, 'Móra d\'Ebre': {'lat': 41.092, 'lon': 0.643}, 'Móra la Nova': {'lat': 41.106, 'lon': 0.655}, 'Olesa de Montserrat': {'lat': 41.545, 'lon': 1.894}, 'Olot': {'lat': 42.181, 'lon': 2.490},
+    'Palafolls': {'lat': 41.670, 'lon': 2.753}, 'Palafrugell': {'lat': 41.918, 'lon': 3.163}, 'Palamós': {'lat': 41.846, 'lon': 3.128}, 'Palau-solità i Plegamans': {'lat': 41.583, 'lon': 2.179}, 'Parets del Vallès': {'lat': 41.573, 'lon': 2.233},
+    'Piera': {'lat': 41.520, 'lon': 1.748}, 'Premià de Mar': {'lat': 41.491, 'lon': 2.359}, 'Puigcerdà': {'lat': 42.432, 'lon': 1.928}, 'Reus': {'lat': 41.155, 'lon': 1.107}, 'Ripoll': {'lat': 42.201, 'lon': 2.190},
+    'Ripollet': {'lat': 41.498, 'lon': 2.158}, 'Roses': {'lat': 42.262, 'lon': 3.175}, 'Rubí': {'lat': 41.493, 'lon': 2.032}, 'Rupit i Pruit': {'lat': 42.026, 'lon': 2.465}, 'Sabadell': {'lat': 41.547, 'lon': 2.108},
+    'Salou': {'lat': 41.076, 'lon': 1.140}, 'Sant Adrià de Besòs': {'lat': 41.428, 'lon': 2.219}, 'Sant Andreu de la Barca': {'lat': 41.447, 'lon': 1.979}, 'Sant Boi de Llobregat': {'lat': 41.346, 'lon': 2.041}, 'Sant Carles de la Ràpita': {'lat': 40.618, 'lon': 0.593},
+    'Sant Celoni': {'lat': 41.691, 'lon': 2.491}, 'Sant Cugat del Vallès': {'lat': 41.472, 'lon': 2.085}, 'Sant Feliu de Guíxols': {'lat': 41.780, 'lon': 3.028}, 'Sant Feliu de Llobregat': {'lat': 41.381, 'lon': 2.045}, 'Sant Joan Despí': {'lat': 41.368, 'lon': 2.057},
+    'Sant Just Desvern': {'lat': 41.383, 'lon': 2.072}, 'Sant Pere de Ribes': {'lat': 41.259, 'lon': 1.769}, 'Sant Pol de Mar': {'lat': 41.602, 'lon': 2.624}, 'Sant Sadurní d\'Anoia': {'lat': 41.428, 'lon': 1.785}, 'Sant Vicenç dels Horts': {'lat': 41.392, 'lon': 2.008},
+    'Santa Coloma de Farners': {'lat': 41.859, 'lon': 2.668}, 'Santa Coloma de Gramenet': {'lat': 41.454, 'lon': 2.213}, 'Santa Perpètua de Mogoda': {'lat': 41.536, 'lon': 2.182}, 'Santa Susanna': {'lat': 41.636, 'lon': 2.711}, 'Sitges': {'lat': 41.235, 'lon': 1.811},
+    'Solsona': {'lat': 41.992, 'lon': 1.516}, 'Sort': {'lat': 42.413, 'lon': 1.129}, 'Tàrrega': {'lat': 41.646, 'lon': 1.141}, 'Tarragona': {'lat': 41.118, 'lon': 1.245}, 'Terrassa': {'lat': 41.561, 'lon': 2.008},
+    'Tordera': {'lat': 41.702, 'lon': 2.719}, 'Torelló': {'lat': 42.048, 'lon': 2.262}, 'Tortosa': {'lat': 40.812, 'lon': 0.521}, 'Tossa de Mar': {'lat': 41.720, 'lon': 2.932}, 'Tremp': {'lat': 42.166, 'lon': 0.894},
 }
+
 if not pobles_data:
     st.warning("La llista de localitats està buida. S'està utilitzant una llista de mostra.")
     pobles_data = {
@@ -688,80 +549,161 @@ hourly_index = int(st.session_state.hora_seleccionada_str.split(':')[0])
 disparadors_actius = {poble for poble in avisos_hores if poble in localitats_convergencia}
 
 def update_poble_selection():
+    """
+    Funció callback que s'activa en canviar la selecció del poble.
+    Analitza el text del selectbox per obtenir el nom real del poble
+    i l'actualitza a l'estat de la sessió. Aquesta versió és més robusta.
+    """
     poble_display = st.session_state.poble_selector
-    if " (" in poble_display: nom_poble_real = poble_display.split(" (")[0].replace("⚠️", "").strip()
-    else: nom_poble_real = poble_display.strip()
-    st.session_state.poble_seleccionat = nom_poble_real
 
+    # Primer, eliminem qualsevol informació addicional entre parèntesis
+    nom_net = poble_display.split(" (")[0]
+    
+    # Després, eliminem qualsevol emoji conegut i espais sobrants.
+    # Aquest mètode és més segur que simplement reemplaçar un sol emoji.
+    nom_net = nom_net.replace("⚠️", "").replace("🔥", "").replace("🧐", "").strip()
+
+    # Finalment, actualitzem l'estat de la sessió amb el nom net
+    st.session_state.poble_seleccionat = nom_net
+
+# --- LÒGICA DE SELECCIÓ DE LOCALITAT ---
+
+# Ordena els pobles per a una presentació coherent
 sorted_pobles = sorted(pobles_data.keys())
+
+# Crea les opcions per al menú desplegable, afegint una marca als que tenen disparador actiu
 opciones_display = [f"⚠️ {p} (Disparador Actiu)" if p in disparadors_actius else p for p in sorted_pobles]
+
+# Intenta trobar l'índex de la selecció actual per mantenir-la consistent
 default_index_display = 0
 try:
+    # Busca la cadena que comença amb el nom del poble seleccionat
     current_selection_display = next(s for s in opciones_display if s.strip().startswith(st.session_state.poble_seleccionat))
     default_index_display = opciones_display.index(current_selection_display)
-except (StopIteration, ValueError): pass
+except (StopIteration, ValueError):
+    # Si no es troba, simplement es deixa el valor per defecte (el primer de la llista)
+    pass
 
-st.selectbox('Selecciona una localitat:', options=opciones_display, index=default_index_display, key='poble_selector', on_change=update_poble_selection)
+st.selectbox(
+    'Selecciona una localitat:',
+    options=opciones_display,
+    index=default_index_display,
+    key='poble_selector',
+    on_change=update_poble_selection,
+    help="Les localitats marcades amb ⚠️ tenen un focus de convergència actiu per a l'hora seleccionada, actuant com un possible disparador."
+)
+
+# --- PROCESSAMENT I VISUALITZACIÓ DE DADES PER A LA LOCALITAT SELECCIONADA ---
 
 poble_sel = st.session_state.poble_seleccionat
 lat_sel, lon_sel = pobles_data[poble_sel]['lat'], pobles_data[poble_sel]['lon']
-
 sondeo = totes_les_dades.get(poble_sel)
+
 if sondeo:
-    data_is_valid = False
-    with st.spinner(f"Processant dades per a {poble_sel}..."):
-        profiles = processar_sondeig_per_hora(sondeo, hourly_index, p_levels)
-        if profiles: p, T, Td, u, v, H = profiles; parametros = calculate_parameters(p, T, Td, u, v, H); data_is_valid = True
+    # ### CANVI ###: S'afegeix un bloc try-except general per capturar qualsevol error inesperat
+    # durant el processament o la visualització, evitant que l'aplicació es bloquegi.
+    try:
+        data_is_valid = False
+        parametros = {} # Inicialitzem el diccionari de paràmetres
 
-    if data_is_valid:
-        is_conv_active = poble_sel in localitats_convergencia
-        
-        avis_temp_titol, avis_temp_text, avis_temp_color, avis_temp_icona = generar_avis_temperatura(parametros)
-        if avis_temp_titol: display_avis_principal(avis_temp_titol, avis_temp_text, avis_temp_color, icona_personalitzada=avis_temp_icona)
-        
-        avis_conv_titol, avis_conv_text, avis_conv_color = generar_avis_convergencia(parametros, is_conv_active)
-        if avis_conv_titol: display_avis_principal(avis_conv_titol, avis_conv_text, avis_conv_color)
+        with st.spinner(f"Processant dades per a {poble_sel}..."):
+            # Processa les dades del sondeig per a l'hora seleccionada
+            profiles = processar_sondeig_per_hora(sondeo, hourly_index, p_levels)
+            if profiles:
+                p, T, Td, u, v, H = profiles
+                # Calcula tots els paràmetres meteorològics
+                parametros = calculate_parameters(p, T, Td, u, v, H)
+                data_is_valid = True
 
-        avis_titol, avis_text, avis_color = generar_avis_localitat(parametros, is_conv_active)
-        display_avis_principal(avis_titol, avis_text, avis_color)
-        
-        tab_list = ["🗨️ Anàlisi en Directe", "📊 Paràmetres", "🗺️ Mapes", "🧭Hodògraf", "📍Sondeig", "🏔️ Orografia", "☁️ Visualització"]
-        selected_tab = st.radio("Navegació:", tab_list, index=0, horizontal=True, key="main_tabs")
-        
-        if selected_tab == "🗨️ Anàlisi en Directe": st.write_stream(generar_analisi_detallada(parametros))
-        elif selected_tab == "📊 Paràmetres": st.subheader("Paràmetres Clau"); display_metrics(parametros)
-        elif selected_tab == "🗺️ Mapes":
-            st.subheader(f"Anàlisi de Mapes a {nivell_global}hPa")
-            map_type = st.selectbox("Selecciona la capa a visualitzar:", ("Vents i Convergència", "Punt de Rosada", "Humitat Relativa"))
-            with st.spinner(f"Generant mapa de {map_type.lower()}..."):
-                if map_type == "Vents i Convergència":
-                    lats, lons, data, error = obtener_dades_mapa('wind', nivell_global, hourly_index, FORECAST_DAYS)
-                    if error: st.error(f"Error en obtenir dades del mapa: {error}")
-                    elif lats and len(lats) > 4: st.pyplot(crear_mapa_vents(lats, lons, data, nivell_global, lat_sel, lon_sel, poble_sel))
-                    else: st.warning("No hi ha prou dades per generar el mapa.")
+        if data_is_valid:
+            is_disparador_active = poble_sel in disparadors_actius
+
+            # --- SECCIÓ D'AVISOS PRINCIPALS ---
+            avis_temp_titol, avis_temp_text, avis_temp_color, avis_temp_icona = generar_avis_temperatura(parametros)
+            if avis_temp_titol:
+                display_avis_principal(avis_temp_titol, avis_temp_text, avis_temp_color, icona_personalitzada=avis_temp_icona)
+
+            avis_conv_titol, avis_conv_text, avis_conv_color = generar_avis_convergencia(parametros, is_disparador_active)
+            if avis_conv_titol:
+                display_avis_principal(avis_conv_titol, avis_conv_text, avis_conv_color)
+
+            avis_titol, avis_text, avis_color = generar_avis_localitat(parametros, is_disparador_active)
+            display_avis_principal(avis_titol, avis_text, avis_color)
+
+            # --- NAVEGACIÓ PER PESTANYES ---
+            # ### CANVI ###: S'utilitza st.tabs en lloc de st.radio per una interfície més neta.
+            tab_analisi, tab_params, tab_mapes, tab_hodo, tab_sondeig, tab_oro, tab_nuvol = st.tabs([
+                "🗨️ Anàlisi", "📊 Paràmetres", "🗺️ Mapes", "🧭 Hodògraf",
+                "📍 Sondeig", "🏔️ Orografia", "☁️ Visualització"
+            ])
+
+            with tab_analisi:
+                st.write_stream(generar_analisi_detallada(parametros))
+
+            with tab_params:
+                st.subheader("Paràmetres Clau")
+                display_metrics(parametros)
+
+            with tab_mapes:
+                # ### CANVI ###: S'implementa la lògica de mapes refactoritzada.
+                st.subheader(f"Anàlisi de Mapes a {nivell_global}hPa")
+
+                map_options = {
+                    "Vents i Convergència": {"api_variable": "wind"},
+                    "Punt de Rosada": {"api_variable": "dewpoint", "titol": "Punt de Rosada", "cmap": "BrBG", "unitat": "°C", "levels": np.arange(-10, 21, 2)},
+                    "Humitat Relativa": {"api_variable": "humidity", "titol": "Humitat Relativa", "cmap": "Greens", "unitat": "%", "levels": np.arange(30, 101, 5)}
+                }
+                selected_map_name = st.selectbox("Selecciona la capa a visualitzar:", map_options.keys())
+
+                with st.spinner(f"Generant mapa de {selected_map_name.lower()}..."):
+                    map_config = map_options[selected_map_name]
+                    api_var = map_config["api_variable"]
+                    lats, lons, data, error = obtener_dades_mapa(api_var, nivell_global, hourly_index, FORECAST_DAYS)
+
+                    if error:
+                        st.error(f"Error en obtenir dades del mapa: {error}")
+                    elif not lats or len(lats) < 4:
+                        st.warning("No hi ha prou dades per generar el mapa.")
+                    else:
+                        if selected_map_name == "Vents i Convergència":
+                            fig = crear_mapa_vents(lats, lons, data, nivell_global, lat_sel, lon_sel, poble_sel)
+                        else:
+                            fig = crear_mapa_generic(lats, lons, data, nivell_global, lat_sel, lon_sel, poble_sel,
+                                                     map_config["titol"], map_config["cmap"],
+                                                     map_config["unitat"], map_config["levels"])
+                        st.pyplot(fig)
+
+            with tab_hodo:
+                st.subheader("Hodògraf (0-10 km)")
+                st.pyplot(crear_hodograf(p, u, v, H))
+
+            with tab_sondeig:
+                st.subheader(f"Sondeig per a {poble_sel} ({datetime.now(pytz.timezone('Europe/Madrid')).strftime('%d/%m/%Y')} - {hourly_index:02d}:00h Local)")
+                st.pyplot(crear_skewt(p, T, Td, u, v))
+
+            with tab_oro:
+                st.subheader("Potencial d'Activació per Orografia")
+                fig_oro = crear_grafic_orografia(parametros, parametros.get('ZeroIso_AGL', {}).get('value'))
+                if fig_oro:
+                    st.pyplot(fig_oro)
                 else:
-                    var_map = {"Punt de Rosada": "dewpoint", "Humitat Relativa": "humidity"}
-                    var_details = {"dewpoint": {"titol": "Punt de Rosada", "cmap": "BrBG", "unitat": "°C", "levels": np.arange(-10, 21, 2)}, "humidity": {"titol": "Humitat Relativa", "cmap": "Greens", "unitat": "%", "levels": np.arange(30, 101, 5)}}
-                    var = var_map[map_type]; details = var_details[var]
-                    lats, lons, data, error = obtener_dades_mapa(var, nivell_global, hourly_index, FORECAST_DAYS)
-                    if error: st.error(f"Error en obtenir dades del mapa: {error}")
-                    elif lats: st.pyplot(crear_mapa_generic(lats, lons, data, nivell_global, lat_sel, lon_sel, poble_sel, details["titol"], details["cmap"], details["unitat"], details["levels"]))
-                    else: st.warning("No hi ha prou dades per generar el mapa.")
-        elif selected_tab == "🧭Hodògraf": st.subheader("Hodògraf (0-10 km)"); st.pyplot(crear_hodograf(p, u, v, H))
-        elif selected_tab == "📍Sondeig":
-            st.subheader(f"Sondeig per a {poble_sel} ({datetime.now(pytz.timezone('Europe/Madrid')).strftime('%d/%m/%Y')} - {hourly_index:02d}:00h Local)")
-            st.pyplot(crear_skewt(p, T, Td, u, v))
-        elif selected_tab == "🏔️ Orografia": 
-            st.subheader("Potencial d'Activació per Orografia")
-            fig_oro = crear_grafic_orografia(parametros, parametros.get('ZeroIso_AGL', {}).get('value'))
-            if fig_oro: st.pyplot(fig_oro)
-            else: st.info("No hi ha LCL per calcular el potencial orogràfic.")
-        elif selected_tab == "☁️ Visualització":
-            with st.spinner("Dibuixant la possible estructura del núvol..."):
-                fig_nuvol = crear_grafic_nuvol(parametros, H, u, v, is_conv_active)
-                if fig_nuvol: st.pyplot(fig_nuvol)
-                else: st.info("No hi ha LCL o EL per visualitzar l'estructura del núvol.")
-    else:
-        st.warning(f"No s'han pogut calcular els paràmetres per a les {hourly_index:02d}:00h. Proveu amb una altra hora o localitat.")
+                    st.info("No hi ha dades de LCL disponibles per calcular el potencial orogràfic.")
+
+            with tab_nuvol:
+                st.subheader("Visualització Conceptual del Núvol")
+                with st.spinner("Dibuixant la possible estructura del núvol..."):
+                    fig_nuvol = crear_grafic_nuvol(parametros, H, u, v, is_disparador_active)
+                    if fig_nuvol:
+                        st.pyplot(fig_nuvol)
+                    else:
+                        st.info("No hi ha dades de LCL o EL disponibles per visualitzar l'estructura del núvol.")
+        else:
+            st.warning(f"No s'han pogut calcular els paràmetres per a les {hourly_index:02d}:00h. Les dades del model podrien no ser vàlides per a aquesta hora. Proveu amb una altra hora o localitat.")
+
+    except Exception as e:
+        # Aquesta excepció captura qualsevol error no previst dins del bloc if sondeo:
+        st.error(f"S'ha produït un error inesperat en processar les dades per a '{poble_sel}'.")
+        st.exception(e) # st.exception és útil per a depurar, ja que mostra el traceback complet.
+
 else:
-    st.error(f"No s'han pogut obtenir dades per a '{poble_sel}'. Pot ser que estigui fora de la cobertura del model AROME o que hi hagi un problema amb la connexió.")
+    st.error(f"No s'han pogut obtenir dades per a '{poble_sel}'. Pot ser que estigui fora de la cobertura del model AROME o que hi hagi un problema amb la connexió a l'API.")
