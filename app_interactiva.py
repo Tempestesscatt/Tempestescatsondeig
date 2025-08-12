@@ -125,7 +125,7 @@ def carregar_dades_lot(_chunk_locations):
 def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
     lats, lons = np.linspace(40.5, 42.8, 12), np.linspace(0.2, 3.3, 12)
     lon_grid, lat_grid = np.meshgrid(lons, lats)
-    
+    api_vars = []
     if variable == 'wind':
         api_vars = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
     elif variable == 'dewpoint':
@@ -147,9 +147,6 @@ def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
         
         for r in responses:
             hourly = r.Hourly()
-            
-            # --- LÍNIA CORREGIDA ---
-            # En lloc d'iterar sobre el mètode, iterem sobre el rang del nombre de variables demanades.
             num_vars = len(api_vars)
             values = [hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i in range(num_vars)]
             
@@ -246,41 +243,48 @@ def encontrar_localitats_con_convergencia(_hourly_index, _nivell, _localitats, _
     divergence = mpcalc.divergence(u_grid * units('m/s'), v_grid * units('m/s'), dx=dx, dy=dy) * 1e5
     localitats_en_convergencia = set()
     for nom_poble, coords in _localitats.items():
-        lon_idx, lat_idx = (np.abs(grid_lon - coords['lon'])).argmin(), (np.abs(grid_lat - coords['lat'])).argmin()
-        if divergence.m[lat_idx, lon_idx] < _threshold: localitats_en_convergencia.add(nom_poble)
+        try:
+            lon_idx, lat_idx = (np.abs(grid_lon - coords['lon'])).argmin(), (np.abs(grid_lat - coords['lat'])).argmin()
+            if divergence.m[lat_idx, lon_idx] < _threshold: localitats_en_convergencia.add(nom_poble)
+        except: continue
     return localitats_en_convergencia
 
-@st.cache_data(ttl=18000)
-def precalcular_disparadors_actius(_totes_les_dades, _p_levels, _hourly_index, _localitats_convergencia):
-    if not _localitats_convergencia: return set()
-    disparadors = set()
-    for nom_poble in _localitats_convergencia:
-        sondeo = _totes_les_dades.get(nom_poble)
-        if sondeo:
-            profiles = processar_sondeig_per_hora(sondeo, _hourly_index, _p_levels)
-            if profiles:
-                parametros = calculate_parameters(*profiles)
-                cape_u = parametros.get('CAPE_Utilitzable', {}).get('value', 0)
-                cin = parametros.get('CIN_Fre', {}).get('value')
-                if cape_u > 500 and cin is not None and cin > -50: disparadors.add(nom_poble)
-    return disparadors
+def generar_avis_potencial_per_precalcul(params):
+    cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0)
+    cin = params.get('CIN_Fre', {}).get('value')
+    shear = params.get('Shear_0-6km', {}).get('value')
+    srh1 = params.get('SRH_0-1km', {}).get('value')
+    lcl_agl = params.get('LCL_AGL', {}).get('value', 9999)
+    if cape_u < 100 or (cin is not None and cin < -100): return "ESTABLE"
+    cond_supercelula = shear is not None and shear > 20 and cape_u > 1500 and srh1 is not None and srh1 > 250 and lcl_agl < 1200
+    cond_avis_sever = shear is not None and shear > 18 and cape_u > 1000
+    cond_precaucio = shear is not None and shear > 12 and cape_u > 500
+    if cond_supercelula: return "RISC ALT"
+    if cond_avis_sever: return "AVÍS"
+    if cond_precaucio: return "PRECAUCIÓ"
+    return "RISC BAIX"
 
 @st.cache_data(ttl=18000)
 def precalcular_avisos_hores(_totes_les_dades, _p_levels):
-    avisos_hores = {}; avisos_a_buscar = {"PRECAUCIÓ", "AVÍS", "RISC ALT"}
+    avisos_hores = {}
+    avisos_a_buscar = {"PRECAUCIÓ", "AVÍS", "RISC ALT"}
     for nom_poble, sondeo in _totes_les_dades.items():
         for hora in range(24):
             profiles = processar_sondeig_per_hora(sondeo, hora, _p_levels)
             if profiles:
                 parametros = calculate_parameters(*profiles)
-                titol_avís, _, _ = generar_avis_localitat(parametros)
-                if titol_avís in avisos_a_buscar:
+                titol_avís_potencial = generar_avis_potencial_per_precalcul(parametros)
+                if titol_avís_potencial in avisos_a_buscar:
                     avisos_hores[nom_poble] = hora; break
     return dict(sorted(avisos_hores.items()))
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ I FORMAT ---
+
 def display_avis_principal(titol_avís, text_avís, color_avís, icona_personalitzada=None):
-    icon_map = {"ESTABLE": "☀️", "RISC BAIX": "☁️", "PRECAUCIÓ": "⚡️", "AVÍS": "⚠️", "RISC ALT": "🌪️", "ALERTA DE DISPARADOR": "🎯"}
+    icon_map = {
+        "ESTABLE": "☀️", "RISC BAIX": "☁️", "PRECAUCIÓ": "⚡️", "AVÍS": "⚠️", "RISC ALT": "🌪️",
+        "POTENCIAL SEVER": "🧐", "POTENCIAL MODERAT": "🤔", "ALERTA DE DISPARADOR": "🎯"
+    }
     icona = icona_personalitzada if icona_personalitzada else icon_map.get(titol_avís, "ℹ️")
     st.markdown(f"""
     <div style="padding: 1rem; border-radius: 0.5rem; background-color: var(--secondary-background-color); border-left: 8px solid {color_avís}; box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem;">
@@ -325,23 +329,37 @@ def get_parameter_style(param_name, value):
 def generar_avis_temperatura(params):
     temp = params.get('SFC_Temp', {}).get('value')
     if temp is None: return None, None, None, None
-    if temp > 36: return "AVÍS PER CALOR EXTREMA", f"Es preveu una temperatura de {temp:.1f}°C. Risc molt alt. Eviteu l'exposició al sol.", "#FF0000", "🥵"
+    if temp > 36: return "AVÍS PER CALOR EXTREMA", f"Es preveu una temperatura de {temp:.1f}°C. Risc molt alt.", "#FF0000", "🥵"
     if temp < 0: return "AVÍS PER FRED INTENS", f"Es preveu una temperatura de {temp:.1f}°C. Risc de gelades fortes.", "#0000FF", "🥶"
     return None, None, None, None
 
-def generar_avis_localitat(params):
-    cape_u=params.get('CAPE_Utilitzable',{}).get('value',0);cin=params.get('CIN_Fre',{}).get('value');shear=params.get('Shear_0-6km',{}).get('value');srh1=params.get('SRH_0-1km',{}).get('value');lcl_agl=params.get('LCL_AGL',{}).get('value',9999);lfc_agl=params.get('LFC_AGL',{}).get('value',9999);w_max=params.get('W_MAX',{}).get('value')
+def generar_avis_localitat(params, is_convergence_active):
+    cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0); cin = params.get('CIN_Fre', {}).get('value'); shear = params.get('Shear_0-6km', {}).get('value'); srh1 = params.get('SRH_0-1km', {}).get('value'); lcl_agl = params.get('LCL_AGL', {}).get('value', 9999); lfc_agl = params.get('LFC_AGL', {}).get('value', 9999); w_max = params.get('W_MAX', {}).get('value')
     if cape_u < 100: return "ESTABLE", "Sense risc de tempestes significatives. L'atmosfera és estable.", "#3CB371"
-    if cin is not None and cin < -100: return "ESTABLE", "Sense risc de tempestes. La 'tapa' atmosfèrica (CIN) és massa forta.", "#3CB371"
-    if lfc_agl > 3000: return "RISC BAIX", "El nivell d'inici de la convecció (LFC) és massa alt i difícil d'assolir.", "#4682B4"
+    if cin is not None and cin < -100: return "ESTABLE", f"Sense risc de tempestes. La 'tapa' atmosfèrica (CIN de {cin:.0f} J/kg) és massa forta.", "#3CB371"
+    if lfc_agl > 3000: return "RISC BAIX", f"El nivell d'inici de la convecció (LFC a {lfc_agl:.0f} m) és massa alt i difícil d'assolir.", "#4682B4"
     w_max_text = ""
     if w_max:
-        if w_max > 50: w_max_text = " amb corrents ascendents violents"
+        if w_max > 75: w_max_text = " amb corrents ascendents extremadament violents"
+        elif w_max > 50: w_max_text = " amb corrents ascendents violents"
         elif w_max > 25: w_max_text = " amb corrents ascendents molt forts"
-    if shear is not None and shear > 20 and cape_u > 1500 and srh1 is not None and srh1 > 250 and lcl_agl < 1200: return "RISC ALT", f"Condicions per a SUPERCL·LULES{w_max_text}. Potencial de tornados, calamarsa grossa i vent destructiu.", "#DC143C"
-    if shear is not None and shear > 18 and cape_u > 1000: return "AVÍS", f"Potencial per a SUPERCL·LULES{w_max_text}. Risc de calamarsa grossa i fortes ratxes de vent.", "#FF8C00"
-    if shear is not None and shear > 12 and cape_u > 500: return "PRECAUCIÓ", f"Risc de TEMPESTES ORGANITZADES (multicèl·lules){w_max_text}. Possibles fortes pluges i calamarsa.", "#FFD700"
-    return "RISC BAIX", "Possibles xàfecs o tempestes febles i aïllades (unicel·lulars).", "#4682B4"
+    cond_supercelula = shear is not None and shear > 20 and cape_u > 1500 and srh1 is not None and srh1 > 250 and lcl_agl < 1200
+    cond_avis_sever = shear is not None and shear > 18 and cape_u > 1000
+    cond_precaucio = shear is not None and shear > 12 and cape_u > 500
+    if cond_supercelula:
+        if is_convergence_active: return "RISC ALT", f"Condicions per a SUPERCL·LULES{w_max_text}. La convergència actua com a disparador. Potencial de tornados, calamarsa grossa i vent destructiu.", "#DC143C"
+        else: return "POTENCIAL SEVER", f"Entorn de SUPERCL·LULA latent{w_max_text}. Falta un disparador clar com la convergència. El risc és alt però no actiu.", "#FFC300"
+    elif cond_avis_sever:
+        if is_convergence_active: return "AVÍS", f"Potencial per a tempestes SEVERES{w_max_text}. La convergència present afavoreix el seu inici. Risc de calamarsa grossa i fortes ratxes.", "#FF8C00"
+        else: return "POTENCIAL MODERAT", f"Entorn de tempesta SEVERA latent{w_max_text}. Falta un disparador clar. Situació a vigilar de prop.", "#FFD700"
+    elif cond_precaucio:
+        missatge_base = f"Risc de TEMPESTES ORGANITZADES (multicèl·lules){w_max_text}. Possibles fortes pluges i calamarsa."
+        suggeriment = " La convergència detectada augmenta la probabilitat que es formin." if is_convergence_active else " L'absència de convergència clara podria limitar-ne el desenvolupament."
+        return "PRECAUCIÓ", missatge_base + suggeriment, "#FFD700"
+    else:
+        missatge_base = "Possibles xàfecs o tempestes febles i aïllades (unicel·lulars)."
+        suggeriment = " La convergència podria ajudar a formar alguns nuclis de manera localitzada." if is_convergence_active else ""
+        return "RISC BAIX", missatge_base + suggeriment, "#4682B4"
 
 def generar_avis_convergencia(params, is_convergence_active):
     if not is_convergence_active: return None, None, None
@@ -350,7 +368,7 @@ def generar_avis_convergencia(params, is_convergence_active):
         missatge=f"La forta convergència de vents pot actuar com a disparador. Amb un CAPE de {cape_u:.0f} J/kg i una 'tapa' (CIN) feble, hi ha un alt potencial que les tempestes s'iniciïn de manera explosiva."
         return "ALERTA DE DISPARADOR", missatge, "#FF4500"
     return None, None, None
-
+    
 def generar_analisi_detallada(params):
     def stream_text(text):
         for word in text.split(): yield word + " "; time.sleep(0.02)
@@ -401,76 +419,21 @@ def crear_hodograf(p, u, v, h):
     ax.set_xlabel('kt'); ax.set_ylabel('kt'); return fig
 
 def crear_skewt(p, T, Td, u, v):
-    """
-    Genera un gràfic Skew-T a partir de les dades del perfil atmosfèric.
-
-    Aquesta versió corregida assegura que l'àrea d'inhibició (CIN) es sombregi
-    sempre que la parcel·la sigui més freda que l'entorn, independentment
-    del valor numèric total del CIN.
-    """
-    fig = plt.figure(figsize=(7, 9))
-    skew = SkewT(fig, rotation=45)
-    
-    # Dibuixa les línies principals de dades
-    skew.plot(p, T, 'r', lw=2, label='Temperatura')
-    skew.plot(p, Td, 'b', lw=2, label='Punt de Rosada')
+    fig = plt.figure(figsize=(7, 9)); skew = SkewT(fig, rotation=45)
+    skew.plot(p, T, 'r', lw=2, label='Temperatura'); skew.plot(p, Td, 'b', lw=2, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), length=7, color='black')
-    
-    # Dibuixa les línies de referència de l'atmosfera estàndard
-    skew.plot_dry_adiabats(color='lightcoral', ls='--', alpha=0.5)
-    skew.plot_moist_adiabats(color='cornflowerblue', ls='--', alpha=0.5)
-    skew.plot_mixing_lines(color='lightgreen', ls='--', alpha=0.5)
-    skew.ax.axvline(0, color='darkturquoise', linestyle='--', label='Isoterma 0°C')
-
-    # Aquesta comprovació assegura que tenim més d'un punt de dades per treballar
+    skew.plot_dry_adiabats(color='lightcoral', ls='--', alpha=0.5); skew.plot_moist_adiabats(color='cornflowerblue', ls='--', alpha=0.5)
+    skew.plot_mixing_lines(color='lightgreen', ls='--', alpha=0.5); skew.ax.axvline(0, color='darkturquoise', linestyle='--', label='Isoterma 0°C')
     if len(p) > 1:
         try:
-            # Calcula el perfil de la parcel·la des de la superfície
-            prof = mpcalc.parcel_profile(p, T[0], Td[0])
-            skew.plot(p, prof, 'k', lw=2, ls='--', label='Trajectòria de la Parcel·la')
-            
-            # Calcula els índexs CAPE (energia) i CIN (inhibició)
-            cape, cin = mpcalc.cape_cin(p, T, Td, prof)
-
-            # --- LÒGICA DEL SOBREJAT CORREGIDA ---
-            
-            # 1. Ombreja l'àrea d'energia (CAPE) si n'hi ha.
-            #    La funció shade_cape gestiona internament si cape.m > 0.
-            skew.shade_cape(p, T, prof, alpha=0.3, color='orange')
-
-            # 2. Ombreja l'àrea d'inhibició (CIN).
-            #    S'ha eliminat la condició 'if cin.m != 0:'. Ara, la funció
-            #    s'executarà sempre. Si no hi ha cap zona d'inhibició,
-            #    simplement no dibuixarà res, que és el comportament desitjat.
-            skew.shade_cin(p, T, prof, alpha=0.6, color='gray')
-
-            # Calcula i dibuixa els nivells atmosfèrics clau
-            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0])
-            lfc_p, _ = mpcalc.lfc(p, T, Td, prof)
-            el_p, _ = mpcalc.el(p, T, Td, prof)
-            
-            # Afegeix les línies horitzontals al gràfic si els valors existeixen
-            if lcl_p:
-                skew.ax.axhline(lcl_p.m, color='purple', linestyle='--', label=f'LCL {lcl_p.m:.0f} hPa')
-            if lfc_p:
-                skew.ax.axhline(lfc_p.m, color='darkred', linestyle='--', label=f'LFC {lfc_p.m:.0f} hPa')
-            if el_p:
-                skew.ax.axhline(el_p.m, color='red', linestyle='--', label=f'EL {el_p.m:.0f} hPa')
-
-        except Exception as e:
-            # Si hi ha algun error en els càlculs, no fa res per evitar que l'app es trenqui
-            # i podria ser útil registrar l'error per a depuració.
-            # st.warning(f"No s'ha pogut calcular el perfil complet de la parcel·la: {e}")
-            pass
-
-    # Configuració final dels eixos i la llegenda
-    skew.ax.set_ylim(1050, 100)
-    skew.ax.set_xlim(-40, 40)
-    skew.ax.set_xlabel('Temperatura (°C)')
-    skew.ax.set_ylabel('Pressió (hPa)')
-    plt.legend()
-    
-    return fig
+            prof = mpcalc.parcel_profile(p, T[0], Td[0]); skew.plot(p, prof, 'k', lw=2, ls='--', label='Trajectòria de la Parcel·la')
+            cape, cin = mpcalc.cape_cin(p, T, Td, prof); skew.shade_cape(p, T, prof, alpha=0.3, color='orange'); skew.shade_cin(p, T, prof, alpha=0.6, color='gray')
+            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); lfc_p, _ = mpcalc.lfc(p, T, Td, prof); el_p, _ = mpcalc.el(p, T, Td, prof)
+            if lcl_p: skew.ax.axhline(lcl_p.m, color='purple', linestyle='--', label=f'LCL {lcl_p.m:.0f} hPa')
+            if lfc_p: skew.ax.axhline(lfc_p.m, color='darkred', linestyle='--', label=f'LFC {lfc_p.m:.0f} hPa')
+            if el_p: skew.ax.axhline(el_p.m, color='red', linestyle='--', label=f'EL {el_p.m:.0f} hPa')
+        except: pass
+    skew.ax.set_ylim(1050, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_xlabel('Temperatura (°C)'); skew.ax.set_ylabel('Pressió (hPa)'); plt.legend(); return fig
 
 def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
     fig=plt.figure(figsize=(9,9),dpi=150); ax=fig.add_subplot(1,1,1,projection=ccrs.PlateCarree()); ax.set_extent([0,3.5,40.4,43],crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND,facecolor="#E0E0E0",zorder=0); ax.add_feature(cfeature.OCEAN,facecolor='#b0c4de',zorder=0); ax.add_feature(cfeature.COASTLINE,edgecolor='black',linewidth=0.5,zorder=1); ax.add_feature(cfeature.BORDERS,linestyle=':',edgecolor='black',zorder=1); ax.plot(lon_sel,lat_sel,'o',markersize=12,markerfacecolor='yellow',markeredgecolor='black',markeredgewidth=2,transform=ccrs.Geodetic(),zorder=5); ax.text(lon_sel+0.05,lat_sel+0.05,nom_poble_sel,transform=ccrs.Geodetic(),zorder=6,bbox=dict(facecolor='white',alpha=0.8,edgecolor='none',boxstyle='round,pad=0.2')); ax.set_title(f"{titol} a {nivell}hPa",weight='bold'); return fig,ax
@@ -490,111 +453,31 @@ def crear_mapa_generic(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel
     cont=ax.contourf(X,Y,grid_data,cmap=cmap,levels=levels,alpha=0.7,zorder=2,transform=ccrs.PlateCarree(),extend='both'); fig.colorbar(cont,ax=ax,orientation='vertical',label=f'{titol_var} ({unitat})',shrink=0.7); return fig
 
 def crear_grafic_orografia(params, zero_iso_h_agl):
-    lcl_agl = params.get('LCL_AGL', {}).get('value')
-    lfc_agl = params.get('LFC_AGL', {}).get('value')
-
-    if lcl_agl is None or np.isnan(lcl_agl):
-        return None
-
-    # --- Configuració del gràfic ---
-    fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
-    fig.patch.set_alpha(0)
-    ax.set_xlim(0, 10)
-    
-    ax.set_ylabel("")
-    ax.tick_params(axis='y', labelleft=False, length=5, color='white') 
-    ax.spines['left'].set_color('white')
-    ax.spines['bottom'].set_color('white')
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.set_xticklabels([])
-    ax.set_xticks([])
-
-    # --- 1. Gradient del Cel ---
-    sky_gradient = np.linspace(0.6, 1.0, 256).reshape(-1, 1)
-    sky_gradient = np.vstack((sky_gradient, sky_gradient))
-    # S'ajusta l'extensió del cel al límit superior final per evitar talls
-    ax.imshow(sky_gradient, aspect='auto', cmap='Blues_r', extent=[0, 10, 0, 14], zorder=0)
-
-    # --- 2. Perfil de la Muntanya Conceptual ---
-    has_lfc = lfc_agl is not None and np.isfinite(lfc_agl)
-    peak_h_m = lfc_agl if has_lfc and lfc_agl > 1000 else (lcl_agl * 1.5 if lcl_agl > 1000 else 2000)
-    peak_h_km = min(peak_h_m / 1000.0, 8.0)
-
-    x_mountain = np.linspace(0, 10, 200)
-    y_mountain = peak_h_km * (1 - np.cos(x_mountain * np.pi / 10)) / 2 * (1 - (x_mountain - 5)**2 / 25)
-    
-    mountain_poly = Polygon(np.vstack([x_mountain, y_mountain]).T, facecolor='#6B8E23', edgecolor='#3A4D14', lw=2, zorder=2)
-    ax.add_patch(mountain_poly)
-    
-    # --- 3. Línies de LCL i LFC (ETIQUETES DINS DEL GRÀFIC) ---
-    line_outline_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
-    
-    lcl_km = lcl_agl / 1000
-    ax.axhline(lcl_km, color='white', linestyle='--', lw=2, zorder=3, path_effects=line_outline_effect)
-    # ETIQUETA MOVUDA A DINS (dreta)
-    ax.text(9.9, lcl_km, f"Base del núvol (LCL): {lcl_agl:.0f} m ", color='black', backgroundcolor='white', ha='right', va='center', weight='bold')
-    
-    cloud_base = patches.Rectangle((0, lcl_km), 10, 0.2, facecolor='white', alpha=0.4, zorder=1)
-    ax.add_patch(cloud_base)
-
+    lcl_agl = params.get('LCL_AGL', {}).get('value'); lfc_agl = params.get('LFC_AGL', {}).get('value')
+    if lcl_agl is None or np.isnan(lcl_agl): return None
+    fig, ax = plt.subplots(figsize=(10, 6), dpi=150); fig.patch.set_alpha(0); ax.set_xlim(0, 10); ax.set_ylabel(""); ax.tick_params(axis='y', labelleft=False, length=5, color='white'); ax.spines['left'].set_color('white'); ax.spines['bottom'].set_color('white'); ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False); ax.set_xticklabels([]); ax.set_xticks([])
+    sky_gradient = np.linspace(0.6, 1.0, 256).reshape(-1, 1); sky_gradient = np.vstack((sky_gradient, sky_gradient)); ax.imshow(sky_gradient, aspect='auto', cmap='Blues_r', extent=[0, 10, 0, 14], zorder=0)
+    has_lfc = lfc_agl is not None and np.isfinite(lfc_agl); peak_h_m = lfc_agl if has_lfc and lfc_agl > 1000 else (lcl_agl * 1.5 if lcl_agl > 1000 else 2000); peak_h_km = min(peak_h_m / 1000.0, 8.0)
+    x_mountain = np.linspace(0, 10, 200); y_mountain = peak_h_km * (1 - np.cos(x_mountain * np.pi / 10)) / 2 * (1 - (x_mountain - 5)**2 / 25)
+    ax.add_patch(Polygon(np.vstack([x_mountain, y_mountain]).T, facecolor='#6B8E23', edgecolor='#3A4D14', lw=2, zorder=2))
+    line_outline_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]; lcl_km = lcl_agl / 1000
+    ax.axhline(lcl_km, color='white', linestyle='--', lw=2, zorder=3, path_effects=line_outline_effect); ax.text(9.9, lcl_km, f"Base del núvol (LCL): {lcl_agl:.0f} m ", color='black', backgroundcolor='white', ha='right', va='center', weight='bold')
+    ax.add_patch(patches.Rectangle((0, lcl_km), 10, 0.2, facecolor='white', alpha=0.4, zorder=1))
+    if has_lfc: lfc_km = lfc_agl / 1000; ax.axhline(lfc_km, color='#FFD700', linestyle='--', lw=2.5, zorder=3, path_effects=line_outline_effect); ax.text(0.1, lfc_km, f" Disparador de tempesta (LFC): {lfc_agl:.0f} m", color='black', backgroundcolor='#FFD700', ha='left', va='center', weight='bold')
+    main_text_effect = [path_effects.Stroke(linewidth=4, foreground='black'), path_effects.Normal()]; mountain_lfc_intersect_x = np.interp(lfc_km if has_lfc else peak_h_km, y_mountain, x_mountain)
+    ax.annotate("", xy=(mountain_lfc_intersect_x, lfc_km if has_lfc else peak_h_km), xytext=(1, 0.1), arrowprops=dict(arrowstyle="->", color='white', lw=2.5, linestyle=':', connectionstyle="arc3,rad=0.2"), zorder=4)
+    flux_text = ax.text(1.5, 0.4, "Flux d'aire\nforçat a pujar", color='white', weight='bold', ha='center', fontsize=11); flux_text.set_path_effects(main_text_effect)
     if has_lfc:
-        lfc_km = lfc_agl / 1000
-        ax.axhline(lfc_km, color='#FFD700', linestyle='--', lw=2.5, zorder=3, path_effects=line_outline_effect)
-        # ETIQUETA MOVUDA A DINS (esquerra)
-        ax.text(0.1, lfc_km, f" Disparador de tempesta (LFC): {lfc_agl:.0f} m", color='black', backgroundcolor='#FFD700', ha='left', va='center', weight='bold')
-
-    # --- 4. Anotacions i Elements Visuals ---
-    main_text_effect = [path_effects.Stroke(linewidth=4, foreground='black'), path_effects.Normal()]
-
-    mountain_lfc_intersect_x = np.interp(lfc_km if has_lfc else peak_h_km, y_mountain, x_mountain)
-    
-    ax.annotate("", xy=(mountain_lfc_intersect_x, lfc_km if has_lfc else peak_h_km), xytext=(1, 0.1),
-                arrowprops=dict(arrowstyle="->", color='white', lw=2.5, linestyle=':', connectionstyle="arc3,rad=0.2"), zorder=4)
-    flux_text = ax.text(1.5, 0.4, "Flux d'aire\nforçat a pujar", color='white', weight='bold', ha='center', fontsize=11)
-    flux_text.set_path_effects(main_text_effect)
-
-    # --- TEXT D'ANÀLISI FINAL I CLARIFICAT ---
-    if has_lfc:
-        if peak_h_m >= lfc_agl:
-            ax.plot(mountain_lfc_intersect_x, lfc_km, '*', markersize=20, color='yellow', markeredgecolor='red', zorder=5)
-            analysis_text_content = f"DISPARADOR OROGRÀFIC POTENCIAL!\nUna muntanya de {lfc_agl:.0f} m o més seria suficient."
-            analysis_text = ax.text(5, max(peak_h_km, lfc_km) + 1, analysis_text_content,
-                                    ha='center', va='center', fontsize=14, weight='bold', color='white')
-            analysis_text.set_path_effects(main_text_effect)
-        else:
-            ax.plot(x_mountain[np.argmax(y_mountain)], peak_h_km, 'X', markersize=15, color='red', markeredgecolor='white', zorder=5)
-            analysis_text_content = f"L'OROGRAFIA NO ÉS SUFICIENT.\nEs necessita una muntanya de {lfc_agl:.0f} m per disparar la tempesta."
-            analysis_text = ax.text(5, peak_h_km + 1, analysis_text_content,
-                                    ha='center', va='center', color='yellow', weight='bold', fontsize=12)
-            analysis_text.set_path_effects(main_text_effect)
-    else:
-        analysis_text_content = "No hi ha un LFC accessible.\nL'atmosfera és massa estable."
-        analysis_text = ax.text(5, 4, analysis_text_content,
-                                ha='center', va='center', color='lightblue', weight='bold', fontsize=12)
-        analysis_text.set_path_effects(main_text_effect)
-
-
-    # --- AJUST FINAL DELS LÍMITS (MÉS AJUSTAT) ---
-    # S'ha reduït el padding superior de 2.5 a 2.0 per compactar el gràfic
-    final_ylim = max(peak_h_km, (lfc_km if has_lfc else 0)) + 2.0
-    ax.set_ylim(0, final_ylim)
-    
-    # --- ETIQUETES DELS EIXOS DINS DEL GRÀFIC ---
-    y_label_text = ax.text(0.2, final_ylim - 0.2, "Altitud (km)",
-                           ha='left', va='top', color='white', weight='bold', fontsize=12)
-    y_label_text.set_path_effects(main_text_effect)
-
+        analysis_text_content = ""; analysis_text = None
+        if peak_h_m >= lfc_agl: ax.plot(mountain_lfc_intersect_x, lfc_km, '*', markersize=20, color='yellow', markeredgecolor='red', zorder=5); analysis_text_content = f"DISPARADOR OROGRÀFIC POTENCIAL!\nUna muntanya de {lfc_agl:.0f} m o més seria suficient."; analysis_text = ax.text(5, max(peak_h_km, lfc_km) + 1, analysis_text_content, ha='center', va='center', fontsize=14, weight='bold', color='white')
+        else: ax.plot(x_mountain[np.argmax(y_mountain)], peak_h_km, 'X', markersize=15, color='red', markeredgecolor='white', zorder=5); analysis_text_content = f"L'OROGRAFIA NO ÉS SUFICIENT.\nEs necessita una muntanya de {lfc_agl:.0f} m per disparar la tempesta."; analysis_text = ax.text(5, peak_h_km + 1, analysis_text_content, ha='center', va='center', color='yellow', weight='bold', fontsize=12)
+        if analysis_text: analysis_text.set_path_effects(main_text_effect)
+    else: analysis_text = ax.text(5, 4, "No hi ha un LFC accessible.\nL'atmosfera és massa estable.", ha='center', va='center', color='lightblue', weight='bold', fontsize=12); analysis_text.set_path_effects(main_text_effect)
+    final_ylim = max(peak_h_km, (lfc_km if has_lfc else 0)) + 2.0; ax.set_ylim(0, final_ylim)
+    y_label_text = ax.text(0.2, final_ylim - 0.2, "Altitud (km)", ha='left', va='top', color='white', weight='bold', fontsize=12); y_label_text.set_path_effects(main_text_effect)
     for y_tick in ax.get_yticks():
-        if y_tick > 0 and y_tick < final_ylim: # Assegurem que el tick estigui dins
-            tick_label = ax.text(0.15, y_tick, f'{int(y_tick)}',
-                                 ha='left', va='center',
-                                 color='white', weight='bold', fontsize=9)
-            tick_label.set_path_effects(main_text_effect)
-
-    fig.tight_layout(pad=0.5)
-    
-    return fig
+        if y_tick > 0 and y_tick < final_ylim: tick_label = ax.text(0.15, y_tick, f'{int(y_tick)}', ha='left', va='center', color='white', weight='bold', fontsize=9); tick_label.set_path_effects(main_text_effect)
+    fig.tight_layout(pad=0.5); return fig
 
 def crear_grafic_nuvol(params, H, u, v, is_convergence_active):
     lcl_agl,el_msl_km,cape,srh1=(params.get(k,{}).get('value') for k in ['LCL_AGL','EL_MSL','CAPE_Brut','SRH_0-1km'])
@@ -608,8 +491,9 @@ def crear_grafic_nuvol(params, H, u, v, is_convergence_active):
         anvil_wind_u=np.interp(el_km*1000,H.m,u.m)/10; anvil_center_x=np.interp(el_km*1000,H.m,u.m)/15
         for _ in range(80): ax.add_patch(Circle((anvil_center_x+(random.random()-0.2)*4+anvil_wind_u,el_km+(random.random()-0.5)*0.5),0.2+random.random()*0.6,color='white',alpha=0.2,lw=0))
         if cape>2500: ax.add_patch(Circle((anvil_center_x,el_km+cape/5000),0.4,color='white',alpha=0.5))
-    else: ax.text(0,8,"Sense disparador o energia\nsuficient per a convecció profunda.",ha='center',va='center',color='black',fontsize=16,weight='bold',bbox=dict(facecolor='lightblue',alpha=0.7,boxstyle='round,pad=0.5'))
-    barb_heights_km=np.arange(1,16,1); u_barbs=np.interp(barb_heights_km*1000,H.m,u.to('kt').m); v_barbs=np.interp(barb_heights_km*1000,H.m,v.to('kt').m); ax.barbs(np.full_like(barb_heights_km,4.5),barb_heights_km,u_barbs,v_barbs,length=7,color='black'); ax.set_ylim(0,16); ax.set_xlim(-5,5); ax.set_ylabel("Altitud (km, MSL)"); ax.set_title("Visualització del Núvol",weight='bold'); ax.set_xticks([]); ax.grid(axis='y',linestyle='--',alpha=0.3); return fig
+    else: ax.text(5,8,"Sense disparador o energia\nsuficient per a convecció profunda.",ha='center',va='center',color='black',fontsize=16,weight='bold',bbox=dict(facecolor='lightblue',alpha=0.7,boxstyle='round,pad=0.5'))
+    barb_heights_km=np.arange(1,16,1); u_barbs=np.interp(barb_heights_km*1000,H.m,u.to('kt').m); v_barbs=np.interp(barb_heights_km*1000,H.m,v.to('kt').m); ax.barbs(np.full_like(barb_heights_km,9.5),barb_heights_km,u_barbs,v_barbs,length=7,color='black'); ax.set_ylim(0,16); ax.set_xlim(0,10); ax.set_ylabel("Altitud (km, MSL)"); ax.set_title("Visualització del Núvol",weight='bold'); ax.set_xticks([]); ax.grid(axis='y',linestyle='--',alpha=0.3); return fig
+
 
 # --- 3. INTERFÍCIE I FLUX PRINCIPAL DE L'APLICACIÓ ---
 st.markdown('<h1 style="text-align: center; color: #FF4B4B;">⚡ Tempestes.cat</h1>', unsafe_allow_html=True)
@@ -626,7 +510,8 @@ progress_bar.empty()
 if error_carrega: st.error(f"No s'ha pogut carregar la informació base. L'aplicació no pot continuar. Error: {error_carrega}"); st.stop()
 st.toast("Dades de sondeig carregades correctament!",icon="✅")
 
-with st.spinner("Buscant hores amb avisos a tot el territori..."): avisos_hores=precalcular_avisos_hores(totes_les_dades,p_levels)
+with st.spinner("Buscant hores amb avisos a tot el territori..."):
+    avisos_hores=precalcular_avisos_hores(totes_les_dades,p_levels)
 
 def update_from_avis_selector():
     poble_avis_format=st.session_state.avis_selector
@@ -642,86 +527,103 @@ with st.container(border=True):
         except ValueError: index_hora=0
         st.session_state.hora_seleccionada_str=st.selectbox("Hora del pronòstic (Local):",options=hour_options,index=index_hora)
     with col2:
-        p_levels_all=p_levels if p_levels else [1000,925,850,700,500,300]; nivell_global=st.selectbox("Nivell d'anàlisi de mapes:",p_levels_all,index=p_levels_all.index(850))
+        p_levels_all=p_levels if p_levels else [1000,925,850,700,500,300]; nivell_global=st.selectbox("Nivell d'anàlisi de mapes:",p_levels_all,index=p_levels_all.index(850) if 850 in p_levels_all else 0)
     if avisos_hores:
         opcions_avis_formatejades=[f"{poble} (Avís a les {hora:02d}:00h)" for poble,hora in avisos_hores.items()]; opcions_avis=["--- 🔥 Selecciona una localitat amb avís per anar-hi directament ---"]+opcions_avis_formatejades; st.selectbox("Localitats amb previsió d'avís:",options=opcions_avis,key='avis_selector',on_change=update_from_avis_selector)
 
-st.markdown(f'<p style="text-align: center; font-size: 0.9em; color: grey;">🕒 {get_next_arome_update_time()}</p>',unsafe_allow_html=True)
-hourly_index=int(st.session_state.hora_seleccionada_str.split(':')[0])
+st.markdown(f'<p style="text-align: center; font-size: 0.9em; color: grey;">🕒 {get_next_arome_update_time()}</p>', unsafe_allow_html=True)
+hourly_index = int(st.session_state.hora_seleccionada_str.split(':')[0])
 
 with st.spinner("Analitzant convergències i disparadors a tot el territori..."):
-    conv_threshold=-5.5; localitats_convergencia=encontrar_localitats_con_convergencia(hourly_index,nivell_global,pobles_data,conv_threshold,FORECAST_DAYS); disparadors_actius=precalcular_disparadors_actius(totes_les_dades,p_levels,hourly_index,localitats_convergencia)
+    conv_threshold = -5.5
+    localitats_convergencia = encontrar_localitats_con_convergencia(hourly_index, nivell_global, pobles_data, conv_threshold, FORECAST_DAYS)
+    disparadors_actius = {poble for poble in avisos_hores if poble in localitats_convergencia}
 
 def update_poble_selection():
-    poble_display=st.session_state.poble_selector; st.session_state.poble_seleccionat=poble_display.replace("⚠️⛈️ ","").replace(" (disparador actiu)","")
+    poble_display = st.session_state.poble_selector
+    if " (" in poble_display:
+        nom_poble_real = poble_display.split(" (")[0].replace("⚠️", "").strip()
+    else:
+        nom_poble_real = poble_display.strip()
+    st.session_state.poble_seleccionat = nom_poble_real
 
-sorted_pobles=sorted(pobles_data.keys()); opciones_display=[f"⚠️⛈️ {p} (disparador actiu)" if p in disparadors_actius else p for p in sorted_pobles]
+sorted_pobles = sorted(pobles_data.keys())
+opciones_display = [f"⚠️ {p} (Disparador Actiu)" if p in disparadors_actius else p for p in sorted_pobles]
+default_index_display = 0
 try:
-    current_selection_display=next(s for s in opciones_display if st.session_state.poble_seleccionat in s); default_index_display=opciones_display.index(current_selection_display)
-except (StopIteration,ValueError): default_index_display=0
-st.selectbox('Selecciona una localitat:',options=opciones_display,index=default_index_display,key='poble_selector',on_change=update_poble_selection)
-poble_sel=st.session_state.poble_seleccionat; lat_sel,lon_sel=pobles_data[poble_sel]['lat'],pobles_data[poble_sel]['lon']
+    current_selection_display = next(s for s in opciones_display if s.strip().startswith(st.session_state.poble_seleccionat))
+    default_index_display = opciones_display.index(current_selection_display)
+except (StopIteration, ValueError): pass
 
-sondeo=totes_les_dades.get(poble_sel)
+st.selectbox('Selecciona una localitat:', options=opciones_display, index=default_index_display, key='poble_selector', on_change=update_poble_selection)
+
+poble_sel = st.session_state.poble_seleccionat
+lat_sel, lon_sel = pobles_data[poble_sel]['lat'], pobles_data[poble_sel]['lon']
+
+sondeo = totes_les_dades.get(poble_sel)
 if sondeo:
-    data_is_valid=False
+    data_is_valid = False
     with st.spinner(f"Processant dades per a {poble_sel}..."):
-        profiles=processar_sondeig_per_hora(sondeo,hourly_index,p_levels)
+        profiles = processar_sondeig_per_hora(sondeo, hourly_index, p_levels)
         if profiles:
-            p,T,Td,u,v,H=profiles; parametros=calculate_parameters(p,T,Td,u,v,H); zero_iso_h_agl=None
+            p, T, Td, u, v, H = profiles; parametros = calculate_parameters(p, T, Td, u, v, H)
+            zero_iso_h_agl = None
             try:
-                T_c,H_m=T.to('degC').m,H.to('m').m
-                if (idx:=np.where(np.diff(np.sign(T_c)))[0]).size>0:
-                    h_zero_iso_msl=np.interp(0,[T_c[idx[0]+1],T_c[idx[0]]],[H_m[idx[0]+1],H_m[idx[0]]]); zero_iso_h_agl=(h_zero_iso_msl-H_m[0])*units.m
+                T_c, H_m = T.to('degC').m, H.to('m').m
+                if (idx := np.where(np.diff(np.sign(T_c)))[0]).size > 0:
+                    h_zero_iso_msl = np.interp(0, [T_c[idx[0]+1], T_c[idx[0]]], [H_m[idx[0]+1], H_m[idx[0]]])
+                    zero_iso_h_agl = (h_zero_iso_msl - H_m[0]) * units.m
             except: pass
-            data_is_valid=True
+            data_is_valid = True
+
     if data_is_valid:
-        avis_temp_titol,avis_temp_text,avis_temp_color,avis_temp_icona=generar_avis_temperatura(parametros)
-        if avis_temp_titol: display_avis_principal(avis_temp_titol,avis_temp_text,avis_temp_color,icona_personalitzada=avis_temp_icona)
-        is_conv_active=poble_sel in localitats_convergencia; avis_conv_titol,avis_conv_text,avis_conv_color=generar_avis_convergencia(parametros,is_conv_active)
-        if avis_conv_titol: display_avis_principal(avis_conv_titol,avis_conv_text,avis_conv_color)
-        avis_titol,avis_text,avis_color=generar_avis_localitat(parametros); display_avis_principal(avis_titol,avis_text,avis_color)
+        is_conv_active = poble_sel in localitats_convergencia
         
-        tab_list=["🗨️ Anàlisi en Directe","📊 Paràmetres","🗺️ Mapes","🧭Hodògraf","📍Sondeig","🏔️ Orografia","☁️ Visualització"]
-        selected_tab=st.radio("Navegació:",tab_list,index=0,horizontal=True,key="main_tabs")
+        avis_temp_titol, avis_temp_text, avis_temp_color, avis_temp_icona = generar_avis_temperatura(parametros)
+        if avis_temp_titol: display_avis_principal(avis_temp_titol, avis_temp_text, avis_temp_color, icona_personalitzada=avis_temp_icona)
+        
+        avis_conv_titol, avis_conv_text, avis_conv_color = generar_avis_convergencia(parametros, is_conv_active)
+        if avis_conv_titol: display_avis_principal(avis_conv_titol, avis_conv_text, avis_conv_color)
+
+        avis_titol, avis_text, avis_color = generar_avis_localitat(parametros, is_conv_active)
+        display_avis_principal(avis_titol, avis_text, avis_color)
+        
+        tab_list = ["🗨️ Anàlisi en Directe", "📊 Paràmetres", "🗺️ Mapes", "🧭Hodògraf", "📍Sondeig", "🏔️ Orografia", "☁️ Visualització"]
+        selected_tab = st.radio("Navegació:", tab_list, index=0, horizontal=True, key="main_tabs")
         
         if selected_tab == "🗨️ Anàlisi en Directe": st.write_stream(generar_analisi_detallada(parametros))
         elif selected_tab == "📊 Paràmetres": st.subheader("Paràmetres Clau"); display_metrics(parametros)
         elif selected_tab == "🗺️ Mapes":
             st.subheader(f"Anàlisi de Mapes a {nivell_global}hPa")
-            map_type=st.selectbox("Selecciona la capa a visualitzar:",("Vents i Convergència","Punt de Rosada","Humitat Relativa"))
+            map_type = st.selectbox("Selecciona la capa a visualitzar:", ("Vents i Convergència", "Punt de Rosada", "Humitat Relativa"))
             with st.spinner(f"Generant mapa de {map_type.lower()}..."):
                 if map_type == "Vents i Convergència":
-                    lats,lons,data,error=obtener_dades_mapa('wind',nivell_global,hourly_index,FORECAST_DAYS)
+                    lats, lons, data, error = obtener_dades_mapa('wind', nivell_global, hourly_index, FORECAST_DAYS)
                     if error: st.error(f"Error en obtenir dades del mapa: {error}")
-                    elif lats and len(lats)>4: st.pyplot(crear_mapa_vents(lats,lons,data,nivell_global,lat_sel,lon_sel,poble_sel))
+                    elif lats and len(lats) > 4: st.pyplot(crear_mapa_vents(lats, lons, data, nivell_global, lat_sel, lon_sel, poble_sel))
                     else: st.warning("No hi ha prou dades per generar el mapa.")
                 else:
-                    var_map={"Punt de Rosada":"dewpoint","Humitat Relativa":"humidity"}
-                    var_details={"dewpoint":{"titol":"Punt de Rosada","cmap":"BrBG","unitat":"°C","levels":np.arange(-10,21,2)},"humidity":{"titol":"Humitat Relativa","cmap":"Greens","unitat":"%","levels":np.arange(30,101,5)}}
-                    var=var_map[map_type]; details=var_details[var]; lats,lons,data,error=obtener_dades_mapa(var,nivell_global,hourly_index,FORECAST_DAYS)
+                    var_map = {"Punt de Rosada": "dewpoint", "Humitat Relativa": "humidity"}
+                    var_details = {"dewpoint": {"titol": "Punt de Rosada", "cmap": "BrBG", "unitat": "°C", "levels": np.arange(-10, 21, 2)}, "humidity": {"titol": "Humitat Relativa", "cmap": "Greens", "unitat": "%", "levels": np.arange(30, 101, 5)}}
+                    var = var_map[map_type]; details = var_details[var]
+                    lats, lons, data, error = obtener_dades_mapa(var, nivell_global, hourly_index, FORECAST_DAYS)
                     if error: st.error(f"Error en obtenir dades del mapa: {error}")
-                    elif lats:
-                        fig=crear_mapa_generic(lats,lons,data,nivell_global,lat_sel,lon_sel,poble_sel,details["titol"],details["cmap"],details["unitat"],details["levels"]); st.pyplot(fig)
+                    elif lats: st.pyplot(crear_mapa_generic(lats, lons, data, nivell_global, lat_sel, lon_sel, poble_sel, details["titol"], details["cmap"], details["unitat"], details["levels"]))
                     else: st.warning("No hi ha prou dades per generar el mapa.")
-        elif selected_tab == "🧭Hodògraf": st.subheader("Hodògraf (0-10 km)"); st.pyplot(crear_hodograf(p,u,v,H))
-        elif selected_tab == "📍Sondeig": st.subheader(f"Sondeig per a {poble_sel} ({datetime.now(pytz.timezone('Europe/Madrid')).strftime('%d/%m/%Y')} - {hourly_index:02d}:00h Local)"); st.pyplot(crear_skewt(p,T,Td,u,v))
+        elif selected_tab == "🧭Hodògraf": st.subheader("Hodògraf (0-10 km)"); st.pyplot(crear_hodograf(p, u, v, H))
+        elif selected_tab == "📍Sondeig":
+            st.subheader(f"Sondeig per a {poble_sel} ({datetime.now(pytz.timezone('Europe/Madrid')).strftime('%d/%m/%Y')} - {hourly_index:02d}:00h Local)")
+            st.pyplot(crear_skewt(p, T, Td, u, v))
         elif selected_tab == "🏔️ Orografia": 
             st.subheader("Potencial d'Activació per Orografia")
-            fig_oro=crear_grafic_orografia(parametros,zero_iso_h_agl)
-            if fig_oro:
-                st.pyplot(fig_oro)
-            else:
-                st.info("No hi ha LCL per calcular el potencial orogràfic.")
-        
+            fig_oro = crear_grafic_orografia(parametros, zero_iso_h_agl)
+            if fig_oro: st.pyplot(fig_oro)
+            else: st.info("No hi ha LCL per calcular el potencial orogràfic.")
         elif selected_tab == "☁️ Visualització":
             with st.spinner("Dibuixant la possible estructura del núvol..."):
                 fig_nuvol = crear_grafic_nuvol(parametros, H, u, v, is_convergence_active=is_conv_active)
-                if fig_nuvol:
-                    st.pyplot(fig_nuvol)
-                else:
-                    st.info("No hi ha LCL o EL per visualitzar l'estructura del núvol.")
-
+                if fig_nuvol: st.pyplot(fig_nuvol)
+                else: st.info("No hi ha LCL o EL per visualitzar l'estructura del núvol.")
     else:
         st.warning(f"No s'han pogut calcular els paràmetres per a les {hourly_index:02d}:00h. Proveu amb una altra hora o localitat.")
 else:
