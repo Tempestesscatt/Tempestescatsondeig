@@ -401,58 +401,73 @@ def crear_hodograf(p, u, v, h):
     ax.set_xlabel('kt'); ax.set_ylabel('kt'); return fig
 
 def crear_skewt(p, T, Td, u, v):
-    fig=plt.figure(figsize=(7,9))
-    skew=SkewT(fig,rotation=45)
-    
-    # Dibuixa les línies principals
-    skew.plot(p,T,'r',lw=2,label='Temperatura')
-    skew.plot(p,Td,'b',lw=2,label='Punt de Rosada')
-    skew.plot_barbs(p,u.to('kt'),v.to('kt'),length=7,color='black')
-    
-    # Dibuixa les línies de referència de l'atmosfera
-    skew.plot_dry_adiabats(color='lightcoral',ls='--',alpha=0.5)
-    skew.plot_moist_adiabats(color='cornflowerblue',ls='--',alpha=0.5)
-    skew.plot_mixing_lines(color='lightgreen',ls='--',alpha=0.5)
-    skew.ax.axvline(0,color='darkturquoise',linestyle='--',label='Isoterma 0°C')
+    """
+    Genera un gràfic Skew-T a partir de les dades del perfil atmosfèric.
 
-    if len(p)>1:
+    Aquesta versió corregida assegura que l'àrea d'inhibició (CIN) es sombregi
+    sempre que la parcel·la sigui més freda que l'entorn, independentment
+    del valor numèric total del CIN.
+    """
+    fig = plt.figure(figsize=(7, 9))
+    skew = SkewT(fig, rotation=45)
+    
+    # Dibuixa les línies principals de dades
+    skew.plot(p, T, 'r', lw=2, label='Temperatura')
+    skew.plot(p, Td, 'b', lw=2, label='Punt de Rosada')
+    skew.plot_barbs(p, u.to('kt'), v.to('kt'), length=7, color='black')
+    
+    # Dibuixa les línies de referència de l'atmosfera estàndard
+    skew.plot_dry_adiabats(color='lightcoral', ls='--', alpha=0.5)
+    skew.plot_moist_adiabats(color='cornflowerblue', ls='--', alpha=0.5)
+    skew.plot_mixing_lines(color='lightgreen', ls='--', alpha=0.5)
+    skew.ax.axvline(0, color='darkturquoise', linestyle='--', label='Isoterma 0°C')
+
+    # Aquesta comprovació assegura que tenim més d'un punt de dades per treballar
+    if len(p) > 1:
         try:
-            # Calcula el perfil de la parcel·la i els índexs CAPE/CIN
-            prof=mpcalc.parcel_profile(p,T[0],Td[0])
-            skew.plot(p,prof,'k',lw=2,ls='--',label='Parcela')
-            cape,cin=mpcalc.cape_cin(p,T,Td,prof)
-
-            # --- LÒGICA DEL SOBREJAT ---
-            # Sobrejat per al CAPE (energia) si és més gran que 0
-            if cape.m > 0:
-                skew.shade_cape(p,T,prof,alpha=0.3,color='orange')
-
-            # Sobrejat per al CIN (inhibició) si no és 0
-            # AQUESTA ÉS LA LÍNIA QUE FA LA FEINA
-            if cin.m != 0:
-                skew.shade_cin(p,T,prof,alpha=0.7,color='gray')
-
-            # Calcula i dibuixa els nivells importants (LCL, LFC, EL)
-            lcl_p,_=mpcalc.lcl(p[0],T[0],Td[0])
-            lfc_p,_=mpcalc.lfc(p,T,Td,prof)
-            el_p,_=mpcalc.el(p,T,Td,prof)
+            # Calcula el perfil de la parcel·la des de la superfície
+            prof = mpcalc.parcel_profile(p, T[0], Td[0])
+            skew.plot(p, prof, 'k', lw=2, ls='--', label='Trajectòria de la Parcel·la')
             
-            if lcl_p:
-                skew.ax.axhline(lcl_p.m,color='purple',linestyle='--',label=f'LCL {lcl_p.m:.0f} hPa')
-            if lfc_p:
-                skew.ax.axhline(lfc_p.m,color='darkred',linestyle='--',label=f'LFC {lfc_p.m:.0f} hPa')
-            if el_p:
-                skew.ax.axhline(el_p.m,color='red',linestyle='--',label=f'EL {el_p.m:.0f} hPa')
+            # Calcula els índexs CAPE (energia) i CIN (inhibició)
+            cape, cin = mpcalc.cape_cin(p, T, Td, prof)
 
-        except:
+            # --- LÒGICA DEL SOBREJAT CORREGIDA ---
+            
+            # 1. Ombreja l'àrea d'energia (CAPE) si n'hi ha.
+            #    La funció shade_cape gestiona internament si cape.m > 0.
+            skew.shade_cape(p, T, prof, alpha=0.3, color='orange')
+
+            # 2. Ombreja l'àrea d'inhibició (CIN).
+            #    S'ha eliminat la condició 'if cin.m != 0:'. Ara, la funció
+            #    s'executarà sempre. Si no hi ha cap zona d'inhibició,
+            #    simplement no dibuixarà res, que és el comportament desitjat.
+            skew.shade_cin(p, T, prof, alpha=0.6, color='gray')
+
+            # Calcula i dibuixa els nivells atmosfèrics clau
+            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0])
+            lfc_p, _ = mpcalc.lfc(p, T, Td, prof)
+            el_p, _ = mpcalc.el(p, T, Td, prof)
+            
+            # Afegeix les línies horitzontals al gràfic si els valors existeixen
+            if lcl_p:
+                skew.ax.axhline(lcl_p.m, color='purple', linestyle='--', label=f'LCL {lcl_p.m:.0f} hPa')
+            if lfc_p:
+                skew.ax.axhline(lfc_p.m, color='darkred', linestyle='--', label=f'LFC {lfc_p.m:.0f} hPa')
+            if el_p:
+                skew.ax.axhline(el_p.m, color='red', linestyle='--', label=f'EL {el_p.m:.0f} hPa')
+
+        except Exception as e:
             # Si hi ha algun error en els càlculs, no fa res per evitar que l'app es trenqui
+            # i podria ser útil registrar l'error per a depuració.
+            # st.warning(f"No s'ha pogut calcular el perfil complet de la parcel·la: {e}")
             pass
 
     # Configuració final dels eixos i la llegenda
-    skew.ax.set_ylim(1050,100)
-    skew.ax.set_xlim(-40,40)
-    skew.ax.set_xlabel('°C')
-    skew.ax.set_ylabel('hPa')
+    skew.ax.set_ylim(1050, 100)
+    skew.ax.set_xlim(-40, 40)
+    skew.ax.set_xlabel('Temperatura (°C)')
+    skew.ax.set_ylabel('Pressió (hPa)')
     plt.legend()
     
     return fig
