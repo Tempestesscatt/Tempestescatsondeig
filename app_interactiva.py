@@ -22,6 +22,7 @@ import cartopy.feature as cfeature
 from scipy.interpolate import griddata
 from datetime import datetime, timedelta
 import pytz
+import matplotlib.patheffects as path_effects
 
 # --- CONFIGURACIÓ INICIAL ---
 st.set_page_config(layout="wide", page_title="Tempestes.cat")
@@ -400,18 +401,61 @@ def crear_hodograf(p, u, v, h):
     ax.set_xlabel('kt'); ax.set_ylabel('kt'); return fig
 
 def crear_skewt(p, T, Td, u, v):
-    fig=plt.figure(figsize=(7,9)); skew=SkewT(fig,rotation=45); skew.plot(p,T,'r',lw=2,label='Temperatura'); skew.plot(p,Td,'b',lw=2,label='Punt de Rosada'); skew.plot_barbs(p,u.to('kt'),v.to('kt'),length=7,color='black'); skew.plot_dry_adiabats(color='lightcoral',ls='--',alpha=0.5); skew.plot_moist_adiabats(color='cornflowerblue',ls='--',alpha=0.5); skew.plot_mixing_lines(color='lightgreen',ls='--',alpha=0.5); skew.ax.axvline(0,color='darkturquoise',linestyle='--',label='Isoterma 0°C')
+    fig=plt.figure(figsize=(7,9))
+    skew=SkewT(fig,rotation=45)
+    
+    # Dibuixa les línies principals
+    skew.plot(p,T,'r',lw=2,label='Temperatura')
+    skew.plot(p,Td,'b',lw=2,label='Punt de Rosada')
+    skew.plot_barbs(p,u.to('kt'),v.to('kt'),length=7,color='black')
+    
+    # Dibuixa les línies de referència de l'atmosfera
+    skew.plot_dry_adiabats(color='lightcoral',ls='--',alpha=0.5)
+    skew.plot_moist_adiabats(color='cornflowerblue',ls='--',alpha=0.5)
+    skew.plot_mixing_lines(color='lightgreen',ls='--',alpha=0.5)
+    skew.ax.axvline(0,color='darkturquoise',linestyle='--',label='Isoterma 0°C')
+
     if len(p)>1:
         try:
-            prof=mpcalc.parcel_profile(p,T[0],Td[0]); skew.plot(p,prof,'k',lw=2,ls='--',label='Parcela'); cape,cin=mpcalc.cape_cin(p,T,Td,prof)
-            if cape.m > 0: skew.shade_cape(p,T,prof,alpha=0.3,color='orange')
-            if cin.m != 0: skew.shade_cin(p,T,prof,alpha=0.3,color='lightblue')
-            lcl_p,_=mpcalc.lcl(p[0],T[0],Td[0]); lfc_p,_=mpcalc.lfc(p,T,Td,prof); el_p,_=mpcalc.el(p,T,Td,prof)
-            if lcl_p: skew.ax.axhline(lcl_p.m,color='purple',linestyle='--',label=f'LCL {lcl_p.m:.0f} hPa')
-            if lfc_p: skew.ax.axhline(lfc_p.m,color='darkred',linestyle='--',label=f'LFC {lfc_p.m:.0f} hPa')
-            if el_p: skew.ax.axhline(el_p.m,color='red',linestyle='--',label=f'EL {el_p.m:.0f} hPa')
-        except: pass
-    skew.ax.set_ylim(1050,100); skew.ax.set_xlim(-40,40); skew.ax.set_xlabel('°C'); skew.ax.set_ylabel('hPa'); plt.legend(); return fig
+            # Calcula el perfil de la parcel·la i els índexs CAPE/CIN
+            prof=mpcalc.parcel_profile(p,T[0],Td[0])
+            skew.plot(p,prof,'k',lw=2,ls='--',label='Parcela')
+            cape,cin=mpcalc.cape_cin(p,T,Td,prof)
+
+            # --- LÒGICA DEL SOBREJAT ---
+            # Sobrejat per al CAPE (energia) si és més gran que 0
+            if cape.m > 0:
+                skew.shade_cape(p,T,prof,alpha=0.3,color='orange')
+
+            # Sobrejat per al CIN (inhibició) si no és 0
+            # AQUESTA ÉS LA LÍNIA QUE FA LA FEINA
+            if cin.m != 0:
+                skew.shade_cin(p,T,prof,alpha=0.7,color='gray')
+
+            # Calcula i dibuixa els nivells importants (LCL, LFC, EL)
+            lcl_p,_=mpcalc.lcl(p[0],T[0],Td[0])
+            lfc_p,_=mpcalc.lfc(p,T,Td,prof)
+            el_p,_=mpcalc.el(p,T,Td,prof)
+            
+            if lcl_p:
+                skew.ax.axhline(lcl_p.m,color='purple',linestyle='--',label=f'LCL {lcl_p.m:.0f} hPa')
+            if lfc_p:
+                skew.ax.axhline(lfc_p.m,color='darkred',linestyle='--',label=f'LFC {lfc_p.m:.0f} hPa')
+            if el_p:
+                skew.ax.axhline(el_p.m,color='red',linestyle='--',label=f'EL {el_p.m:.0f} hPa')
+
+        except:
+            # Si hi ha algun error en els càlculs, no fa res per evitar que l'app es trenqui
+            pass
+
+    # Configuració final dels eixos i la llegenda
+    skew.ax.set_ylim(1050,100)
+    skew.ax.set_xlim(-40,40)
+    skew.ax.set_xlabel('°C')
+    skew.ax.set_ylabel('hPa')
+    plt.legend()
+    
+    return fig
 
 def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
     fig=plt.figure(figsize=(9,9),dpi=150); ax=fig.add_subplot(1,1,1,projection=ccrs.PlateCarree()); ax.set_extent([0,3.5,40.4,43],crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND,facecolor="#E0E0E0",zorder=0); ax.add_feature(cfeature.OCEAN,facecolor='#b0c4de',zorder=0); ax.add_feature(cfeature.COASTLINE,edgecolor='black',linewidth=0.5,zorder=1); ax.add_feature(cfeature.BORDERS,linestyle=':',edgecolor='black',zorder=1); ax.plot(lon_sel,lat_sel,'o',markersize=12,markerfacecolor='yellow',markeredgecolor='black',markeredgewidth=2,transform=ccrs.Geodetic(),zorder=5); ax.text(lon_sel+0.05,lat_sel+0.05,nom_poble_sel,transform=ccrs.Geodetic(),zorder=6,bbox=dict(facecolor='white',alpha=0.8,edgecolor='none',boxstyle='round,pad=0.2')); ax.set_title(f"{titol} a {nivell}hPa",weight='bold'); return fig,ax
@@ -431,16 +475,112 @@ def crear_mapa_generic(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel
     cont=ax.contourf(X,Y,grid_data,cmap=cmap,levels=levels,alpha=0.7,zorder=2,transform=ccrs.PlateCarree(),extend='both'); fig.colorbar(cont,ax=ax,orientation='vertical',label=f'{titol_var} ({unitat})',shrink=0.7); return fig
 
 def crear_grafic_orografia(params, zero_iso_h_agl):
-    lcl_agl=params.get('LCL_AGL',{}).get('value'); lfc_agl=params.get('LFC_AGL',{}).get('value')
-    if lcl_agl is None or np.isnan(lcl_agl): return None
-    fig,ax=plt.subplots(figsize=(8,5),dpi=120); ax.set_facecolor('#87CEEB'); ax.add_patch(Polygon([(0,0),(10,0),(10,10),(0,10)],facecolor='#87CEEB',zorder=0))
-    has_lfc=lfc_agl is not None and np.isfinite(lfc_agl); peak_h_m=lfc_agl if has_lfc and lfc_agl>0 else (lcl_agl if lcl_agl>0 else 1000); peak_h_km=peak_h_m/1000.0
-    m_verts=[(0,0),(1.5,0.1*peak_h_km),(3,0.5*peak_h_km),(5,peak_h_km),(7,0.4*peak_h_km),(8.5,0.1*peak_h_km),(10,0)]; ax.add_patch(Polygon(m_verts,facecolor='#556B2F',edgecolor='black',lw=1.5,zorder=2))
-    ax.axhline(lcl_agl/1000,color='grey',linestyle='--',lw=2,zorder=3); ax.text(-0.1,lcl_agl/1000,f" LCL ({lcl_agl:.0f} m) ",color='white',backgroundcolor='black',ha='right',va='center',weight='bold')
+    lcl_agl = params.get('LCL_AGL', {}).get('value')
+    lfc_agl = params.get('LFC_AGL', {}).get('value')
+
+    if lcl_agl is None or np.isnan(lcl_agl):
+        return None
+
+    # --- Configuració del gràfic ---
+    fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
+    fig.patch.set_alpha(0)
+    ax.set_xlim(0, 10)
+    
+    ax.set_ylabel("")
+    ax.tick_params(axis='y', labelleft=False, length=5, color='white') 
+    ax.spines['left'].set_color('white')
+    ax.spines['bottom'].set_color('white')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.set_xticklabels([])
+    ax.set_xticks([])
+
+    # --- 1. Gradient del Cel ---
+    sky_gradient = np.linspace(0.6, 1.0, 256).reshape(-1, 1)
+    sky_gradient = np.vstack((sky_gradient, sky_gradient))
+    ax.imshow(sky_gradient, aspect='auto', cmap='Blues_r', extent=[0, 10, 0, 12], zorder=0)
+
+    # --- 2. Perfil de la Muntanya Conceptual ---
+    has_lfc = lfc_agl is not None and np.isfinite(lfc_agl)
+    # L'altura del pic representat s'ajusta a l'LFC per a la visualització
+    peak_h_m = lfc_agl if has_lfc and lfc_agl > 1000 else (lcl_agl * 1.5 if lcl_agl > 1000 else 2000)
+    peak_h_km = min(peak_h_m / 1000.0, 8.0)
+
+    x_mountain = np.linspace(0, 10, 200)
+    y_mountain = peak_h_km * (1 - np.cos(x_mountain * np.pi / 10)) / 2 * (1 - (x_mountain - 5)**2 / 25)
+    
+    mountain_poly = Polygon(np.vstack([x_mountain, y_mountain]).T, facecolor='#6B8E23', edgecolor='#3A4D14', lw=2, zorder=2)
+    ax.add_patch(mountain_poly)
+    
+    # --- 3. Línies de LCL i LFC ---
+    line_outline_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
+    
+    lcl_km = lcl_agl / 1000
+    ax.axhline(lcl_km, color='white', linestyle='--', lw=2, zorder=3, path_effects=line_outline_effect)
+    ax.text(10.1, lcl_km, f" Inici de la condensació estable: {lcl_agl:.0f} m)", color='black', backgroundcolor='white', ha='left', va='center', weight='bold')
+    cloud_base = patches.Rectangle((0, lcl_km), 10, 0.2, facecolor='white', alpha=0.4, zorder=1)
+    ax.add_patch(cloud_base)
+
     if has_lfc:
-        ax.axhline(lfc_agl/1000,color='red',linestyle='--',lw=2,zorder=3); ax.text(10.1,lfc_agl/1000,f" LFC ({lfc_agl:.0f} m) ",color='white',backgroundcolor='red',ha='left',va='center',weight='bold'); ax.text(5,lfc_agl/1000+0.3,f"Altura de muntanya necessària per activar tempestes: ~{lfc_agl:.0f} m",color='black',bbox=dict(facecolor='yellow',edgecolor='black',boxstyle='round,pad=0.5'),ha='center',va='center',weight='bold',zorder=4)
-    else: ax.text(5,5,"No hi ha LFC accessible.\nL'orografia no pot iniciar convecció profunda.",ha='center',va='center',color='black',fontsize=14,weight='bold',bbox=dict(facecolor='lightblue',alpha=0.8,boxstyle='round,pad=0.5'))
-    ax.set_ylim(0,max(8,peak_h_km+2)); ax.set_xlim(0,10); ax.set_ylabel("Altitud (km)"); ax.set_title("Potencial d'Activació per Orografia",weight='bold'); ax.set_xticklabels([]); ax.set_xticks([]); fig.tight_layout(); return fig
+        lfc_km = lfc_agl / 1000
+        ax.axhline(lfc_km, color='#FFD700', linestyle='--', lw=2.5, zorder=3, path_effects=line_outline_effect)
+        ax.text(-0.1, lfc_km, f"Altura Clau (LFC: {lfc_agl:.0f} m) ", color='black', backgroundcolor='#FFD700', ha='right', va='center', weight='bold')
+
+    # --- 4. Anotacions i Elements Visuals ---
+    main_text_effect = [path_effects.Stroke(linewidth=4, foreground='black'), path_effects.Normal()]
+
+    mountain_lfc_intersect_x = np.interp(lfc_km if has_lfc else peak_h_km, y_mountain, x_mountain)
+    
+    ax.annotate("", xy=(mountain_lfc_intersect_x, lfc_km if has_lfc else peak_h_km), xytext=(1, 0.1),
+                arrowprops=dict(arrowstyle="->", color='white', lw=2.5, linestyle=':', connectionstyle="arc3,rad=0.2"), zorder=4)
+    flux_text = ax.text(1.5, 0.4, "Flux d'aire\nforçat a pujar", color='white', weight='bold', ha='center', fontsize=11)
+    flux_text.set_path_effects(main_text_effect)
+
+    # --- TEXT D'ANÀLISI FINAL I CLARIFICAT ---
+    if has_lfc:
+        # La muntanya representada supera l'LFC
+        if peak_h_m >= lfc_agl:
+            ax.plot(mountain_lfc_intersect_x, lfc_km, '*', markersize=20, color='yellow', markeredgecolor='red', zorder=5)
+            # AQUEST ÉS EL TEXT CLAU
+            analysis_text_content = f"DISPARADOR OROGRÀFIC POTENCIAL!\nUna muntanya de {lfc_agl:.0f} m o més seria suficient."
+            analysis_text = ax.text(5, max(peak_h_km, lfc_km) + 1, analysis_text_content,
+                                    ha='center', va='center', fontsize=14, weight='bold', color='white')
+            analysis_text.set_path_effects(main_text_effect)
+        # La muntanya representada NO supera l'LFC
+        else:
+            ax.plot(x_mountain[np.argmax(y_mountain)], peak_h_km, 'X', markersize=15, color='red', markeredgecolor='white', zorder=5)
+            # AQUEST ÉS L'ALTRE TEXT CLAU
+            analysis_text_content = f"L'OROGRAFIA NO ÉS SUFICIENT.\nEs necessita una muntanya de {lfc_agl:.0f} m per disparar la tempesta."
+            analysis_text = ax.text(5, peak_h_km + 1, analysis_text_content,
+                                    ha='center', va='center', color='yellow', weight='bold', fontsize=12)
+            analysis_text.set_path_effects(main_text_effect)
+    # Cas on no hi ha LFC
+    else:
+        analysis_text_content = "No hi ha un LFC accessible.\nL'atmosfera és massa estable."
+        analysis_text = ax.text(5, 4, analysis_text_content,
+                                ha='center', va='center', color='lightblue', weight='bold', fontsize=12)
+        analysis_text.set_path_effects(main_text_effect)
+
+
+    # --- Ajust final dels límits ---
+    final_ylim = max(peak_h_km, (lfc_km if has_lfc else 0)) + 2.5
+    ax.set_ylim(0, final_ylim)
+    
+    # --- ETIQUETES DELS EIXOS DINS DEL GRÀFIC ---
+    y_label_text = ax.text(0.2, final_ylim - 0.2, "Altitud (km)",
+                           ha='left', va='top', color='white', weight='bold', fontsize=12)
+    y_label_text.set_path_effects(main_text_effect)
+
+    for y_tick in ax.get_yticks():
+        if y_tick > 0:
+            tick_label = ax.text(0.15, y_tick, f'{int(y_tick)}',
+                                 ha='left', va='center',
+                                 color='white', weight='bold', fontsize=9)
+            tick_label.set_path_effects(main_text_effect)
+
+    fig.tight_layout(pad=0.5)
+    
+    return fig
 
 def crear_grafic_nuvol(params, H, u, v, is_convergence_active):
     lcl_agl,el_msl_km,cape,srh1=(params.get(k,{}).get('value') for k in ['LCL_AGL','EL_MSL','CAPE_Brut','SRH_0-1km'])
@@ -552,9 +692,23 @@ if sondeo:
                     else: st.warning("No hi ha prou dades per generar el mapa.")
         elif selected_tab == "🧭Hodògraf": st.subheader("Hodògraf (0-10 km)"); st.pyplot(crear_hodograf(p,u,v,H))
         elif selected_tab == "📍Sondeig": st.subheader(f"Sondeig per a {poble_sel} ({datetime.now(pytz.timezone('Europe/Madrid')).strftime('%d/%m/%Y')} - {hourly_index:02d}:00h Local)"); st.pyplot(crear_skewt(p,T,Td,u,v))
-        elif selected_tab == "🏔️ Orografia": st.subheader("Potencial d'Activació per Orografia"); fig_oro=crear_grafic_orografia(parametros,zero_iso_h_agl); st.pyplot(fig_oro) if fig_oro else st.info("No hi ha LCL per calcular el potencial orogràfic.")
+        elif selected_tab == "🏔️ Orografia": 
+            st.subheader("Potencial d'Activació per Orografia")
+            fig_oro=crear_grafic_orografia(parametros,zero_iso_h_agl)
+            if fig_oro:
+                st.pyplot(fig_oro)
+            else:
+                st.info("No hi ha LCL per calcular el potencial orogràfic.")
+        
         elif selected_tab == "☁️ Visualització":
             with st.spinner("Dibuixant la possible estructura del núvol..."):
-                fig_nuvol=crear_grafic_nuvol(parametros,H,u,v,is_convergence_active=is_conv_active); st.pyplot(fig_nuvol) if fig_nuvol else st.info("No hi ha LCL o EL per visualitzar l'estructura del núvol.")
-    else: st.warning(f"No s'han pogut calcular els paràmetres per a les {hourly_index:02d}:00h. Proveu amb una altra hora o localitat.")
-else: st.error(f"No s'han pogut obtenir dades per a '{poble_sel}'. Pot ser que estigui fora de la cobertura del model AROME o que hi hagi un problema amb la connexió.")
+                fig_nuvol = crear_grafic_nuvol(parametros, H, u, v, is_convergence_active=is_conv_active)
+                if fig_nuvol:
+                    st.pyplot(fig_nuvol)
+                else:
+                    st.info("No hi ha LCL o EL per visualitzar l'estructura del núvol.")
+
+    else:
+        st.warning(f"No s'han pogut calcular els paràmetres per a les {hourly_index:02d}:00h. Proveu amb una altra hora o localitat.")
+else:
+    st.error(f"No s'han pogut obtenir dades per a '{poble_sel}'. Pot ser que estigui fora de la cobertura del model AROME o que hi hagi un problema amb la connexió.")
