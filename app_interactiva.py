@@ -113,8 +113,7 @@ def carregar_dades_lot(_chunk_locations):
 @st.cache_data(ttl=18000)
 def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
     lats, lons = np.linspace(40.5, 42.8, 12), np.linspace(0.2, 3.3, 12)
-    lon_grid, lat_grid = np.meshgrid(lons, lats)
-    api_vars = []
+    lon_grid, lat_grid = np.meshgrid(lons, lats); api_vars = []
     if variable == 'wind': api_vars = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
     elif variable == 'dewpoint': api_vars = [f"dew_point_{nivell}hPa"]
     elif variable == 'humidity': api_vars = [f"relative_humidity_{nivell}hPa"]
@@ -147,36 +146,27 @@ def calculate_parameters(p, T, Td, u, v, h):
     def get_val(qty, unit=None):
         try: return qty.to(unit).m if unit else qty.m
         except: return None
-
-    # Paràmetres bàsics
     params['SFC_Temp'] = {'value': get_val(T[0], 'degC'), 'units': '°C'}
     try:
-        parcel_prof = mpcalc.parcel_profile(p, T[0], Td[0])
-        cape, cin = mpcalc.cape_cin(p, T, Td, parcel_prof)
+        parcel_prof = mpcalc.parcel_profile(p, T[0], Td[0]); cape, cin = mpcalc.cape_cin(p, T, Td, parcel_prof)
         params['CAPE_Brut'] = {'value': get_val(cape, 'J/kg'), 'units': 'J/kg'}
         params['CIN_Fre'] = {'value': get_val(cin, 'J/kg'), 'units': 'J/kg'}
         if params.get('CAPE_Brut', {}).get('value', 0) > 0:
             params['W_MAX'] = {'value': np.sqrt(2 * params['CAPE_Brut']['value']), 'units': 'm/s'}
             params['CAPE_Utilitzable'] = {'value': max(0, params['CAPE_Brut']['value'] - abs(params.get('CIN_Fre', {}).get('value', 0))), 'units': 'J/kg'}
     except: pass
-    
-    # Nivells característics
     try: lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); lcl_h = mpcalc.pressure_to_height_std(lcl_p); params['LCL_AGL'] = {'value': get_val(lcl_h - h[0], 'm'), 'units': 'm'}
     except: pass
     try: lfc_p, _ = mpcalc.lfc(p, T, Td); lfc_h = mpcalc.pressure_to_height_std(lfc_p); params['LFC_AGL'] = {'value': get_val(lfc_h - h[0], 'm'), 'units': 'm'}
     except: pass
     try: el_p, _ = mpcalc.el(p, T, Td); el_h = mpcalc.pressure_to_height_std(el_p); params['EL_MSL'] = {'value': get_val(el_h, 'km'), 'units': 'km'}
     except: pass
-    
-    # Paràmetres cinemàtics
     try: s_u, s_v = mpcalc.bulk_shear(p, u, v, height=h, depth=6*units.km); params['Shear_0-6km'] = {'value': get_val(mpcalc.wind_speed(s_u, s_v), 'm/s'), 'units': 'm/s'}
     except: pass
     try: _, srh, _ = mpcalc.storm_relative_helicity(h, u, v, depth=1*units.km); params['SRH_0-1km'] = {'value': get_val(srh), 'units': 'm²/s²'}
     except: pass
     try: _, srh, _ = mpcalc.storm_relative_helicity(h, u, v, depth=3*units.km); params['SRH_0-3km'] = {'value': get_val(srh), 'units': 'm²/s²'}
     except: pass
-    
-    # Paràmetres d'humitat i altres
     try: pwat = mpcalc.precipitable_water(p, Td); params['PWAT_Total'] = {'value': get_val(pwat, 'mm'), 'units': 'mm'}
     except: pass
     try:
@@ -185,11 +175,10 @@ def calculate_parameters(p, T, Td, u, v, h):
             h_zero_iso_msl = np.interp(0, [T_c[idx[0]+1], T_c[idx[0]]], [H_m[idx[0]+1], H_m[idx[0]]])
             params['ZeroIso_AGL'] = {'value': (h_zero_iso_msl - H_m[0]), 'units': 'm'}
     except: pass
-
-    # --- NOUS PARÀMETRES AVANÇATS ("EINSTEIN") ---
     try:
-        p_700, p_500 = 700*units.hPa, 500*units.hPa
-        lr = mpcalc.lapse_rate(T, p, p_700, p_500) # Corregit ordre d'arguments T, p
+        p_levels_interp = np.arange(p.m.min(), p.m.max(), 10) * units.hPa
+        T_interp = mpcalc.interpolate_1d(p, T, p_levels_interp)
+        lr = mpcalc.lapse_rate(p_levels_interp, T_interp, bottom=700*units.hPa, top=500*units.hPa)
         params['LapseRate_700_500'] = {'value': get_val(lr, 'delta_degC/km'), 'units': '°C/km'}
     except: pass
     try:
@@ -200,7 +189,6 @@ def calculate_parameters(p, T, Td, u, v, h):
         stp_cin = mpcalc.significant_tornado(cape=params.get('CAPE_Utilitzable',{}).get('value',0)*units('J/kg'), lcl_height=params.get('LCL_AGL',{}).get('value',9999)*units.m, storm_helicity=params.get('SRH_0-1km',{}).get('value',0)*units('m^2/s^2'), bulk_shear=params.get('Shear_0-6km',{}).get('value',0)*units('m/s'))
         params['STP_cin'] = {'value': get_val(stp_cin), 'units': ''}
     except: pass
-    
     return params
 
 def processar_sondeig_per_hora(sondeo, hourly_index, p_levels):
@@ -247,6 +235,7 @@ def encontrar_localitats_con_convergencia(_hourly_index, _nivell, _localitats, _
 def generar_avis_potencial_per_precalcul(params):
     cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0); cin = params.get('CIN_Fre', {}).get('value'); shear = params.get('Shear_0-6km', {}).get('value'); srh1 = params.get('SRH_0-1km', {}).get('value'); lcl_agl = params.get('LCL_AGL', {}).get('value', 9999)
     if cape_u < 100 or (cin is not None and cin < -100): return "ESTABLE"
+    if cape_u > 500 and (cin is None or cin > -50): return "ALERTA DE DISPARADOR"
     cond_supercelula = shear is not None and shear > 20 and cape_u > 1500 and srh1 is not None and srh1 > 250 and lcl_agl < 1200
     cond_avis_sever = shear is not None and shear > 18 and cape_u > 1000
     cond_precaucio = shear is not None and shear > 12 and cape_u > 500
@@ -258,7 +247,7 @@ def generar_avis_potencial_per_precalcul(params):
 @st.cache_data(ttl=18000)
 def precalcular_avisos_hores(_totes_les_dades, _p_levels):
     avisos_hores = {}
-    avisos_a_buscar = {"PRECAUCIÓ", "AVÍS", "RISC ALT"}
+    avisos_a_buscar = {"PRECAUCIÓ", "AVÍS", "RISC ALT", "ALERTA DE DISPARADOR"}
     for nom_poble, sondeo in _totes_les_dades.items():
         for hora in range(24):
             profiles = processar_sondeig_per_hora(sondeo, hora, _p_levels)
@@ -283,28 +272,31 @@ def get_parameter_style(param_name, value):
     color = "inherit"; emoji = ""
     if value is None or not isinstance(value, (int, float, np.number)): return color, emoji
     if param_name == 'SFC_Temp':
-        if value > 36: color, emoji = "#FF0000", "🔥"
-        elif value > 32: color, emoji = "#FF4500", ""
+        if value > 36: color, emoji = "#FF0000", "🔥";
+        elif value > 32: color = "#FF4500";
         elif value <= 0: color, emoji = "#0000FF", "🥶"
     elif param_name == 'CIN_Fre':
-        if value >= -25: color, emoji = "#32CD32", "✅"
-        elif value < -100: color, emoji = "#FF4500", "⛔"
+        if value >= -25: color, emoji = "#32CD32", "✅";
+        elif value < -150: color, emoji = "#FF4500", "⛔"
     elif 'CAPE' in param_name:
-        if value > 3500: color, emoji = "#FF00FF", "💥"
-        elif value > 2500: color = "#FF4500"
+        if value > 3500: color, emoji = "#FF00FF", "💥";
+        elif value > 2500: color = "#FF4500";
         elif value > 1500: color = "#FFA500"
     elif 'Shear' in param_name:
-        if value > 25: color, emoji = "#FF4500", "↔️"
+        if value > 25: color, emoji = "#FF4500", "↔️";
         elif value > 18: color = "#FFA500"
     elif 'SRH' in param_name:
-        if value > 400: color, emoji = "#FF00FF", "🔄"
+        if value > 400: color, emoji = "#FF00FF", "🔄";
         elif value > 250: color = "#FF4500"
     elif 'DCAPE' in param_name:
-        if value > 1200: color, emoji = "#FF4500", "💨"
+        if value > 1200: color, emoji = "#FF4500", "💨";
         elif value > 800: color = "#FFA500"
     elif 'STP' in param_name:
-        if value > 1: color, emoji = "#FF00FF", "🌪️"
+        if value > 1: color, emoji = "#FF00FF", "🌪️";
         elif value > 0.5: color = "#FFA500"
+    elif 'LapseRate' in param_name:
+        if value > 7.0: color, emoji = "#FF4500", "🧊";
+        elif value > 6.5: color = "#FFA500"
     return color, emoji
 
 def generar_avis_temperatura(params):
@@ -315,24 +307,19 @@ def generar_avis_temperatura(params):
     return None, None, None, None
 
 def generar_avis_localitat(params, is_convergence_active):
-    # NOU: Extracció de tots els paràmetres, inclosos els avançats
     cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0); cin = params.get('CIN_Fre', {}).get('value'); shear = params.get('Shear_0-6km', {}).get('value'); srh1 = params.get('SRH_0-1km', {}).get('value'); lcl_agl = params.get('LCL_AGL', {}).get('value', 9999); lfc_agl = params.get('LFC_AGL', {}).get('value', 9999)
     dcape = params.get('DCAPE', {}).get('value', 0); stp = params.get('STP_cin', {}).get('value', 0); lr = params.get('LapseRate_700_500', {}).get('value', 0)
 
-    # Condicions bàsiques d'estabilitat
     if cape_u < 100: return "ESTABLE", "Sense risc de tempestes significatives. L'atmosfera és estable.", "#3CB371"
     if cin is not None and cin < -150: return "ESTABLE", f"La 'tapa' atmosfèrica (CIN de {cin:.0f} J/kg) és massa forta i probablement inihibirà qualsevol convecció.", "#3CB371"
     
-    # CORRECCIÓ CLAU: Aquesta condició només s'aplica si NO hi ha convergència.
     if not is_convergence_active and lfc_agl > 3500:
         return "RISC BAIX", f"L'inici de la convecció (LFC a {lfc_agl:.0f} m) és massa alt, fent les tempestes improbables sense un forçament potent.", "#4682B4"
 
-    # Condicions per a diferents tipus de tempesta
     cond_supercelula = shear is not None and shear > 20 and cape_u > 1500 and srh1 is not None and srh1 > 200 and lcl_agl < 1300
     cond_avis_sever = shear is not None and shear > 18 and cape_u > 1200
     cond_precaucio = shear is not None and shear > 12 and cape_u > 500
 
-    # Lògica d'avisos jeràrquica i experta
     if cond_supercelula and stp > 0.8:
         if is_convergence_active: return "RISC ALT", f"Entorn de SUPERCL·LULA TORNÀDICA (STP={stp:.1f}). La convergència actua com a disparador. Risc de tornados, calamarsa grossa i vent destructiu.", "#E60073"
         else: return "POTENCIAL SEVER", f"Potencial latent de SUPERCL·LULA TORNÀDICA (STP={stp:.1f}) per falta d'un disparador clar. L'entorn és perillós.", "#FFC300"
@@ -367,12 +354,10 @@ def generar_analisi_detallada(params):
     def stream_text(text):
         for word in text.split(): yield word + " "; time.sleep(0.02)
         yield "\n\n"
-    
-    cape_u=params.get('CAPE_Utilitzable',{}).get('value',0); cin=params.get('CIN_Fre',{}).get('value'); shear6=params.get('Shear_0-6km',{}).get('value'); srh1=params.get('SRH_0-1km',{}).get('value'); lcl_agl=params.get('LCL_AGL',{}).get('value'); lfc_agl=params.get('LFC_AGL',{}).get('value'); w_max=params.get('W_MAX',{}).get('value')
+    cape_u=params.get('CAPE_Utilitzable',{}).get('value',0); cin=params.get('CIN_Fre',{}).get('value'); shear6=params.get('Shear_0-6km',{}).get('value'); srh1=params.get('SRH_0-1km',{}).get('value'); lfc_agl=params.get('LFC_AGL',{}).get('value'); w_max=params.get('W_MAX',{}).get('value')
     dcape=params.get('DCAPE',{}).get('value'); stp=params.get('STP_cin',{}).get('value'); lr=params.get('LapseRate_700_500',{}).get('value'); pwat=params.get('PWAT_Total',{}).get('value')
 
     if cape_u is None or cape_u < 100: yield from stream_text("### Anàlisi General\nL'atmosfera és estable. El potencial energètic per a la formació de tempestes (CAPE) és pràcticament inexistent. No s'esperen fenòmens de temps sever."); return
-
     yield from stream_text("### Potencial Energètic (Termodinàmica)")
     cape_text="feble" if cape_u<1000 else "moderada" if cape_u<2500 else "forta" if cape_u<4000 else "extrema"
     yield from stream_text(f"**Inestabilitat (CAPE):** El valor de CAPE utilitzable és de **{cape_u:.0f} J/kg**, el que indica una inestabilitat **{cape_text}**. Això es tradueix en un potencial de corrents ascendents de fins a **{w_max*3.6:.0f} km/h**.")
@@ -383,7 +368,6 @@ def generar_analisi_detallada(params):
     if lr:
         lr_text = "molt pronunciat" if lr > 7 else "moderat"
         yield from stream_text(f"**Gradient Tèrmic (700-500hPa):** El refredament amb l'altura és **{lr_text}** ({lr:.1f} °C/km), un factor que afavoreix el desenvolupament de corrents ascendents forts i, per tant, el potencial de calamarsa.")
-
     yield from stream_text("### Organització i Rotació (Cinemàtica)")
     if shear6 is not None:
         if shear6 < 10: shear_text = "Molt feble, afavorint tempestes desorganitzades i de curta durada (unicel·lulars)."
@@ -393,20 +377,14 @@ def generar_analisi_detallada(params):
     if srh1 is not None and srh1 > 100:
         srh_text="moderat" if srh1<250 else "fort"
         yield from stream_text(f"**Helicitat 0-1 km (SRH):** La rotació potencial a nivells baixos és **{srh_text}** ({srh1:.0f} m²/s²). Valors elevats, combinats amb una base del núvol baixa (<1200m), augmenten el risc que la rotació de la tempesta arribi a terra (tornados).")
-
     yield from stream_text("### Síntesi i Riscos Específics")
     if stp and stp > 0.5: yield from stream_text(f"**Potencial Tornàdic (STP):** L'índex de tornado significatiu és de **{stp:.1f}**. Valors superiors a 1 indiquen un entorn molt favorable per a supercèl·lules tornàdiques si s'arriben a formar.")
     if dcape and dcape > 800: yield from stream_text(f"**Potencial de Vent Sever (DCAPE):** El valor de **{dcape:.0f} J/kg** indica un alt potencial per a la formació de corrents descendents molt forts (esclafits o 'downbursts') que poden causar danys a la superfície.")
     if pwat and pwat > 30: yield from stream_text(f"**Potencial de Precipitació Intensa (Aigua Precipitable):** El contingut d'humitat a la columna atmosfèrica és elevat ({pwat:.1f} mm), afavorint xàfecs de gran intensitat i possibles inundacions locals.")
-    
     yield from stream_text(f"**La Clau del Pronòstic:** La clau principal avui és la interacció entre la **inestabilitat {cape_text}** i un **cisallament {('fort' if shear6>18 else 'moderat')}**. La presència (o absència) d'un mecanisme de tret com la convergència serà el factor decisiu per determinar si s'allibera aquest potencial i quin tipus de tempestes es desenvolupen.")
 
 def display_metrics(params_dict):
-    # NOU: Llista de paràmetres ampliada i reordenada per a una visualització experta.
-    param_map = [
-        ('Temperatura','SFC_Temp'), ('CAPE Utilitzable','CAPE_Utilitzable'), ('CIN (Fre)','CIN_Fre'), ('Shear 0-6km','Shear_0-6km'),
-        ('SRH 0-1km','SRH_0-1km'), ('Potencial Tornàdic','STP_cin'), ('Potencial Esclafits','DCAPE'), ('Gradient Tèrmic','LapseRate_700_500')
-    ]
+    param_map = [('Temperatura','SFC_Temp'), ('CAPE Utilitzable','CAPE_Utilitzable'), ('CIN (Fre)','CIN_Fre'), ('Shear 0-6km','Shear_0-6km'), ('SRH 0-1km','SRH_0-1km'), ('Potencial Tornàdic','STP_cin'), ('Potencial Esclafits','DCAPE'), ('Gradient Tèrmic','LapseRate_700_500')]
     st.markdown("""<style>.metric-container{border:1px solid rgba(128,128,128,0.2);border-radius:10px;padding:10px;margin-bottom:10px;}</style>""", unsafe_allow_html=True)
     available_params=[(label,key) for label,key in param_map if key in params_dict and params_dict[key].get('value') is not None]
     cols=st.columns(min(4,len(available_params)))
@@ -516,37 +494,54 @@ with st.spinner("Buscant hores amb avisos a tot el territori..."):
     avisos_hores=precalcular_avisos_hores(totes_les_dades,p_levels)
 
 def update_from_avis_selector():
-    poble_avis_format=st.session_state.avis_selector
-    if "(Avís a les" in poble_avis_format:
-        nom_poble_real=poble_avis_format.split(' (')[0]
+    poble_avis_format = st.session_state.avis_selector
+    if " (" in poble_avis_format:
+        # Mètode robust per extreure el nom, independentment de l'emoji
+        nom_poble_real = poble_avis_format.split(" (")[0].split(" ", 1)[1]
         if nom_poble_real in avisos_hores:
-            hora_avis=avisos_hores[nom_poble_real]; st.session_state.hora_seleccionada_str=f"{hora_avis:02d}:00h"; st.session_state.poble_seleccionat=nom_poble_real
+            hora_avis = avisos_hores[nom_poble_real]
+            st.session_state.hora_seleccionada_str = f"{hora_avis:02d}:00h"
+            st.session_state.poble_seleccionat = nom_poble_real
+
+hourly_index = int(st.session_state.hora_seleccionada_str.split(':')[0])
+with st.spinner("Analitzant convergències i disparadors a tot el territori..."):
+    conv_threshold = -5.5
+    localitats_convergencia = encontrar_localitats_con_convergencia(hourly_index, 850, pobles_data, conv_threshold, FORECAST_DAYS)
 
 with st.container(border=True):
     col1,col2=st.columns([1,1],gap="large"); hour_options=[f"{h:02d}:00h" for h in range(24)]
     with col1:
         try: index_hora=hour_options.index(st.session_state.hora_seleccionada_str)
         except ValueError: index_hora=0
-        st.session_state.hora_seleccionada_str=st.selectbox("Hora del pronòstic (Local):",options=hour_options,index=index_hora)
+        st.session_state.hora_seleccionada_str=st.selectbox("Hora del pronòstic (Local):",options=hour_options,index=index_hora, key="hora_selector")
     with col2:
         p_levels_all=p_levels if p_levels else [1000,925,850,700,500,300]; nivell_global=st.selectbox("Nivell d'anàlisi de mapes:",p_levels_all,index=p_levels_all.index(850) if 850 in p_levels_all else 0)
-    if avisos_hores:
-        opcions_avis_formatejades=[f"{poble} (Avís a les {hora:02d}:00h)" for poble,hora in avisos_hores.items()]; opcions_avis=["--- 🔥 Selecciona una localitat amb avís per anar-hi directament ---"]+opcions_avis_formatejades; st.selectbox("Localitats amb previsió d'avís:",options=opcions_avis,key='avis_selector',on_change=update_from_avis_selector)
+    
+    opcions_avis_formatejades = []
+    for poble, hora in avisos_hores.items():
+        profiles = processar_sondeig_per_hora(totes_les_dades[poble], hourly_index, p_levels)
+        if profiles:
+            parametros = calculate_parameters(*profiles)
+            tipus_avis = generar_avis_potencial_per_precalcul(parametros)
+            if tipus_avis == "ALERTA DE DISPARADOR":
+                opcions_avis_formatejades.append(f"🎯 {poble} (Disparador a les {hourly_index:02d}:00h)")
+            elif tipus_avis in ["PRECAUCIÓ", "AVÍS", "RISC ALT"]:
+                if poble in localitats_convergencia:
+                    opcions_avis_formatejades.append(f"🔥 {poble} (Avís a les {hourly_index:02d}:00h)")
+                else:
+                    opcions_avis_formatejades.append(f"🧐 {poble} (Potencial a les {hourly_index:02d}:00h)")
+    opcions_avis=["--- Selecciona una localitat amb risc ---"] + sorted(list(set(opcions_avis_formatejades)))
+    st.selectbox("Localitats amb risc (per a l'hora seleccionada):",options=opcions_avis,key='avis_selector',on_change=update_from_avis_selector)
 
 st.markdown(f'<p style="text-align: center; font-size: 0.9em; color: grey;">🕒 {get_next_arome_update_time()}</p>', unsafe_allow_html=True)
-hourly_index = int(st.session_state.hora_seleccionada_str.split(':')[0])
 
-with st.spinner("Analitzant convergències i disparadors a tot el territori..."):
-    conv_threshold = -5.5
-    localitats_convergencia = encontrar_localitats_con_convergencia(hourly_index, nivell_global, pobles_data, conv_threshold, FORECAST_DAYS)
-    disparadors_actius = {poble for poble in avisos_hores if poble in localitats_convergencia}
+hourly_index = int(st.session_state.hora_seleccionada_str.split(':')[0])
+disparadors_actius = {poble for poble in avisos_hores if poble in localitats_convergencia}
 
 def update_poble_selection():
     poble_display = st.session_state.poble_selector
-    if " (" in poble_display:
-        nom_poble_real = poble_display.split(" (")[0].replace("⚠️", "").strip()
-    else:
-        nom_poble_real = poble_display.strip()
+    if " (" in poble_display: nom_poble_real = poble_display.split(" (")[0].replace("⚠️", "").strip()
+    else: nom_poble_real = poble_display.strip()
     st.session_state.poble_seleccionat = nom_poble_real
 
 sorted_pobles = sorted(pobles_data.keys())
@@ -567,8 +562,7 @@ if sondeo:
     data_is_valid = False
     with st.spinner(f"Processant dades per a {poble_sel}..."):
         profiles = processar_sondeig_per_hora(sondeo, hourly_index, p_levels)
-        if profiles:
-            p, T, Td, u, v, H = profiles; parametros = calculate_parameters(p, T, Td, u, v, H); data_is_valid = True
+        if profiles: p, T, Td, u, v, H = profiles; parametros = calculate_parameters(p, T, Td, u, v, H); data_is_valid = True
 
     if data_is_valid:
         is_conv_active = poble_sel in localitats_convergencia
