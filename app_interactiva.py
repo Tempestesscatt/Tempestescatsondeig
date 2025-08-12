@@ -317,6 +317,7 @@ def generar_avis_localitat(params, is_convergence_active):
 
     if cape_u < 100: return "ESTABLE", "Sense risc de tempestes significatives. L'atmosfera és estable.", "#3CB371"
     if cin is not None and cin < -150: return "ESTABLE", f"La 'tapa' atmosfèrica (CIN de {cin:.0f} J/kg) és massa forta i probablement inihibirà qualsevol convecció.", "#3CB371"
+    
     if not is_convergence_active and lfc_agl > 3500: return "RISC BAIX", f"L'inici de la convecció (LFC a {lfc_agl:.0f} m) és massa alt, fent les tempestes improbables sense un forçament potent.", "#4682B4"
 
     cond_supercelula = shear is not None and shear > 20 and cape_u > 1500 and srh1 is not None and srh1 > 200 and lcl_agl < 1300
@@ -342,6 +343,7 @@ def generar_avis_localitat(params, is_convergence_active):
     
     elif cond_precaucio:
         missatge_base = "Risc de TEMPESTES ORGANITZADES (multicèl·lules). Possibles fortes pluges i calamarsa local."
+        if pwat > 35: missatge_base += " Atenció al risc de xàfecs torrencials."
         suggeriment = " La convergència detectada augmenta la probabilitat que es formin." if is_convergence_active else " L'absència de convergència clara podria limitar-ne el desenvolupament."
         return "PRECAUCIÓ", missatge_base + suggeriment, "#FFD700"
     
@@ -514,6 +516,9 @@ def update_from_avis_selector():
             st.session_state.hora_seleccionada_str = f"{hora_avis:02d}:00h"
             st.session_state.poble_seleccionat = nom_poble_real
 
+def update_from_hora_selector():
+    st.session_state.avis_selector_default = "--- Selecciona una localitat amb risc ---"
+
 hourly_index = int(st.session_state.hora_seleccionada_str.split(':')[0])
 with st.spinner("Analitzant convergències i disparadors a tot el territori..."):
     conv_threshold = -5.5
@@ -524,26 +529,19 @@ with st.container(border=True):
     with col1:
         try: index_hora=hour_options.index(st.session_state.hora_seleccionada_str)
         except ValueError: index_hora=0
-        st.session_state.hora_seleccionada_str=st.selectbox("Hora del pronòstic (Local):",options=hour_options,index=index_hora, key="hora_selector")
+        st.selectbox("Hora del pronòstic (Local):",options=hour_options,index=index_hora, key="hora_selector", on_change=update_from_hora_selector)
     with col2:
         p_levels_all=p_levels if p_levels else [1000,925,850,700,500,300]; nivell_global=st.selectbox("Nivell d'anàlisi de mapes:",p_levels_all,index=p_levels_all.index(850) if 850 in p_levels_all else 0)
     
     opcions_avis_formatejades = []
-    for poble, hora_potencial in avisos_hores.items():
-        if poble in totes_les_dades:
-            profiles = processar_sondeig_per_hora(totes_les_dades[poble], hourly_index, p_levels)
-            if profiles:
-                parametros = calculate_parameters(*profiles)
-                tipus_avis = generar_avis_potencial_per_precalcul(parametros)
-                if tipus_avis == "ALERTA DE DISPARADOR":
-                    opcions_avis_formatejades.append(f"🎯 {poble} (Disparador a les {hourly_index:02d}:00h)")
-                elif tipus_avis in ["PRECAUCIÓ", "AVÍS", "RISC ALT"]:
-                    if poble in localitats_convergencia:
-                        opcions_avis_formatejades.append(f"🔥 {poble} (Avís a les {hourly_index:02d}:00h)")
-                    else:
-                        opcions_avis_formatejades.append(f"🧐 {poble} (Potencial a les {hourly_index:02d}:00h)")
+    for poble, hora_avis in avisos_hores.items():
+        if poble in localitats_convergencia:
+            opcions_avis_formatejades.append(f"🔥 {poble} (Avís a les {hora_avis:02d}:00h)")
+        else:
+            opcions_avis_formatejades.append(f"🧐 {poble} (Potencial a les {hora_avis:02d}:00h)")
+    
     opcions_avis=["--- Selecciona una localitat amb risc ---"] + sorted(list(set(opcions_avis_formatejades)))
-    st.selectbox("Localitats amb risc (per a l'hora seleccionada):",options=opcions_avis,key='avis_selector',on_change=update_from_avis_selector)
+    st.selectbox("Localitats amb risc (per a l'hora seleccionada):",options=opcions_avis,key='avis_selector',on_change=update_from_avis_selector, index=0)
 
 st.markdown(f'<p style="text-align: center; font-size: 0.9em; color: grey;">🕒 {get_next_arome_update_time()}</p>', unsafe_allow_html=True)
 
