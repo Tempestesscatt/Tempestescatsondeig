@@ -208,25 +208,80 @@ def processar_sondeig_per_hora(sondeo, hourly_index, p_levels):
         return (np.array(p_profile)*units.hPa, np.array(T_profile)*units.degC, np.array(Td_profile)*units.degC,
                 np.array(u_profile)*units.m/units.s, np.array(v_profile)*units.m/units.s, np.array(h_profile)*units.m)
     except Exception: return None
-
 @st.cache_data(ttl=18000)
 def encontrar_localitats_con_convergencia(_hourly_index, _nivell, _localitats, _threshold, _forecast_days):
+    """
+    Obté dades de vent per a un nivell de pressió, calcula la divergència
+    i retorna un set de localitats que estan en zones amb convergència
+    per sota d'un llindar especificat.
+    """
     lats, lons, data, error = obtener_dades_mapa('wind', _nivell, _hourly_index, _forecast_days)
-    if error or not lats or len(lats) < 4: return set()
-    speeds, dirs = zip(*data); speeds_ms = (np.array(speeds) * 1000 / 3600) * units('m/s'); dirs_deg = np.array(dirs) * units.degrees
+    if error or not lats or len(lats) < 4: 
+        return set()
+        
+    speeds, dirs = zip(*data)
+    speeds_ms = (np.array(speeds) * 1000 / 3600) * units('m/s')
+    dirs_deg = np.array(dirs) * units.degrees
     u_comp, v_comp = mpcalc.wind_components(speeds_ms, dirs_deg)
-    grid_lon, grid_lat = np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100)
-    X, Y = np.meshgrid(grid_lon, grid_lat); points = np.vstack((lons, lats)).T
-    u_grid, v_grid = griddata(points, u_comp.m, (X, Y), method='cubic'), griddata(points, v_comp.m, (X, Y), method='cubic')
+    
+    # Creem una malla (grid) per a la interpolació de les dades
+    grid_lon, grid_lat = np.linspace(min(lons), max(lons), 50), np.linspace(min(lats), max(lats), 50)
+    X, Y = np.meshgrid(grid_lon, grid_lat)
+    points = np.vstack((lons, lats)).T
+    
+    # Interpolem els components del vent a la nostra malla
+    u_grid = griddata(points, u_comp.m, (X, Y), method='cubic')
+    v_grid = griddata(points, v_comp.m, (X, Y), method='cubic')
     u_grid, v_grid = np.nan_to_num(u_grid), np.nan_to_num(v_grid)
-    dx, dy = mpcalc.lat_lon_grid_deltas(X, Y); divergence = mpcalc.divergence(u_grid * units('m/s'), v_grid * units('m/s'), dx=dx, dy=dy) * 1e5
+    
+    # Calculem la divergència
+    dx, dy = mpcalc.lat_lon_grid_deltas(X, Y)
+    divergence = mpcalc.divergence(u_grid * units('m/s'), v_grid * units('m/s'), dx=dx, dy=dy) * 1e5 # Escalat per a llegibilitat
+    
     localitats_en_convergencia = set()
     for nom_poble, coords in _localitats.items():
         try:
-            lon_idx, lat_idx = (np.abs(grid_lon - coords['lon'])).argmin(), (np.abs(grid_lat - coords['lat'])).argmin()
-            if divergence.m[lat_idx, lon_idx] < _threshold: localitats_en_convergencia.add(nom_poble)
-        except: continue
+            # Trobem el punt de la malla més proper a la localitat
+            lon_idx = (np.abs(grid_lon - coords['lon'])).argmin()
+            lat_idx = (np.abs(grid_lat - coords['lat'])).argmin()
+            
+            # Comprovem si la divergència en aquest punt compleix el llindar
+            if divergence.m[lat_idx, lon_idx] < _threshold:
+                localitats_en_convergencia.add(nom_poble)
+        except Exception:
+            continue
+            
     return localitats_en_convergencia
+
+@st.cache_data(ttl=18000)
+def buscar_convergencia_en_nivells_significatius(_hourly_index, _localitats, _threshold, _forecast_days):
+    """
+    Busca convergències significatives en múltiples nivells de pressió (925, 850, 700 hPa)
+    per evitar els falsos positius del nivell de 1000 hPa. Retorna un set amb totes
+    les localitats que tenen convergència en almenys un d'aquests nivells.
+    """
+    # Llista de nivells de pressió clau per a la detecció de disparadors (excloent 1000 hPa)
+    nivells_a_revisar = [925, 850, 700] 
+    
+    localitats_amb_convergencia = set()
+
+    # Fem un bucle per cada nivell significatiu
+    for nivell in nivells_a_revisar:
+        # Reutilitzem la funció existent per trobar les localitats amb convergència en aquest nivell
+        localitats_trobades_a_nivell = encontrar_localitats_con_convergencia(
+            _hourly_index,
+            nivell,
+            _localitats,
+            _threshold,
+            _forecast_days
+        )
+        
+        # Si s'han trobat localitats, les afegim al nostre set principal.
+        # L'ús d'un 'set' evita automàticament els duplicats.
+        if localitats_trobades_a_nivell:
+            localitats_amb_convergencia.update(localitats_trobades_a_nivell)
+
+    return localitats_amb_convergencia
 
 def generar_avis_potencial_per_precalcul(params):
     cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0); cin = params.get('CIN_Fre', {}).get('value')
@@ -520,9 +575,10 @@ def update_from_hora_selector():
     st.session_state.avis_selector_default = "--- Selecciona una localitat amb risc ---"
 
 hourly_index = int(st.session_state.hora_seleccionada_str.split(':')[0])
-with st.spinner("Analitzant convergències i disparadors a tot el territori..."):
+with st.spinner("Analitzant convergències significatives (≥925hPa) a tot el territori..."):
     conv_threshold = -5.5
-    localitats_convergencia = encontrar_localitats_con_convergencia(hourly_index, 850, pobles_data, conv_threshold, FORECAST_DAYS)
+    # Ara cridem a la nova funció que busca convergència en múltiples nivells rellevants
+    localitats_convergencia = buscar_convergencia_en_nivells_significatius(hourly_index, pobles_data, conv_threshold, FORECAST_DAYS)
 
 with st.container(border=True):
     col1,col2=st.columns([1,1],gap="large"); hour_options=[f"{h:02d}:00h" for h in range(24)]
