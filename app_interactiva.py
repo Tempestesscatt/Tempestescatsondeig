@@ -46,8 +46,16 @@ pobles_data = {
     'Arenys de Mar': {'lat': 41.581, 'lon': 2.551},
     
 
+    # Osona
+    'Vic': {'lat': 41.930, 'lon': 2.255},
     
-    
+
+   
+    # Gironès
+    'Girona': {'lat': 41.983, 'lon': 2.824},
+
+    # Garrotxa
+    'Olot': {'lat': 42.181, 'lon': 2.489},
     
     # Ripollès
     'Ripoll': {'lat': 42.201, 'lon': 2.190},
@@ -80,7 +88,7 @@ if 'avisos_expanded' not in st.session_state:
 
 # --- 1. LÒGICA DE CÀRREGA DE DADES I CÀLCUL ---
 
-@st.cache_data(ttl= 28000)
+@st.cache_data(ttl=3600)
 def carregar_sondeig_per_poble(nom_poble, lat, lon):
     p_levels = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
     h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
@@ -94,7 +102,7 @@ def carregar_sondeig_per_poble(nom_poble, lat, lon):
         return respostes[0], p_levels, None
     except Exception as e:
         return None, None, str(e)
-@st.cache_data(ttl= 28000)
+
 def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
     lats, lons = np.linspace(40.5, 42.8, 12), np.linspace(0.2, 3.3, 12)
     lon_grid, lat_grid = np.meshgrid(lons, lats)
@@ -133,7 +141,7 @@ def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
     except Exception as e:
         return None, None, None, str(e)
 
-
+@st.cache_data(ttl=18000)
 def calcular_convergencia_per_totes_les_localitats(_hourly_index, _nivell, _localitats_dict):
     """
     Calcula el valor de convergència/divergència per a cada localitat del diccionari.
@@ -172,7 +180,7 @@ def calcular_convergencia_per_totes_les_localitats(_hourly_index, _nivell, _loca
             
     return convergencia_per_poble
 
-@st.cache_data(ttl= 28000)
+@st.cache_data(ttl=3600)
 def precalcular_potencials_del_dia(_pobles_data):
     """Versión optimizada que usa muestreo horario y paralelismo"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -216,7 +224,7 @@ def generar_avis_potencial_per_precalcul(params):
     if cond_avis_sever: return "AVÍS"
     if cond_precaucio: return "PRECAUCIÓ"
     return "RISC BAIX"
-@st.cache_data(ttl= 28000)
+
 def processar_sondeig_per_hora(sondeo, hourly_index, p_levels):
     try:
         hourly = sondeo.Hourly(); T_s, Td_s, P_s = (hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i in range(3))
@@ -241,7 +249,6 @@ def processar_sondeig_per_hora(sondeo, hourly_index, p_levels):
 
 # Totes les altres funcions (calculate_parameters, get_next_arome_update_time, etc.) van aquí...
 # ... (les enganxo totes per seguretat)
-@st.cache_data(ttl= 28000)
 def get_next_arome_update_time():
     now_utc = datetime.now(pytz.utc)
     run_hours_utc = [0, 6, 12, 18]; availability_delay = timedelta(hours=4)
@@ -302,7 +309,6 @@ def calculate_parameters(p, T, Td, u, v, h):
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ I FORMAT ---
 # (Totes les teves funcions de visualització, no canvien)
-
 def display_avis_principal(titol_avís, text_avís, color_avís, icona_personalitzada=None):
     icon_map = {"ESTABLE": "☀️", "RISC BAIX": "☁️", "PRECAUCIÓ": "⚡️", "AVÍS": "⚠️", "RISC ALT": "🌪️", "POTENCIAL SEVER": "🧐", "POTENCIAL MODERAT": "🤔", "ALERTA DE DISPARADOR": "🎯"}
     icona = icona_personalitzada if icona_personalitzada else icon_map.get(titol_avís, "ℹ️")
@@ -357,7 +363,7 @@ def generar_avis_temperatura(params):
     if temp > 36: return "AVÍS PER CALOR EXTREMA", f"Es preveu una temperatura de {temp:.1f}°C. Risc molt alt.", "#FF0000", "🥵"
     if temp < 0: return "AVÍS PER FRED INTENS", f"Es preveu una temperatura de {temp:.1f}°C. Risc de gelades fortes.", "#0000FF", "🥶"
     return None, None, None, None
-@st.cache_data(ttl= 28000)
+
 def generar_avis_localitat(params, is_convergence_active):
     cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0); cin = params.get('CIN_Fre', {}).get('value'); shear = params.get('Shear_0-6km', {}).get('value'); srh1 = params.get('SRH_0-1km', {}).get('value'); lcl_agl = params.get('LCL_AGL', {}).get('value', 9999); lfc_agl = params.get('LFC_AGL', {}).get('value', 9999)
     dcape = params.get('DCAPE', {}).get('value', 0); stp = params.get('STP_cin', {}).get('value', 0); lr = params.get('LapseRate_700_500', {}).get('value', 0); pwat = params.get('PWAT_Total', {}).get('value', 0)
@@ -412,7 +418,7 @@ def generar_avis_convergencia(params, is_convergence_active, divergence_value):
         return "ALERTA DE DISPARADOR", f"La forta convergència de vents (valor: {divergence_value:.1f} x10⁻⁵ s⁻¹) pot actuar com a disparador. Amb un CAPE de {cape_u:.0f} J/kg i una 'tapa' (CIN) feble, hi ha un alt potencial que les tempestes s'iniciïn de manera explosiva.", "#FF4500"
     
     return None, None, None
-   
+    
 def generar_analisi_detallada(params, is_convergence_active):
     #... (Aquesta funció es queda igual)
     def stream_text(text):
@@ -466,6 +472,7 @@ def generar_analisi_detallada(params, is_convergence_active):
     if pwat and pwat > 30: yield from stream_text(f"**Potencial de Precipitació Intensa (Aigua Precipitable):** El contingut d'humitat a la columna atmosfèrica és elevat ({pwat:.1f} mm), afavorint xàfecs de gran intensitat i possibles inundacions locals.")
     yield from stream_text(f"**La Clau del Pronòstic:** La clau principal avui és la interacció entre la **inestabilitat {cape_text}** i un **cisallament {('fort' if shear6>18 else 'moderat')}**. La presència (o absència) d'un mecanisme de tret com la **convergència forta** serà el factor decisiu per determinar si s'allibera aquest potencial i quin tipus de tempestes es desenvolupen.")
 
+
 def display_metrics(params_dict):
     #... (Aquesta funció es queda igual)
     param_map = [
@@ -480,7 +487,7 @@ def display_metrics(params_dict):
         param=params_dict[key]; value=param['value']; units_str=param['units']; val_str=f"{value:.1f}" if isinstance(value,(float,np.floating)) else str(value); value_color,emoji=get_parameter_style(key,value); border_color=value_color if value_color!='inherit' else 'rgba(128,128,128,0.2)'
         with cols[i%4]: st.markdown(f"""<div class="metric-container" style="border-color:{border_color};"><div style="font-size:0.9em;color:gray;">{label}</div><div style="font-size:1.25em;font-weight:bold;color:{value_color};">{val_str} <span style='font-size:0.8em;color:gray;'>{units_str}</span> {emoji}</div></div>""", unsafe_allow_html=True)
 
-@st.cache_data(ttl= 28000)
+
 def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     #... (Aquesta funció es queda igual)
     speeds,dirs = zip(*data)
@@ -508,7 +515,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     
     ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
     return fig
-@st.cache_data(ttl= 28000)
+
 def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
     fig=plt.figure(figsize=(9,9),dpi=150); ax=fig.add_subplot(1,1,1,projection=ccrs.PlateCarree()); ax.set_extent([0,3.5,40.4,43],crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND,facecolor="#E0E0E0",zorder=0); ax.add_feature(cfeature.OCEAN,facecolor='#b0c4de',zorder=0); ax.add_feature(cfeature.COASTLINE,edgecolor='black',linewidth=0.5,zorder=1); ax.add_feature(cfeature.BORDERS,linestyle=':',edgecolor='black',zorder=1); ax.plot(lon_sel,lat_sel,'o',markersize=12,markerfacecolor='yellow',markeredgecolor='black',markeredgewidth=2,transform=ccrs.Geodetic(),zorder=5); ax.text(lon_sel+0.05,lat_sel+0.05,nom_poble_sel,transform=ccrs.Geodetic(),zorder=6,bbox=dict(facecolor='white',alpha=0.8,edgecolor='none',boxstyle='round,pad=0.2')); ax.set_title(f"{titol} a {nivell}hPa",weight='bold'); return fig,ax
 
@@ -822,4 +829,4 @@ elif sondeo:
             st.warning(f"No s'han pogut calcular els paràmetres per a les {hourly_index:02d}:00h. Les dades del model podrien no ser vàlides per a aquesta hora.")
     except Exception as e:
         st.error(f"S'ha produït un error inesperat en processar les dades per a '{poble_sel}'.")
-        st.exception(e)
+        st.exception(e) 
