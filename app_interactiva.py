@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 import openmeteo_requests
-import requests_cache
 from retry_requests import retry
+import requests
 import numpy as np
 import pandas as pd
 import random
@@ -27,8 +27,8 @@ import matplotlib.patheffects as path_effects
 # --- CONFIGURACIÓ INICIAL ---
 st.set_page_config(layout="wide", page_title="Tempestes.cat")
 
-cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
-retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
+plain_session = requests.Session()
+retry_session = retry(plain_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
 
 FORECAST_DAYS = 1
