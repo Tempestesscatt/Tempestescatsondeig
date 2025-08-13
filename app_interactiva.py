@@ -592,7 +592,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     dirs_deg = np.array(dirs)*units.degrees
     u_comp,v_comp = mpcalc.wind_components(speeds_ms,dirs_deg)
     
-    fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Flux i focus de convergència extrema")
+    fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Flux i focus de convergència molt forta")
     
     grid_lon,grid_lat = np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100)
     X,Y = np.meshgrid(grid_lon,grid_lat)
@@ -605,18 +605,18 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     dx,dy = mpcalc.lat_lon_grid_deltas(X,Y)
     divergence = mpcalc.divergence(u_grid*units('m/s'), v_grid*units('m/s'), dx=dx, dy=dy) * 1e5
     
-    # ---> CANVI CLAU 1: Llindar actualitzat a -16.0
-    # Ara només mostrem zones amb convergència superior a -16
-    divergence_values = np.ma.masked_where(divergence.m > -16.0, divergence.m)
+    # ---> CANVI CLAU 1: Llindar actualitzat a -20.0
+    # Ara només mostrem zones amb convergència superior a -20
+    divergence_values = np.ma.masked_where(divergence.m > -20.0, divergence.m)
     
-    # ---> CANVI CLAU 2: Els nivells del contorn ara van de -30 a -16
-    levels = np.linspace(-30.0, -16.0, 8) # Menys nivells per a més claredat
+    # ---> CANVI CLAU 2: Els nivells del contorn ara van de -40 a -20
+    levels = np.linspace(-40.0, -20.0, 9)
     
     # Dibuixem el farciment de color
     cont_fill = ax.contourf(X, Y, divergence_values, 
                            levels=levels, 
-                           cmap='magma_r', # Un mapa de colors molt intens per a fenòmens extrems
-                           alpha=0.8, 
+                           cmap='hot_r', # Mapa de colors "calent" per a valors extrems
+                           alpha=0.85, 
                            zorder=2, 
                            transform=ccrs.PlateCarree(), 
                            extend='min')
@@ -624,7 +624,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     # Afegim les línies de contorn
     ax.contour(X, Y, divergence_values,
                levels=levels,
-               colors='black', # Contorn negre per a màxim contrast
+               colors='black',
                linewidths=0.7,
                alpha=0.9,
                zorder=3,
@@ -632,14 +632,14 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     
     # Dibuixem les línies de corrent del vent
     ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, 
-                  color="black", 
-                  density=1.5,
-                  linewidth=0.7,
+                  color="white", # Línies blanques per a millor contrast sobre fons fosc
+                  density=1.7,
+                  linewidth=0.6,
                   arrowsize=0.7,
                   zorder=4, 
                   transform=ccrs.PlateCarree())
                   
-    fig.colorbar(cont_fill, ax=ax, orientation='vertical', label='Convergència Extrema (x10⁻⁵ s⁻¹)', shrink=0.7)
+    fig.colorbar(cont_fill, ax=ax, orientation='vertical', label='Convergència Molt Forta (x10⁻⁵ s⁻¹)', shrink=0.7)
     
     return fig
 
