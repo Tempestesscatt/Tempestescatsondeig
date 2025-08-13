@@ -366,7 +366,44 @@ def buscar_convergencia_en_nivells_significatius(_hourly_index, _localitats, _th
             localitats_amb_convergencia.update(localitats_trobades_a_nivell)
     return localitats_amb_convergencia
 
-# --- 2. FUNCIONS DE VISUALITZACIÓ I FORMAT ---
+# --- NOU: Aquesta funció s'executa només una vegada gràcies al cache
+@st.cache_data(ttl=3600)
+def precalcular_potencials_del_dia(_pobles_data):
+    potencials = {}
+    avisos_a_buscar = {"PRECAUCIÓ", "AVÍS", "RISC ALT", "ALERTA DE DISPARADOR"}
+    
+    progress_bar = st.progress(0, text="Calculant potencials per a tot el territori...")
+    total_pobles = len(_pobles_data)
+    
+    for i, (nom_poble, coords) in enumerate(_pobles_data.items()):
+        progress_bar.progress((i + 1) / total_pobles, text=f"Analitzant {nom_poble}...")
+        
+        sondeo, p_levels, _ = carregar_sondeig_per_poble(nom_poble, coords['lat'], coords['lon'])
+        if sondeo:
+            for hora in range(24):
+                profiles = processar_sondeig_per_hora(sondeo, hora, p_levels)
+                if profiles:
+                    parametros = calculate_parameters(*profiles)
+                    if generar_avis_potencial_per_precalcul(parametros) in avisos_a_buscar:
+                        potencials[nom_poble] = hora
+                        break # Passem al següent poble tan bon punt trobem una hora de risc
+    progress_bar.empty()
+    return dict(sorted(potencials.items()))
+
+def generar_avis_potencial_per_precalcul(params):
+    cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0); cin = params.get('CIN_Fre', {}).get('value')
+    if cape_u > 500 and (cin is None or cin > -50): return "ALERTA DE DISPARADOR"
+    shear = params.get('Shear_0-6km', {}).get('value'); srh1 = params.get('SRH_0-1km', {}).get('value'); lcl_agl = params.get('LCL_AGL', {}).get('value', 9999)
+    if cape_u < 100 or (cin is not None and cin < -100): return "ESTABLE"
+    cond_supercelula = shear is not None and shear > 20 and cape_u > 1500 and srh1 is not None and srh1 > 250 and lcl_agl < 1200
+    cond_avis_sever = shear is not None and shear > 18 and cape_u > 1000
+    cond_precaucio = shear is not None and shear > 12 and cape_u > 500
+    if cond_supercelula: return "RISC ALT"
+    if cond_avis_sever: return "AVÍS"
+    if cond_precaucio: return "PRECAUCIÓ"
+    return "RISC BAIX"
+
+# --- 2. FUNCIONS DE VISUALITZACIÓ I FORMAT --- (Aquestes es mantenen igual)
 
 def display_avis_principal(titol_avís, text_avís, color_avís, icona_personalitzada=None):
     icon_map = {"ESTABLE": "☀️", "RISC BAIX": "☁️", "PRECAUCIÓ": "⚡️", "AVÍS": "⚠️", "RISC ALT": "🌪️", "POTENCIAL SEVER": "🧐", "POTENCIAL MODERAT": "🤔", "ALERTA DE DISPARADOR": "🎯"}
@@ -471,38 +508,66 @@ def generar_avis_convergencia(params, is_convergence_active):
         return "ALERTA DE DISPARADOR", f"La forta convergència de vents pot actuar com a disparador. Amb un CAPE de {cape_u:.0f} J/kg i una 'tapa' (CIN) feble, hi ha un alt potencial que les tempestes s'iniciïn de manera explosiva.", "#FF4500"
     return None, None, None
     
-def generar_analisi_detallada(params):
+def generar_analisi_detallada(params, is_convergence_active):
     def stream_text(text):
         for word in text.split(): yield word + " "; time.sleep(0.02)
         yield "\n\n"
     cape_u=params.get('CAPE_Utilitzable',{}).get('value',0); cin=params.get('CIN_Fre',{}).get('value'); shear6=params.get('Shear_0-6km',{}).get('value'); srh1=params.get('SRH_0-1km',{}).get('value'); lcl_agl=params.get('LCL_AGL',{}).get('value'); lfc_agl=params.get('LFC_AGL',{}).get('value'); w_max=params.get('W_MAX',{}).get('value'); el_msl = params.get('EL_MSL', {}).get('value')
     dcape=params.get('DCAPE',{}).get('value'); stp=params.get('STP_cin',{}).get('value'); lr=params.get('LapseRate_700_500',{}).get('value'); pwat=params.get('PWAT_Total',{}).get('value')
 
-    if cape_u is None or cape_u < 100: yield from stream_text("### Anàlisi General\nL'atmosfera és estable. El potencial energètic per a la formació de tempestes (CAPE) és pràcticament inexistent. No s'esperen fenòmens de temps sever."); return
+    if cape_u is None or cape_u < 100: 
+        yield from stream_text("### Anàlisi General\nL'atmosfera és estable. El potencial energètic per a la formació de tempestes (CAPE) és pràcticament inexistent. No s'esperen fenòmens de temps sever.")
+        return
+
     yield from stream_text("### Potencial Energètic (Termodinàmica)")
     cape_text="feble" if cape_u<1000 else "moderada" if cape_u<2500 else "forta" if cape_u<4000 else "extrema"
     yield from stream_text(f"**Inestabilitat (CAPE):** El valor de CAPE utilitzable és de **{cape_u:.0f} J/kg**, el que indica una inestabilitat **{cape_text}**. Això es tradueix en un potencial de corrents ascendents de fins a **{w_max*3.6:.0f} km/h**, podent sostenir un núvol de tempesta fins a una altitud de **{el_msl:.1f} km**.")
+    
     if cin is not None:
-        if cin < -100: yield from stream_text(f"**Inhibició (CIN):** Hi ha una 'tapa' atmosfèrica forta de **{cin:.0f} J/kg**. Es necessitarà un mecanisme de forçament significatiu per trencar-la i alliberar la inestabilitat.")
-        elif cin < -25: yield from stream_text(f"**Inhibició (CIN):** La 'tapa' de **{cin:.0f} J/kg** és moderada. Si es trenca, el desenvolupament de les tempestes podria ser explosiu.")
-        else: yield from stream_text("**Inhibició (CIN):** La 'tapa' és feble o inexistent. L'energia està fàcilment disponible.")
+        cin_text = f"**Inhibició (CIN) i Disparador:** El valor de CIN és de **{cin:.0f} J/kg**. "
+        if cin >= -25:
+            cin_text += "Aquesta 'tapa' atmosfèrica és molt feble o inexistent. "
+            if is_convergence_active:
+                cin_text += "La convergència de vents detectada actuarà com un disparador molt efectiu, iniciant la convecció amb facilitat."
+            else:
+                cin_text += "Fins i tot un lleuger escalfament diürn o un petit accident orogràfic podria ser suficient per iniciar tempestes."
+        elif -75 < cin <= -25:
+            cin_text += "Aquesta 'tapa' moderada impedeix que les tempestes es formin espontàniament. "
+            if is_convergence_active:
+                cin_text += "Aquí, **la convergència detectada és el factor clau**: té el potencial de trencar la 'tapa' i alliberar la inestabilitat de manera explosiva."
+            else:
+                cin_text += "Sense un mecanisme de forçament clar com la convergència, es necessitarà un fort escalfament o un xoc orogràfic significatiu per disparar les tempestes."
+        elif -150 < cin <= -75:
+            cin_text += "Aquesta 'tapa' és forta. "
+            if is_convergence_active:
+                cin_text += "Tot i que s'ha detectat convergència, és poc probable que sigui suficient per si sola per trencar una inhibició tan potent. Només zones orogràfiques molt favorables podrien veure el desenvolupament de nuclis aïllats."
+            else:
+                cin_text += "És molt poc probable que es formin tempestes, ja que no hi ha un mecanisme de tret capaç de superar aquesta forta inversió tèrmica."
+        else:
+            cin_text += "Aquesta 'tapa' és extremadament forta ('dom de calor'). La formació de tempestes per mecanismes de superfície és pràcticament impossible, independentment d'altres factors."
+        yield from stream_text(cin_text)
+
     if lr:
         lr_text = "molt pronunciat" if lr > 7 else "moderat"
         yield from stream_text(f"**Gradient Tèrmic (700-500hPa):** El refredament amb l'altura és **{lr_text}** ({lr:.1f} °C/km), un factor que afavoreix el desenvolupament de corrents ascendents forts i, per tant, el potencial de calamarsa.")
+    
     yield from stream_text("### Organització i Rotació (Cinemàtica)")
     if shear6 is not None:
         if shear6 < 10: shear_text = "Molt feble, afavorint tempestes desorganitzades i de curta durada (unicel·lulars)."
         elif shear6 < 18: shear_text = "Moderat, suficient per organitzar les tempestes en sistemes multicel·lulars o línies de tempestes."
         else: shear_text = "Fort, un ingredient clau per al desenvolupament de supercèl·lules amb rotació (mesociclons)."
         yield from stream_text(f"**Cisallament 0-6 km:** El valor és de **{shear6:.1f} m/s**. {shear_text}")
+    
     if srh1 is not None and srh1 > 100:
         srh_text="moderat" if srh1<250 else "fort"
         lcl_text = f"Especialment si la base del núvol (LCL) és baixa com en aquest cas ({lcl_agl:.0f} m), " if lcl_agl < 1200 else ""
         yield from stream_text(f"**Helicitat 0-1 km (SRH):** La rotació potencial a nivells baixos és **{srh_text}** ({srh1:.0f} m²/s²). {lcl_text}Valors elevats augmenten el risc que la rotació de la tempesta arribi a terra (tornados).")
+    
     yield from stream_text("### Síntesi i Riscos Específics")
     if stp and stp > 0.5: yield from stream_text(f"**Potencial Tornàdic (STP):** L'índex de tornado significatiu és de **{stp:.1f}**. Valors superiors a 1 indiquen un entorn molt favorable per a supercèl·lules tornàdiques si s'arriben a formar.")
     if dcape and dcape > 800: yield from stream_text(f"**Potencial de Vent Sever (DCAPE):** El valor de **{dcape:.0f} J/kg** indica un alt potencial per a la formació de corrents descendents molt forts (esclafits o 'downbursts') que poden causar danys a la superfície.")
     if pwat and pwat > 30: yield from stream_text(f"**Potencial de Precipitació Intensa (Aigua Precipitable):** El contingut d'humitat a la columna atmosfèrica és elevat ({pwat:.1f} mm), afavorint xàfecs de gran intensitat i possibles inundacions locals.")
+    
     yield from stream_text(f"**La Clau del Pronòstic:** La clau principal avui és la interacció entre la **inestabilitat {cape_text}** i un **cisallament {('fort' if shear6>18 else 'moderat')}**. La presència (o absència) d'un mecanisme de tret com la convergència serà el factor decisiu per determinar si s'allibera aquest potencial i quin tipus de tempestes es desenvolupen.")
 
 def display_metrics(params_dict):
@@ -639,12 +704,49 @@ st.markdown(f'<p style="text-align: center; font-size: 0.9em; color: grey;">🕒
 
 hourly_index = int(st.session_state.hora_seleccionada_str.split(':')[0])
 
-with st.spinner("Analitzant convergències significatives (≥925hPa) a tot el territori..."):
-    conv_threshold = -5.5
-    localitats_convergencia = buscar_convergencia_en_nivells_significatius(hourly_index, pobles_data, conv_threshold, FORECAST_DAYS)
-st.toast(f"Anàlisi de convergència completat per a les {hourly_index:02d}:00h.")
+# --- CÀLCULS DE VISIÓ GENERAL (S'executen sempre) ---
+with st.spinner("Analitzant potencials i convergències a tot el territori..."):
+    potencials_detectats_avui = precalcular_potencials_del_dia(pobles_data)
+    localitats_convergencia = buscar_convergencia_en_nivells_significatius(hourly_index, pobles_data, -5.5, FORECAST_DAYS)
+st.toast("Anàlisi general del territori completat.")
 
-# --- LÒGICA DE SELECCIÓ DE LOCALITAT ---
+# --- NOU PANELL D'AVISOS INTERACTIU ---
+with st.expander("⚡️ Avisos i Potencials Detectats Avui", expanded=True):
+    if not potencials_detectats_avui:
+        st.success("No s'ha detectat cap risc significatiu de temps sever per a les pròximes 24 hores.")
+    else:
+        pobles_amb_disparador = []
+        pobles_amb_potencial = []
+        for poble, hora in potencials_detectats_avui.items():
+            if poble in localitats_convergencia:
+                pobles_amb_disparador.append((poble, hora))
+            else:
+                pobles_amb_potencial.append((poble, hora))
+
+        col_disparador, col_potencial = st.columns(2)
+
+        with col_disparador:
+            st.markdown("##### 🔥 Risc Actiu (Amb Disparador)")
+            if not pobles_amb_disparador:
+                st.write("Cap localitat amb risc i disparador actiu a l'hora seleccionada.")
+            for poble, hora in pobles_amb_disparador:
+                if st.button(f"{poble} (a les {hora:02d}:00h)", key=f"btn_disparador_{poble}"):
+                    st.session_state.poble_seleccionat = poble
+                    st.session_state.hora_seleccionada_str = f"{hora:02d}:00h"
+                    st.rerun()
+
+        with col_potencial:
+            st.markdown("##### 🧐 Potencial Latent")
+            if not pobles_amb_potencial:
+                 st.write("Totes les localitats amb potencial tenen un disparador actiu.")
+            for poble, hora in pobles_amb_potencial:
+                if st.button(f"{poble} (a les {hora:02d}:00h)", key=f"btn_potencial_{poble}"):
+                    st.session_state.poble_seleccionat = poble
+                    st.session_state.hora_seleccionada_str = f"{hora:02d}:00h"
+                    st.rerun()
+
+# --- LÒGICA DE SELECCIÓ DE LOCALITAT PRINCIPAL ---
+st.markdown("---") # Separador visual
 sorted_pobles = sorted(pobles_data.keys())
 opciones_display = [f"⚠️ {p}" if p in localitats_convergencia else p for p in sorted_pobles]
 
@@ -653,16 +755,14 @@ def update_poble_selection():
     nom_net = poble_display.replace("⚠️ ", "").strip()
     st.session_state.poble_seleccionat = nom_net
 
-# Determina l'índex per defecte del selectbox
 default_index = 0
 try:
     current_selection_display = f"⚠️ {st.session_state.poble_seleccionat}" if st.session_state.poble_seleccionat in localitats_convergencia else st.session_state.poble_seleccionat
     default_index = opciones_display.index(current_selection_display)
-except ValueError:
-    pass
+except ValueError: pass
 
 st.selectbox(
-    'Selecciona una localitat:',
+    'O selecciona una localitat manualment:',
     options=opciones_display,
     index=default_index,
     key='poble_selector',
@@ -675,11 +775,13 @@ poble_sel = st.session_state.poble_seleccionat
 lat_sel = pobles_data[poble_sel]['lat']
 lon_sel = pobles_data[poble_sel]['lon']
 
-with st.spinner(f"Carregant sondeig per a {poble_sel}..."):
+with st.spinner(f"Carregant sondeig detallat per a {poble_sel}..."):
     sondeo, p_levels, error_sondeo = carregar_sondeig_per_poble(poble_sel, lat_sel, lon_sel)
 
 if error_sondeo:
-    st.error(f"No s'han pogut obtenir dades per a '{poble_sel}': {error_sondeo}")
+    st.error(f"L'API d'Open-Meteo ha retornat un error per a '{poble_sel}'. Això pot ser un problema temporal o de la zona.")
+    with st.expander("Veure error tècnic"):
+        st.code(error_sondeo)
 elif sondeo:
     try:
         data_is_valid = False
@@ -711,7 +813,7 @@ elif sondeo:
             ])
 
             with tab_analisi:
-                st.write_stream(generar_analisi_detallada(parametros))
+                st.write_stream(generar_analisi_detallada(parametros, is_disparador_active))
 
             with tab_params:
                 st.subheader("Paràmetres Clau")
@@ -769,3 +871,11 @@ elif sondeo:
     except Exception as e:
         st.error(f"S'ha produït un error inesperat en processar les dades per a '{poble_sel}'.")
         st.exception(e)
+Error de sintaxi:
+'El Port de la Selva': {'lat': 42.337, 'lon': 3.203},
+'Calella de Palafrugell': {'lat': 41.888, 'lon': 3.183},
+'Sant Antoni de Calonge': {'lat': 41.846, 'lon': 3.099},
+258.3s
+
+
+
