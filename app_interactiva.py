@@ -433,19 +433,14 @@ def generar_avis_localitat(params, is_convergence_active):
     cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0); cin = params.get('CIN_Fre', {}).get('value'); shear = params.get('Shear_0-6km', {}).get('value'); srh1 = params.get('SRH_0-1km', {}).get('value'); lcl_agl = params.get('LCL_AGL', {}).get('value', 9999); lfc_agl = params.get('LFC_AGL', {}).get('value', 9999)
     dcape = params.get('DCAPE', {}).get('value', 0); stp = params.get('STP_cin', {}).get('value', 0); lr = params.get('LapseRate_700_500', {}).get('value', 0); pwat = params.get('PWAT_Total', {}).get('value', 0)
 
-    # Condicions de sortida ràpida (casos estables)
     if cape_u < 100: return "ESTABLE", "Sense risc de tempestes significatives. L'atmosfera és estable.", "#3CB371"
     if cin is not None and cin < -150: return "ESTABLE", f"La 'tapa' atmosfèrica (CIN de {cin:.0f} J/kg) és massa forta i probablement inihibirà qualsevol convecció.", "#3CB371"
-    
-    # Condició de risc baix per falta de disparador
     if not is_convergence_active and lfc_agl > 3500: return "RISC BAIX", f"L'inici de la convecció (LFC a {lfc_agl:.0f} m) és massa alt, fent les tempestes improbables sense un forçament potent.", "#4682B4"
 
-    # Definició dels llindars de risc
     cond_supercelula = shear is not None and shear > 20 and cape_u > 1500 and srh1 is not None and srh1 > 200 and lcl_agl < 1300
     cond_avis_sever = shear is not None and shear > 18 and cape_u > 1200
     cond_precaucio = shear is not None and shear > 12 and cape_u > 500
 
-    # Avaluació del risc més alt primer
     if cond_supercelula and stp > 0.8:
         risks = ["calamarsa grossa", "vent destructiu"]
         if lcl_agl < 1000: risks.insert(0, "tornados")
@@ -463,20 +458,15 @@ def generar_avis_localitat(params, is_convergence_active):
         if is_convergence_active: return "AVÍS", f"Potencial per a tempestes SEVERES organitzades. La convergència afavoreix el seu inici. Risc de {risks_text}.", "#FF8C00"
         else: return "POTENCIAL MODERAT", f"Entorn de tempesta SEVERA latent per falta d'un disparador clar. Risc de {risks_text} si s'activa.", "#FFD700"
     
-    # ---> CORRECCIÓ DE LA LÒGICA PER A "PRECAUCIÓ"
     elif cond_precaucio:
         missatge_base = "Risc de TEMPESTES ORGANITZADES (multicèl·lules). Possibles fortes pluges i calamarsa local."
         if pwat > 35: missatge_base += " Atenció al risc de xàfecs torrencials."
-        
-        # Ara el suggeriment depèn REALMENT de si hi ha convergència
         if is_convergence_active:
             suggeriment = " La convergència detectada augmenta la probabilitat que es formin."
         else:
             suggeriment = " L'absència de convergència clara podria limitar-ne el desenvolupament."
-        
         return "PRECAUCIÓ", missatge_base + suggeriment, "#FFD700"
     
-    # Si no es compleix cap de les condicions anteriors, és RISC BAIX
     else:
         missatge_base = "Possibles xàfecs o tempestes febles i aïllades."
         if is_convergence_active:
