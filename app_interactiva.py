@@ -149,16 +149,6 @@ pobles_data = {
 
 
 
-
-
-
-pobles_data = {
-    'Barcelona': {'lat': 41.387, 'lon': 2.168}, 'Lleida': {'lat': 41.617, 'lon': 0.622}, 
-    'Girona': {'lat': 41.983, 'lon': 2.824}, 'Tarragona': {'lat': 41.118, 'lon': 1.245},
-    'La Garriga': {'lat': 41.683, 'lon': 2.282}, 'Calafell': {'lat': 41.199, 'lon': 1.567},
-    'Agramunt': {'lat': 41.784, 'lon': 1.096}, 'Alcanó': {'lat': 41.488, 'lon': 0.598}
-}
-
 # --- INICIALITZACIÓ DEL SESSION STATE ---
 if 'poble_seleccionat' not in st.session_state:
     st.session_state.poble_seleccionat = 'Barcelona'
