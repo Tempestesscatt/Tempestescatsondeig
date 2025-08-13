@@ -387,7 +387,7 @@ def generar_analisi_detallada(params, is_convergence_active):
     def stream_text(text):
         for word in text.split(): yield word + " "; time.sleep(0.02)
         yield "\n\n"
-    cape_u=params.get('CAPE_Utilitzable',{}).get('value',0); cin=params.get('CIN_Fre',{}).get('value'); shear6=params.get('Shear_0-6km',{}).get('value'); srh1=params.get('SRH_0-1km',{}).get('value'); lcl_agl=params.get('LCL_AGL',{}).get('value'); lfc_agl=params.get('LFC_AGL',{}).get('value'); w_max=params.get('W_MAX',{}).get('value'); el_msl = params.get('EL_MSL', {}).get('value')
+    cape_u=params.get('CAPE_Utilitzable',{}).get('value',0); cin=params.get('CIN_Fre',{}).get('value'); shear6=params.get('Shear_0-6km',{}).get('value'); srh1=params.get('SRH_0-1km',{}).get('value'); lcl_agl=params.get('LCL_AGL',{}).get('value'); lfc_agl=params.get('LFC_AGL',{}).get('value'); w_max=params.get('W_MAX',{}).get('value',0); el_msl = params.get('EL_MSL', {}).get('value',0)
     dcape=params.get('DCAPE',{}).get('value'); stp=params.get('STP_cin',{}).get('value'); lr=params.get('LapseRate_700_500',{}).get('value'); pwat=params.get('PWAT_Total',{}).get('value')
 
     if cape_u is None or cape_u < 100: 
