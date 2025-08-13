@@ -41,32 +41,21 @@ pobles_data = {
     # La Selva
     'Arbúcies': {'lat': 41.815, 'lon': 2.515},
   
-
     # Maresme
     'Arenys de Mar': {'lat': 41.581, 'lon': 2.551},
-    
-
-    # Osona
-    'Vic': {'lat': 41.930, 'lon': 2.255},
-    
-
-   
-    # Gironès
-    'Girona': {'lat': 41.983, 'lon': 2.824},
-
-    # Garrotxa
-    'Olot': {'lat': 42.181, 'lon': 2.489},
     
     # Ripollès
     'Ripoll': {'lat': 42.201, 'lon': 2.190},
     
-    
     # Baix Empordà
     "La Bisbal d'Empordà": {'lat': 41.958, 'lon': 3.037},
    
- 
+    # Capitals de Província
+    'Barcelona': {'lat': 41.38879, 'lon': 2.15899},
+    'Girona': {'lat': 41.98311, 'lon': 2.82493},
+    'Lleida': {'lat': 41.61674, 'lon': 0.62218},
+    'Tarragona': {'lat': 41.11905, 'lon': 1.24544},
 }
-
 # --- FUNCIÓ DE CALLBACK ---
 def actualitzar_seleccio(poble, hora):
     """Callback per actualitzar el poble i l'hora a l'estat de la sessió."""
@@ -88,7 +77,7 @@ if 'avisos_expanded' not in st.session_state:
 
 # --- 1. LÒGICA DE CÀRREGA DE DADES I CÀLCUL ---
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=28000)
 def carregar_sondeig_per_poble(nom_poble, lat, lon):
     p_levels = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
     h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
@@ -102,7 +91,7 @@ def carregar_sondeig_per_poble(nom_poble, lat, lon):
         return respostes[0], p_levels, None
     except Exception as e:
         return None, None, str(e)
-
+@st.cache_data(ttl=28000)
 def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
     lats, lons = np.linspace(40.5, 42.8, 12), np.linspace(0.2, 3.3, 12)
     lon_grid, lat_grid = np.meshgrid(lons, lats)
@@ -141,7 +130,7 @@ def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
     except Exception as e:
         return None, None, None, str(e)
 
-@st.cache_data(ttl=18000)
+@st.cache_data(ttl=28000)
 def calcular_convergencia_per_totes_les_localitats(_hourly_index, _nivell, _localitats_dict):
     """
     Calcula el valor de convergència/divergència per a cada localitat del diccionari.
@@ -180,7 +169,7 @@ def calcular_convergencia_per_totes_les_localitats(_hourly_index, _nivell, _loca
             
     return convergencia_per_poble
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=2800)
 def precalcular_potencials_del_dia(_pobles_data):
     """Versión optimizada que usa muestreo horario y paralelismo"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -258,7 +247,7 @@ def get_next_arome_update_time():
         if available_time > now_utc: next_update_time = available_time; break
     if next_update_time is None: next_update_time = (now_utc + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0) + availability_delay
     return f"Pròxima actualització de dades (AROME) estimada a les {next_update_time.astimezone(pytz.timezone('Europe/Madrid')).strftime('%H:%Mh')}"
-
+@st.cache_data(ttl=28000)
 def calculate_parameters(p, T, Td, u, v, h):
     params = {}
     def get_val(qty, unit=None):
@@ -487,7 +476,7 @@ def display_metrics(params_dict):
         param=params_dict[key]; value=param['value']; units_str=param['units']; val_str=f"{value:.1f}" if isinstance(value,(float,np.floating)) else str(value); value_color,emoji=get_parameter_style(key,value); border_color=value_color if value_color!='inherit' else 'rgba(128,128,128,0.2)'
         with cols[i%4]: st.markdown(f"""<div class="metric-container" style="border-color:{border_color};"><div style="font-size:0.9em;color:gray;">{label}</div><div style="font-size:1.25em;font-weight:bold;color:{value_color};">{val_str} <span style='font-size:0.8em;color:gray;'>{units_str}</span> {emoji}</div></div>""", unsafe_allow_html=True)
 
-
+@st.cache_data(ttl=28000)
 def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     #... (Aquesta funció es queda igual)
     speeds,dirs = zip(*data)
@@ -518,13 +507,13 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
 
 def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
     fig=plt.figure(figsize=(9,9),dpi=150); ax=fig.add_subplot(1,1,1,projection=ccrs.PlateCarree()); ax.set_extent([0,3.5,40.4,43],crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND,facecolor="#E0E0E0",zorder=0); ax.add_feature(cfeature.OCEAN,facecolor='#b0c4de',zorder=0); ax.add_feature(cfeature.COASTLINE,edgecolor='black',linewidth=0.5,zorder=1); ax.add_feature(cfeature.BORDERS,linestyle=':',edgecolor='black',zorder=1); ax.plot(lon_sel,lat_sel,'o',markersize=12,markerfacecolor='yellow',markeredgecolor='black',markeredgewidth=2,transform=ccrs.Geodetic(),zorder=5); ax.text(lon_sel+0.05,lat_sel+0.05,nom_poble_sel,transform=ccrs.Geodetic(),zorder=6,bbox=dict(facecolor='white',alpha=0.8,edgecolor='none',boxstyle='round,pad=0.2')); ax.set_title(f"{titol} a {nivell}hPa",weight='bold'); return fig,ax
-
+@st.cache_data(ttl=28000)
 def crear_mapa_generic(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel, titol_var, cmap, unitat, levels):
     fig,ax=crear_mapa_base(nivell,lat_sel,lon_sel,nom_poble_sel,titol_var)
     grid_lon,grid_lat=np.linspace(min(lons),max(lons),100),np.linspace(min(lats),max(lats),100); X,Y=np.meshgrid(grid_lon,grid_lat); points=np.vstack((lons,lats)).T
     grid_data=griddata(points,data,(X,Y),method='cubic'); grid_data=np.nan_to_num(grid_data)
     cont=ax.contourf(X,Y,grid_data,cmap=cmap,levels=levels,alpha=0.7,zorder=2,transform=ccrs.PlateCarree(),extend='both'); fig.colorbar(cont,ax=ax,orientation='vertical',label=f'{titol_var} ({unitat})',shrink=0.7); return fig
-
+@st.cache_data(ttl=28000)
 def crear_mapa_temp_isobares(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     temps, heights = zip(*data)
     fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Temperatura i Isobares")
@@ -536,13 +525,13 @@ def crear_mapa_temp_isobares(lats, lons, data, nivell, lat_sel, lon_sel, nom_pob
     plt.clabel(cont_height, inline=True, fontsize=9, fmt='%1.0f m')
     fig.colorbar(cont_temp, ax=ax, orientation='vertical', label='Temperatura (°C)', shrink=0.7)
     return fig
-
+@st.cache_data(ttl=28000)
 def crear_hodograf(p, u, v, h):
     fig, ax=plt.subplots(1,1,figsize=(5,5)); hodo=Hodograph(ax,component_range=40.); hodo.add_grid(increment=10); hodoline=hodo.plot_colormapped(u,v,h.to('km'),cmap='gist_ncar'); plt.colorbar(hodoline,ax=ax,orientation='vertical',pad=0.05,shrink=0.8).set_label('Altitud (km)')
     try: rm,_,_=mpcalc.bunkers_storm_motion(p,u,v,h); hodo.plot_vectors(rm[0].to('kt'),rm[1].to('kt'),color='black',label='Mov. Tempesta (RM)')
     except: pass
     ax.set_xlabel('kt'); ax.set_ylabel('kt'); return fig
-
+@st.cache_data(ttl=28000)
 def crear_skewt(p, T, Td, u, v):
     fig = plt.figure(figsize=(7, 9)); skew = SkewT(fig, rotation=45)
     skew.plot(p, T, 'r', lw=2, label='Temperatura'); skew.plot(p, Td, 'b', lw=2, label='Punt de Rosada')
@@ -559,7 +548,7 @@ def crear_skewt(p, T, Td, u, v):
             if el_p: skew.ax.axhline(el_p.m, color='red', linestyle='--', label=f'EL {el_p.m:.0f} hPa')
         except: pass
     skew.ax.set_ylim(1050, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_xlabel('Temperatura (°C)'); skew.ax.set_ylabel('Pressió (hPa)'); plt.legend(); return fig
-
+@st.cache_data(ttl=28000)
 def crear_grafic_orografia(params, zero_iso_h_agl):
     lcl_agl = params.get('LCL_AGL', {}).get('value'); lfc_agl = params.get('LFC_AGL', {}).get('value')
     if lcl_agl is None or np.isnan(lcl_agl): return None
@@ -586,7 +575,7 @@ def crear_grafic_orografia(params, zero_iso_h_agl):
     for y_tick in ax.get_yticks():
         if y_tick > 0 and y_tick < final_ylim: tick_label = ax.text(0.15, y_tick, f'{int(y_tick)}', ha='left', va='center', color='white', weight='bold', fontsize=9); tick_label.set_path_effects(main_text_effect)
     fig.tight_layout(pad=0.5); return fig
-
+@st.cache_data(ttl=28000)
 def crear_grafic_nuvol(params, H, u, v, is_convergence_active):
     lcl_agl, el_msl_km, cape = (params.get(k, {}).get('value') for k in ['LCL_AGL', 'EL_MSL', 'CAPE_Brut'])
     if lcl_agl is None or el_msl_km is None: return None
