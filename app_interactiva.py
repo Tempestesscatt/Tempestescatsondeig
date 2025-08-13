@@ -22,6 +22,7 @@ from scipy.interpolate import griddata
 from datetime import datetime, timedelta
 import pytz
 import matplotlib.patheffects as path_effects
+import requests 
 
 # --- CONFIGURACIÓ INICIAL ---
 st.set_page_config(layout="wide", page_title="Tempestes.cat")
