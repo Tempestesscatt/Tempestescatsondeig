@@ -100,10 +100,8 @@ def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
         api_vars = [f"dew_point_{nivell}hPa"]
     elif variable == 'humidity':
         api_vars = [f"relative_humidity_{nivell}hPa"]
-    elif variable == 'temperature':
+    else: # temperature
         api_vars = [f"temperature_{nivell}hPa"]
-    else:
-        return None, None, None, f"Variable '{variable}' no reconeguda."
 
     params = {
         "latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(),
@@ -225,7 +223,7 @@ def get_next_arome_update_time():
 def _calculate_parameters_cached(p_m, p_units_str, T_m, T_units_str, Td_m, Td_units_str, u_m, u_units_str, v_m, v_units_str, h_m, h_units_str):
     p = p_m * units(p_units_str); T = T_m * units(T_units_str); Td = Td_m * units(Td_units_str)
     u = u_m * units(u_units_str); v = v_m * units(v_units_str); h = h_m * units(h_units_str)
-    params = {}; get_val = lambda qty, unit=None: qty.to(unit).m if unit and qty.is_compatible_with(unit) else qty.m
+    params = {}; get_val = lambda qty, unit=None: qty.to(unit).m if unit and hasattr(qty, 'is_compatible_with') and qty.is_compatible_with(unit) else qty.m
     params['SFC_Temp'] = {'value': get_val(T[0], 'degC'), 'units': '°C'}
     try:
         parcel_prof = mpcalc.parcel_profile(p, T[0], Td[0]); cape, cin = mpcalc.cape_cin(p, T, Td, parcel_prof)
@@ -237,9 +235,9 @@ def _calculate_parameters_cached(p_m, p_units_str, T_m, T_units_str, Td_m, Td_un
     except Exception: pass
     try: lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); lcl_h = mpcalc.pressure_to_height_std(lcl_p); params['LCL_AGL'] = {'value': get_val(lcl_h - h[0], 'm'), 'units': 'm'}
     except Exception: pass
-    try: lfc_p, _ = mpcalc.lfc(p, T, Td); lfc_h = mpcalc.pressure_to_height_std(lfc_p); params['LFC_AGL'] = {'value': get_val(lfc_h - h[0], 'm'), 'units': 'm'}
+    try: lfc_p, _ = mpcalc.lfc(p, T, Td, prof=mpcalc.parcel_profile(p, T[0], Td[0])); lfc_h = mpcalc.pressure_to_height_std(lfc_p); params['LFC_AGL'] = {'value': get_val(lfc_h - h[0], 'm'), 'units': 'm'}
     except Exception: pass
-    try: el_p, _ = mpcalc.el(p, T, Td); el_h = mpcalc.pressure_to_height_std(el_p); params['EL_MSL'] = {'value': get_val(el_h, 'km'), 'units': 'km'}
+    try: el_p, _ = mpcalc.el(p, T, Td, prof=mpcalc.parcel_profile(p, T[0], Td[0])); el_h = mpcalc.pressure_to_height_std(el_p); params['EL_MSL'] = {'value': get_val(el_h, 'km'), 'units': 'km'}
     except Exception: pass
     try: s_u, s_v = mpcalc.bulk_shear(p, u, v, height=h, depth=6*units.km); params['Shear_0-6km'] = {'value': get_val(mpcalc.wind_speed(s_u, s_v), 'm/s'), 'units': 'm/s'}
     except Exception: pass
@@ -255,7 +253,7 @@ def _calculate_parameters_cached(p_m, p_units_str, T_m, T_units_str, Td_m, Td_un
     except Exception: pass
     try:
         p_levels_interp = np.arange(max(100, p.m.min()), p.m.max(), -10) * units.hPa
-        T_interp = mpcalc.interpolate_1d(p, T, p_levels_interp)
+        T_interp = mpcalc.interpolate_1d(p_levels_interp, T, p)
         lr = mpcalc.lapse_rate(p_levels_interp, T_interp, bottom=700*units.hPa, top=500*units.hPa)
         params['LapseRate_700_500'] = {'value': get_val(lr, 'delta_degC/km'), 'units': '°C/km'}
     except Exception: pass
@@ -269,7 +267,7 @@ def _calculate_parameters_cached(p_m, p_units_str, T_m, T_units_str, Td_m, Td_un
         srh_val = params.get('SRH_0-1km',{}).get('value',0) * units('m^2/s^2')
         shear_val = params.get('Shear_0-6km',{}).get('value',0) * units('m/s')
         stp_cin = mpcalc.significant_tornado(cape=cape_val, lcl_height=lcl_val, storm_helicity=srh_val, bulk_shear=shear_val)
-        params['STP_cin'] = {'value': get_val(stp_cin), 'units': ''}
+        params['STP_cin'] = {'value': get_val(stp_cin, dimensionless=True), 'units': ''}
     except Exception: pass
     return params
 
@@ -355,7 +353,7 @@ def generar_avis_localitat(params, is_convergence_active):
     elif cond_avis_sever:
         risks = []
         if dcape > 900: risks.append("fortes ràfegues de vent (esclafits severs)")
-        if lr > 6.8: risks.append("calamarsa de mida considerable")
+        if lr is not None and lr > 6.8: risks.append("calamarsa de mida considerable")
         if pwat > 35: risks.append("pluges torrencials i inundacions sobtades")
         elif not risks: risks.append("fortes pluges")
         risks_text = ", ".join(risks)
@@ -415,21 +413,19 @@ def generar_analisi_detallada(params, is_convergence_active):
     
     yield from stream_text("### Organització i Rotació (Cinemàtica)")
     if shear6 is not None:
-        if shear6 < 10: shear_text = "Molt feble, afavorint tempestes desorganitzades i de curta durada (unicel·lulars)."
-        elif shear6 < 18: shear_text = "Moderat, suficient per organitzar les tempestes en sistemes multicel·lulars o línies de tempestes."
-        else: shear_text = "Fort, un ingredient clau per al desenvolupament de supercèl·lules amb rotació (mesociclons)."
+        shear_text = "Molt feble (tempestes desorganitzades)." if shear6 < 10 else "Moderat (multicèl·lules)." if shear6 < 18 else "Fort (supercèl·lules)."
         yield from stream_text(f"**Cisallament 0-6 km:** El valor és de **{shear6:.1f} m/s**. {shear_text}")
     
     if srh1 is not None and srh1 > 100:
         srh_text="moderat" if srh1<250 else "fort"
-        lcl_text = f"Especialment si la base del núvol (LCL) és baixa com en aquest cas ({lcl_agl:.0f} m), " if lcl_agl < 1200 else ""
-        yield from stream_text(f"**Helicitat 0-1 km (SRH):** La rotació potencial a nivells baixos és **{srh_text}** ({srh1:.0f} m²/s²). {lcl_text}Valors elevats augmenten el risc que la rotació de la tempesta arribi a terra (tornados).")
+        lcl_text = f"Amb una base de núvol baixa ({lcl_agl:.0f} m), " if lcl_agl < 1200 else ""
+        yield from stream_text(f"**Helicitat 0-1 km (SRH):** Rotació potencial **{srh_text}** ({srh1:.0f} m²/s²). {lcl_text}Augmenta el risc de tornados.")
     
     yield from stream_text("### Síntesi i Riscos Específics")
-    if stp and stp > 0.5: yield from stream_text(f"**Potencial Tornàdic (STP):** L'índex de tornado significatiu és de **{stp:.1f}**. Valors superiors a 1 indiquen un entorn molt favorable per a supercèl·lules tornàdiques.")
-    if dcape and dcape > 800: yield from stream_text(f"**Potencial de Vent Sever (DCAPE):** El valor de **{dcape:.0f} J/kg** indica un alt potencial per a la formació de corrents descendents molt forts (esclafits).")
-    if pwat and pwat > 30: yield from stream_text(f"**Potencial de Precipitació Intensa (Aigua Precipitable):** El contingut d'humitat a la columna atmosfèrica és elevat ({pwat:.1f} mm), afavorint xàfecs de gran intensitat.")
-    yield from stream_text(f"**La Clau del Pronòstic:** La clau principal avui és la interacció entre la **inestabilitat {cape_text}** i un **cisallament {('fort' if shear6>18 else 'moderat')}**. La presència d'un disparador com la **convergència forta** serà el factor decisiu.")
+    if stp and stp > 0.5: yield from stream_text(f"**Potencial Tornàdic (STP):** L'índex és de **{stp:.1f}**. Valors > 1 indiquen entorn favorable a supercèl·lules tornàdiques.")
+    if dcape and dcape > 800: yield from stream_text(f"**Potencial de Vent Sever (DCAPE):** El valor de **{dcape:.0f} J/kg** suggereix potencial per a esclafits.")
+    if pwat and pwat > 30: yield from stream_text(f"**Potencial de Precipitació Intensa (Aigua Precipitable):** Contingut d'humitat elevat ({pwat:.1f} mm), afavorint xàfecs intensos.")
+    yield from stream_text(f"**La Clau del Pronòstic:** La interacció entre la inestabilitat **{cape_text}** i el cisallament **{('fort' if shear6 > 18 else 'moderat')}**. La **convergència** serà el factor decisiu.")
 
 def display_metrics(params_dict):
     param_map = [
@@ -489,9 +485,8 @@ def crear_mapa_temp_isobares(lats, lons, data, nivell, lat_sel, lon_sel, nom_pob
     fig.colorbar(cont_temp, ax=ax, orientation='vertical', label='Temperatura (°C)', shrink=0.7)
     return fig
 
-@st.cache_data(ttl=18000)
-def _crear_hodograf_cached(p_m, p_units_str, u_m, u_units_str, v_m, v_units_str, h_m, h_units_str):
-    p = p_m * units(p_units_str); u = u_m * units(u_units_str); v = v_m * units(v_units_str); h = h_m * units(h_units_str)
+# Funció sense cache per evitar errors de 'pickling' amb Matplotlib/MetPy
+def crear_hodograf(p, u, v, h):
     fig, ax=plt.subplots(1,1,figsize=(5,5)); hodo=Hodograph(ax,component_range=40.); hodo.add_grid(increment=10)
     hodoline=hodo.plot_colormapped(u.to('kt'),v.to('kt'),h.to('km'),cmap='gist_ncar'); plt.colorbar(hodoline,ax=ax,orientation='vertical',pad=0.05,shrink=0.8).set_label('Altitud (km)')
     try:
@@ -500,13 +495,8 @@ def _crear_hodograf_cached(p_m, p_units_str, u_m, u_units_str, v_m, v_units_str,
     except: pass
     ax.set_xlabel('kt'); ax.set_ylabel('kt'); return fig
 
-def crear_hodograf(p, u, v, h):
-    return _crear_hodograf_cached(p.m, str(p.units), u.m, str(u.units), v.m, str(v.units), h.m, str(h.units))
-
-@st.cache_data(ttl=18000)
-def _crear_skewt_cached(p_m, p_units_str, T_m, T_units_str, Td_m, Td_units_str, u_m, u_units_str, v_m, v_units_str):
-    p = p_m * units(p_units_str); T = T_m * units(T_units_str); Td = Td_m * units(Td_units_str)
-    u = u_m * units(u_units_str); v = v_m * units(v_units_str)
+# Funció sense cache per evitar errors de 'pickling' amb Matplotlib/MetPy
+def crear_skewt(p, T, Td, u, v):
     fig = plt.figure(figsize=(7, 9)); skew = SkewT(fig, rotation=45)
     skew.plot(p, T, 'r', lw=2, label='Temperatura'); skew.plot(p, Td, 'b', lw=2, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), length=7, color='black')
@@ -517,16 +507,13 @@ def _crear_skewt_cached(p_m, p_units_str, T_m, T_units_str, Td_m, Td_units_str, 
             prof = mpcalc.parcel_profile(p, T[0], Td[0]); skew.plot(p, prof, 'k', lw=2, ls='--', label='Trajectòria Parcel·la')
             cape, cin = mpcalc.cape_cin(p, T, Td, prof); skew.shade_cape(p, T, prof, alpha=0.3, color='orange'); skew.shade_cin(p, T, prof, alpha=0.6, color='gray')
             lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); lfc_p, _ = mpcalc.lfc(p, T, Td, prof); el_p, _ = mpcalc.el(p, T, Td, prof)
-            if lcl_p.magnitude: skew.ax.axhline(lcl_p.m, color='purple', linestyle='--', label=f'LCL {lcl_p.m:.0f} hPa')
-            if lfc_p.magnitude: skew.ax.axhline(lfc_p.m, color='darkred', linestyle='--', label=f'LFC {lfc_p.m:.0f} hPa')
-            if el_p.magnitude: skew.ax.axhline(el_p.m, color='red', linestyle='--', label=f'EL {el_p.m:.0f} hPa')
+            if hasattr(lcl_p, 'magnitude') and lcl_p.magnitude: skew.ax.axhline(lcl_p.m, color='purple', linestyle='--', label=f'LCL {lcl_p.m:.0f} hPa')
+            if hasattr(lfc_p, 'magnitude') and lfc_p.magnitude: skew.ax.axhline(lfc_p.m, color='darkred', linestyle='--', label=f'LFC {lfc_p.m:.0f} hPa')
+            if hasattr(el_p, 'magnitude') and el_p.magnitude: skew.ax.axhline(el_p.m, color='red', linestyle='--', label=f'EL {el_p.m:.0f} hPa')
         except: pass
     skew.ax.set_ylim(1050, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_xlabel('Temperatura (°C)'); skew.ax.set_ylabel('Pressió (hPa)'); plt.legend(); return fig
 
-def crear_skewt(p, T, Td, u, v):
-    return _crear_skewt_cached(p.m, str(p.units), T.m, str(T.units), Td.m, str(Td.units), u.m, str(u.units), v.m, str(v.units))
-
-@st.cache_data(ttl=18000)
+# Funció sense cache per evitar errors de 'pickling' amb Matplotlib
 def crear_grafic_orografia(params, zero_iso_h_agl):
     lcl_agl = params.get('LCL_AGL', {}).get('value'); lfc_agl = params.get('LFC_AGL', {}).get('value')
     if lcl_agl is None or np.isnan(lcl_agl): return None
@@ -554,9 +541,8 @@ def crear_grafic_orografia(params, zero_iso_h_agl):
         if y_tick > 0 and y_tick < final_ylim: tick_label = ax.text(0.15, y_tick, f'{int(y_tick)}', ha='left', va='center', color='white', weight='bold', fontsize=9); tick_label.set_path_effects(main_text_effect)
     fig.tight_layout(pad=0.5); return fig
 
-@st.cache_data(ttl=18000)
-def _crear_grafic_nuvol_cached(params, H_m, H_units_str, u_m, u_units_str, v_m, v_units_str, is_convergence_active):
-    H = H_m * units(H_units_str); u = u_m * units(u_units_str); v = v_m * units(v_units_str)
+# Funció sense cache per evitar errors de 'pickling' amb Matplotlib
+def crear_grafic_nuvol(params, H, u, v, is_convergence_active):
     lcl_agl, el_msl_km, cape = (params.get(k, {}).get('value') for k in ['LCL_AGL', 'EL_MSL', 'CAPE_Brut'])
     if lcl_agl is None or el_msl_km is None: return None
     cape = cape or 0; fig, ax = plt.subplots(figsize=(6, 9), dpi=120); ax.set_facecolor('#4F94CD'); lcl_km = lcl_agl / 1000; el_km = el_msl_km; center_x_base = 5.0
@@ -575,9 +561,6 @@ def _crear_grafic_nuvol_cached(params, H_m, H_units_str, u_m, u_units_str, v_m, 
     ax.barbs(np.full_like(barb_heights_km, 9.5), barb_heights_km, u_barbs, v_barbs, length=7, color='black')
     ax.set_ylim(0, 16); ax.set_xlim(0, 10); ax.set_ylabel("Altitud (km, MSL)"); ax.set_title("Visualització del Núvol", weight='bold'); ax.set_xticks([]); ax.grid(axis='y', linestyle='--', alpha=0.3)
     return fig
-
-def crear_grafic_nuvol(params, H, u, v, is_convergence_active):
-    return _crear_grafic_nuvol_cached(params, H.m, str(H.units), u.m, str(u.units), v.m, str(v.units), is_convergence_active)
 
 # --- 3. INTERFÍCIE I FLUX PRINCIPAL DE L'APLICACIÓ ---
 st.markdown('<h1 style="text-align: center; color: #FF4B4B;">⚡ Tempestes.cat</h1>', unsafe_allow_html=True)
@@ -673,15 +656,17 @@ elif sondeo:
 
             with tab_mapes:
                 st.subheader("Anàlisi de Mapes")
-                p_levels_all = [1000, 925, 850, 700, 500, 300]
-                nivell_global = st.selectbox("Nivell:", p_levels_all, index=p_levels_all.index(st.session_state.nivell_mapa), key="nivell_mapa_selector")
-                st.session_state.nivell_mapa = nivell_global
-
-                map_options = {
-                    "Vents i Convergència": "wind", "Temperatura i Isobares": "temp_height",
-                    "Punt de Rosada": "dewpoint", "Humitat Relativa": "humidity",
-                }
-                selected_map_name = st.radio("Tipus de mapa:", map_options.keys(), horizontal=True)
+                col1, col2 = st.columns(2)
+                with col1:
+                    p_levels_all = [1000, 925, 850, 700, 500, 300]
+                    nivell_global = st.selectbox("Nivell:", p_levels_all, index=p_levels_all.index(st.session_state.nivell_mapa), key="nivell_mapa_selector")
+                    st.session_state.nivell_mapa = nivell_global
+                with col2:
+                    map_options = {
+                        "Vents i Convergència": "wind", "Temperatura i Isobares": "temp_height",
+                        "Punt de Rosada": "dewpoint", "Humitat Relativa": "humidity",
+                    }
+                    selected_map_name = st.selectbox("Tipus de mapa:", map_options.keys())
                 
                 with st.spinner(f"Generant mapa de {selected_map_name.lower()}..."):
                     api_var = map_options[selected_map_name]
@@ -694,8 +679,8 @@ elif sondeo:
                         elif selected_map_name == "Temperatura i Isobares": fig = crear_mapa_temp_isobares(lats, lons, data, nivell_global, lat_sel, lon_sel, poble_sel)
                         else:
                             map_configs = {
-                                "Punt de Rosada": {"titol": "Punt de Rosada", "cmap": "BrBG", "unitat": "°C", "levels": np.arange(-10, 21, 2)},
-                                "Humitat Relativa": {"titol": "Humitat Relativa", "cmap": "Greens", "unitat": "%", "levels": np.arange(30, 101, 5)},
+                                "Punt de Rosada": {"titol_var": "Punt de Rosada", "cmap": "BrBG", "unitat": "°C", "levels": np.arange(-10, 21, 2)},
+                                "Humitat Relativa": {"titol_var": "Humitat Relativa", "cmap": "Greens", "unitat": "%", "levels": np.arange(30, 101, 5)},
                             }
                             config = map_configs[selected_map_name]
                             fig = crear_mapa_generic(lats, lons, data, nivell_global, lat_sel, lon_sel, poble_sel, **config)
@@ -703,8 +688,21 @@ elif sondeo:
 
             with tab_hodo: st.subheader("Hodògraf"); st.pyplot(crear_hodograf(p, u, v, H))
             with tab_sondeig: st.subheader(f"Sondeig per a {poble_sel}"); st.pyplot(crear_skewt(p, T, Td, u, v))
-            with tab_oro: st.subheader("Potencial d'Activació per Orografia"); st.pyplot(crear_grafic_orografia(parametros, parametros.get('ZeroIso_AGL', {}).get('value')))
-            with tab_nuvol: st.subheader("Visualització Conceptual del Núvol"); st.pyplot(crear_grafic_nuvol(parametros, H, u, v, is_disparador_active))
+            with tab_oro: 
+                st.subheader("Potencial d'Activació per Orografia")
+                fig_oro = crear_grafic_orografia(parametros, parametros.get('ZeroIso_AGL', {}).get('value'))
+                if fig_oro:
+                    st.pyplot(fig_oro)
+                else:
+                    st.info("No hi ha dades de LCL disponibles per calcular el potencial orogràfic.")
+
+            with tab_nuvol:
+                st.subheader("Visualització Conceptual del Núvol")
+                fig_nuvol = crear_grafic_nuvol(parametros, H, u, v, is_disparador_active)
+                if fig_nuvol:
+                    st.pyplot(fig_nuvol)
+                else:
+                    st.info("No hi ha dades per visualitzar l'estructura del núvol.")
             
             with tab_focus:
                 st.subheader("Anàlisi del Disparador de Convergència")
