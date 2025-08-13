@@ -145,6 +145,56 @@ pobles_data = {
     'Vielha e Mijaran': {'lat': 42.702, 'lon': 0.796}, 'Bossòst': {'lat': 42.787, 'lon': 0.691},
     'Les': {'lat': 42.812, 'lon': 0.716}, 'Salardú': {'lat': 42.710, 'lon': 0.925},
     'Arties': {'lat': 42.699, 'lon': 0.880}, 'Baqueira': {'lat': 42.700, 'lon': 0.941},
+
+    # --- 50 Localitats Addicionals (Zones Tempestuoses) ---
+
+    # Pirineu i Prepirineu (Focus orogràfic)
+    'Bagà': {'lat': 42.253, 'lon': 1.862}, 'Guardiola de Berguedà': {'lat': 42.233, 'lon': 1.880},
+    'Saldes': {'lat': 42.230, 'lon': 1.742}, 'Sant Llorenç de Morunys': {'lat': 42.138, 'lon': 1.591},
+    'Campdevànol': {'lat': 42.227, 'lon': 2.169}, 'Planoles': {'lat': 42.316, 'lon': 2.105},
+    'Toses': {'lat': 42.327, 'lon': 2.016}, 'Vilaller': {'lat': 42.477, 'lon': 0.716},
+
+    # Montseny, Guilleries i Collsacabra
+    'Gualba': {'lat': 41.724, 'lon': 2.508}, 'Fogars de Montclús': {'lat': 41.722, 'lon': 2.453},
+    'Sant Pere de Vilamajor': {'lat': 41.684, 'lon': 2.392}, 'Seva': {'lat': 41.815, 'lon': 2.285},
+    'Tona': {'lat': 41.850, 'lon': 2.230}, 'L\'Esquirol': {'lat': 42.036, 'lon': 2.373},
+    'Susqueda': {'lat': 42.029, 'lon': 2.599},
+
+    # Interior de Girona i Garrotxa
+    'Amer': {'lat': 42.008, 'lon': 2.602}, 'Anglès': {'lat': 41.956, 'lon': 2.639},
+    'Mieres': {'lat': 42.126, 'lon': 2.635}, 'Sant Esteve d\'en Bas': {'lat': 42.128, 'lon': 2.458},
+    'Les Planes d\'Hostoles': {'lat': 42.057, 'lon': 2.535},
+
+    # Catalunya Central i Moianès
+    'Súria': {'lat': 41.832, 'lon': 1.749}, 'Navarcles': {'lat': 41.751, 'lon': 1.902},
+    'Calaf': {'lat': 41.731, 'lon': 1.512}, 'Prats de Lluçanès': {'lat': 42.014, 'lon': 2.031},
+    'Collsuspina': {'lat': 41.831, 'lon': 2.176},
+
+    # Prelitoral Central (Montserrat, Sant Llorenç del Munt)
+    'El Bruc': {'lat': 41.583, 'lon': 1.779}, 'Vacarisses': {'lat': 41.593, 'lon': 1.928},
+    'Matadepera': {'lat': 41.603, 'lon': 2.022}, 'Castellbell i el Vilar': {'lat': 41.638, 'lon': 1.853},
+
+    # Plana de Lleida i Segrià Sec
+    'Alfés': {'lat': 41.523, 'lon': 0.635}, 'Castelldans': {'lat': 41.506, 'lon': 0.768},
+    'Seròs': {'lat': 41.463, 'lon': 0.414}, 'Maials': {'lat': 41.391, 'lon': 0.505},
+
+    # Ports de Tortosa-Beseit
+    'Arnes': {'lat': 40.910, 'lon': 0.259}, 'Prat de Comte': {'lat': 40.974, 'lon': 0.380},
+    'Paüls': {'lat': 40.925, 'lon': 0.399}, 'Roquetes': {'lat': 40.821, 'lon': 0.495},
+    'Mas de Barberans': {'lat': 40.725, 'lon': 0.364},
+
+    # Serres de Prades i Montsant
+    'Cornudella de Montsant': {'lat': 41.264, 'lon': 0.906}, 'Ulldemolins': {'lat': 41.320, 'lon': 0.876},
+    'La Febró': {'lat': 41.258, 'lon': 1.018}, 'L\'Arbolí': {'lat': 41.233, 'lon': 0.963},
+    'Vilaplana': {'lat': 41.231, 'lon': 1.033},
+
+    # Alt Penedès i Anoia (zones elevades)
+    'Pontons': {'lat': 41.411, 'lon': 1.516}, 'La Llacuna': {'lat': 41.472, 'lon': 1.531},
+    'Querol': {'lat': 41.423, 'lon': 1.393}, 'Mediona': {'lat': 41.473, 'lon': 1.614},
+
+    # Litoral i Prelitoral Tarragoní (zones de "rebots")
+    'El Perelló': {'lat': 40.873, 'lon': 0.712}, 'Vandellòs': {'lat': 41.026, 'lon': 0.858},
+    'La Selva del Camp': {'lat': 41.214, 'lon': 1.139}, 'Alforja': {'lat': 41.213, 'lon': 0.974},
 }
 
 
