@@ -172,7 +172,7 @@ def calcular_convergencia_per_totes_les_localitats(_hourly_index, _nivell, _loca
             
     return convergencia_per_poble
 
-
+@st.cache_data(ttl= 28000)
 def precalcular_potencials_del_dia(_pobles_data):
     """Versión optimizada que usa muestreo horario y paralelismo"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -823,5 +823,3 @@ elif sondeo:
     except Exception as e:
         st.error(f"S'ha produït un error inesperat en processar les dades per a '{poble_sel}'.")
         st.exception(e)
-
-
