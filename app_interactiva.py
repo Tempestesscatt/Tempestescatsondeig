@@ -793,12 +793,12 @@ with st.expander("⚡️ Avisos i Potencials Detectats Avui", expanded=st.sessio
 
         col_disparador, col_potencial = st.columns(2)
         with col_disparador:
-            st.markdown("##### 🔥 Risc actiu (Convergència)")
+            st.markdown("##### 🔥 Risc actiu (Convergència forta)")
             if not pobles_amb_disparador: st.write("Cap localitat amb potencial i disparador fort detectat.")
             for poble, hora in pobles_amb_disparador:
                 st.button(f"{poble} (a les {hora:02d}:00h)", key=f"btn_disparador_{poble}", on_click=actualitzar_seleccio, args=(poble, hora))
         with col_potencial:
-            st.markdown("##### 🔎 Inestable (Sense convergència)")
+            st.markdown("##### 🔎 Inestable (Sense convergència forta)")
             if not pobles_amb_potencial: st.write("Totes les localitats amb potencial tenen un disparador fort.")
             for poble, hora in pobles_amb_potencial:
                 st.button(f"{poble} (a les {hora:02d}:00h)", key=f"btn_potencial_{poble}", on_click=actualitzar_seleccio, args=(poble, hora))
