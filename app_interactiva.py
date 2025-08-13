@@ -80,7 +80,7 @@ if 'avisos_expanded' not in st.session_state:
 
 # --- 1. LÒGICA DE CÀRREGA DE DADES I CÀLCUL ---
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl= 28000)
 def carregar_sondeig_per_poble(nom_poble, lat, lon):
     p_levels = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
     h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
@@ -94,7 +94,7 @@ def carregar_sondeig_per_poble(nom_poble, lat, lon):
         return respostes[0], p_levels, None
     except Exception as e:
         return None, None, str(e)
-
+@st.cache_data(ttl=28000)
 def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
     lats, lons = np.linspace(40.5, 42.8, 12), np.linspace(0.2, 3.3, 12)
     lon_grid, lat_grid = np.meshgrid(lons, lats)
@@ -133,7 +133,7 @@ def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
     except Exception as e:
         return None, None, None, str(e)
 
-@st.cache_data(ttl=18000)
+@st.cache_data(ttl=28000)
 def calcular_convergencia_per_totes_les_localitats(_hourly_index, _nivell, _localitats_dict):
     """
     Calcula el valor de convergència/divergència per a cada localitat del diccionari.
@@ -172,7 +172,7 @@ def calcular_convergencia_per_totes_les_localitats(_hourly_index, _nivell, _loca
             
     return convergencia_per_poble
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=28000)
 def precalcular_potencials_del_dia(_pobles_data):
     """Versión optimizada que usa muestreo horario y paralelismo"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
