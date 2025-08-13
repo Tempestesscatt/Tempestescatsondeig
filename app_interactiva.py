@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 import openmeteo_requests
+import requests_cache
 from retry_requests import retry
 import numpy as np
 import pandas as pd
@@ -22,13 +23,12 @@ from scipy.interpolate import griddata
 from datetime import datetime, timedelta
 import pytz
 import matplotlib.patheffects as path_effects
-import requests 
 
 # --- CONFIGURACIÓ INICIAL ---
 st.set_page_config(layout="wide", page_title="Tempestes.cat")
 
-plain_session = requests.Session()
-retry_session = retry(plain_session, retries=5, backoff_factor=0.2)
+cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
+retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
 
 FORECAST_DAYS = 1
@@ -294,11 +294,11 @@ def calcular_convergencia_per_totes_les_localitats(_hourly_index, _nivell, _loca
 def precalcular_potencials_del_dia(_pobles_data):
     potencials = {}
     avisos_a_buscar = {"PRECAUCIÓ", "AVÍS", "RISC ALT", "ALERTA DE DISPARADOR"}
-    progress_bar_placeholder = st.empty()
+    # progress_bar_placeholder = st.empty()  <-- ESBORRA O COMENTA AQUESTA LÍNIA
     total_pobles = len(_pobles_data)
     
     for i, (nom_poble, coords) in enumerate(_pobles_data.items()):
-        progress_bar_placeholder.progress((i + 1) / total_pobles, text=f"Analitzant potencial diari: {nom_poble}...")
+        # progress_bar_placeholder.progress((i + 1) / total_pobles, text=f"Analitzant potencial diari: {nom_poble}...") <-- ESBORRA O COMENTA AQUESTA LÍNIA
         sondeo, p_levels, _ = carregar_sondeig_per_poble(nom_poble, coords['lat'], coords['lon'])
         if sondeo:
             for hora in range(24):
@@ -308,7 +308,7 @@ def precalcular_potencials_del_dia(_pobles_data):
                     if generar_avis_potencial_per_precalcul(parametros) in avisos_a_buscar:
                         potencials[nom_poble] = hora
                         break 
-    progress_bar_placeholder.empty()
+    # progress_bar_placeholder.empty() <-- ESBORRA O COMENTA AQUESTA LÍNIA
     return dict(sorted(potencials.items()))
 
 def generar_avis_potencial_per_precalcul(params):
