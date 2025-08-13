@@ -202,7 +202,6 @@ def carregar_sondeig_per_poble(nom_poble, lat, lon):
     except Exception as e: 
         return None, None, str(e)
 
-
 def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
     lats, lons = np.linspace(40.5, 42.8, 12), np.linspace(0.2, 3.3, 12)
     lon_grid, lat_grid = np.meshgrid(lons, lats); api_vars = []
@@ -212,10 +211,12 @@ def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
     else: return None, None, None, f"Variable '{variable}' no reconeguda."
     params = { "latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": api_vars, "models": "arome_seamless", "timezone": "auto", "forecast_days": forecast_days }
     try:
+        # requests_cache seguirà funcionant aquí per evitar crides innecessàries a l'API
         responses = openmeteo.weather_api("https://api.open-meteo.com/v1/forecast", params=params)
         lats_out, lons_out, data_out = [], [], []
         for r in responses:
             hourly = r.Hourly()
+            # Ara, com que la funció s'executa sempre, 'hourly_index' sempre serà el correcte
             values = [hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(api_vars))]
             if not any(np.isnan(v) for v in values):
                 lats_out.append(r.Latitude()); lons_out.append(r.Longitude()); data_out.append(tuple(values) if len(values) > 1 else values[0])
