@@ -27,15 +27,13 @@ import matplotlib.patheffects as path_effects
 # --- CONFIGURACIÓ INICIAL ---
 st.set_page_config(layout="wide", page_title="Tempestes.cat")
 
-# ---> CORRECCIÓ: S'ha corregit el nom de la variable de 'ache_session' a 'cache_session'.
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
 
 FORECAST_DAYS = 1
 
-# --- DADES DE LOCALITATS (Aquí has d'enganxar el teu diccionari de 200 pobles) ---
-# ---> CORRECCIÓ: S'han eliminat els números erronis que trencaven la sintaxi del diccionari.
+# --- DADES DE LOCALITATS ---
 pobles_data = {
     # Capitals i Grans Ciutats
     'Barcelona': {'lat': 41.387, 'lon': 2.168}, 'L\'Hospitalet de Llobregat': {'lat': 41.357, 'lon': 2.105},
@@ -151,31 +149,45 @@ pobles_data = {
 
 
 
+
+
+
+pobles_data = {
+    'Barcelona': {'lat': 41.387, 'lon': 2.168}, 'Lleida': {'lat': 41.617, 'lon': 0.622}, 
+    'Girona': {'lat': 41.983, 'lon': 2.824}, 'Tarragona': {'lat': 41.118, 'lon': 1.245},
+    'La Garriga': {'lat': 41.683, 'lon': 2.282}, 'Calafell': {'lat': 41.199, 'lon': 1.567},
+    'Agramunt': {'lat': 41.784, 'lon': 1.096}, 'Alcanó': {'lat': 41.488, 'lon': 0.598}
+}
+
 # --- INICIALITZACIÓ DEL SESSION STATE ---
 if 'poble_seleccionat' not in st.session_state:
-    st.session_state.poble_seleccionat = next(iter(pobles_data))
+    st.session_state.poble_seleccionat = 'Barcelona'
 if 'hora_seleccionada_str' not in st.session_state:
-    try:
-        tz = pytz.timezone('Europe/Madrid')
-        st.session_state.hora_seleccionada_str = f"{datetime.now(tz).hour:02d}:00h"
-    except:
-        st.session_state.hora_seleccionada_str = "12:00h"
+    tz = pytz.timezone('Europe/Madrid')
+    st.session_state.hora_seleccionada_str = f"{datetime.now(tz).hour:02d}:00h"
 
 # --- 1. LÒGICA DE CÀRREGA DE DADES I CÀLCUL ---
 
 def chunker(seq, size): return (seq[pos:pos + size] for pos in range(0, len(seq), size))
 
-@st.cache_data(ttl=18000)
-def carregar_dades_lot(_chunk_locations):
+@st.cache_data(ttl=3600)
+def carregar_sondeig_per_poble(nom_poble, lat, lon):
     p_levels = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
     h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
     h_press = [f"{v}_{p}hPa" for v in ["temperature", "dew_point", "wind_speed", "wind_direction", "geopotential_height"] for p in p_levels]
-    chunk_noms, chunk_lats, chunk_lons = zip(*_chunk_locations)
-    params = { "latitude": list(chunk_lats), "longitude": list(chunk_lons), "hourly": h_base + h_press, "models": "arome_seamless", "timezone": "auto", "forecast_days": FORECAST_DAYS }
+    params = { 
+        "latitude": lat, 
+        "longitude": lon, 
+        "hourly": h_base + h_press, 
+        "models": "arome_seamless", 
+        "timezone": "auto", 
+        "forecast_days": FORECAST_DAYS 
+    }
     try:
-        respostes_chunk = openmeteo.weather_api("https://api.open-meteo.com/v1/forecast", params=params)
-        return {chunk_noms[i]: respostes_chunk[i] for i in range(len(respostes_chunk))}, p_levels, None
-    except Exception as e: return None, None, str(e)
+        respostes = openmeteo.weather_api("https://api.open-meteo.com/v1/forecast", params=params)
+        return respostes[0], p_levels, None
+    except Exception as e: 
+        return None, None, str(e)
 
 @st.cache_data(ttl=18000)
 def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
@@ -313,32 +325,6 @@ def buscar_convergencia_en_nivells_significatius(_hourly_index, _localitats, _th
         if localitats_trobades_a_nivell:
             localitats_amb_convergencia.update(localitats_trobades_a_nivell)
     return localitats_amb_convergencia
-
-def generar_avis_potencial_per_precalcul(params):
-    cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0); cin = params.get('CIN_Fre', {}).get('value')
-    if cape_u > 500 and (cin is None or cin > -50): return "ALERTA DE DISPARADOR"
-    shear = params.get('Shear_0-6km', {}).get('value'); srh1 = params.get('SRH_0-1km', {}).get('value'); lcl_agl = params.get('LCL_AGL', {}).get('value', 9999)
-    if cape_u < 100 or (cin is not None and cin < -100): return "ESTABLE"
-    cond_supercelula = shear is not None and shear > 20 and cape_u > 1500 and srh1 is not None and srh1 > 250 and lcl_agl < 1200
-    cond_avis_sever = shear is not None and shear > 18 and cape_u > 1000
-    cond_precaucio = shear is not None and shear > 12 and cape_u > 500
-    if cond_supercelula: return "RISC ALT"
-    if cond_avis_sever: return "AVÍS"
-    if cond_precaucio: return "PRECAUCIÓ"
-    return "RISC BAIX"
-
-@st.cache_data(ttl=18000)
-def precalcular_avisos_hores(_totes_les_dades, _p_levels):
-    avisos_hores = {}
-    avisos_a_buscar = {"PRECAUCIÓ", "AVÍS", "RISC ALT", "ALERTA DE DISPARADOR"}
-    for nom_poble, sondeo in _totes_les_dades.items():
-        for hora in range(24):
-            profiles = processar_sondeig_per_hora(sondeo, hora, _p_levels)
-            if profiles:
-                parametros = calculate_parameters(*profiles)
-                if generar_avis_potencial_per_precalcul(parametros) in avisos_a_buscar:
-                    avisos_hores[nom_poble] = hora; break
-    return dict(sorted(avisos_hores.items()))
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ I FORMAT ---
 
@@ -561,242 +547,113 @@ def crear_grafic_orografia(params, zero_iso_h_agl):
 
 def crear_grafic_nuvol(params, H, u, v, is_convergence_active):
     lcl_agl, el_msl_km, cape = (params.get(k, {}).get('value') for k in ['LCL_AGL', 'EL_MSL', 'CAPE_Brut'])
-    if lcl_agl is None or el_msl_km is None:
-        return None
-
+    if lcl_agl is None or el_msl_km is None: return None
     cape = cape or 0
     fig, ax = plt.subplots(figsize=(6, 9), dpi=120)
     ax.set_facecolor('#4F94CD')
     lcl_km = lcl_agl / 1000
     el_km = el_msl_km
-
     center_x_base = 5.0
-
     if is_convergence_active and cape > 100:
         y_points = np.linspace(lcl_km, el_km, 100)
         cloud_width = 1.0 + np.sin(np.pi * (y_points - lcl_km) / (el_km - lcl_km)) * (1 + cape / 2000)
-
         for y, width in zip(y_points, cloud_width):
             tilt_offset = np.interp(y * 1000, H.m, u.m) / 15
             center_x = center_x_base + tilt_offset
             for _ in range(25):
-                ax.add_patch(Circle((center_x + (random.random() - 0.5) * width, y + (random.random() - 0.5) * 0.4),
-                                    0.2 + random.random() * 0.4, color='white', alpha=0.15, lw=0))
-
+                ax.add_patch(Circle((center_x + (random.random() - 0.5) * width, y + (random.random() - 0.5) * 0.4), 0.2 + random.random() * 0.4, color='white', alpha=0.15, lw=0))
         top_cloud_tilt_offset = np.interp(el_km * 1000, H.m, u.m) / 15
         anvil_center_x = center_x_base + top_cloud_tilt_offset
         anvil_wind_spread = np.interp(el_km * 1000, H.m, u.m) / 10
         for _ in range(80):
-            ax.add_patch(Circle((anvil_center_x + (random.random() - 0.2) * 4 + anvil_wind_spread, el_km + (random.random() - 0.5) * 0.5),
-                                0.2 + random.random() * 0.6, color='white', alpha=0.2, lw=0))
-
+            ax.add_patch(Circle((anvil_center_x + (random.random() - 0.2) * 4 + anvil_wind_spread, el_km + (random.random() - 0.5) * 0.5), 0.2 + random.random() * 0.6, color='white', alpha=0.2, lw=0))
         if cape > 2500:
             ax.add_patch(Circle((anvil_center_x, el_km + cape / 5000), 0.4, color='white', alpha=0.5))
     else:
-        ax.text(center_x_base, 8, "Sense disparador o energia\nsuficient per a convecció profunda.", ha='center', va='center',
-                color='black', fontsize=16, weight='bold', bbox=dict(facecolor='lightblue', alpha=0.7, boxstyle='round,pad=0.5'))
-
+        ax.text(center_x_base, 8, "Sense disparador o energia\nsuficient per a convecció profunda.", ha='center', va='center', color='black', fontsize=16, weight='bold', bbox=dict(facecolor='lightblue', alpha=0.7, boxstyle='round,pad=0.5'))
     barb_heights_km = np.arange(1, 16, 1)
     u_barbs = np.interp(barb_heights_km * 1000, H.m, u.to('kt').m)
     v_barbs = np.interp(barb_heights_km * 1000, H.m, v.to('kt').m)
     ax.barbs(np.full_like(barb_heights_km, 9.5), barb_heights_km, u_barbs, v_barbs, length=7, color='black')
-    
-    ax.set_ylim(0, 16)
-    ax.set_xlim(0, 10)
-    ax.set_ylabel("Altitud (km, MSL)")
-    ax.set_title("Visualització del Núvol", weight='bold')
-    ax.set_xticks([])
-    ax.grid(axis='y', linestyle='--', alpha=0.3)
+    ax.set_ylim(0, 16); ax.set_xlim(0, 10); ax.set_ylabel("Altitud (km, MSL)"); ax.set_title("Visualització del Núvol", weight='bold'); ax.set_xticks([]); ax.grid(axis='y', linestyle='--', alpha=0.3)
     return fig
-
 
 # --- 3. INTERFÍCIE I FLUX PRINCIPAL DE L'APLICACIÓ ---
 st.markdown('<h1 style="text-align: center; color: #FF4B4B;">⚡ Tempestes.cat</h1>', unsafe_allow_html=True)
 st.markdown('<p style="text-align: center;">Eina d\'Anàlisi i Previsió de Fenòmens Severs a Catalunya</p>', unsafe_allow_html=True)
 
-# --- INICI DE LA CÀRREGA DE DADES AMB DEPURACIÓ ---
-totes_les_dades = {}
-p_levels = []
-errors_carrega = [] # Llista per guardar els errors de cada lot
-locations_data = [(k, v['lat'], v['lon']) for k, v in pobles_data.items()]
-# Recomanació: reduir la mida del lot pot ajudar si l'API es veu sobrecarregada
-chunk_size = 35 
-chunks = list(chunker(locations_data, chunk_size))
-num_chunks = len(chunks)
-progress_bar = st.progress(0, text="Iniciant la càrrega de dades...")
-
-for i, chunk in enumerate(chunks):
-    noms_chunk = [loc[0] for loc in chunk]
-    progress_text = f"Carregant lot {i+1}/{num_chunks} (Pobles: {noms_chunk[0]}...)"
-    progress_bar.progress((i + 1) / num_chunks, text=progress_text)
+# --- Controls Principals ---
+with st.container(border=True):
+    col1, col2 = st.columns([1,1], gap="large")
+    with col1:
+        hour_options = [f"{h:02d}:00h" for h in range(24)]
+        try: index_hora = hour_options.index(st.session_state.hora_seleccionada_str)
+        except ValueError: index_hora = 0
+        st.selectbox("Hora del pronòstic (Local):", options=hour_options, index=index_hora, key="hora_selector")
     
-    # Intentem carregar les dades per al lot actual
-    dades_lot, p_levels_lot, error_lot = carregar_dades_lot(tuple(chunk))
+    with col2:
+        p_levels_all = [1000, 925, 850, 700, 500, 300]
+        nivell_global = st.selectbox("Nivell d'anàlisi de mapes:", p_levels_all, index=p_levels_all.index(850))
     
-    # Gestionem el resultat
-    if error_lot:
-        # Si hi ha un error, el guardem i continuem amb el següent lot
-        error_msg = f"Error en el lot {i+1} ({noms_chunk[0]}...): {error_lot}"
-        errors_carrega.append(error_msg)
-    elif dades_lot:
-        # Si tot va bé, actualitzem les dades
-        totes_les_dades.update(dades_lot)
-        if not p_levels and p_levels_lot:
-            p_levels = p_levels_lot
-
-progress_bar.empty()
-
-# --- NOU BLOC D'INFORME DE CÀRREGA (CORREGIT) ---
-total_pobles = len(pobles_data)
-pobles_carregats = len(totes_les_dades)
-
-if pobles_carregats < total_pobles:
-    st.warning(f"S'han carregat dades per a {pobles_carregats} de {total_pobles} localitats.")
-    pobles_faltants = set(pobles_data.keys()) - set(totes_les_dades.keys())
-    
-    if errors_carrega:
-        with st.expander("Veure detalls dels errors de càrrega"):
-            for error in errors_carrega:
-                st.error(error)
-            st.info("Això pot indicar un problema temporal amb l'API. Prova de refrescar la pàgina (F5) en uns minuts.")
-            
-    with st.expander(f"Veure les {len(pobles_faltants)} localitats no carregades"):
-        st.write(sorted(list(pobles_faltants)))
-else:
-    st.toast("Totes les dades de sondeig s'han carregat correctament!", icon="✅")
-
-# Comprovació final abans de continuar
-if not totes_les_dades:
-    st.error("Error crític: No s'ha pogut carregar cap dada. L'aplicació no pot continuar.")
-    st.stop()
-    
-# --- LA RESTA DEL CODI CONTINUA AQUÍ ---
-
-with st.spinner("Buscant hores amb avisos a tot el territori..."):
-    avisos_hores=precalcular_avisos_hores(totes_les_dades,p_levels)
-
-def update_from_avis_selector():
-    poble_avis_format = st.session_state.avis_selector
-    if " (" in poble_avis_format:
-        # Extraiem el nom real del poble, eliminant l'emoji i el text addicional
-        nom_poble_real = poble_avis_format.split(" (")[0].split(" ", 1)[1] if " " in poble_avis_format.split(" (")[0] else poble_avis_format.split(" (")[0]
-        if nom_poble_real in avisos_hores:
-            hora_avis = avisos_hores[nom_poble_real]
-            st.session_state.hora_seleccionada_str = f"{hora_avis:02d}:00h"
-            st.session_state.poble_seleccionat = nom_poble_real
-
-def update_from_hora_selector():
-    # Aquesta funció pot quedar-se buida o la podem fer servir per resetejar alguna selecció si cal.
-    # Per ara, la deixem simple per evitar efectes no desitjats.
-    pass
+st.markdown(f'<p style="text-align: center; font-size: 0.9em; color: grey;">🕒 {get_next_arome_update_time()}</p>', unsafe_allow_html=True)
 
 hourly_index = int(st.session_state.hora_seleccionada_str.split(':')[0])
+
 with st.spinner("Analitzant convergències significatives (≥925hPa) a tot el territori..."):
     conv_threshold = -5.5
     localitats_convergencia = buscar_convergencia_en_nivells_significatius(hourly_index, pobles_data, conv_threshold, FORECAST_DAYS)
+st.toast(f"Anàlisi de convergència completat per a les {hourly_index:02d}:00h.")
 
-with st.container(border=True):
-    col1,col2=st.columns([1,1],gap="large"); hour_options=[f"{h:02d}:00h" for h in range(24)]
-    with col1:
-        try: index_hora=hour_options.index(st.session_state.hora_seleccionada_str)
-        except ValueError: index_hora=0
-        st.selectbox("Hora del pronòstic (Local):",options=hour_options,index=index_hora, key="hora_selector", on_change=update_from_hora_selector)
-    with col2:
-        p_levels_all=p_levels if p_levels else [1000,925,850,700,500,300]; nivell_global=st.selectbox("Nivell d'anàlisi de mapes:",p_levels_all,index=p_levels_all.index(850) if 850 in p_levels_all else 0)
-    
-    opcions_avis_formatejades = []
-    for poble, hora_avis in avisos_hores.items():
-        if poble in localitats_convergencia:
-            opcions_avis_formatejades.append(f"🔥 {poble} (Avís a les {hora_avis:02d}:00h)")
-        else:
-            opcions_avis_formatejades.append(f"🧐 {poble} (Potencial a les {hora_avis:02d}:00h)")
-    
-    opcions_avis=["--- Selecciona una localitat amb risc ---"] + sorted(list(set(opcions_avis_formatejades)))
-    st.selectbox("Accés ràpid a localitats amb risc:",options=opcions_avis,key='avis_selector',on_change=update_from_avis_selector, index=0)
-
-st.markdown(f'<p style="text-align: center; font-size: 0.9em; color: grey;">🕒 {get_next_arome_update_time()}</p>', unsafe_allow_html=True)
-
-# Actualitzem l'índex horari per si ha canviat amb l'Accés Ràpid
-hourly_index = int(st.session_state.hora_seleccionada_str.split(':')[0])
-disparadors_actius = {poble for poble in avisos_hores if poble in localitats_convergencia}
-
-# ... (El teu codi per mostrar la resta de l'aplicació continua aquí, a partir de la selecció principal de localitat)
+# --- LÒGICA DE SELECCIÓ DE LOCALITAT ---
+sorted_pobles = sorted(pobles_data.keys())
+opciones_display = [f"⚠️ {p}" if p in localitats_convergencia else p for p in sorted_pobles]
 
 def update_poble_selection():
-    """
-    Funció callback que s'activa en canviar la selecció del poble.
-    Analitza el text del selectbox per obtenir el nom real del poble
-    i l'actualitza a l'estat de la sessió. Aquesta versió és més robusta.
-    """
     poble_display = st.session_state.poble_selector
-
-    # Primer, eliminem qualsevol informació addicional entre parèntesis
-    nom_net = poble_display.split(" (")[0]
-    
-    # Després, eliminem qualsevol emoji conegut i espais sobrants.
-    nom_net = nom_net.replace("⚠️", "").replace("🔥", "").replace("🧐", "").strip()
-
-    # Finalment, actualitzem l'estat de la sessió amb el nom net
+    nom_net = poble_display.replace("⚠️ ", "").strip()
     st.session_state.poble_seleccionat = nom_net
 
-# --- LÒGICA DE SELECCIÓ DE LOCALITAT (VERSIÓ CORREGIDA I ROBUSTA) ---
-
-# ---> CANVI CLAU: Ara treballem NOMÉS amb els pobles que SÍ s'han carregat.
-pobles_disponibles = sorted(list(totes_les_dades.keys()))
-
-if not pobles_disponibles:
-    st.error("No s'ha pogut carregar cap localitat. L'aplicació no pot continuar.")
-    st.stop()
-
-# Si el poble que estava seleccionat ja no està a la llista de disponibles, seleccionem el primer que hi hagi.
-if st.session_state.poble_seleccionat not in pobles_disponibles:
-    st.session_state.poble_seleccionat = pobles_disponibles[0]
-
-# Crea les opcions per al menú desplegable, afegint una marca només als disponibles que tenen disparador.
-opciones_display = [f"⚠️ {p} (Disparador Actiu)" if p in disparadors_actius else p for p in pobles_disponibles]
-
-# Intenta trobar l'índex de la selecció actual per mantenir-la consistent
-default_index_display = 0
+# Determina l'índex per defecte del selectbox
+default_index = 0
 try:
-    # Busca la cadena que comença amb el nom del poble seleccionat
-    current_selection_display = next(s for s in opciones_display if s.strip().startswith(st.session_state.poble_seleccionat))
-    default_index_display = opciones_display.index(current_selection_display)
-except (StopIteration, ValueError):
-    # Si no es troba, simplement es deixa el valor per defecte (el primer de la llista)
+    current_selection_display = f"⚠️ {st.session_state.poble_seleccionat}" if st.session_state.poble_seleccionat in localitats_convergencia else st.session_state.poble_seleccionat
+    default_index = opciones_display.index(current_selection_display)
+except ValueError:
     pass
 
 st.selectbox(
     'Selecciona una localitat:',
     options=opciones_display,
-    index=default_index_display,
+    index=default_index,
     key='poble_selector',
     on_change=update_poble_selection,
-    help="Les localitats marcades amb ⚠️ tenen un focus de convergència actiu per a l'hora seleccionada, actuant com un possible disparador."
+    help="Les localitats marcades amb ⚠️ tenen un focus de convergència actiu per a l'hora seleccionada."
 )
 
-# --- PROCESSAMENT I VISUALITZACIÓ DE DADES PER A LA LOCALITAT SELECCIONADA ---
-
+# --- PROCESSAMENT I VISUALITZACIÓ SOTA DEMANDA ---
 poble_sel = st.session_state.poble_seleccionat
-# ---> CANVI CLAU: Ara estem 100% segurs que 'poble_sel' existirà tant a 'pobles_data' com a 'totes_les_dades'.
-lat_sel, lon_sel = pobles_data[poble_sel]['lat'], pobles_data[poble_sel]['lon']
-sondeo = totes_les_dades.get(poble_sel)
+lat_sel = pobles_data[poble_sel]['lat']
+lon_sel = pobles_data[poble_sel]['lon']
 
-if sondeo:
+with st.spinner(f"Carregant sondeig per a {poble_sel}..."):
+    sondeo, p_levels, error_sondeo = carregar_sondeig_per_poble(poble_sel, lat_sel, lon_sel)
+
+if error_sondeo:
+    st.error(f"No s'han pogut obtenir dades per a '{poble_sel}': {error_sondeo}")
+elif sondeo:
     try:
         data_is_valid = False
         parametros = {} 
-
-        with st.spinner(f"Processant dades per a {poble_sel}..."):
-            profiles = processar_sondeig_per_hora(sondeo, hourly_index, p_levels)
-            if profiles:
-                p, T, Td, u, v, H = profiles
-                parametros = calculate_parameters(p, T, Td, u, v, H)
-                data_is_valid = True
+        
+        profiles = processar_sondeig_per_hora(sondeo, hourly_index, p_levels)
+        if profiles:
+            p, T, Td, u, v, H = profiles
+            parametros = calculate_parameters(p, T, Td, u, v, H)
+            data_is_valid = True
 
         if data_is_valid:
-            is_disparador_active = poble_sel in disparadors_actius
+            is_disparador_active = poble_sel in localitats_convergencia
 
-            # --- SECCIÓ D'AVISOS PRINCIPALS ---
             avis_temp_titol, avis_temp_text, avis_temp_color, avis_temp_icona = generar_avis_temperatura(parametros)
             if avis_temp_titol:
                 display_avis_principal(avis_temp_titol, avis_temp_text, avis_temp_color, icona_personalitzada=avis_temp_icona)
@@ -808,7 +665,6 @@ if sondeo:
             avis_titol, avis_text, avis_color = generar_avis_localitat(parametros, is_disparador_active)
             display_avis_principal(avis_titol, avis_text, avis_color)
 
-            # --- NAVEGACIÓ PER PESTANYES ---
             tab_analisi, tab_params, tab_mapes, tab_hodo, tab_sondeig, tab_oro, tab_nuvol = st.tabs([
                 "🗨️ Anàlisi", "📊 Paràmetres", "🗺️ Mapes", "🧭 Hodògraf",
                 "📍 Sondeig", "🏔️ Orografia", "☁️ Visualització"
@@ -823,19 +679,16 @@ if sondeo:
 
             with tab_mapes:
                 st.subheader(f"Anàlisi de Mapes a {nivell_global}hPa")
-
                 map_options = {
                     "Vents i Convergència": {"api_variable": "wind"},
                     "Punt de Rosada": {"api_variable": "dewpoint", "titol": "Punt de Rosada", "cmap": "BrBG", "unitat": "°C", "levels": np.arange(-10, 21, 2)},
                     "Humitat Relativa": {"api_variable": "humidity", "titol": "Humitat Relativa", "cmap": "Greens", "unitat": "%", "levels": np.arange(30, 101, 5)}
                 }
                 selected_map_name = st.selectbox("Selecciona la capa a visualitzar:", map_options.keys())
-
                 with st.spinner(f"Generant mapa de {selected_map_name.lower()}..."):
                     map_config = map_options[selected_map_name]
                     api_var = map_config["api_variable"]
                     lats, lons, data, error = obtener_dades_mapa(api_var, nivell_global, hourly_index, FORECAST_DAYS)
-
                     if error:
                         st.error(f"Error en obtenir dades del mapa: {error}")
                     elif not lats or len(lats) < 4:
@@ -844,9 +697,7 @@ if sondeo:
                         if selected_map_name == "Vents i Convergència":
                             fig = crear_mapa_vents(lats, lons, data, nivell_global, lat_sel, lon_sel, poble_sel)
                         else:
-                            fig = crear_mapa_generic(lats, lons, data, nivell_global, lat_sel, lon_sel, poble_sel,
-                                                     map_config["titol"], map_config["cmap"],
-                                                     map_config["unitat"], map_config["levels"])
+                            fig = crear_mapa_generic(lats, lons, data, nivell_global, lat_sel, lon_sel, poble_sel, map_config["titol"], map_config["cmap"], map_config["unitat"], map_config["levels"])
                         st.pyplot(fig)
 
             with tab_hodo:
@@ -875,12 +726,6 @@ if sondeo:
                         st.info("No hi ha dades de LCL o EL disponibles per visualitzar l'estructura del núvol.")
         else:
             st.warning(f"No s'han pogut calcular els paràmetres per a les {hourly_index:02d}:00h. Les dades del model podrien no ser vàlides per a aquesta hora.")
-
     except Exception as e:
         st.error(f"S'ha produït un error inesperat en processar les dades per a '{poble_sel}'.")
-        st.exception(e) 
-
-else:
-    # Aquest missatge ara només apareixerà si la localitat seleccionada NO ESTÀ a la llista de dades carregades,
-    # la qual cosa, amb la nova lògica, només podria passar en un cas extrem.
-    st.error(f"Error intern: No s'han trobat dades pre-carregades per a '{poble_sel}'.")
+        st.exception(e)
