@@ -331,7 +331,7 @@ def encontrar_localitats_con_convergencia(_hourly_index, _nivell, _localitats, _
 
 @st.cache_data(ttl=18000)
 def buscar_convergencia_en_nivells_significatius(_hourly_index, _localitats, _threshold, _forecast_days):
-    nivells_a_revisar = [925, 850, 700] 
+    nivells_a_revisar = [925,850] 
     localitats_amb_convergencia = set()
     for nivell in nivells_a_revisar:
         localitats_trobades_a_nivell = encontrar_localitats_con_convergencia(_hourly_index, nivell, _localitats, _threshold, _forecast_days)
@@ -468,7 +468,7 @@ def generar_avis_convergencia(params, is_convergence_active, divergence_value):
     if not is_convergence_active: return None, None, None
     cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0)
     cin = params.get('CIN_Fre', {}).get('value')
-    if cape_u > 500 and (cin is None or cin > -50) and divergence_value is not None and divergence_value < -13:
+    if cape_u > 500 and (cin is None or cin > -50) and divergence_value is not None and divergence_value > -13:
         return "ALERTA DE DISPARADOR", f"La forta convergència de vents (valor: {divergence_value:.1f} x10⁻⁵ s⁻¹) pot actuar com a disparador. Amb un CAPE de {cape_u:.0f} J/kg i una 'tapa' (CIN) feble, hi ha un alt potencial que les tempestes s'iniciïn de manera explosiva.", "#FF4500"
     return None, None, None
     
@@ -857,4 +857,3 @@ elif sondeo:
             st.warning(f"No s'han pogut calcular els paràmetres per a les {hourly_index:02d}:00h. Les dades del model podrien no ser vàlides per a aquesta hora.")
     except Exception as e:
         st.error(f"S'ha produït un error inesperat en processar les dades per a '{poble_sel}'.")
-        st.exception(e)
