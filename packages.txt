@@ -1,5 +1,7 @@
+# Dependències del sistema per a Cartopy i altres llibreries geoespacials
+build-essential
 libproj-dev
 proj-data
 proj-bin
 libgeos-dev
-libgdal-dev
+cython
