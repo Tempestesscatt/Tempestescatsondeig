@@ -624,7 +624,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     cont_fill = ax.contourf(X, Y, divergence_values, levels=levels, cmap='hot_r', alpha=0.85, zorder=2, transform=ccrs.PlateCarree(), extend='min')
     cbar = fig.colorbar(cont_fill, ax=ax, orientation='vertical', label='Convergència (x10⁻⁵ s⁻¹)', shrink=0.7)
     
-    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="white", density=5.7, linewidth=0.6, arrowsize=0.7, zorder=4, transform=ccrs.PlateCarree())
+    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5.7, linewidth=0.6, arrowsize=0.7, zorder=4, transform=ccrs.PlateCarree())
     return fig
 
 def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
