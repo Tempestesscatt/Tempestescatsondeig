@@ -41,21 +41,24 @@ pobles_data = {
     # La Selva
     'Arbúcies': {'lat': 41.815, 'lon': 2.515},
   
+
     # Maresme
     'Arenys de Mar': {'lat': 41.581, 'lon': 2.551},
+    
+
+    
+    
     
     # Ripollès
     'Ripoll': {'lat': 42.201, 'lon': 2.190},
     
+    
     # Baix Empordà
     "La Bisbal d'Empordà": {'lat': 41.958, 'lon': 3.037},
    
-    # Capitals de Província
-    'Barcelona': {'lat': 41.38879, 'lon': 2.15899},
-    'Girona': {'lat': 41.98311, 'lon': 2.82493},
-    'Lleida': {'lat': 41.61674, 'lon': 0.62218},
-    'Tarragona': {'lat': 41.11905, 'lon': 1.24544},
+ 
 }
+
 # --- FUNCIÓ DE CALLBACK ---
 def actualitzar_seleccio(poble, hora):
     """Callback per actualitzar el poble i l'hora a l'estat de la sessió."""
@@ -130,7 +133,7 @@ def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
     except Exception as e:
         return None, None, None, str(e)
 
-@st.cache_data(ttl=28000)
+
 def calcular_convergencia_per_totes_les_localitats(_hourly_index, _nivell, _localitats_dict):
     """
     Calcula el valor de convergència/divergència per a cada localitat del diccionari.
@@ -169,7 +172,7 @@ def calcular_convergencia_per_totes_les_localitats(_hourly_index, _nivell, _loca
             
     return convergencia_per_poble
 
-@st.cache_data(ttl=28000)
+
 def precalcular_potencials_del_dia(_pobles_data):
     """Versión optimizada que usa muestreo horario y paralelismo"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -200,7 +203,7 @@ def precalcular_potencials_del_dia(_pobles_data):
                 potencials[result[0]] = result[1]
                 
     return potencials
-@st.cache_data(ttl= 28000)
+
 def generar_avis_potencial_per_precalcul(params):
     cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0); cin = params.get('CIN_Fre', {}).get('value')
     if cape_u > 500 and (cin is None or cin > -50): return "ALERTA DE DISPARADOR"
@@ -299,7 +302,7 @@ def calculate_parameters(p, T, Td, u, v, h):
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ I FORMAT ---
 # (Totes les teves funcions de visualització, no canvien)
-@st.cache_data(ttl= 28000)
+
 def display_avis_principal(titol_avís, text_avís, color_avís, icona_personalitzada=None):
     icon_map = {"ESTABLE": "☀️", "RISC BAIX": "☁️", "PRECAUCIÓ": "⚡️", "AVÍS": "⚠️", "RISC ALT": "🌪️", "POTENCIAL SEVER": "🧐", "POTENCIAL MODERAT": "🤔", "ALERTA DE DISPARADOR": "🎯"}
     icona = icona_personalitzada if icona_personalitzada else icon_map.get(titol_avís, "ℹ️")
@@ -347,7 +350,7 @@ def get_parameter_style(param_name, value):
         if value > 14: color, emoji = "#FF4500", "🔝";
         elif value > 12: color = "#FFA500"
     return color, emoji
-@st.cache_data(ttl= 28000)
+
 def generar_avis_temperatura(params):
     temp = params.get('SFC_Temp', {}).get('value')
     if temp is None: return None, None, None, None
@@ -398,7 +401,7 @@ def generar_avis_localitat(params, is_convergence_active):
         if is_convergence_active:
              missatge_base += " La convergència forta podria ajudar a formar alguns nuclis."
         return "RISC BAIX", missatge_base, "#4682B4"
-@st.cache_data(ttl= 28000)
+
 def generar_avis_convergencia(params, is_convergence_active, divergence_value):
     if not is_convergence_active: return None, None, None
     
@@ -409,7 +412,7 @@ def generar_avis_convergencia(params, is_convergence_active, divergence_value):
         return "ALERTA DE DISPARADOR", f"La forta convergència de vents (valor: {divergence_value:.1f} x10⁻⁵ s⁻¹) pot actuar com a disparador. Amb un CAPE de {cape_u:.0f} J/kg i una 'tapa' (CIN) feble, hi ha un alt potencial que les tempestes s'iniciïn de manera explosiva.", "#FF4500"
     
     return None, None, None
-@st.cache_data(ttl= 28000)    
+   
 def generar_analisi_detallada(params, is_convergence_active):
     #... (Aquesta funció es queda igual)
     def stream_text(text):
@@ -463,7 +466,6 @@ def generar_analisi_detallada(params, is_convergence_active):
     if pwat and pwat > 30: yield from stream_text(f"**Potencial de Precipitació Intensa (Aigua Precipitable):** El contingut d'humitat a la columna atmosfèrica és elevat ({pwat:.1f} mm), afavorint xàfecs de gran intensitat i possibles inundacions locals.")
     yield from stream_text(f"**La Clau del Pronòstic:** La clau principal avui és la interacció entre la **inestabilitat {cape_text}** i un **cisallament {('fort' if shear6>18 else 'moderat')}**. La presència (o absència) d'un mecanisme de tret com la **convergència forta** serà el factor decisiu per determinar si s'allibera aquest potencial i quin tipus de tempestes es desenvolupen.")
 
-@st.cache_data(ttl= 28000)
 def display_metrics(params_dict):
     #... (Aquesta funció es queda igual)
     param_map = [
@@ -509,13 +511,13 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
 @st.cache_data(ttl= 28000)
 def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
     fig=plt.figure(figsize=(9,9),dpi=150); ax=fig.add_subplot(1,1,1,projection=ccrs.PlateCarree()); ax.set_extent([0,3.5,40.4,43],crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND,facecolor="#E0E0E0",zorder=0); ax.add_feature(cfeature.OCEAN,facecolor='#b0c4de',zorder=0); ax.add_feature(cfeature.COASTLINE,edgecolor='black',linewidth=0.5,zorder=1); ax.add_feature(cfeature.BORDERS,linestyle=':',edgecolor='black',zorder=1); ax.plot(lon_sel,lat_sel,'o',markersize=12,markerfacecolor='yellow',markeredgecolor='black',markeredgewidth=2,transform=ccrs.Geodetic(),zorder=5); ax.text(lon_sel+0.05,lat_sel+0.05,nom_poble_sel,transform=ccrs.Geodetic(),zorder=6,bbox=dict(facecolor='white',alpha=0.8,edgecolor='none',boxstyle='round,pad=0.2')); ax.set_title(f"{titol} a {nivell}hPa",weight='bold'); return fig,ax
-@st.cache_data(ttl= 28000)
+
 def crear_mapa_generic(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel, titol_var, cmap, unitat, levels):
     fig,ax=crear_mapa_base(nivell,lat_sel,lon_sel,nom_poble_sel,titol_var)
     grid_lon,grid_lat=np.linspace(min(lons),max(lons),100),np.linspace(min(lats),max(lats),100); X,Y=np.meshgrid(grid_lon,grid_lat); points=np.vstack((lons,lats)).T
     grid_data=griddata(points,data,(X,Y),method='cubic'); grid_data=np.nan_to_num(grid_data)
     cont=ax.contourf(X,Y,grid_data,cmap=cmap,levels=levels,alpha=0.7,zorder=2,transform=ccrs.PlateCarree(),extend='both'); fig.colorbar(cont,ax=ax,orientation='vertical',label=f'{titol_var} ({unitat})',shrink=0.7); return fig
-@st.cache_data(ttl= 28000)
+
 def crear_mapa_temp_isobares(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     temps, heights = zip(*data)
     fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Temperatura i Isobares")
@@ -527,13 +529,13 @@ def crear_mapa_temp_isobares(lats, lons, data, nivell, lat_sel, lon_sel, nom_pob
     plt.clabel(cont_height, inline=True, fontsize=9, fmt='%1.0f m')
     fig.colorbar(cont_temp, ax=ax, orientation='vertical', label='Temperatura (°C)', shrink=0.7)
     return fig
-@st.cache_data(ttl= 28000)
+
 def crear_hodograf(p, u, v, h):
     fig, ax=plt.subplots(1,1,figsize=(5,5)); hodo=Hodograph(ax,component_range=40.); hodo.add_grid(increment=10); hodoline=hodo.plot_colormapped(u,v,h.to('km'),cmap='gist_ncar'); plt.colorbar(hodoline,ax=ax,orientation='vertical',pad=0.05,shrink=0.8).set_label('Altitud (km)')
     try: rm,_,_=mpcalc.bunkers_storm_motion(p,u,v,h); hodo.plot_vectors(rm[0].to('kt'),rm[1].to('kt'),color='black',label='Mov. Tempesta (RM)')
     except: pass
     ax.set_xlabel('kt'); ax.set_ylabel('kt'); return fig
-@st.cache_data(ttl= 28000)
+
 def crear_skewt(p, T, Td, u, v):
     fig = plt.figure(figsize=(7, 9)); skew = SkewT(fig, rotation=45)
     skew.plot(p, T, 'r', lw=2, label='Temperatura'); skew.plot(p, Td, 'b', lw=2, label='Punt de Rosada')
@@ -550,7 +552,7 @@ def crear_skewt(p, T, Td, u, v):
             if el_p: skew.ax.axhline(el_p.m, color='red', linestyle='--', label=f'EL {el_p.m:.0f} hPa')
         except: pass
     skew.ax.set_ylim(1050, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_xlabel('Temperatura (°C)'); skew.ax.set_ylabel('Pressió (hPa)'); plt.legend(); return fig
-@st.cache_data(ttl= 28000)
+
 def crear_grafic_orografia(params, zero_iso_h_agl):
     lcl_agl = params.get('LCL_AGL', {}).get('value'); lfc_agl = params.get('LFC_AGL', {}).get('value')
     if lcl_agl is None or np.isnan(lcl_agl): return None
@@ -577,7 +579,7 @@ def crear_grafic_orografia(params, zero_iso_h_agl):
     for y_tick in ax.get_yticks():
         if y_tick > 0 and y_tick < final_ylim: tick_label = ax.text(0.15, y_tick, f'{int(y_tick)}', ha='left', va='center', color='white', weight='bold', fontsize=9); tick_label.set_path_effects(main_text_effect)
     fig.tight_layout(pad=0.5); return fig
-@st.cache_data(ttl= 28000)
+
 def crear_grafic_nuvol(params, H, u, v, is_convergence_active):
     lcl_agl, el_msl_km, cape = (params.get(k, {}).get('value') for k in ['LCL_AGL', 'EL_MSL', 'CAPE_Brut'])
     if lcl_agl is None or el_msl_km is None: return None
@@ -821,3 +823,5 @@ elif sondeo:
     except Exception as e:
         st.error(f"S'ha produït un error inesperat en processar les dades per a '{poble_sel}'.")
         st.exception(e)
+
+
