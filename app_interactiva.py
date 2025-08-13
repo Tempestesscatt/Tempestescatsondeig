@@ -247,8 +247,20 @@ def get_next_arome_update_time():
         if available_time > now_utc: next_update_time = available_time; break
     if next_update_time is None: next_update_time = (now_utc + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0) + availability_delay
     return f"Pròxima actualització de dades (AROME) estimada a les {next_update_time.astimezone(pytz.timezone('Europe/Madrid')).strftime('%H:%Mh')}"
-@st.cache_data(ttl=28000)
-def calculate_parameters(p, T, Td, u, v, h):
+@st.cache_data(ttl=18000)
+def _calculate_parameters_cached(p_m, p_units, T_m, T_units, Td_m, Td_units, u_m, u_units, v_m, v_units, h_m, h_units):
+    """
+    Versió interna i "cacheable" que treballa amb components primitius (magnituds i unitats).
+    """
+    # 1. Reconstruïm els objectes pint.Quantity a dins de la funció
+    p = p_m * units(str(p_units))
+    T = T_m * units(str(T_units))
+    Td = Td_m * units(str(Td_units))
+    u = u_m * units(str(u_units))
+    v = v_m * units(str(v_units))
+    h = h_m * units(str(h_units))
+
+    # 2. La resta de la funció és EXACTAMENT la mateixa que tenies
     params = {}
     def get_val(qty, unit=None):
         try: return qty.to(unit).m if unit else qty.m
@@ -295,6 +307,20 @@ def calculate_parameters(p, T, Td, u, v, h):
         params['STP_cin'] = {'value': get_val(stp_cin), 'units': ''}
     except: pass
     return params
+def calculate_parameters(p, T, Td, u, v, h):
+    """
+    Funció "embolcall" que prepara les dades per a la versió "cachejada".
+    """
+    # Extraiem magnituds i unitats (que sí són "hashejables")
+    p_m, p_units = p.m, p.units
+    T_m, T_units = T.m, T.units
+    Td_m, Td_units = Td.m, Td.units
+    u_m, u_units = u.m, u.units
+    v_m, v_units = v.m, v.units
+    h_m, h_units = h.m, h.units
+    
+    # Cridem a la funció que realment fa la feina i que està a la cau
+    return _calculate_parameters_cached(p_m, p_units, T_m, T_units, Td_m, Td_units, u_m, u_units, v_m, v_units, h_m, h_units)
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ I FORMAT ---
 # (Totes les teves funcions de visualització, no canvien)
