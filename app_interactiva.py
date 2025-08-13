@@ -17,8 +17,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Ruta al fitxer de caché generat per 'actualizar_cache.py'
-CACHE_FILE = Path("meteo_cache.json")
 
 # Dades de les localitats (ha de ser idèntic al de 'actualizar_cache.py')
 pobles_data = {
