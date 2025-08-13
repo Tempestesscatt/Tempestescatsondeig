@@ -71,7 +71,7 @@ if 'avisos_expanded' not in st.session_state:
 
 # --- 1. LÒGICA DE CÀRREGA DE DADES I CÀLCUL ---
 
-@st.cache_data(ttl=18000)
+@st.cache_data(ttl=16000)
 def carregar_sondeig_per_poble(nom_poble, lat, lon):
     p_levels = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
     h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
@@ -86,7 +86,7 @@ def carregar_sondeig_per_poble(nom_poble, lat, lon):
     except Exception as e:
         return None, None, str(e)
 
-@st.cache_data(ttl=18000)
+@st.cache_data(ttl=16000)
 def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
     lats, lons = np.linspace(40.5, 42.8, 12), np.linspace(0.2, 3.3, 12)
     lon_grid, lat_grid = np.meshgrid(lons, lats)
@@ -123,7 +123,7 @@ def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
     except Exception as e:
         return None, None, None, str(e)
 
-@st.cache_data(ttl=18000)
+@st.cache_data(ttl=16000)
 def calcular_convergencia_per_totes_les_localitats(_hourly_index, _nivell, _localitats_dict):
     lats_mapa, lons_mapa, data_mapa, error = obtener_dades_mapa('wind', _nivell, _hourly_index, FORECAST_DAYS)
     if error or not lats_mapa or len(lats_mapa) < 4:
@@ -151,7 +151,7 @@ def calcular_convergencia_per_totes_les_localitats(_hourly_index, _nivell, _loca
             continue
     return convergencia_per_poble
 
-@st.cache_data(ttl=18000)
+@st.cache_data(ttl=16000)
 def precalcular_potencials_del_dia(_pobles_data):
     horas_muestreadas = [0, 3, 6, 9, 12, 15, 18, 21]
     potencials = {}
@@ -219,7 +219,7 @@ def get_next_arome_update_time():
     if next_update_time is None: next_update_time = (now_utc + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0) + availability_delay
     return f"Pròxima actualització de dades (AROME) estimada a les {next_update_time.astimezone(pytz.timezone('Europe/Madrid')).strftime('%H:%Mh')}"
 
-@st.cache_data(ttl=18000)
+@st.cache_data(ttl=16000)
 def _calculate_parameters_cached(p_m, p_units_str, T_m, T_units_str, Td_m, Td_units_str, u_m, u_units_str, v_m, v_units_str, h_m, h_units_str):
     p = p_m * units(p_units_str); T = T_m * units(T_units_str); Td = Td_m * units(Td_units_str)
     u = u_m * units(u_units_str); v = v_m * units(v_units_str); h = h_m * units(h_units_str)
@@ -443,7 +443,7 @@ def display_metrics(params_dict):
 def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
     fig=plt.figure(figsize=(9,9),dpi=150); ax=fig.add_subplot(1,1,1,projection=ccrs.PlateCarree()); ax.set_extent([0,3.5,40.4,43],crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND,facecolor="#E0E0E0",zorder=0); ax.add_feature(cfeature.OCEAN,facecolor='#b0c4de',zorder=0); ax.add_feature(cfeature.COASTLINE,edgecolor='black',linewidth=0.5,zorder=1); ax.add_feature(cfeature.BORDERS,linestyle=':',edgecolor='black',zorder=1); ax.plot(lon_sel,lat_sel,'o',markersize=12,markerfacecolor='yellow',markeredgecolor='black',markeredgewidth=2,transform=ccrs.Geodetic(),zorder=5); ax.text(lon_sel+0.05,lat_sel+0.05,nom_poble_sel,transform=ccrs.Geodetic(),zorder=6,bbox=dict(facecolor='white',alpha=0.8,edgecolor='none',boxstyle='round,pad=0.2')); ax.set_title(f"{titol} a {nivell}hPa",weight='bold'); return fig,ax
 
-@st.cache_data(ttl=18000)
+@st.cache_data(ttl=16000)
 def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     speeds,dirs = zip(*data)
     speeds_ms = (np.array(speeds)*1000/3600)*units('m/s')
@@ -465,14 +465,14 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
     return fig
 
-@st.cache_data(ttl=18000)
+@st.cache_data(ttl=16000)
 def crear_mapa_generic(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel, titol_var, cmap, unitat, levels):
     fig,ax=crear_mapa_base(nivell,lat_sel,lon_sel,nom_poble_sel,titol_var)
     grid_lon,grid_lat=np.linspace(min(lons),max(lons),100),np.linspace(min(lats),max(lats),100); X,Y=np.meshgrid(grid_lon,grid_lat); points=np.vstack((lons,lats)).T
     grid_data=griddata(points,data,(X,Y),method='cubic'); grid_data=np.nan_to_num(grid_data)
     cont=ax.contourf(X,Y,grid_data,cmap=cmap,levels=levels,alpha=0.7,zorder=2,transform=ccrs.PlateCarree(),extend='both'); fig.colorbar(cont,ax=ax,orientation='vertical',label=f'{titol_var} ({unitat})',shrink=0.7); return fig
 
-@st.cache_data(ttl=18000)
+@st.cache_data(ttl=16000)
 def crear_mapa_temp_isobares(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     temps, heights = zip(*data)
     fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Temperatura i Isobares")
