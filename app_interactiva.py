@@ -202,7 +202,7 @@ def carregar_sondeig_per_poble(nom_poble, lat, lon):
     except Exception as e: 
         return None, None, str(e)
 
-@st.cache_data(ttl=18000)
+
 def obtener_dades_mapa(variable, nivell, hourly_index, forecast_days):
     lats, lons = np.linspace(40.5, 42.8, 12), np.linspace(0.2, 3.3, 12)
     lon_grid, lat_grid = np.meshgrid(lons, lats); api_vars = []
