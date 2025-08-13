@@ -46,16 +46,8 @@ pobles_data = {
     'Arenys de Mar': {'lat': 41.581, 'lon': 2.551},
     
 
-    # Osona
-    'Vic': {'lat': 41.930, 'lon': 2.255},
     
-
-   
-    # Gironès
-    'Girona': {'lat': 41.983, 'lon': 2.824},
-
-    # Garrotxa
-    'Olot': {'lat': 42.181, 'lon': 2.489},
+    
     
     # Ripollès
     'Ripoll': {'lat': 42.201, 'lon': 2.190},
