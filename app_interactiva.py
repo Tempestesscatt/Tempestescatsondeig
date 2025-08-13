@@ -366,7 +366,6 @@ def buscar_convergencia_en_nivells_significatius(_hourly_index, _localitats, _th
             localitats_amb_convergencia.update(localitats_trobades_a_nivell)
     return localitats_amb_convergencia
 
-# --- NOU: Aquesta funció s'executa només una vegada gràcies al cache
 @st.cache_data(ttl=3600)
 def precalcular_potencials_del_dia(_pobles_data):
     potencials = {}
@@ -386,7 +385,7 @@ def precalcular_potencials_del_dia(_pobles_data):
                     parametros = calculate_parameters(*profiles)
                     if generar_avis_potencial_per_precalcul(parametros) in avisos_a_buscar:
                         potencials[nom_poble] = hora
-                        break # Passem al següent poble tan bon punt trobem una hora de risc
+                        break 
     progress_bar.empty()
     return dict(sorted(potencials.items()))
 
@@ -403,7 +402,8 @@ def generar_avis_potencial_per_precalcul(params):
     if cond_precaucio: return "PRECAUCIÓ"
     return "RISC BAIX"
 
-# --- 2. FUNCIONS DE VISUALITZACIÓ I FORMAT --- (Aquestes es mantenen igual)
+# --- 2. FUNCIONS DE VISUALITZACIÓ I FORMAT --- 
+# (Aquestes funcions es mantenen igual)
 
 def display_avis_principal(titol_avís, text_avís, color_avís, icona_personalitzada=None):
     icon_map = {"ESTABLE": "☀️", "RISC BAIX": "☁️", "PRECAUCIÓ": "⚡️", "AVÍS": "⚠️", "RISC ALT": "🌪️", "POTENCIAL SEVER": "🧐", "POTENCIAL MODERAT": "🤔", "ALERTA DE DISPARADOR": "🎯"}
