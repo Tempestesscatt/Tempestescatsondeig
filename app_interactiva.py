@@ -38,8 +38,50 @@ CONVERGENCIA_FORTA_THRESHOLD = -25
 
 # --- DADES DE LOCALITATS ---
 pobles_data = {
-  'Arenys de Mar': {'lat': 41.581, 'lon': 2.551},
-  
+    # La Selva
+    'Arbúcies': {'lat': 41.815, 'lon': 2.515},
+    'Santa Coloma de Farners': {'lat': 41.858, 'lon': 2.666},
+    'Blanes': {'lat': 41.674, 'lon': 2.790},
+
+    # Maresme
+    'Arenys de Mar': {'lat': 41.581, 'lon': 2.551},
+    'Mataró': {'lat': 41.538, 'lon': 2.445},
+    'Pineda de Mar': {'lat': 41.626, 'lon': 2.689},
+
+    # Osona
+    'Vic': {'lat': 41.930, 'lon': 2.255},
+    'Manlleu': {'lat': 42.000, 'lon': 2.283},
+
+    # Bages
+    'Manresa': {'lat': 41.727, 'lon': 1.826},
+    'Cardona': {'lat': 41.913, 'lon': 1.678},
+
+    # Berguedà
+    'Berga': {'lat': 42.100, 'lon': 1.845},
+
+    # Vallès Oriental
+    'Granollers': {'lat': 41.608, 'lon': 2.289},
+    'La Garriga': {'lat': 41.682, 'lon': 2.283},
+    
+    # Gironès
+    'Girona': {'lat': 41.983, 'lon': 2.824},
+
+    # Garrotxa
+    'Olot': {'lat': 42.181, 'lon': 2.489},
+    
+    # Ripollès
+    'Ripoll': {'lat': 42.201, 'lon': 2.190},
+    'Camprodon': {'lat': 42.312, 'lon': 2.364},
+    
+    # Baix Empordà
+    "La Bisbal d'Empordà": {'lat': 41.958, 'lon': 3.037},
+    "Platja d'Aro": {'lat': 41.818, 'lon': 3.064},
+
+    # Alt Empordà
+    'Figueres': {'lat': 42.266, 'lon': 2.962},
+
+    # Barcelonès
+    'Barcelona': {'lat': 41.387, 'lon': 2.168},
 }
 
 # --- FUNCIÓ DE CALLBACK ---
