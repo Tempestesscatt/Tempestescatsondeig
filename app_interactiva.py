@@ -187,7 +187,10 @@ def calculate_parameters(p, T, Td, u, v, h):
     except: pass
     try:
         T_c, H_m = T.to('degC').m, h.to('m').m
-        if (idx := np.where(np.diff(np.sign(T_c)))[0]).size > 0: h_zero_iso_msl = np.interp(0, [T_c[idx[0]+1], T_c[idx[0]]], [H_m[idx[0]+1], H_m[idx[0]]]); params['ZeroIso_AGL'] = {'value': (h_zero_iso_msl - H_m[0]), 'units': 'm'}
+        # <<< LÍNIA CORREGIDA >>>
+        idx = np.where(np.diff(np.sign(T_c)))[0]
+        if idx.size > 0:
+            h_zero_iso_msl = np.interp(0, [T_c[idx[0]+1], T_c[idx[0]]], [H_m[idx[0]+1], H_m[idx[0]]]); params['ZeroIso_AGL'] = {'value': (h_zero_iso_msl - H_m[0]), 'units': 'm'}
     except: pass
     try:
         p_levels_interp = np.arange(p.m.min(), p.m.max(), 10)*units.hPa; T_interp = mpcalc.interpolate_1d(p, T, p_levels_interp)
@@ -305,7 +308,10 @@ def crear_skewt(p, T, Td, u, v):
     try:
         prof = mpcalc.parcel_profile(p, T[0], Td[0]); skew.plot(p, prof, 'k', lw=2, ls='--')
         skew.shade_cape(p, T, prof, alpha=0.3, color='orange'); skew.shade_cin(p, T, prof, alpha=0.6, color='gray')
-    except: pass
+    except Exception as e:
+        # Afegit per a debug en cas que el càlcul del perfil falli
+        st.toast(f"No s'ha pogut calcular el perfil de la parcel·la: {e}", icon="⚠️")
+        pass
     skew.ax.set_ylim(1050, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_xlabel('Temperatura (°C)'); skew.ax.set_ylabel('Pressió (hPa)'); return fig
 
 def crear_grafic_nuvol(params, H, u, v, is_convergence_active):
