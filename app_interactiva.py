@@ -193,12 +193,8 @@ def carregar_sondeig_per_poble(nom_poble, lat, lon):
     h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
     h_press = [f"{v}_{p}hPa" for v in ["temperature", "dew_point", "wind_speed", "wind_direction", "geopotential_height"] for p in p_levels]
     params = { 
-        "latitude": lat, 
-        "longitude": lon, 
-        "hourly": h_base + h_press, 
-        "models": "arome_seamless", 
-        "timezone": "auto", 
-        "forecast_days": FORECAST_DAYS 
+        "latitude": lat, "longitude": lon, "hourly": h_base + h_press, 
+        "models": "arome_seamless", "timezone": "auto", "forecast_days": FORECAST_DAYS 
     }
     try:
         respostes = openmeteo.weather_api("https://api.open-meteo.com/v1/forecast", params=params)
@@ -348,11 +344,12 @@ def precalcular_potencials_del_dia(_pobles_data):
     potencials = {}
     avisos_a_buscar = {"PRECAUCIÓ", "AVÍS", "RISC ALT", "ALERTA DE DISPARADOR"}
     
-    progress_bar = st.progress(0, text="Calculant potencials per a tot el territori...")
+    progress_bar_placeholder = st.empty()
+    
     total_pobles = len(_pobles_data)
     
     for i, (nom_poble, coords) in enumerate(_pobles_data.items()):
-        progress_bar.progress((i + 1) / total_pobles, text=f"Analitzant {nom_poble}...")
+        progress_bar_placeholder.progress((i + 1) / total_pobles, text=f"Analitzant potencial diari: {nom_poble}...")
         
         sondeo, p_levels, _ = carregar_sondeig_per_poble(nom_poble, coords['lat'], coords['lon'])
         if sondeo:
@@ -363,7 +360,7 @@ def precalcular_potencials_del_dia(_pobles_data):
                     if generar_avis_potencial_per_precalcul(parametros) in avisos_a_buscar:
                         potencials[nom_poble] = hora
                         break 
-    progress_bar.empty()
+    progress_bar_placeholder.empty()
     return dict(sorted(potencials.items()))
 
 def generar_avis_potencial_per_precalcul(params):
@@ -380,8 +377,6 @@ def generar_avis_potencial_per_precalcul(params):
     return "RISC BAIX"
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ I FORMAT --- 
-# (Aquestes funcions es mantenen igual)
-
 def display_avis_principal(titol_avís, text_avís, color_avís, icona_personalitzada=None):
     icon_map = {"ESTABLE": "☀️", "RISC BAIX": "☁️", "PRECAUCIÓ": "⚡️", "AVÍS": "⚠️", "RISC ALT": "🌪️", "POTENCIAL SEVER": "🧐", "POTENCIAL MODERAT": "🤔", "ALERTA DE DISPARADOR": "🎯"}
     icona = icona_personalitzada if icona_personalitzada else icon_map.get(titol_avís, "ℹ️")
@@ -723,7 +718,7 @@ with st.expander("⚡️ Avisos i Potencials Detectats Avui", expanded=True):
                     st.rerun()
 
 # --- LÒGICA DE SELECCIÓ DE LOCALITAT PRINCIPAL ---
-st.markdown("---") # Separador visual
+st.markdown("---") 
 sorted_pobles = sorted(pobles_data.keys())
 opciones_display = [f"⚠️ {p}" if p in localitats_convergencia else p for p in sorted_pobles]
 
