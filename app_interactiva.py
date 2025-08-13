@@ -33,7 +33,7 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 FORECAST_DAYS = 1
 # Llindar per considerar una convergència prou forta per activar un avís
-CONVERGENCIA_FORTA_THRESHOLD = -32
+CONVERGENCIA_FORTA_THRESHOLD = -25
 
 # --- DADES DE LOCALITATS ---
 pobles_data = {
