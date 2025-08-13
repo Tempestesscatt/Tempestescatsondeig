@@ -94,9 +94,9 @@ def carregar_sondeig_per_coordenades(lat, lon):
         return None, None, str(e)
 
 @st.cache_data(ttl=1800, show_spinner="Processant dades horàries...")
-def processar_sondeig_per_hora(sondeo, hourly_index, p_levels):
+def processar_sondeig_per_hora(_sondeo, hourly_index, p_levels):  # Cambio clave aquí (_sondeo)
     try:
-        hourly = sondeo.Hourly()
+        hourly = _sondeo.Hourly()  # Usar _sondeo aquí
         T_s, Td_s, P_s = (hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i in range(3))
         if np.isnan(P_s): return None
         
