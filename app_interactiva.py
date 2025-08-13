@@ -343,14 +343,11 @@ def buscar_convergencia_en_nivells_significatius(_hourly_index, _localitats, _th
 def precalcular_potencials_del_dia(_pobles_data):
     potencials = {}
     avisos_a_buscar = {"PRECAUCIÓ", "AVÍS", "RISC ALT", "ALERTA DE DISPARADOR"}
-    
     progress_bar_placeholder = st.empty()
-    
     total_pobles = len(_pobles_data)
     
     for i, (nom_poble, coords) in enumerate(_pobles_data.items()):
         progress_bar_placeholder.progress((i + 1) / total_pobles, text=f"Analitzant potencial diari: {nom_poble}...")
-        
         sondeo, p_levels, _ = carregar_sondeig_per_poble(nom_poble, coords['lat'], coords['lon'])
         if sondeo:
             for hora in range(24):
@@ -438,20 +435,16 @@ def generar_avis_localitat(params, is_convergence_active):
 
     if cape_u < 100: return "ESTABLE", "Sense risc de tempestes significatives. L'atmosfera és estable.", "#3CB371"
     if cin is not None and cin < -150: return "ESTABLE", f"La 'tapa' atmosfèrica (CIN de {cin:.0f} J/kg) és massa forta i probablement inihibirà qualsevol convecció.", "#3CB371"
-    
     if not is_convergence_active and lfc_agl > 3500: return "RISC BAIX", f"L'inici de la convecció (LFC a {lfc_agl:.0f} m) és massa alt, fent les tempestes improbables sense un forçament potent.", "#4682B4"
-
     cond_supercelula = shear is not None and shear > 20 and cape_u > 1500 and srh1 is not None and srh1 > 200 and lcl_agl < 1300
     cond_avis_sever = shear is not None and shear > 18 and cape_u > 1200
     cond_precaucio = shear is not None and shear > 12 and cape_u > 500
-
     if cond_supercelula and stp > 0.8:
         risks = ["calamarsa grossa", "vent destructiu"]
         if lcl_agl < 1000: risks.insert(0, "tornados")
         risks_text = ", ".join(risks)
         if is_convergence_active: return "RISC ALT", f"Entorn de SUPERCL·LULA TORNÀDICA (STP={stp:.1f}). La convergència actua com a disparador. Risc de {risks_text}.", "#E60073"
         else: return "POTENCIAL SEVER", f"Potencial latent de SUPERCL·LULA TORNÀDICA (STP={stp:.1f}) per falta d'un disparador clar. L'entorn és perillós.", "#FFC300"
-    
     elif cond_avis_sever:
         risks = []
         if dcape > 900: risks.append("fortes ràfegues de vent (esclafits severs)")
@@ -461,13 +454,11 @@ def generar_avis_localitat(params, is_convergence_active):
         risks_text = ", ".join(risks)
         if is_convergence_active: return "AVÍS", f"Potencial per a tempestes SEVERES organitzades. La convergència afavoreix el seu inici. Risc de {risks_text}.", "#FF8C00"
         else: return "POTENCIAL MODERAT", f"Entorn de tempesta SEVERA latent per falta d'un disparador clar. Risc de {risks_text} si s'activa.", "#FFD700"
-    
     elif cond_precaucio:
         missatge_base = "Risc de TEMPESTES ORGANITZADES (multicèl·lules). Possibles fortes pluges i calamarsa local."
         if pwat > 35: missatge_base += " Atenció al risc de xàfecs torrencials."
         suggeriment = " La convergència detectada augmenta la probabilitat que es formin." if is_convergence_active else " L'absència de convergència clara podria limitar-ne el desenvolupament."
         return "PRECAUCIÓ", missatge_base + suggeriment, "#FFD700"
-    
     else:
         missatge_base = "Possibles xàfecs o tempestes febles i aïllades."
         suggeriment = " La convergència podria ajudar a formar alguns nuclis." if is_convergence_active else ""
@@ -475,15 +466,10 @@ def generar_avis_localitat(params, is_convergence_active):
 
 def generar_avis_convergencia(params, is_convergence_active, divergence_value):
     if not is_convergence_active: return None, None, None
-    
     cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0)
     cin = params.get('CIN_Fre', {}).get('value')
-    
-    # ---> NOU: Comprovació del llindar de convergència
-    # L'avís només es mostra si la convergència és més forta que -13
     if cape_u > 500 and (cin is None or cin > -50) and divergence_value is not None and divergence_value < -13:
         return "ALERTA DE DISPARADOR", f"La forta convergència de vents (valor: {divergence_value:.1f} x10⁻⁵ s⁻¹) pot actuar com a disparador. Amb un CAPE de {cape_u:.0f} J/kg i una 'tapa' (CIN) feble, hi ha un alt potencial que les tempestes s'iniciïn de manera explosiva.", "#FF4500"
-    
     return None, None, None
     
 def generar_analisi_detallada(params, is_convergence_active):
@@ -714,7 +700,7 @@ with st.expander("⚡️ Avisos i Potencials Detectats Avui", expanded=st.sessio
                 if st.button(f"{poble} (a les {hora:02d}:00h)", key=f"btn_disparador_{poble}"):
                     st.session_state.poble_seleccionat = poble
                     st.session_state.hora_seleccionada_str = f"{hora:02d}:00h"
-                    st.session_state.avisos_expanded = False # ---> NOU: Tanquem el panell
+                    st.session_state.avisos_expanded = False 
                     st.rerun()
 
         with col_potencial:
@@ -725,7 +711,7 @@ with st.expander("⚡️ Avisos i Potencials Detectats Avui", expanded=st.sessio
                 if st.button(f"{poble} (a les {hora:02d}:00h)", key=f"btn_potencial_{poble}"):
                     st.session_state.poble_seleccionat = poble
                     st.session_state.hora_seleccionada_str = f"{hora:02d}:00h"
-                    st.session_state.avisos_expanded = False # ---> NOU: Tanquem el panell
+                    st.session_state.avisos_expanded = False 
                     st.rerun()
 
 # --- LÒGICA DE SELECCIÓ DE LOCALITAT PRINCIPAL ---
@@ -737,7 +723,7 @@ def update_poble_selection():
     poble_display = st.session_state.poble_selector
     nom_net = poble_display.replace("⚠️ ", "").strip()
     st.session_state.poble_seleccionat = nom_net
-    st.session_state.avisos_expanded = True # ---> NOU: Reobrim el panell si es selecciona manualment
+    st.session_state.avisos_expanded = True 
 
 default_index = 0
 try:
@@ -780,10 +766,9 @@ elif sondeo:
         if data_is_valid:
             is_disparador_active = poble_sel in localitats_convergencia
             
-            # ---> NOU: Obtenim el valor de la divergència per a la localitat actual
             divergence_value_local = None
             if is_disparador_active:
-                lats, lons, data, error = obtener_dades_mapa('wind', 850, hourly_index, FORECAST_DAYS) # Podem ajustar el nivell si cal
+                lats, lons, data, error = obtener_dades_mapa('wind', 850, hourly_index, FORECAST_DAYS)
                 if data:
                     speeds, dirs = zip(*data)
                     u_comp, v_comp = mpcalc.wind_components((np.array(speeds) * 1000 / 3600) * units('m/s'), np.array(dirs) * units.degrees)
@@ -798,12 +783,10 @@ elif sondeo:
                     lat_idx = (np.abs(grid_lat - lat_sel)).argmin()
                     divergence_value_local = divergence.m[lat_idx, lon_idx]
 
-            # Generació d'avisos principals
             avis_temp_titol, avis_temp_text, avis_temp_color, avis_temp_icona = generar_avis_temperatura(parametros)
             if avis_temp_titol:
                 display_avis_principal(avis_temp_titol, avis_temp_text, avis_temp_color, icona_personalitzada=avis_temp_icona)
 
-            # ---> MODIFICACIÓ: Passem el valor de la divergència a la funció de l'avís
             avis_conv_titol, avis_conv_text, avis_conv_color = generar_avis_convergencia(parametros, is_disparador_active, divergence_value_local)
             if avis_conv_titol:
                 display_avis_principal(avis_conv_titol, avis_conv_text, avis_conv_color)
@@ -811,7 +794,6 @@ elif sondeo:
             avis_titol, avis_text, avis_color = generar_avis_localitat(parametros, is_disparador_active)
             display_avis_principal(avis_titol, avis_text, avis_color)
 
-            # La resta de la visualització amb pestanyes es manté igual
             tab_analisi, tab_params, tab_mapes, tab_hodo, tab_sondeig, tab_oro, tab_nuvol = st.tabs([
                 "🗨️ Anàlisi", "📊 Paràmetres", "🗺️ Mapes", "🧭 Hodògraf",
                 "📍 Sondeig", "🏔️ Orografia", "☁️ Visualització"
@@ -823,9 +805,56 @@ elif sondeo:
             with tab_params:
                 st.subheader("Paràmetres Clau")
                 display_metrics(parametros)
-            
-            # ... (La resta de les pestanyes es mantenen exactament igual)
 
+            with tab_mapes:
+                st.subheader(f"Anàlisi de Mapes a {nivell_global}hPa")
+                map_options = {
+                    "Vents i Convergència": {"api_variable": "wind"},
+                    "Punt de Rosada": {"api_variable": "dewpoint", "titol": "Punt de Rosada", "cmap": "BrBG", "unitat": "°C", "levels": np.arange(-10, 21, 2)},
+                    "Humitat Relativa": {"api_variable": "humidity", "titol": "Humitat Relativa", "cmap": "Greens", "unitat": "%", "levels": np.arange(30, 101, 5)}
+                }
+                selected_map_name = st.selectbox("Selecciona la capa a visualitzar:", map_options.keys())
+                with st.spinner(f"Generant mapa de {selected_map_name.lower()}..."):
+                    map_config = map_options[selected_map_name]
+                    api_var = map_config["api_variable"]
+                    lats, lons, data, error = obtener_dades_mapa(api_var, nivell_global, hourly_index, FORECAST_DAYS)
+                    if error:
+                        st.error(f"Error en obtenir dades del mapa: {error}")
+                    elif not lats or len(lats) < 4:
+                        st.warning("No hi ha prou dades per generar el mapa.")
+                    else:
+                        if selected_map_name == "Vents i Convergència":
+                            fig = crear_mapa_vents(lats, lons, data, nivell_global, lat_sel, lon_sel, poble_sel)
+                        else:
+                            fig = crear_mapa_generic(lats, lons, data, nivell_global, lat_sel, lon_sel, poble_sel, map_config["titol"], map_config["cmap"], map_config["unitat"], map_config["levels"])
+                        st.pyplot(fig)
+
+            with tab_hodo:
+                st.subheader("Hodògraf (0-10 km)")
+                st.pyplot(crear_hodograf(p, u, v, H))
+
+            with tab_sondeig:
+                st.subheader(f"Sondeig per a {poble_sel} ({datetime.now(pytz.timezone('Europe/Madrid')).strftime('%d/%m/%Y')} - {hourly_index:02d}:00h Local)")
+                st.pyplot(crear_skewt(p, T, Td, u, v))
+
+            with tab_oro:
+                st.subheader("Potencial d'Activació per Orografia")
+                fig_oro = crear_grafic_orografia(parametros, parametros.get('ZeroIso_AGL', {}).get('value'))
+                if fig_oro:
+                    st.pyplot(fig_oro)
+                else:
+                    st.info("No hi ha dades de LCL disponibles per calcular el potencial orogràfic.")
+
+            with tab_nuvol:
+                st.subheader("Visualització Conceptual del Núvol")
+                with st.spinner("Dibuixant la possible estructura del núvol..."):
+                    fig_nuvol = crear_grafic_nuvol(parametros, H, u, v, is_disparador_active)
+                    if fig_nuvol:
+                        st.pyplot(fig_nuvol)
+                    else:
+                        st.info("No hi ha dades de LCL o EL disponibles per visualitzar l'estructura del núvol.")
+        else:
+            st.warning(f"No s'han pogut calcular els paràmetres per a les {hourly_index:02d}:00h. Les dades del model podrien no ser vàlides per a aquesta hora.")
     except Exception as e:
         st.error(f"S'ha produït un error inesperat en processar les dades per a '{poble_sel}'.")
         st.exception(e)
