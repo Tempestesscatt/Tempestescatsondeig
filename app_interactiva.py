@@ -734,19 +734,26 @@ def update_poble_selection():
     nom_net = poble_display.split(" (")[0]
     
     # Després, eliminem qualsevol emoji conegut i espais sobrants.
-    # Aquest mètode és més segur que simplement reemplaçar un sol emoji.
     nom_net = nom_net.replace("⚠️", "").replace("🔥", "").replace("🧐", "").strip()
 
     # Finalment, actualitzem l'estat de la sessió amb el nom net
     st.session_state.poble_seleccionat = nom_net
 
-# --- LÒGICA DE SELECCIÓ DE LOCALITAT ---
+# --- LÒGICA DE SELECCIÓ DE LOCALITAT (VERSIÓ CORREGIDA I ROBUSTA) ---
 
-# Ordena els pobles per a una presentació coherent
-sorted_pobles = sorted(pobles_data.keys())
+# ---> CANVI CLAU: Ara treballem NOMÉS amb els pobles que SÍ s'han carregat.
+pobles_disponibles = sorted(list(totes_les_dades.keys()))
 
-# Crea les opcions per al menú desplegable, afegint una marca als que tenen disparador actiu
-opciones_display = [f"⚠️ {p} (Disparador Actiu)" if p in disparadors_actius else p for p in sorted_pobles]
+if not pobles_disponibles:
+    st.error("No s'ha pogut carregar cap localitat. L'aplicació no pot continuar.")
+    st.stop()
+
+# Si el poble que estava seleccionat ja no està a la llista de disponibles, seleccionem el primer que hi hagi.
+if st.session_state.poble_seleccionat not in pobles_disponibles:
+    st.session_state.poble_seleccionat = pobles_disponibles[0]
+
+# Crea les opcions per al menú desplegable, afegint una marca només als disponibles que tenen disparador.
+opciones_display = [f"⚠️ {p} (Disparador Actiu)" if p in disparadors_actius else p for p in pobles_disponibles]
 
 # Intenta trobar l'índex de la selecció actual per mantenir-la consistent
 default_index_display = 0
@@ -770,22 +777,19 @@ st.selectbox(
 # --- PROCESSAMENT I VISUALITZACIÓ DE DADES PER A LA LOCALITAT SELECCIONADA ---
 
 poble_sel = st.session_state.poble_seleccionat
+# ---> CANVI CLAU: Ara estem 100% segurs que 'poble_sel' existirà tant a 'pobles_data' com a 'totes_les_dades'.
 lat_sel, lon_sel = pobles_data[poble_sel]['lat'], pobles_data[poble_sel]['lon']
 sondeo = totes_les_dades.get(poble_sel)
 
 if sondeo:
-    # ### CANVI ###: S'afegeix un bloc try-except general per capturar qualsevol error inesperat
-    # durant el processament o la visualització, evitant que l'aplicació es bloquegi.
     try:
         data_is_valid = False
-        parametros = {} # Inicialitzem el diccionari de paràmetres
+        parametros = {} 
 
         with st.spinner(f"Processant dades per a {poble_sel}..."):
-            # Processa les dades del sondeig per a l'hora seleccionada
             profiles = processar_sondeig_per_hora(sondeo, hourly_index, p_levels)
             if profiles:
                 p, T, Td, u, v, H = profiles
-                # Calcula tots els paràmetres meteorològics
                 parametros = calculate_parameters(p, T, Td, u, v, H)
                 data_is_valid = True
 
@@ -805,7 +809,6 @@ if sondeo:
             display_avis_principal(avis_titol, avis_text, avis_color)
 
             # --- NAVEGACIÓ PER PESTANYES ---
-            # ### CANVI ###: S'utilitza st.tabs en lloc de st.radio per una interfície més neta.
             tab_analisi, tab_params, tab_mapes, tab_hodo, tab_sondeig, tab_oro, tab_nuvol = st.tabs([
                 "🗨️ Anàlisi", "📊 Paràmetres", "🗺️ Mapes", "🧭 Hodògraf",
                 "📍 Sondeig", "🏔️ Orografia", "☁️ Visualització"
@@ -819,7 +822,6 @@ if sondeo:
                 display_metrics(parametros)
 
             with tab_mapes:
-                # ### CANVI ###: S'implementa la lògica de mapes refactoritzada.
                 st.subheader(f"Anàlisi de Mapes a {nivell_global}hPa")
 
                 map_options = {
@@ -872,12 +874,13 @@ if sondeo:
                     else:
                         st.info("No hi ha dades de LCL o EL disponibles per visualitzar l'estructura del núvol.")
         else:
-            st.warning(f"No s'han pogut calcular els paràmetres per a les {hourly_index:02d}:00h. Les dades del model podrien no ser vàlides per a aquesta hora. Proveu amb una altra hora o localitat.")
+            st.warning(f"No s'han pogut calcular els paràmetres per a les {hourly_index:02d}:00h. Les dades del model podrien no ser vàlides per a aquesta hora.")
 
     except Exception as e:
-        # Aquesta excepció captura qualsevol error no previst dins del bloc if sondeo:
         st.error(f"S'ha produït un error inesperat en processar les dades per a '{poble_sel}'.")
-        st.exception(e) # st.exception és útil per a depurar, ja que mostra el traceback complet.
+        st.exception(e) 
 
 else:
-    st.error(f"No s'han pogut obtenir dades per a '{poble_sel}'. Pot ser que estigui fora de la cobertura del model AROME o que hi hagi un problema amb la connexió a l'API.")
+    # Aquest missatge ara només apareixerà si la localitat seleccionada NO ESTÀ a la llista de dades carregades,
+    # la qual cosa, amb la nova lògica, només podria passar en un cas extrem.
+    st.error(f"Error intern: No s'han trobat dades pre-carregades per a '{poble_sel}'.")
