@@ -871,11 +871,3 @@ elif sondeo:
     except Exception as e:
         st.error(f"S'ha produït un error inesperat en processar les dades per a '{poble_sel}'.")
         st.exception(e)
-Error de sintaxi:
-'El Port de la Selva': {'lat': 42.337, 'lon': 3.203},
-'Calella de Palafrugell': {'lat': 41.888, 'lon': 3.183},
-'Sant Antoni de Calonge': {'lat': 41.846, 'lon': 3.099},
-258.3s
-
-
-
