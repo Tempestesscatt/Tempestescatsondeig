@@ -592,7 +592,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     dirs_deg = np.array(dirs)*units.degrees
     u_comp,v_comp = mpcalc.wind_components(speeds_ms,dirs_deg)
     
-    fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Flux i focus de convergència forta")
+    fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Flux i focus de convergència extrema")
     
     grid_lon,grid_lat = np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100)
     X,Y = np.meshgrid(grid_lon,grid_lat)
@@ -600,34 +600,46 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     
     u_grid = griddata(points, u_comp.m, (X,Y), method='cubic')
     v_grid = griddata(points, v_comp.m, (X,Y), method='cubic')
-    u_grid,v_grid = np.nan_to_num(u_grid), np.nan_to_num(v_grid)
+    u_grid,v_grid = np.nan_to_num(u_grid),np.nan_to_num(v_grid)
     
     dx,dy = mpcalc.lat_lon_grid_deltas(X,Y)
     divergence = mpcalc.divergence(u_grid*units('m/s'), v_grid*units('m/s'), dx=dx, dy=dy) * 1e5
     
-    # ---> CANVI CLAU 1: Llindar molt més estricte
-    # Ara només mostrem zones amb convergència superior a -10
-    divergence_values = np.ma.masked_where(divergence.m > -10.0, divergence.m)
+    # ---> CANVI CLAU 1: Llindar actualitzat a -16.0
+    # Ara només mostrem zones amb convergència superior a -16
+    divergence_values = np.ma.masked_where(divergence.m > -16.0, divergence.m)
     
-    # Els nivells del contorn ara van de -25 a -10
-    cont = ax.contourf(X, Y, divergence_values, 
-                      levels=np.linspace(-25.0, -10.0, 10), 
-                      cmap='YlOrRd_r', # Un mapa de colors més intens
-                      alpha=0.75, 
-                      zorder=2, 
-                      transform=ccrs.PlateCarree(), 
-                      extend='min')
+    # ---> CANVI CLAU 2: Els nivells del contorn ara van de -30 a -16
+    levels = np.linspace(-30.0, -16.0, 8) # Menys nivells per a més claredat
     
-    # ---> CANVI CLAU 2: Línies de corrent més denses i visibles
+    # Dibuixem el farciment de color
+    cont_fill = ax.contourf(X, Y, divergence_values, 
+                           levels=levels, 
+                           cmap='magma_r', # Un mapa de colors molt intens per a fenòmens extrems
+                           alpha=0.8, 
+                           zorder=2, 
+                           transform=ccrs.PlateCarree(), 
+                           extend='min')
+    
+    # Afegim les línies de contorn
+    ax.contour(X, Y, divergence_values,
+               levels=levels,
+               colors='black', # Contorn negre per a màxim contrast
+               linewidths=0.7,
+               alpha=0.9,
+               zorder=3,
+               transform=ccrs.PlateCarree())
+    
+    # Dibuixem les línies de corrent del vent
     ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, 
                   color="black", 
-                  density=1.8,       # Més densitat
-                  linewidth=0.8,     # Línies una mica més gruixudes
-                  arrowsize=0.8,     # Fletxes una mica més grans
+                  density=1.5,
+                  linewidth=0.7,
+                  arrowsize=0.7,
                   zorder=4, 
                   transform=ccrs.PlateCarree())
                   
-    fig.colorbar(cont, ax=ax, orientation='vertical', label='Convergència (x10⁻⁵ s⁻¹)', shrink=0.7)
+    fig.colorbar(cont_fill, ax=ax, orientation='vertical', label='Convergència Extrema (x10⁻⁵ s⁻¹)', shrink=0.7)
     
     return fig
 
