@@ -41,15 +41,7 @@ pobles_data = {
     'Arbúcies': {'lat': 41.815, 'lon': 2.515},
     # Maresme
     'Arenys de Mar': {'lat': 41.581, 'lon': 2.551},
-    # Ripollès
-    'Ripoll': {'lat': 42.201, 'lon': 2.190},
-    # Baix Empordà
-    "La Bisbal d'Empordà": {'lat': 41.958, 'lon': 3.037},
-    # Capitals de Província
-    'Barcelona': {'lat': 41.38879, 'lon': 2.15899},
-    'Girona': {'lat': 41.98311, 'lon': 2.82493},
-    'Lleida': {'lat': 41.61674, 'lon': 0.62218},
-    'Tarragona': {'lat': 41.11905, 'lon': 1.24544},
+   
 }
 
 # --- FUNCIÓ DE CALLBACK ---
