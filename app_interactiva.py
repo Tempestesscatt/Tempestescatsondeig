@@ -23,6 +23,7 @@ from scipy.interpolate import griddata
 from datetime import datetime, timedelta
 import pytz
 import matplotlib.patheffects as path_effects
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- CONFIGURACIÓ INICIAL ---
 st.set_page_config(layout="wide", page_title="Tempestes.cat")
@@ -292,24 +293,35 @@ def calcular_convergencia_per_totes_les_localitats(_hourly_index, _nivell, _loca
 
 @st.cache_data(ttl=3600)
 def precalcular_potencials_del_dia(_pobles_data):
+    """Versión optimizada que usa muestreo horario y paralelismo"""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    # Seleccionamos solo 8 horas clave (cada 3 horas) para reducir llamadas
+    horas_muestreadas = [0, 3, 6, 9, 12, 15, 18, 21]
     potencials = {}
     avisos_a_buscar = {"PRECAUCIÓ", "AVÍS", "RISC ALT", "ALERTA DE DISPARADOR"}
-    # progress_bar_placeholder = st.empty()  <-- ESBORRA O COMENTA AQUESTA LÍNIA
-    total_pobles = len(_pobles_data)
     
-    for i, (nom_poble, coords) in enumerate(_pobles_data.items()):
-        # progress_bar_placeholder.progress((i + 1) / total_pobles, text=f"Analitzant potencial diari: {nom_poble}...") <-- ESBORRA O COMENTA AQUESTA LÍNIA
+    def procesar_poble(nom_poble, coords):
         sondeo, p_levels, _ = carregar_sondeig_per_poble(nom_poble, coords['lat'], coords['lon'])
         if sondeo:
-            for hora in range(24):
+            for hora in horas_muestreadas:
                 profiles = processar_sondeig_per_hora(sondeo, hora, p_levels)
                 if profiles:
                     parametros = calculate_parameters(*profiles)
                     if generar_avis_potencial_per_precalcul(parametros) in avisos_a_buscar:
-                        potencials[nom_poble] = hora
-                        break 
-    # progress_bar_placeholder.empty() <-- ESBORRA O COMENTA AQUESTA LÍNIA
-    return dict(sorted(potencials.items()))
+                        return nom_poble, hora
+        return None
+    
+    # Procesamiento paralelo
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(procesar_poble, nom, coord) for nom, coord in _pobles_data.items()]
+        
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                potencials[result[0]] = result[1]
+                
+    return potencials
 
 def generar_avis_potencial_per_precalcul(params):
     cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0); cin = params.get('CIN_Fre', {}).get('value')
