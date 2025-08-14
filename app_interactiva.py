@@ -506,17 +506,48 @@ def generar_analisi_detallada(params, is_convergence_active):
     yield from stream_text(f"**La Clau del Pronòstic:** La interacció entre la inestabilitat **{cape_text}** i el cisallament **{('fort' if shear6 > 18 else 'moderat' if shear6 > 10 else 'feble')}**. La **convergència** serà el factor decisiu.")
 
 def display_metrics(params_dict):
+    # --- CANVI CLAU 1: Afegim 'LFC_AGL' a la llista de paràmetres a mostrar ---
     param_map = [
         ('Temperatura','SFC_Temp'), ('CAPE Utilitzable','CAPE_Utilitzable'), ('CIN (Fre)','CIN_Fre'), ('Vel. Asc. Màx.','W_MAX'),
         ('Shear 0-6km','Shear_0-6km'), ('SRH 0-1km','SRH_0-1km'), ('Potencial Tornàdic','STP_cin'), ('Potencial Esclafits','DCAPE'),
-        ('Gradient Tèrmic','LapseRate_700_500'), ('Aigua Precipitable','PWAT_Total'), ('Base núvol (AGL)','LCL_AGL'), ('Cim tempesta (MSL)','EL_MSL')
+        ('Gradient Tèrmic','LapseRate_700_500'), ('Aigua Precipitable','PWAT_Total'), 
+        ('Base núvol (AGL)','LCL_AGL'), 
+        ('Nivell Convecció (AGL)', 'LFC_AGL'), # AFEGIT!
+        ('Cim tempesta (MSL)','EL_MSL')
     ]
     st.markdown("""<style>.metric-container{border:1px solid rgba(128,128,128,0.2);border-radius:10px;padding:10px;margin-bottom:10px;}</style>""", unsafe_allow_html=True)
-    available_params=[(label,key) for label,key in param_map if key in params_dict and params_dict[key].get('value') is not None]
-    cols=st.columns(min(4,len(available_params)))
-    for i,(label,key) in enumerate(available_params):
-        param=params_dict[key]; value=param['value']; units_str=param['units']; val_str=f"{value:.1f}" if isinstance(value,(float,np.floating)) else str(value); value_color,emoji=get_parameter_style(key,value); border_color=value_color if value_color!='inherit' else 'rgba(128,128,128,0.2)'
-        with cols[i%4]: st.markdown(f"""<div class="metric-container" style="border-color:{border_color};"><div style="font-size:0.9em;color:gray;">{label}</div><div style="font-size:1.25em;font-weight:bold;color:{value_color};">{val_str} <span style='font-size:0.8em;color:gray;'>{units_str}</span> {emoji}</div></div>""", unsafe_allow_html=True)
+    
+    # --- CANVI CLAU 2: Millorem la lògica per mostrar "---" si un valor és 'None' ---
+    cols=st.columns(4) # Mantenim 4 columnes per a una bona visualització
+    col_idx = 0
+    for label, key in param_map:
+        param = params_dict.get(key)
+        
+        # Valors per defecte si el paràmetre no es pot calcular
+        val_str = "---"
+        units_str = ""
+        value_color = 'gray'
+        emoji = ''
+        border_color = 'rgba(128,128,128,0.2)'
+
+        if param and param.get('value') is not None:
+            value = param['value']
+            units_str = param.get('units', '')
+            val_str = f"{value:.1f}" if isinstance(value, (float, np.floating)) else str(value)
+            value_color, emoji = get_parameter_style(key, value)
+            border_color = value_color if value_color != 'inherit' else 'rgba(128,128,128,0.2)'
+        
+        with cols[col_idx % 4]:
+            st.markdown(f"""
+            <div class="metric-container" style="border-color:{border_color};">
+                <div style="font-size:0.9em;color:gray;">{label}</div>
+                <div style="font-size:1.25em;font-weight:bold;color:{value_color};">
+                    {val_str} <span style='font-size:0.8em;color:gray;'>{units_str}</span> {emoji}
+                </div>
+            </div>""", unsafe_allow_html=True)
+        col_idx += 1
+
+
 
 # Funció corregida per assegurar que les línies geogràfiques sempre siguin visibles
 def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
