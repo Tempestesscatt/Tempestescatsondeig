@@ -464,61 +464,25 @@ def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
 
 
 
-# Versió final amb l'estil de la imatge (jet_r, contorn negre, línies de flux per sobre)
 def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
-    # 1. PREPARACIÓ DE DADES (sense canvis)
-    speeds_kmh, dirs_deg_raw = zip(*data)
-    speeds_ms = (np.array(speeds_kmh)*1000/3600)*units('m/s')
-    dirs_deg = np.array(dirs_deg_raw)*units.degrees
+    speeds,dirs = zip(*data)
+    speeds_ms = (np.array(speeds)*1000/3600)*units('m/s')
+    dirs_deg = np.array(dirs)*units.degrees
     u_comp,v_comp = mpcalc.wind_components(speeds_ms,dirs_deg)
-    
-    fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Flux i focus de convergència")
-
-    # Creació de la graella (sense canvis)
+    fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Flux i focus de convergència molt forta")
     grid_lon,grid_lat = np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100)
     X,Y = np.meshgrid(grid_lon,grid_lat)
     points = np.vstack((lons,lats)).T
-    
     u_grid = griddata(points, u_comp.m, (X,Y), method='cubic')
     v_grid = griddata(points, v_comp.m, (X,Y), method='cubic')
     u_grid,v_grid = np.nan_to_num(u_grid),np.nan_to_num(v_grid)
-    
-    # --- VISUALITZACIÓ DEL FOCUS DE CONVERGÈNCIA ---
-
-    # Calculem la convergència
     dx,dy = mpcalc.lat_lon_grid_deltas(X,Y)
     divergence = mpcalc.divergence(u_grid*units('m/s'), v_grid*units('m/s'), dx=dx, dy=dy) * 1e5
-    
-    # El focus apareix a partir de -20
-    LLINDAR_CONVERGENCIA = -20.0
-    divergence_masked = np.ma.masked_where(divergence.m > LLINDAR_CONVERGENCIA, divergence.m)
-    
-    # Paleta de colors 'jet_r' (blau a vermell) per a un degradat suau
-    cmap_convergencia = 'jet_r'
-    levels_convergencia = np.linspace(-100, LLINDAR_CONVERGENCIA, 20) # 20 passos per a suavitat màxima
-
-    # --- ORDRE DE CAPES VISUALS ---
-
-    # Capa 1: El fons de color del focus (zorder=2)
-    ax.contourf(
-        X, Y, divergence_masked,
-        levels=levels_convergencia, cmap=cmap_convergencia, 
-        alpha=0.75, zorder=2, transform=ccrs.PlateCarree(), extend='min'
-    )
-
-    # Capa 2: La línia negra que tanca el focus (zorder=3)
-    ax.contour(
-        X, Y, divergence_masked,
-        levels=[LLINDAR_CONVERGENCIA], # Dibuixem una única línia al llindar
-        colors='black',
-        linewidths=0.8, # Una línia fina i professional
-        zorder=3,
-        transform=ccrs.PlateCarree()
-    )
-
-    # Capa 3: Les línies de flux del vent (zorder=4)
-    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=4)
-    
+    divergence_values = np.ma.masked_where(divergence.m > -21.0, divergence.m)
+    levels = np.linspace(-50.0, -15.0, 11)
+    cont_fill = ax.contourf(X, Y, divergence_values, levels=levels, cmap='hot_r', alpha=0.5, zorder=2, transform=ccrs.PlateCarree(), extend='min')
+    fig.colorbar(cont_fill, ax=ax, orientation='vertical', label='Convergència (x10⁻⁵ s⁻¹)', shrink=0.7)
+    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
     return fig
 
 
