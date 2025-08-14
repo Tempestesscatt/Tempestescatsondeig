@@ -464,7 +464,7 @@ def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
 
 
 
-# Versió final amb focus "ultra realista" (degradat blau a vermell a partir de -20)
+# Versió final amb focus de convergència de blanc (feble) a vermell (fort)
 def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     # 1. PREPARACIÓ DE DADES (sense canvis)
     speeds_kmh, dirs_deg_raw = zip(*data)
@@ -472,7 +472,6 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     dirs_deg = np.array(dirs_deg_raw)*units.degrees
     u_comp,v_comp = mpcalc.wind_components(speeds_ms,dirs_deg)
     
-    # Utilitzem la funció base que manté les línies del mapa visibles per sobre
     fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Velocitat, flux i focus de convergència")
 
     # Creació de la graella (sense canvis)
@@ -505,20 +504,19 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     # Capa 2: Línies de flux del vent (zorder=2)
     ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=2)
 
-    # --- Capa 3: FOCUS DE CONVERGÈNCIA "ULTRA REALISTA" ---
+    # --- Capa 3: FOCUS DE CONVERGÈNCIA (BLANC A VERMELL) ---
     
-    # Càlcul de la convergència
     dx,dy = mpcalc.lat_lon_grid_deltas(X,Y)
     divergence = mpcalc.divergence(u_grid*units('m/s'), v_grid*units('m/s'), dx=dx, dy=dy) * 1e5
     
-    # 1. NOU LLINDAR: El focus comença a aparèixer a partir de -20.
+    # 1. LLINDAR: El focus comença a aparèixer a partir de -20.
     LLINDAR_CONVERGENCIA_SOLIDA = -20.0
     divergence_masked = np.ma.masked_where(divergence.m > LLINDAR_CONVERGENCIA_SOLIDA, divergence.m)
     
-    # 2. NOVA PALETA DE COLORS: 'jet_r' va de vermell (valors més negatius/forts) a blau (valors menys negatius/febles).
-    cmap_convergencia = 'jet_r'
+    # 2. NOVA PALETA DE COLORS: 'Reds_r' va de vermell fosc (valors més forts/negatius) a blanc (valors més febles).
+    cmap_convergencia = 'Reds_r'
     
-    # 3. NIVELLS PER A UN DEGRADAT SUAU: Creem 15 passos de color entre -100 i -20.
+    # 3. NIVELLS PER A UN DEGRADAT SUAU: Definim un rang ampli per al gradient.
     levels_convergencia = np.linspace(-100, LLINDAR_CONVERGENCIA_SOLIDA, 15)
 
     # Dibuixem la capa del focus de convergència
@@ -526,8 +524,8 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
         X, Y, divergence_masked,
         levels=levels_convergencia, 
         cmap=cmap_convergencia, 
-        # 4. OPACITAT AJUSTADA: Un 70% d'opacitat per a una bona integració visual.
-        alpha=0.7,
+        # 4. OPACITAT AJUSTADA: Un 80% d'opacitat per a una sensació més sòlida.
+        alpha=0.8,
         # Aquesta capa se situa per sobre del vent però per sota de les línies del mapa.
         zorder=3, 
         transform=ccrs.PlateCarree(), 
@@ -535,6 +533,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     )
     
     return fig
+    
 
 
 def crear_mapa_generic(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel, titol_var, cmap, unitat, levels):
