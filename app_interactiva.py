@@ -440,74 +440,83 @@ def display_metrics(params_dict):
         param=params_dict[key]; value=param['value']; units_str=param['units']; val_str=f"{value:.1f}" if isinstance(value,(float,np.floating)) else str(value); value_color,emoji=get_parameter_style(key,value); border_color=value_color if value_color!='inherit' else 'rgba(128,128,128,0.2)'
         with cols[i%4]: st.markdown(f"""<div class="metric-container" style="border-color:{border_color};"><div style="font-size:0.9em;color:gray;">{label}</div><div style="font-size:1.25em;font-weight:bold;color:{value_color};">{val_str} <span style='font-size:0.8em;color:gray;'>{units_str}</span> {emoji}</div></div>""", unsafe_allow_html=True)
 
+# Funció corregida per assegurar que les línies geogràfiques sempre siguin visibles
 def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
-    fig=plt.figure(figsize=(9,9),dpi=150); ax=fig.add_subplot(1,1,1,projection=ccrs.PlateCarree()); ax.set_extent([0,3.5,40.4,43],crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND,facecolor="#E0E0E0",zorder=0); ax.add_feature(cfeature.OCEAN,facecolor='#b0c4de',zorder=0); ax.add_feature(cfeature.COASTLINE,edgecolor='black',linewidth=0.5,zorder=1); ax.add_feature(cfeature.BORDERS,linestyle=':',edgecolor='black',zorder=1); ax.plot(lon_sel,lat_sel,'o',markersize=12,markerfacecolor='yellow',markeredgecolor='black',markeredgewidth=2,transform=ccrs.Geodetic(),zorder=5); ax.text(lon_sel+0.05,lat_sel+0.05,nom_poble_sel,transform=ccrs.Geodetic(),zorder=6,bbox=dict(facecolor='white',alpha=0.8,edgecolor='none',boxstyle='round,pad=0.2')); ax.set_title(f"{titol} a {nivell}hPa",weight='bold'); return fig,ax
+    fig=plt.figure(figsize=(9,9),dpi=150)
+    ax=fig.add_subplot(1,1,1,projection=ccrs.PlateCarree())
+    ax.set_extent([0,3.5,40.4,43],crs=ccrs.PlateCarree())
+    
+    # Capes de fons (terra i mar) amb zorder baix
+    ax.add_feature(cfeature.LAND,facecolor="#E0E0E0",zorder=0)
+    ax.add_feature(cfeature.OCEAN,facecolor='#b0c4de',zorder=0)
+    
+    # --- CANVI CLAU ---
+    # Augmentem el zorder de les línies geogràfiques per posar-les per sobre de les dades
+    ax.add_feature(cfeature.COASTLINE,edgecolor='black',linewidth=0.5,zorder=5)
+    ax.add_feature(cfeature.BORDERS,linestyle=':',edgecolor='black',zorder=5)
+    
+    # El marcador i el text del poble també han de tenir un zorder alt
+    ax.plot(lon_sel,lat_sel,'o',markersize=12,markerfacecolor='yellow',markeredgecolor='black',markeredgewidth=2,transform=ccrs.Geodetic(),zorder=6)
+    ax.text(lon_sel+0.05,lat_sel+0.05,nom_poble_sel,transform=ccrs.Geodetic(),zorder=7,bbox=dict(facecolor='white',alpha=0.8,edgecolor='none',boxstyle='round,pad=0.2'))
+    
+    ax.set_title(f"{titol} a {nivell}hPa",weight='bold')
+    return fig,ax
 
 
 
 # Versió final amb paleta de velocitat personalitzada i focus de convergència sòlids
+# Versió final amb línies de mapa visibles
 def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
-    # 1. PREPARACIÓ DE DADES
+    # 1. PREPARACIÓ DE DADES (sense canvis)
     speeds_kmh, dirs_deg_raw = zip(*data)
     speeds_ms = (np.array(speeds_kmh)*1000/3600)*units('m/s')
     dirs_deg = np.array(dirs_deg_raw)*units.degrees
     u_comp,v_comp = mpcalc.wind_components(speeds_ms,dirs_deg)
     
-    fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Velocitat, flux i focus de convergència sòlida")
+    fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Velocitat, flux i focus de convergència")
 
-    # Creem la graella per interpolar totes les dades
     grid_lon,grid_lat = np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100)
     X,Y = np.meshgrid(grid_lon,grid_lat)
     points = np.vstack((lons,lats)).T
     
-    # Interpolem les dades necessàries: components U/V i la velocitat
     u_grid = griddata(points, u_comp.m, (X,Y), method='cubic')
     v_grid = griddata(points, v_comp.m, (X,Y), method='cubic')
     speed_grid = griddata(points, speeds_kmh, (X,Y), method='cubic') 
 
     u_grid,v_grid = np.nan_to_num(u_grid),np.nan_to_num(v_grid)
     
-    # --- PAS 1: CREACIÓ DE LA PALETA DE COLORS PERSONALITZADA PER A LA VELOCITAT ---
-    # Definim els nivells i colors basats en la teva imatge de llegenda
+    # Paleta de colors personalitzada (sense canvis)
     levels_velocitat = [0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 120]
     colors_velocitat = [
         '#ababd7', '#4575b4', '#47b9ad', '#66c2a5', '#abdda4', '#e6f598',
         '#fee08b', '#fdae61', '#f46d43', '#d73027', '#a50026', '#8e0152',
         '#4d004b', '#250024' 
     ]
-    # Creem el colormap personalitzat
     cmap_custom = mcolors.ListedColormap(colors_velocitat)
     norm_custom = mcolors.BoundaryNorm(levels_velocitat, cmap_custom.N)
 
-    # --- PAS 2: CAPA DE COLOR DE FONS (VELOCITAT DEL VENT) ---
-    cont_fill_vel = ax.contourf(X, Y, speed_grid, levels=levels_velocitat, cmap=cmap_custom, norm=norm_custom, zorder=2, transform=ccrs.PlateCarree())
+    # --- NOU ORDRE DE CAPES (ZORDER) ---
+
+    # Capa 1: Fons de color de la velocitat del vent
+    cont_fill_vel = ax.contourf(X, Y, speed_grid, levels=levels_velocitat, cmap=cmap_custom, norm=norm_custom, zorder=1, transform=ccrs.PlateCarree())
     fig.colorbar(cont_fill_vel, ax=ax, orientation='vertical', label='Velocitat del vent (km/h)', shrink=0.7)
 
-    # --- PAS 3: CAPA DE LÍNIES DE FLUX ---
-    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=3)
+    # Capa 2: Línies de flux
+    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=2)
 
-    # --- PAS 4: CAPA DE FOCUS DE CONVERGÈNCIA SÒLIDA (PER SOBRE DE TOT) ---
+    # Capa 3: Focus de convergència sòlida
     dx,dy = mpcalc.lat_lon_grid_deltas(X,Y)
     divergence = mpcalc.divergence(u_grid*units('m/s'), v_grid*units('m/s'), dx=dx, dy=dy) * 1e5
-    
-    LLINDAR_CONVERGENCIA_SOLIDA = -30.0
-    
-    # Amaguem tot el que sigui més feble que el nostre llindar
+    LLINDAR_CONVERGENCIA_SOLIDA = -35.0
     divergence_masked = np.ma.masked_where(divergence.m > LLINDAR_CONVERGENCIA_SOLIDA, divergence.m)
-    
-    # Definim la paleta de colors per al focus de convergència (amb gradient intern)
     cmap_convergencia = 'hot_r'
-    levels_convergencia = np.linspace(-80, LLINDAR_CONVERGENCIA_SOLIDA, 10) # De groc a vermell fosc
+    levels_convergencia = np.linspace(-80, LLINDAR_CONVERGENCIA_SOLIDA, 10)
 
-    # Dibuixem la taca de color sòlida per sobre de tot
     ax.contourf(
         X, Y, divergence_masked,
-        levels=levels_convergencia,
-        cmap=cmap_convergencia,
-        alpha=0.75, # Una lleugera transparència per no ser massa agressiu
-        zorder=4,   # El valor més alt, per dibuixar-se per sobre de tot
-        transform=ccrs.PlateCarree(),
-        extend='min'
+        levels=levels_convergencia, cmap=cmap_convergencia, alpha=0.75,
+        zorder=3, # Es dibuixa sobre les dades de velocitat i flux, però sota les línies del mapa
+        transform=ccrs.PlateCarree(), extend='min'
     )
     
     return fig
