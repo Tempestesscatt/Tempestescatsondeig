@@ -37,13 +37,30 @@ CONVERGENCIA_FORTA_THRESHOLD = -25
 
 # --- DADES DE LOCALITATS (LLISTA OPTIMITZADA PER A ZONES TEMPESTUOSES) ---
 pobles_data = {
-    'Berga': {'lat': 42.105, 'lon': 1.846}, 'Solsona': {'lat': 41.994, 'lon': 1.518},
-    'Vic': {'lat': 41.930, 'lon': 2.255}, 'Tàrrega': {'lat': 41.647, 'lon': 1.140},
-    'Albi': {'lat': 41.423, 'lon': 0.995}, 'Montblanc': {'lat': 41.376, 'lon': 1.161},
-    'Gandesa': {'lat': 41.052, 'lon': 0.437}, 'Arbúcies': {'lat': 41.815, 'lon': 2.515},
+    # Prepirineu i Valls Pirinenques (Focus de disparador orogràfic)
+    'Berga': {'lat': 42.105, 'lon': 1.846},
+    'Solsona': {'lat': 41.994, 'lon': 1.518},
+    'Ripoll': {'lat': 42.201, 'lon': 2.190},        # AFEGIT: Clau al Ripollès
+    
+    # Catalunya Central i zones d'influència orogràfica
+    'Vic': {'lat': 41.930, 'lon': 2.255},
+    'Olot': {'lat': 42.181, 'lon': 2.490},         # AFEGIT: Zona Volcànica de la Garrotxa
+    'Manresa': {'lat': 41.727, 'lon': 1.825},       # AFEGIT: Cor de la Catalunya Central
+    
+    # Ponent i Depressió Central (On les tempestes s'intensifiquen)
+    'Lleida': {'lat': 41.617, 'lon': 0.620},        # AFEGIT: Capital de Ponent, focus de calor
+    'Tàrrega': {'lat': 41.647, 'lon': 1.140},
+    'Albi': {'lat': 41.423, 'lon': 0.995},
+    
+    # Interior de Tarragona (Influència del Sistema Ibèric)
+    'Montblanc': {'lat': 41.376, 'lon': 1.161},
+    'Gandesa': {'lat': 41.052, 'lon': 0.437},
+    
+    # Nord-est i zones amb influència marítima
+    'Figueres': {'lat': 42.266, 'lon': 2.963},     # AFEGIT: Clau a l'Alt Empordà
+    'Arbúcies': {'lat': 41.815, 'lon': 2.515},
     'Arenys de Mar': {'lat': 41.581, 'lon': 2.551},
 }
-
 # --- FUNCIÓ DE CALLBACK ---
 def actualitzar_seleccio(poble, hora):
     st.session_state.poble_selector = poble
