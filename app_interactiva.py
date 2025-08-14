@@ -606,7 +606,7 @@ nivell_conv_sel = st.session_state.get('nivell_convergencia', 850)
 # Aquest bloc ara s'executarà cada vegada que canviï l'hora o el nivell
 with st.spinner(f"Calculant convergències a {nivell_conv_sel}hPa per a tot el territori..."):
     convergencies_nivell_actual = calcular_convergencia_per_totes_les_localitats(hourly_index_sel, nivell_conv_sel, pobles_data)
-    localitats_convergencia_forta = {p for p, v in convergencies_nivell_actual.items() if v is not None and v < CONVERGIA_FORTA_THRESHOLD}
+    localitats_convergencia_forta = {p for p, v in convergencies_nivell_actual.items() if v is not None and v < CONVERGENCIA_FORTA_THRESHOLD}
 
 # --- CONTENIDOR DE SELECCIÓ ---
 with st.container(border=True):
@@ -737,7 +737,7 @@ elif sondeo:
             
             with tab_focus:
                 st.subheader(f"Anàlisi del Disparador de Convergència a {nivell_conv_sel}hPa")
-                if divergence_value_local is not None and divergence_value_local < CONVERGIA_FORTA_THRESHOLD:
+                if divergence_value_local is not None and divergence_value_local < CONVERGENCIA_FORTA_THRESHOLD:
                     st.success(f"**Focus de Convergència SIGNIFICATIU detectat a {poble_sel}!**")
                     st.metric(f"Valor de Convergència local ({nivell_conv_sel}hPa)", f"{divergence_value_local:.2f} x10⁻⁵ s⁻¹", 
                               help=f"El valor supera el llindar de {CONVERGENCIA_FORTA_THRESHOLD} i indica un focus de convergència fort.")
