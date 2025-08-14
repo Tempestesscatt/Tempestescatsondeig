@@ -353,7 +353,7 @@ def generar_avis_localitat(params, is_convergence_active):
 def generar_avis_convergencia(params, is_convergence_active, divergence_value):
     if not is_convergence_active: return None, None, None
     cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0); cin = params.get('CIN_Fre', {}).get('value')
-    if cape_u > 1000 and (cin is None or cin > -50) and divergence_value is not None and divergence_value < -35:
+    if cape_u > 1000 and (cin is None or cin > -50) and divergence_value is not None and divergence_value < -15:
         return "ALERTA DE DISPARADOR", f"La forta convergència de vents (valor: {divergence_value:.1f} x10⁻⁵ s⁻¹) pot actuar com a disparador. Amb un CAPE de {cape_u:.0f} J/kg i una 'tapa' (CIN) feble, hi ha un alt potencial que les tempestes s'iniciïn de manera explosiva.", "#FF4500"
     return None, None, None
 
