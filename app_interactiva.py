@@ -162,25 +162,29 @@ def precalcular_potencials_del_dia(_pobles_data):
     horas_muestreadas = [0, 3, 6, 9, 12, 15, 18, 21]
     potencials = {}
     avisos_a_buscar = {"PRECAUCIÓ", "AVÍS", "RISC ALT", "ALERTA DE DISPARADOR"}
-    def procesar_poble(nom_poble, coords):
-        sondeo, p_levels, _ = carregar_sondeig_per_poble(nom_poble, coords['lat'], coords['lon'])
-        if sondeo:
-            for hora in horas_muestreadas:
-                profiles = processar_sondeig_per_hora(sondeo, hora, p_levels)
-                if profiles:
-                    parametros = calculate_parameters(*profiles)
-                    if generar_avis_potencial_per_precalcul(parametros) in avisos_a_buscar:
-                        return nom_poble, hora
-        return None
-        
-    # --- CANVI CLAU: Reduïm el nombre de treballadors simultanis ---
-    # Hem canviat max_workers de 10 a 2. Això farà les trucades de manera molt més controlada.
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [executor.submit(procesar_poble, nom, coord) for nom, coord in _pobles_data.items()]
-        for future in as_completed(futures):
-            result = future.result()
-            if result:
-                potencials[result[0]] = result[1]
+    
+    # Processem cada poble un per un (de manera seqüencial)
+    for nom_poble, coords in _pobles_data.items():
+        try:
+            # Fem la trucada a l'API per a un poble
+            sondeo, p_levels, _ = carregar_sondeig_per_poble(nom_poble, coords['lat'], coords['lon'])
+            if sondeo:
+                for hora in horas_muestreadas:
+                    profiles = processar_sondeig_per_hora(sondeo, hora, p_levels)
+                    if profiles:
+                        parametros = calculate_parameters(*profiles)
+                        if generar_avis_potencial_per_precalcul(parametros) in avisos_a_buscar:
+                            potencials[nom_poble] = hora
+                            break # Optimització: si trobem un, parem de buscar per a aquest poble
+            
+            # PAUSA CLAU: Esperem un petit temps (0.2 segons) abans de la següent trucada.
+            # Això redueix dràsticament la freqüència de les peticions.
+            time.sleep(0.2)
+
+        except Exception:
+            # Si un poble falla, simplement continuem amb el següent.
+            continue
+            
     return potencials
 
 def generar_avis_potencial_per_precalcul(params):
@@ -626,18 +630,42 @@ with st.spinner("Analitzant potencials diaris..."):
     potencials_detectats_avui = precalcular_potencials_del_dia(pobles_data)
 st.toast("Anàlisi del territori completat.")
 
+# ==============================================================================
+# SECCIÓ 2: SUBSTITUEIX AQUEST BLOC SENCER AL TEU SCRIPT
+# ==============================================================================
+
 with st.expander("⚡️ Avisos i Potencials Detectats Avui", expanded=st.session_state.avisos_expanded):
     if not potencials_detectats_avui:
         st.success("No s'ha detectat cap risc significatiu de temps sever per a les pròximes 24 hores.")
     else:
+        # --- BLOC DE CODI SEGUR I OPTIMITZAT ---
+
+        # 1. Recopilem les hores úniques que necessitem comprovar
+        hores_a_revisar = sorted(list(set(potencials_detectats_avui.values())))
+        
+        # 2. Fem una trucada a l'API (que quedarà a la memòria cau) per a cada hora única
+        #    per obtenir les dades de convergència de TOTS els pobles alhora.
+        convergencies_per_hora = {}
+        for hora in hores_a_revisar:
+            # Important: Passem el diccionari COMPLET de 'pobles_data'
+            convergencies_per_hora[hora] = calcular_convergencia_per_totes_les_localitats(hora, 850, pobles_data)
+            # Afegim una petita pausa per respectar l'API
+            time.sleep(0.2)
+
+        # 3. Ara processem els resultats SENSE fer noves trucades a l'API
         pobles_amb_disparador, pobles_amb_potencial = [], []
         for poble, hora in potencials_detectats_avui.items():
-            valor_conv_poble = calcular_convergencia_per_totes_les_localitats(hora, 850, {poble: pobles_data[poble]}).get(poble)
+            # Obtenim el valor de la convergència del nostre diccionari ja calculat
+            # El .get(hora, {}) fa que sigui segur si una hora va fallar
+            # El .get(poble) fa que sigui segur si un poble no hi és
+            valor_conv_poble = convergencies_per_hora.get(hora, {}).get(poble)
+            
             if valor_conv_poble is not None and valor_conv_poble < CONVERGENCIA_FORTA_THRESHOLD:
                 pobles_amb_disparador.append((poble, hora))
             else:
                 pobles_amb_potencial.append((poble, hora))
-
+        
+        # El teu codi per mostrar les columnes i botons es manté igual
         col_disparador, col_potencial = st.columns(2)
         with col_disparador:
             st.markdown("##### 🔥 Risc actiu (Amb disparador)")
