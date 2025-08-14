@@ -473,7 +473,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     cmap_realista = 'YlOrRd'
     
     # 3. Definim els nivells de color per centrar-nos en el rang que t'interessa (-30 a 0).
-    levels = np.linspace(-30.0, 0, 11)
+    levels = np.linspace(-30.0, -28, 11)
     
     # Amaguem els valors positius (divergència) per mostrar només la convergència.
     divergence_values = np.ma.masked_where(divergence.m >= 0, divergence.m)
