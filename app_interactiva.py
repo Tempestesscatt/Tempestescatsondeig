@@ -41,7 +41,8 @@ pobles_data = {
     # Prepirineu i Valls Pirinenques (Focus de disparador orogràfic)
     'Berga': {'lat': 42.105, 'lon': 1.846},
     'Solsona': {'lat': 41.994, 'lon': 1.518},
-    'Ripoll': {'lat': 42.201, 'lon': 2.190},        # AFEGIT: Clau al Ripollès
+    'Ripoll': {'lat': 42.201, 'lon': 2.190},
+    'Bagà': {'lat': 42.254, 'lon': 1.860}, # AFEGIT: Clau al Ripollès
     
     # Catalunya Central i zones d'influència orogràfica
     'Vic': {'lat': 41.930, 'lon': 2.255},
