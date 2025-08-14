@@ -444,57 +444,70 @@ def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
     fig=plt.figure(figsize=(9,9),dpi=150); ax=fig.add_subplot(1,1,1,projection=ccrs.PlateCarree()); ax.set_extent([0,3.5,40.4,43],crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND,facecolor="#E0E0E0",zorder=0); ax.add_feature(cfeature.OCEAN,facecolor='#b0c4de',zorder=0); ax.add_feature(cfeature.COASTLINE,edgecolor='black',linewidth=0.5,zorder=1); ax.add_feature(cfeature.BORDERS,linestyle=':',edgecolor='black',zorder=1); ax.plot(lon_sel,lat_sel,'o',markersize=12,markerfacecolor='yellow',markeredgecolor='black',markeredgewidth=2,transform=ccrs.Geodetic(),zorder=5); ax.text(lon_sel+0.05,lat_sel+0.05,nom_poble_sel,transform=ccrs.Geodetic(),zorder=6,bbox=dict(facecolor='white',alpha=0.8,edgecolor='none',boxstyle='round,pad=0.2')); ax.set_title(f"{titol} a {nivell}hPa",weight='bold'); return fig,ax
 
 
-# Funció final per a un mapa amb degradat de color realista i net
-# Recorda que hem eliminat el decorador @st.cache_data per evitar errors
-# Funció final per a un mapa amb degradat de color de blau (feble) a vermell (fort)
+
 def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
-    speeds,dirs = zip(*data)
-    speeds_ms = (np.array(speeds)*1000/3600)*units('m/s')
-    dirs_deg = np.array(dirs)*units.degrees
+    # 1. PREPARACIÓ DE DADES
+    speeds_kmh, dirs_deg_raw = zip(*data)
+    speeds_ms = (np.array(speeds_kmh)*1000/3600)*units('m/s')
+    dirs_deg = np.array(dirs_deg_raw)*units.degrees
     u_comp,v_comp = mpcalc.wind_components(speeds_ms,dirs_deg)
     
-    fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Flux i focus de convergència")
+    fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Velocitat, flux i focus de convergència")
 
+    # Creem la graella per interpolar totes les dades
     grid_lon,grid_lat = np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100)
     X,Y = np.meshgrid(grid_lon,grid_lat)
     points = np.vstack((lons,lats)).T
+    
+    # Interpolem les dades necessàries: components U/V i la velocitat
     u_grid = griddata(points, u_comp.m, (X,Y), method='cubic')
     v_grid = griddata(points, v_comp.m, (X,Y), method='cubic')
+    speed_grid = griddata(points, speeds_kmh, (X,Y), method='cubic') # NOU: Graella de velocitat
+
     u_grid,v_grid = np.nan_to_num(u_grid),np.nan_to_num(v_grid)
+    
+    # 2. CAPA DE COLOR DE FONS (VELOCITAT DEL VENT)
+    # Seleccionem una paleta de colors intuïtiva per a la velocitat (de fred a calent)
+    cmap_velocitat = 'plasma' 
+    levels_velocitat = np.linspace(10, 100, 10) # Nivells en km/h
+    
+    cont_fill = ax.contourf(
+        X, Y, speed_grid,
+        levels=levels_velocitat,
+        cmap=cmap_velocitat,
+        alpha=0.3,
+        zorder=2,
+        transform=ccrs.PlateCarree(),
+        extend='max' # Per als vents més forts que el màxim de l'escala
+    )
+    # Afegim la barra de color per a la velocitat
+    fig.colorbar(cont_fill, ax=ax, orientation='vertical', label='Velocitat del vent (km/h)', shrink=0.7)
+    
+    # 3. CAPA DE LÍNIES DE CONTORN (FOCUS DE CONVERGÈNCIA)
+    # Calculem la convergència com abans per poder-la dibuixar
     dx,dy = mpcalc.lat_lon_grid_deltas(X,Y)
     divergence = mpcalc.divergence(u_grid*units('m/s'), v_grid*units('m/s'), dx=dx, dy=dy) * 1e5
     
-    # --- CANVIS PER AL NOU ESTIL DE COLOR DE BLAU A VERMELL ---
-
-    # 1. Seleccionem la paleta de colors 'jet'. Aquesta paleta va de blau (valors baixos)
-    #    a cian, groc i finalment vermell (valors alts). Perquè els nostres valors
-    #    més forts són els més negatius, hem d'invertir la paleta amb '_r'.
-    cmap_realista = 'jet_r' 
+    LLINDAR_FOCUS_CONVERGENCIA = -29.0
     
-    # 2. Corregim el rang dels nivells. Perquè el mapa sigui útil, ha de mostrar un 
-    #    rang ampli. El definim de -30 (convergència forta) a 0 (sense convergència).
-    #    (Nota: al teu codi hi havia un rang molt estret de -30 a -28, que he corregit).
-    levels = np.linspace(-70.0, -25, 11)
-    
-    # Amaguem els valors positius (divergència) per mostrar només la convergència.
-    divergence_values = np.ma.masked_where(divergence.m >= 0, divergence.m)
-
-    # Dibuixem el mapa de colors.
-    cont_fill = ax.contourf(
-        X, Y, divergence_values,
-        levels=levels,
-        cmap=cmap_realista,
-        alpha=0.65, 
-        zorder=2,
-        transform=ccrs.PlateCarree(),
-        extend='min' # Molt important per als valors més forts que -30
+    # Dibuixem els focus amb una línia vermella discontínua per destacar-los
+    ax.contour(
+        X, Y, divergence.m,
+        levels=[LLINDAR_FOCUS_CONVERGENCIA],
+        colors='#B30000', # Un vermell fosc
+        linestyles='--',  # Línia discontínua
+        linewidths=1.5,
+        zorder=3, # Per sobre del color de fons
+        transform=ccrs.PlateCarree()
     )
+
+    # 4. CAPA DE LÍNIES DE FLUX
+    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=4)
     
-    fig.colorbar(cont_fill, ax=ax, orientation='vertical', label='Convergència (x10⁻⁵ s⁻¹)', shrink=0.7)
-    
-    # Finalment, dibuixem les línies de flux per sobre de tot.
-    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=3, transform=ccrs.PlateCarree())
-    
+    # 5. LLEGENDA PER A LA LÍNIA DE CONVERGÈNCIA
+    focus_legend_line = mlines.Line2D([], [], color='#B30000', linestyle='--', linewidth=1.5, label='Focus de convergència forta')
+    ax.legend(handles=[focus_legend_line], loc='upper left')
+
     return fig
 def crear_mapa_generic(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel, titol_var, cmap, unitat, levels):
     fig,ax=crear_mapa_base(nivell,lat_sel,lon_sel,nom_poble_sel,titol_var)
