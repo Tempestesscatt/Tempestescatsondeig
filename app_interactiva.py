@@ -315,24 +315,44 @@ def generar_avis_temperatura(params):
     if temp < 0: return "AVÍS PER FRED INTENS", f"Es preveu una temperatura de {temp:.1f}°C. Risc de gelades fortes.", "#0000FF", "🥶"
     return None, None, None, None
 
-def generar_avis_localitat(params, is_convergence_active):
-    cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0); cin = params.get('CIN_Fre', {}).get('value')
-    lfc_agl = params.get('LFC_AGL', {}).get('value'); shear = params.get('Shear_0-6km', {}).get('value')
-    srh1 = params.get('SRH_0-1km', {}).get('value'); lcl_agl = params.get('LCL_AGL', {}).get('value', 9999)
-    dcape = params.get('DCAPE', {}).get('value', 0); stp = params.get('STP_cin', {}).get('value', 0)
-    lr = params.get('LapseRate_700_500', {}).get('value', 0); pwat = params.get('PWAT_Total', {}).get('value', 0)
-    if cape_u < 100: return "ESTABLE", "Sense risc de tempestes significatives. L'atmosfera és estable.", "#3CB371"
-    if cin is not None and cin < -150: return "ESTABLE", f"La 'tapa' atmosfèrica (CIN de {cin:.0f} J/kg) és massa forta i probablement inihibirà qualsevol convecció.", "#3CB371"
-    if lfc_agl is None and not is_convergence_active: return "RISC BAIX", f"Hi ha una inestabilitat considerable (CAPE de {cape_u:.0f} J/kg), però el nivell d'inici de la convecció (LFC) és inassolible sense un forçament potent com la convergència. Les tempestes són poc probables.", "#4682B4"
+def generar_avis_localitat(params, divergence_value):
+    # Obtenim tots els paràmetres de manera segura
+    cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0)
+    cin = params.get('CIN_Fre', {}).get('value')
+    lfc_agl = params.get('LFC_AGL', {}).get('value')
+    shear = params.get('Shear_0-6km', {}).get('value')
+    srh1 = params.get('SRH_0-1km', {}).get('value')
+    lcl_agl = params.get('LCL_AGL', {}).get('value', 9999)
+    dcape = params.get('DCAPE', {}).get('value', 0)
+    stp = params.get('STP_cin', {}).get('value', 0)
+    lr = params.get('LapseRate_700_500', {}).get('value', 0)
+    pwat = params.get('PWAT_Total', {}).get('value', 0)
+
+    # --- NOVA LÒGICA DE DISPARADOR, DIRECTAMENT AQUÍ ---
+    # Definim 'is_convergence_active' dins de la funció, basat en el valor real
+    is_convergence_active = divergence_value is not None and divergence_value < CONVERGENCIA_FORTA_THRESHOLD
+
+    # --- LÒGICA D'AVALUACIÓ ---
+    if cape_u < 100:
+        return "ESTABLE", "Sense risc de tempestes significatives. L'atmosfera és estable.", "#3CB371"
+    if cin is not None and cin < -150:
+        return "ESTABLE", f"La 'tapa' atmosfèrica (CIN de {cin:.0f} J/kg) és massa forta i probablement inihibirà qualsevol convecció.", "#3CB371"
+
+    if lfc_agl is None and not is_convergence_active:
+        return "RISC BAIX", f"Hi ha una inestabilitat considerable (CAPE de {cape_u:.0f} J/kg), però el nivell d'inici de la convecció (LFC) és inassolible sense un forçament potent com la convergència. Les tempestes són poc probables.", "#4682B4"
+
+    # La resta de la lògica ara funcionarà correctament perquè 'is_convergence_active' és correcte
     cond_supercelula = shear is not None and shear > 20 and cape_u > 1500 and srh1 is not None and srh1 > 200 and lcl_agl < 1300
     cond_avis_sever = shear is not None and shear > 18 and cape_u > 1200
     cond_precaucio = shear is not None and shear > 12 and cape_u > 500
+
     if cond_supercelula and stp > 0.8:
         risks = ["calamarsa grossa", "vent destructiu"];
         if lcl_agl < 1000: risks.insert(0, "tornados")
         risks_text = ", ".join(risks)
         if is_convergence_active or (lfc_agl is not None and lfc_agl < 3000): return "RISC ALT", f"Entorn de SUPERCL·LULA TORNÀDICA (STP={stp:.1f}). Disparador present. Risc de {risks_text}.", "#E60073"
         else: return "POTENCIAL SEVER", f"Potencial latent de SUPERCL·LULA TORNÀDICA (STP={stp:.1f}) a l'espera d'un disparador clar. L'entorn és perillós.", "#FFC300"
+    
     elif cond_avis_sever:
         risks = [];
         if dcape > 900: risks.append("fortes ràfegues de vent (esclafits severs)")
@@ -342,13 +362,17 @@ def generar_avis_localitat(params, is_convergence_active):
         risks_text = ", ".join(risks)
         if is_convergence_active or (lfc_agl is not None and lfc_agl < 3000): return "AVÍS", f"Potencial per a tempestes SEVERES organitzades. Disparador present. Risc de {risks_text}.", "#FF8C00"
         else: return "POTENCIAL MODERAT", f"Entorn de tempesta SEVERA latent a l'espera d'un disparador clar. Risc de {risks_text}.", "#FFD700"
+    
     elif cond_precaucio:
         missatge = "Risc de TEMPESTES ORGANITZADES (multicèl·lules). Possibles fortes pluges i calamarsa local."
+        if is_convergence_active: missatge += " La convergència detectada augmenta la probabilitat que es formin."
         if pwat > 35: missatge += " Atenció al risc de xàfecs torrencials."
         return "PRECAUCIÓ", missatge, "#FFD700"
+    
     else:
         missatge = f"Hi ha inestabilitat (CAPE de {cape_u:.0f} J/kg) suficient per a xàfecs o tempestes febles i aïllades."
-        if is_convergence_active: missatge += " La convergència forta pot ajudar a formar alguns nuclis."
+        if is_convergence_active:
+             missatge += " La convergència forta pot ajudar a formar alguns nuclis."
         return "RISC BAIX", missatge, "#4682B4"
 
 def generar_avis_convergencia(params, is_convergence_active, divergence_value):
@@ -625,7 +649,7 @@ elif sondeo:
             if avis_temp_titol: display_avis_principal(avis_temp_titol, avis_temp_text, avis_temp_color, icona_personalitzada=avis_temp_icona)
             avis_conv_titol, avis_conv_text, avis_conv_color = generar_avis_convergencia(parametros, is_disparador_active, divergence_value_local)
             if avis_conv_titol: display_avis_principal(avis_conv_titol, avis_conv_text, avis_conv_color)
-            avis_titol, avis_text, avis_color = generar_avis_localitat(parametros, is_disparador_active)
+            avis_titol, avis_text, avis_color = generar_avis_localitat(parametros, divergence_value_local)
             display_avis_principal(avis_titol, avis_text, avis_color)
             tab_analisi, tab_params, tab_mapes, tab_hodo, tab_sondeig, tab_oro, tab_nuvol, tab_focus = st.tabs(["🗨️ Anàlisi", "📊 Paràmetres", "🗺️ Mapes", "🧭 Hodògraf","📍 Sondeig", "🏔️ Orografia", "☁️ Visualització", "🎯 Focus Convergència"])
             with tab_analisi: st.write_stream(generar_analisi_detallada(parametros, is_disparador_active))
