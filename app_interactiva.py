@@ -596,18 +596,35 @@ def crear_grafic_nuvol(params, H, u, v, is_convergence_active):
 st.markdown('<h1 style="text-align: center; color: #FF4B4B;">⚡ Tempestes.cat</h1>', unsafe_allow_html=True)
 st.markdown('<p style="text-align: center;">Eina d\'Anàlisi i Previsió de Fenòmens Severs a Catalunya</p>', unsafe_allow_html=True)
 hourly_index_global = int(st.session_state.hora_selector.split(':')[0])
-with st.spinner("Calculant convergències per a tot el territori..."):
-    convergencies_850hpa = calcular_convergencia_per_totes_les_localitats(hourly_index_global, 850, pobles_data)
-    localitats_convergencia_forta = {p for p, v in convergencies_850hpa.items() if v is not None and v < CONVERGENCIA_FORTA_THRESHOLD}
+nivell_conv_sel = st.session_state.nivell_convergencia
+with st.spinner(f"Calculant convergències a {nivell_conv_sel}hPa per a tot el territori..."):
+    # Ara el nivell és una variable
+    convergencies_nivell_actual = calcular_convergencia_per_totes_les_localitats(hourly_index_global, nivell_conv_sel, pobles_data)
+    # La resta de la lògica s'adapta automàticament
+    localitats_convergencia_forta = {p for p, v in convergencies_nivell_actual.items() if v is not None and v < CONVERGENCIA_FORTA_THRESHOLD}
 with st.container(border=True):
-    col1, col2 = st.columns([1,1], gap="large");
-    with col1: st.selectbox("Hora del pronòstic (Local):", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
+    col1, col2, col3 = st.columns(3, gap="large")
+    with col1:
+        st.selectbox("Hora del pronòstic (Local):", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
+    
     with col2:
-        sorted_pobles = sorted(pobles_data.keys()); opciones_display = [f"⚠️ {p}" if p in localitats_convergencia_forta else p for p in sorted_pobles]
+        # --- NOU SELECTOR DE NIVELL DE CONVERGÈNCIA ---
+        if 'nivell_convergencia' not in st.session_state:
+            st.session_state.nivell_convergencia = 850 # Valor per defecte
+            
+        st.selectbox("Nivell d'anàlisi de convergència:", options=[850, 925], key="nivell_convergencia", format_func=lambda x: f"{x} hPa")
+
+    with col3:
+        sorted_pobles = sorted(pobles_data.keys())
+        # La resta de la lògica dels pobles es manté igual, però dins de col3
+        opciones_display = [f"⚠️ {p}" if p in localitats_convergencia_forta else p for p in sorted_pobles]
         try:
-            poble_actual_net = st.session_state.poble_selector.replace("⚠️ ", "").strip(); poble_actual_display = f"⚠️ {poble_actual_net}" if poble_actual_net in localitats_convergencia_forta else poble_actual_net
+            poble_actual_net = st.session_state.poble_selector.replace("⚠️ ", "").strip()
+            poble_actual_display = f"⚠️ {poble_actual_net}" if poble_actual_net in localitats_convergencia_forta else poble_actual_net
             default_index = opciones_display.index(poble_actual_display)
-        except (ValueError, KeyError): default_index = sorted_pobles.index(st.session_state.poble_selector) if st.session_state.poble_selector in sorted_pobles else 0
+        except (ValueError, KeyError):
+            default_index = sorted_pobles.index(st.session_state.poble_selector) if st.session_state.poble_selector in sorted_pobles else 0
+        
         selected_option_raw = st.selectbox('Selecciona una localitat:', options=opciones_display, index=default_index)
         st.session_state.poble_selector = selected_option_raw.replace("⚠️ ", "").strip()
 st.markdown(f'<p style="text-align: center; font-size: 0.9em; color: grey;">🕒 {get_next_arome_update_time()}</p>', unsafe_allow_html=True)
@@ -620,7 +637,7 @@ with st.expander("⚡️ Avisos i Potencials Detectats Avui", expanded=st.sessio
     else:
         hores_a_revisar = sorted(list(set(potencials_detectats_avui.values()))); convergencies_per_hora = {}
         for hora in hores_a_revisar:
-            convergencies_per_hora[hora] = calcular_convergencia_per_totes_les_localitats(hora, 850, pobles_data); time.sleep(0.2)
+            convergencies_per_hora[hora] = calcular_convergencia_per_totes_les_localitats(hora, nivell_conv_sel, pobles_data); time.sleep(0.2)
         pobles_amb_disparador, pobles_amb_potencial = [], []
         for poble, hora in potencials_detectats_avui.items():
             valor_conv_poble = convergencies_per_hora.get(hora, {}).get(poble)
@@ -644,7 +661,9 @@ elif sondeo:
         profiles = processar_sondeig_per_hora(sondeo, hourly_index, p_levels)
         if profiles:
             p, T, Td, u, v, H = profiles; parametros = calculate_parameters(p, T, Td, u, v, H)
-            is_disparador_active = poble_sel in localitats_convergencia_forta; divergence_value_local = convergencies_850hpa.get(poble_sel)
+            # Línia CORRECTA
+            divergence_value_local = convergencies_nivell_actual.get(poble_sel)
+            is_disparador_active = divergence_value_local is not None and divergence_value_local < CONVERGENCIA_FORTA_THRESHOLD
             avis_temp_titol, avis_temp_text, avis_temp_color, avis_temp_icona = generar_avis_temperatura(parametros)
             if avis_temp_titol: display_avis_principal(avis_temp_titol, avis_temp_text, avis_temp_color, icona_personalitzada=avis_temp_icona)
             avis_conv_titol, avis_conv_text, avis_conv_color = generar_avis_convergencia(parametros, is_disparador_active, divergence_value_local)
@@ -685,39 +704,40 @@ elif sondeo:
                 st.subheader("Visualització Conceptual del Núvol"); fig_nuvol = crear_grafic_nuvol(parametros, H, u, v, is_disparador_active)
                 if fig_nuvol: st.pyplot(fig_nuvol)
                 else: st.info("No hi ha dades per visualitzar l'estructura del núvol.")
+            # ==============================================================================
+# SECCIÓ 3: SUBSTITUEIX LA PESTANYA "FOCUS CONVERGÈNCIA"
+# ==============================================================================
             with tab_focus:
-                st.subheader("Anàlisi del Disparador de Convergència")
+                # El títol ara és dinàmic
+                st.subheader(f"Anàlisi del Disparador de Convergència a {nivell_conv_sel}hPa")
                 
-                # Obtenim el valor local de convergència de manera segura
-                divergence_value_local = convergencies_850hpa.get(poble_sel)
+                # Obtenim el valor local de la convergència calculada al nivell seleccionat
+                divergence_value_local = convergencies_nivell_actual.get(poble_sel)
 
-                # --- NOVA LÒGICA DE COMPROVACIÓ ---
-                # Comprovem si el valor local existeix i si supera el nostre llindar
                 if divergence_value_local is not None and divergence_value_local < CONVERGENCIA_FORTA_THRESHOLD:
-                    # CAS 1: HI HA CONVERGÈNCIA FORTA
                     st.success(f"**Focus de Convergència SIGNIFICATIU detectat a {poble_sel}!**")
-                    st.metric("Valor de Convergència local (850hPa)", f"{divergence_value_local:.2f} x10⁻⁵ s⁻¹", 
+                    # La mètrica també és dinàmica
+                    st.metric(f"Valor de Convergència local ({nivell_conv_sel}hPa)", f"{divergence_value_local:.2f} x10⁻⁵ s⁻¹", 
                               help=f"El valor supera el llindar de {CONVERGENCIA_FORTA_THRESHOLD} i indica un focus de convergència fort.")
                     st.markdown("Aquesta zona té un focus de convergència actiu que pot actuar com a **disparador** per a les tempestes.")
                 
                 else:
-                    # CAS 2: NO HI HA CONVERGÈNCIA FORTA
-                    st.info(f"Cap focus de convergència significatiu detectat a {poble_sel} per a l'hora seleccionada.")
+                    st.info(f"Cap focus de convergència significatiu detectat a {poble_sel} per a l'hora i el nivell seleccionats.")
                     if divergence_value_local is not None:
-                        st.metric("Valor de Convergència/Divergència local (850hPa)", f"{divergence_value_local:.2f} x10⁻⁵ s⁻¹",
+                        # La mètrica també és dinàmica
+                        st.metric(f"Valor de Convergència/Divergència local ({nivell_conv_sel}hPa)", f"{divergence_value_local:.2f} x10⁻⁵ s⁻¹",
                                   help=f"El valor NO supera el llindar de {CONVERGENCIA_FORTA_THRESHOLD}.")
                     st.markdown("L'absència d'un disparador clar pot dificultar la formació de tempestes.")
                 
                 st.markdown("---")
-                st.markdown("**Altres localitats amb convergència forta a aquesta hora:**")
+                st.markdown(f"**Altres localitats amb convergència forta a {nivell_conv_sel}hPa a aquesta hora:**")
                 
-                # La llista d'altres localitats ja funciona correctament
                 altres_localitats = sorted(list(localitats_convergencia_forta - {poble_sel}))
                 
                 if altres_localitats:
                     st.markdown(f"_{', '.join(altres_localitats)}_")
                 else:
-                    st.markdown("*Cap altra localitat amb avís de convergència forta per a aquesta hora.*")
+                    st.markdown(f"*Cap altra localitat amb avís de convergència forta per a aquesta hora i nivell.*")
                 if localitats_convergencia_forta: st.markdown(f"_{', '.join(sorted(list(localitats_convergencia_forta)))}_")
                 else: st.markdown("*Cap altra localitat amb avís de convergència forta per a aquesta hora.*")
         else:
