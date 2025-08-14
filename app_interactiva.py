@@ -449,7 +449,9 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     speeds_ms = (np.array(speeds)*1000/3600)*units('m/s')
     dirs_deg = np.array(dirs)*units.degrees
     u_comp,v_comp = mpcalc.wind_components(speeds_ms,dirs_deg)
-    fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Flux i focus de convergència molt forta")
+    
+    fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Flux i focus de convergència")
+
     grid_lon,grid_lat = np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100)
     X,Y = np.meshgrid(grid_lon,grid_lat)
     points = np.vstack((lons,lats)).T
@@ -458,11 +460,32 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     u_grid,v_grid = np.nan_to_num(u_grid),np.nan_to_num(v_grid)
     dx,dy = mpcalc.lat_lon_grid_deltas(X,Y)
     divergence = mpcalc.divergence(u_grid*units('m/s'), v_grid*units('m/s'), dx=dx, dy=dy) * 1e5
-    divergence_values = np.ma.masked_where(divergence.m >= -15.0, divergence.m)
-    levels = np.linspace(-50.0, -10.0, 11)
-    cont_fill = ax.contourf(X, Y, divergence_values, levels=levels, cmap='hot_r', alpha=0.5, zorder=2, transform=ccrs.PlateCarree(), extend='min')
+    
+    # --- PAS 1: Dibuixar l'àrea general de convergència (fons de color) ---
+    divergence_values = np.ma.masked_where(divergence.m >= 0, divergence.m)
+    levels = np.linspace(-30.0, 0, 11)
+    cont_fill = ax.contourf(X, Y, divergence_values, levels=levels, cmap='hot_r', alpha=0.55, zorder=2, transform=ccrs.PlateCarree(), extend='min')
     fig.colorbar(cont_fill, ax=ax, orientation='vertical', label='Convergència (x10⁻⁵ s⁻¹)', shrink=0.7)
+    
+    LLINDAR_FOCUS_CONVERGENCIA = -25.0
+    
+    # Dibuixem una línia de contorn només per als valors que superen aquest llindar.
+    ax.contour(
+        X, Y, divergence.m,
+        levels=[LLINDAR_FOCUS_CONVERGENCIA], # Dibuixem una línia just a aquest llindar
+        colors='lime',                       # Un color molt visible que contrasta amb el fons vermell/taronja
+        linewidths=2.5,                      # Una línia gruixuda per destacar
+        zorder=3,                            # Assegurem que es dibuixi per sobre del fons de color
+        transform=ccrs.PlateCarree()
+    )
+
+    # --- PAS 3: Dibuixar el flux de vent (fletxes) ---
     ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
+    
+    # --- PAS 4 (NOU): Afegir una llegenda per al nou contorn ---
+    focus_legend_line = mlines.Line2D([], [], color='lime', linewidth=2.5, label=f'Focus de xoc (> {abs(LLINDAR_FOCUS_CONVERGENCIA)})')
+    ax.legend(handles=[focus_legend_line], loc='upper left')
+
     return fig
 
 def crear_mapa_generic(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel, titol_var, cmap, unitat, levels):
