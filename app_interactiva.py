@@ -446,6 +446,7 @@ def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
 
 # Funció final per a un mapa amb degradat de color realista i net
 # Recorda que hem eliminat el decorador @st.cache_data per evitar errors
+# Funció final per a un mapa amb degradat de color de blau (feble) a vermell (fort)
 def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     speeds,dirs = zip(*data)
     speeds_ms = (np.array(speeds)*1000/3600)*units('m/s')
@@ -463,32 +464,30 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     dx,dy = mpcalc.lat_lon_grid_deltas(X,Y)
     divergence = mpcalc.divergence(u_grid*units('m/s'), v_grid*units('m/s'), dx=dx, dy=dy) * 1e5
     
-    # --- CANVIS PRINCIPALS PER A L'EFECTE REALISTA ---
+    # --- CANVIS PER AL NOU ESTIL DE COLOR DE BLAU A VERMELL ---
 
-    # 1. Eliminem completament la línia de contorn verda i la llegenda. El mapa serà més net.
-
-    # 2. Seleccionem una paleta de colors (cmap) més adequada per a intensitat, com 'YlOrRd' 
-    #    (Groc -> Taronja -> Vermell). És molt intuïtiva.
-    #    Augmentem una mica l'opacitat (alpha) per a un color més sòlid.
-    cmap_realista = 'YlOrRd'
+    # 1. Seleccionem la paleta de colors 'jet'. Aquesta paleta va de blau (valors baixos)
+    #    a cian, groc i finalment vermell (valors alts). Perquè els nostres valors
+    #    més forts són els més negatius, hem d'invertir la paleta amb '_r'.
+    cmap_realista = 'jet_r' 
     
-    # 3. Definim els nivells de color per centrar-nos en el rang que t'interessa (-30 a 0).
-    levels = np.linspace(-30.0, -28, 11)
+    # 2. Corregim el rang dels nivells. Perquè el mapa sigui útil, ha de mostrar un 
+    #    rang ampli. El definim de -30 (convergència forta) a 0 (sense convergència).
+    #    (Nota: al teu codi hi havia un rang molt estret de -30 a -28, que he corregit).
+    levels = np.linspace(-100.0, -25, 11)
     
     # Amaguem els valors positius (divergència) per mostrar només la convergència.
     divergence_values = np.ma.masked_where(divergence.m >= 0, divergence.m)
 
-    # Dibuixem el mapa de colors. La clau és 'extend="min"'.
-    # Això fa que qualsevol valor per sota de -30 (el nostre mínim) es pinti amb el color
-    # més intens (vermell fosc), sense distorsionar la resta de l'escala.
+    # Dibuixem el mapa de colors.
     cont_fill = ax.contourf(
         X, Y, divergence_values,
         levels=levels,
         cmap=cmap_realista,
-        alpha=0.65, # Una mica més opac per a un efecte més marcat
+        alpha=0.65, 
         zorder=2,
         transform=ccrs.PlateCarree(),
-        extend='min' # Molt important!
+        extend='min' # Molt important per als valors més forts que -30
     )
     
     fig.colorbar(cont_fill, ax=ax, orientation='vertical', label='Convergència (x10⁻⁵ s⁻¹)', shrink=0.7)
@@ -497,7 +496,6 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=3, transform=ccrs.PlateCarree())
     
     return fig
-
 def crear_mapa_generic(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel, titol_var, cmap, unitat, levels):
     fig,ax=crear_mapa_base(nivell,lat_sel,lon_sel,nom_poble_sel,titol_var)
     grid_lon,grid_lat=np.linspace(min(lons),max(lons),100),np.linspace(min(lats),max(lats),100); X,Y=np.meshgrid(grid_lon,grid_lat); points=np.vstack((lons,lats)).T
