@@ -661,17 +661,39 @@ elif sondeo:
                 st.subheader("Visualització Conceptual del Núvol"); fig_nuvol = crear_grafic_nuvol(parametros, H, u, v, is_disparador_active)
                 if fig_nuvol: st.pyplot(fig_nuvol)
                 else: st.info("No hi ha dades per visualitzar l'estructura del núvol.")
-            with tab_focus:
-                st.subheader("Anàlisi del Disparador de Convergència");
-                if is_disparador_active:
-                    st.success(f"**Convergència FORTA detectada a {poble_sel}!**");
-                    if divergence_value_local: st.metric("Valor de Convergència local (850hPa)", f"{divergence_value_local:.2f} x10⁻⁵ s⁻¹", help="Valors molt negatius indiquen convergència forta.")
+             with tab_focus:
+                st.subheader("Anàlisi del Disparador de Convergència")
+                
+                # Obtenim el valor local de convergència de manera segura
+                divergence_value_local = convergencies_850hpa.get(poble_sel)
+
+                # --- NOVA LÒGICA DE COMPROVACIÓ ---
+                # Comprovem si el valor local existeix i si supera el nostre llindar
+                if divergence_value_local is not None and divergence_value_local < CONVERGENCIA_FORTA_THRESHOLD:
+                    # CAS 1: HI HA CONVERGÈNCIA FORTA
+                    st.success(f"**Focus de Convergència SIGNIFICATIU detectat a {poble_sel}!**")
+                    st.metric("Valor de Convergència local (850hPa)", f"{divergence_value_local:.2f} x10⁻⁵ s⁻¹", 
+                              help=f"El valor supera el llindar de {CONVERGENCIA_FORTA_THRESHOLD} i indica un focus de convergència fort.")
                     st.markdown("Aquesta zona té un focus de convergència actiu que pot actuar com a **disparador** per a les tempestes.")
+                
                 else:
-                    st.info(f"Cap focus de convergència significatiu detectat a {poble_sel} per a l'hora seleccionada.");
-                    if divergence_value_local: st.metric("Valor de Convergència/Divergència local (850hPa)", f"{divergence_value_local:.2f} x10⁻⁵ s⁻¹")
+                    # CAS 2: NO HI HA CONVERGÈNCIA FORTA
+                    st.info(f"Cap focus de convergència significatiu detectat a {poble_sel} per a l'hora seleccionada.")
+                    if divergence_value_local is not None:
+                        st.metric("Valor de Convergència/Divergència local (850hPa)", f"{divergence_value_local:.2f} x10⁻⁵ s⁻¹",
+                                  help=f"El valor NO supera el llindar de {CONVERGENCIA_FORTA_THRESHOLD}.")
                     st.markdown("L'absència d'un disparador clar pot dificultar la formació de tempestes.")
-                st.markdown("---"); st.markdown("**Altres localitats amb convergència forta a aquesta hora:**")
+                
+                st.markdown("---")
+                st.markdown("**Altres localitats amb convergència forta a aquesta hora:**")
+                
+                # La llista d'altres localitats ja funciona correctament
+                altres_localitats = sorted(list(localitats_convergencia_forta - {poble_sel}))
+                
+                if altres_localitats:
+                    st.markdown(f"_{', '.join(altres_localitats)}_")
+                else:
+                    st.markdown("*Cap altra localitat amb avís de convergència forta per a aquesta hora.*")
                 if localitats_convergencia_forta: st.markdown(f"_{', '.join(sorted(list(localitats_convergencia_forta)))}_")
                 else: st.markdown("*Cap altra localitat amb avís de convergència forta per a aquesta hora.*")
         else:
