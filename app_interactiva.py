@@ -245,13 +245,32 @@ def _calculate_parameters_cached(p_m, p_units_str, T_m, T_units_str, Td_m, Td_un
         if params.get('CAPE_Brut', {}).get('value', 0) > 0:
             params['W_MAX'] = {'value': np.sqrt(2 * params['CAPE_Brut']['value']), 'units': 'm/s'}
             params['CAPE_Utilitzable'] = {'value': max(0, params['CAPE_Brut']['value'] - abs(params.get('CIN_Fre', {}).get('value', 0))), 'units': 'J/kg'}
-    except Exception: pass
-    try: lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); lcl_h = mpcalc.pressure_to_height_std(lcl_p); params['LCL_AGL'] = {'value': get_val(lcl_h - h[0], 'm'), 'units': 'm'}
-    except Exception: pass
-    try: lfc_p, _ = mpcalc.lfc(p, T, Td, prof=mpcalc.parcel_profile(p, T[0], Td[0])); lfc_h = mpcalc.pressure_to_height_std(lfc_p); params['LFC_AGL'] = {'value': get_val(lfc_h - h[0], 'm'), 'units': 'm'}
-    except Exception: pass
-    try: el_p, _ = mpcalc.el(p, T, Td, prof=mpcalc.parcel_profile(p, T[0], Td[0])); el_h = mpcalc.pressure_to_height_std(el_p); params['EL_MSL'] = {'value': get_val(el_h, 'km'), 'units': 'km'}
-    except Exception: pass
+    except Exception: 
+        params['CAPE_Brut'] = {'value': 0, 'units': 'J/kg'}
+        params['CIN_Fre'] = {'value': None, 'units': 'J/kg'}
+
+    # --- CORRECCIÓ CLAU: LFC i EL ---
+    try: 
+        lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); lcl_h = mpcalc.pressure_to_height_std(lcl_p); 
+        params['LCL_AGL'] = {'value': get_val(lcl_h - h[0], 'm'), 'units': 'm'}
+    except Exception: 
+        params['LCL_AGL'] = {'value': None, 'units': 'm'}
+        
+    try: 
+        prof = mpcalc.parcel_profile(p, T[0], Td[0])
+        lfc_p, _ = mpcalc.lfc(p, T, Td, prof=prof); lfc_h = mpcalc.pressure_to_height_std(lfc_p); 
+        params['LFC_AGL'] = {'value': get_val(lfc_h - h[0], 'm'), 'units': 'm'}
+    except Exception: 
+        params['LFC_AGL'] = {'value': None, 'units': 'm'} # Si falla, guardem None
+        
+    try: 
+        prof = mpcalc.parcel_profile(p, T[0], Td[0])
+        el_p, _ = mpcalc.el(p, T, Td, prof=prof); el_h = mpcalc.pressure_to_height_std(el_p); 
+        params['EL_MSL'] = {'value': get_val(el_h, 'km'), 'units': 'km'}
+    except Exception: 
+        params['EL_MSL'] = {'value': None, 'units': 'km'} # Si falla, guardem None
+        
+    # La resta de paràmetres es mantenen igual...
     try: s_u, s_v = mpcalc.bulk_shear(p, u, v, height=h, depth=6*units.km); params['Shear_0-6km'] = {'value': get_val(mpcalc.wind_speed(s_u, s_v), 'm/s'), 'units': 'm/s'}
     except Exception: pass
     try: _, srh, _ = mpcalc.storm_relative_helicity(h, u, v, depth=1*units.km); params['SRH_0-1km'] = {'value': get_val(srh, 'm^2/s^2'), 'units': 'm²/s²'}
@@ -270,15 +289,11 @@ def _calculate_parameters_cached(p_m, p_units_str, T_m, T_units_str, Td_m, Td_un
         lr = mpcalc.lapse_rate(p_levels_interp, T_interp, bottom=700*units.hPa, top=500*units.hPa)
         params['LapseRate_700_500'] = {'value': get_val(lr, 'delta_degC/km'), 'units': '°C/km'}
     except Exception: pass
-    try:
-        dcape, _ = mpcalc.dcape(p, T, Td)
-        params['DCAPE'] = {'value': get_val(dcape, 'J/kg'), 'units': 'J/kg'}
+    try: dcape, _ = mpcalc.dcape(p, T, Td); params['DCAPE'] = {'value': get_val(dcape, 'J/kg'), 'units': 'J/kg'}
     except Exception: pass
     try:
-        cape_val = params.get('CAPE_Utilitzable',{}).get('value',0) * units('J/kg')
-        lcl_val = params.get('LCL_AGL',{}).get('value',9999) * units.m
-        srh_val = params.get('SRH_0-1km',{}).get('value',0) * units('m^2/s^2')
-        shear_val = params.get('Shear_0-6km',{}).get('value',0) * units('m/s')
+        cape_val = params.get('CAPE_Utilitzable',{}).get('value',0) * units('J/kg'); lcl_val = params.get('LCL_AGL',{}).get('value',9999) * units.m
+        srh_val = params.get('SRH_0-1km',{}).get('value',0) * units('m^2/s^2'); shear_val = params.get('Shear_0-6km',{}).get('value',0) * units('m/s')
         stp_cin = mpcalc.significant_tornado(cape=cape_val, lcl_height=lcl_val, storm_helicity=srh_val, bulk_shear=shear_val)
         params['STP_cin'] = {'value': get_val(stp_cin, dimensionless=True), 'units': ''}
     except Exception: pass
@@ -428,8 +443,19 @@ def generar_analisi_detallada(params, is_convergence_active):
     def stream_text(text):
         for word in text.split(): yield word + " "; time.sleep(0.02)
         yield "\n\n"
-    cape_u=params.get('CAPE_Utilitzable',{}).get('value',0); cin=params.get('CIN_Fre',{}).get('value'); shear6=params.get('Shear_0-6km',{}).get('value'); srh1=params.get('SRH_0-1km',{}).get('value'); lcl_agl=params.get('LCL_AGL',{}).get('value'); lfc_agl=params.get('LFC_AGL',{}).get('value'); w_max=params.get('W_MAX',{}).get('value',0); el_msl = params.get('EL_MSL', {}).get('value',0)
-    dcape=params.get('DCAPE',{}).get('value'); stp=params.get('STP_cin',{}).get('value'); lr=params.get('LapseRate_700_500',{}).get('value'); pwat=params.get('PWAT_Total',{}).get('value')
+    
+    # Obtenim els valors de manera segura
+    cape_u=params.get('CAPE_Utilitzable',{}).get('value',0)
+    cin=params.get('CIN_Fre',{}).get('value')
+    shear6=params.get('Shear_0-6km',{}).get('value')
+    srh1=params.get('SRH_0-1km',{}).get('value')
+    lcl_agl=params.get('LCL_AGL',{}).get('value')
+    w_max=params.get('W_MAX',{}).get('value',0)
+    el_msl = params.get('EL_MSL', {}).get('value') # Pot ser None ara
+    dcape=params.get('DCAPE',{}).get('value')
+    stp=params.get('STP_cin',{}).get('value')
+    lr=params.get('LapseRate_700_500',{}).get('value')
+    pwat=params.get('PWAT_Total',{}).get('value')
 
     if cape_u is None or cape_u < 100: 
         yield from stream_text("### Anàlisi General\nL'atmosfera és estable. El potencial energètic per a la formació de tempestes (CAPE) és pràcticament inexistent. No s'esperen fenòmens de temps sever.")
@@ -437,8 +463,19 @@ def generar_analisi_detallada(params, is_convergence_active):
 
     yield from stream_text("### Potencial Energètic (Termodinàmica)")
     cape_text="feble" if cape_u<1000 else "moderada" if cape_u<2500 else "forta" if cape_u<4000 else "extrema"
-    yield from stream_text(f"**Inestabilitat (CAPE):** El valor de CAPE utilitzable és de **{cape_u:.0f} J/kg**, el que indica una inestabilitat **{cape_text}**. Això es tradueix en un potencial de corrents ascendents de fins a **{w_max*3.6:.0f} km/h**, podent sostenir un núvol de tempesta fins a una altitud de **{el_msl:.1f} km**.")
     
+    # --- CORRECCIÓ CLAU: Construïm el text per parts ---
+    base_cape_text = f"**Inestabilitat (CAPE):** El valor de CAPE utilitzable és de **{cape_u:.0f} J/kg**, el que indica una inestabilitat **{cape_text}**."
+    wmax_text = f"Això es tradueix en un potencial de corrents ascendents de fins a **{w_max*3.6:.0f} km/h**"
+    
+    # Ara, només afegim la part de l'altitud del núvol SI hem pogut calcular l'EL.
+    if el_msl is not None:
+        el_text = f", podent sostenir un núvol de tempesta fins a una altitud de **{el_msl:.1f} km**."
+        yield from stream_text(f"{base_cape_text} {wmax_text}{el_text}")
+    else:
+        yield from stream_text(f"{base_cape_text} {wmax_text}.")
+
+    # La resta de la funció es manté igual...
     if cin is not None:
         cin_text = f"**Inhibició (CIN) i Disparador:** El valor de CIN és de **{cin:.0f} J/kg**. "
         if cin >= -25:
@@ -459,14 +496,14 @@ def generar_analisi_detallada(params, is_convergence_active):
     
     if srh1 is not None and srh1 > 100:
         srh_text="moderat" if srh1<250 else "fort"
-        lcl_text = f"Amb una base de núvol baixa ({lcl_agl:.0f} m), " if lcl_agl < 1200 else ""
+        lcl_text = f"Amb una base de núvol baixa ({lcl_agl:.0f} m), " if lcl_agl is not None and lcl_agl < 1200 else ""
         yield from stream_text(f"**Helicitat 0-1 km (SRH):** Rotació potencial **{srh_text}** ({srh1:.0f} m²/s²). {lcl_text}Augmenta el risc de tornados.")
     
     yield from stream_text("### Síntesi i Riscos Específics")
     if stp and stp > 0.5: yield from stream_text(f"**Potencial Tornàdic (STP):** L'índex és de **{stp:.1f}**. Valors > 1 indiquen entorn favorable a supercèl·lules tornàdiques.")
     if dcape and dcape > 800: yield from stream_text(f"**Potencial de Vent Sever (DCAPE):** El valor de **{dcape:.0f} J/kg** suggereix potencial per a esclafits.")
     if pwat and pwat > 30: yield from stream_text(f"**Potencial de Precipitació Intensa (Aigua Precipitable):** Contingut d'humitat elevat ({pwat:.1f} mm), afavorint xàfecs intensos.")
-    yield from stream_text(f"**La Clau del Pronòstic:** La interacció entre la inestabilitat **{cape_text}** i el cisallament **{('fort' if shear6 > 18 else 'moderat')}**. La **convergència** serà el factor decisiu.")
+    yield from stream_text(f"**La Clau del Pronòstic:** La interacció entre la inestabilitat **{cape_text}** i el cisallament **{('fort' if shear6 > 18 else 'moderat' if shear6 > 10 else 'feble')}**. La **convergència** serà el factor decisiu.")
 
 def display_metrics(params_dict):
     param_map = [
