@@ -78,6 +78,8 @@ if 'nivell_mapa' not in st.session_state:
     st.session_state.nivell_mapa = 850
 if 'avisos_expanded' not in st.session_state:
     st.session_state.avisos_expanded = True
+if 'nivell_convergencia' not in st.session_state:
+    st.session_state.nivell_convergencia = 850
 
 # --- 1. LÒGICA DE CÀRREGA DE DADES I CÀLCUL ---
 @st.cache_data(ttl=16000)
