@@ -431,7 +431,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     u_grid = griddata(points, u_comp.m, (X,Y), method='cubic'); v_grid = griddata(points, v_comp.m, (X,Y), method='cubic')
     u_grid,v_grid = np.nan_to_num(u_grid),np.nan_to_num(v_grid); dx,dy = mpcalc.lat_lon_grid_deltas(X,Y)
     divergence = mpcalc.divergence(u_grid*units('m/s'), v_grid*units('m/s'), dx=dx, dy=dy) * 1e5
-    LLINDAR_CONVERGENCIA = -30.0; divergence_masked = np.ma.masked_where(divergence.m > LLINDAR_CONVERGENCIA, divergence.m)
+    LLINDAR_CONVERGENCIA = -20.0; divergence_masked = np.ma.masked_where(divergence.m > LLINDAR_CONVERGENCIA, divergence.m)
     cmap_convergencia = 'jet_r'; levels_convergencia = np.linspace(-100, LLINDAR_CONVERGENCIA, 20)
     ax.contourf(X, Y, divergence_masked, levels=levels_convergencia, cmap=cmap_convergencia, alpha=0.75, zorder=2, transform=ccrs.PlateCarree(), extend='min')
     ax.contour(X, Y, divergence_masked, levels=[LLINDAR_CONVERGENCIA], colors='black', linewidths=0.8, zorder=3, transform=ccrs.PlateCarree())
