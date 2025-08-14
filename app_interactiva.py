@@ -364,6 +364,10 @@ def generar_avis_temperatura(params):
 # SECCIÓ A SUBSTITUIR: FUNCIÓ D'AVISOS AMB LÒGICA PROFESSIONAL
 # ==============================================================================
 
+# ==============================================================================
+# SECCIÓ A SUBSTITUIR: FUNCIÓ D'AVISOS AMB EL NOU TEXT PER A LFC INEXISTENT
+# ==============================================================================
+
 def generar_avis_localitat(params, is_convergence_active):
     # Obtenim tots els paràmetres de manera segura
     cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0)
@@ -377,22 +381,21 @@ def generar_avis_localitat(params, is_convergence_active):
     lr = params.get('LapseRate_700_500', {}).get('value', 0)
     pwat = params.get('PWAT_Total', {}).get('value', 0)
 
-    # --- NOVA LÒGICA D'AVALUACIÓ ---
+    # --- LÒGICA D'AVALUACIÓ ---
 
-    # 1. PRIMERA COMPROVACIÓ: Hi ha energia suficient per a tempestes?
-    # Si el CAPE és molt baix (<100) o la tapa (CIN) és molt forta (<-150), l'atmosfera és estable. Punt final.
+    # 1. PRIMERA COMPROVACIÓ: Estabilitat clara
     if cape_u < 100:
         return "ESTABLE", "Sense risc de tempestes significatives. L'atmosfera és estable.", "#3CB371"
     if cin is not None and cin < -150:
         return "ESTABLE", f"La 'tapa' atmosfèrica (CIN de {cin:.0f} J/kg) és massa forta i probablement inihibirà qualsevol convecció.", "#3CB371"
 
-    # 2. SEGONA COMPROVACIÓ (MOLT IMPORTANT): El rol del disparador (LFC i convergència).
-    # Si NO hi ha LFC i NO hi ha convergència, llavors SÍ que les tempestes són improbables.
+    # --- CANVI CLAU: Nova interpretació i text per a LFC incalculable ---
+    # 2. SEGONA COMPROVACIÓ: El rol del disparador
     if lfc_agl is None and not is_convergence_active:
-        return "RISC BAIX", f"Hi ha una inestabilitat considerable (CAPE de {cape_u:.0f} J/kg), però l'absència d'un punt d'inici (LFC) i de convergència fa les tempestes poc probables.", "#4682B4"
+        return "RISC BAIX", f"Hi ha una inestabilitat considerable (CAPE de {cape_u:.0f} J/kg), però el nivell d'inici de la convecció (LFC) és inassolible sense un forçament potent com la convergència. Les tempestes són poc probables.", "#4682B4"
 
     # 3. SI ARRIBEM AQUÍ: Sabem que hi ha energia (CAPE) i un possible disparador (LFC o convergència).
-    # Ara, classifiquem el tipus de tempesta basant-nos en els ingredients d'organització.
+    # Ara, classifiquem el tipus de tempesta.
     
     cond_supercelula = shear is not None and shear > 20 and cape_u > 1500 and srh1 is not None and srh1 > 200 and lcl_agl < 1300
     cond_avis_sever = shear is not None and shear > 18 and cape_u > 1200
@@ -420,7 +423,7 @@ def generar_avis_localitat(params, is_convergence_active):
             return "POTENCIAL MODERAT", f"Entorn de tempesta SEVERA latent a l'espera d'un disparador clar. Risc de {risks_text}.", "#FFD700"
     
     elif cond_precaucio:
-        missatge = "Risc de TEMPESTES ORGANITZADES (multicèl·lules). Possibles fortes pluges i calamarsa local."
+        missatge = "Risc de TEMPESTES ORGANITZADES (multicèl·ules). Possibles fortes pluges i calamarsa local."
         if pwat > 35: missatge += " Atenció al risc de xàfecs torrencials."
         return "PRECAUCIÓ", missatge, "#FFD700"
     
