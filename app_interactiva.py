@@ -497,7 +497,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     
     # Definim la paleta de colors per al focus de convergència (amb gradient intern)
     cmap_convergencia = 'hot_r'
-    levels_convergencia = np.linspace(-80, LLINDAR_CONVERGENCIA_SOLIDA, -30) # De groc a vermell fosc
+    levels_convergencia = np.linspace(-80, LLINDAR_CONVERGENCIA_SOLIDA, -10) # De groc a vermell fosc
 
     # Dibuixem la taca de color sòlida per sobre de tot
     ax.contourf(
