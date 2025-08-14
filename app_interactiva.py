@@ -473,7 +473,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     # --- CANVI CLAU ---
     # 5. Línies de flux de color negre
     ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', 
-                  linewidth=0.3, density=5.5, arrowsize=0.7, zorder=4, transform=ccrs.PlateCarree())
+                  linewidth=0.3, density=5.5, arrowsize=0.3, zorder=4, transform=ccrs.PlateCarree())
 
     return fig
 
