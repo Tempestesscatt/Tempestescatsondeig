@@ -464,8 +464,7 @@ def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
 
 
 
-# Versió final amb paleta de velocitat personalitzada i focus de convergència sòlids
-# Versió final amb línies de mapa visibles
+# Versió final amb focus "ultra realista" (degradat blau a vermell a partir de -20)
 def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     # 1. PREPARACIÓ DE DADES (sense canvis)
     speeds_kmh, dirs_deg_raw = zip(*data)
@@ -473,8 +472,10 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     dirs_deg = np.array(dirs_deg_raw)*units.degrees
     u_comp,v_comp = mpcalc.wind_components(speeds_ms,dirs_deg)
     
+    # Utilitzem la funció base que manté les línies del mapa visibles per sobre
     fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Velocitat, flux i focus de convergència")
 
+    # Creació de la graella (sense canvis)
     grid_lon,grid_lat = np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100)
     X,Y = np.meshgrid(grid_lon,grid_lat)
     points = np.vstack((lons,lats)).T
@@ -485,7 +486,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
 
     u_grid,v_grid = np.nan_to_num(u_grid),np.nan_to_num(v_grid)
     
-    # Paleta de colors personalitzada (sense canvis)
+    # Paleta de colors personalitzada per a la velocitat (sense canvis)
     levels_velocitat = [0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 120]
     colors_velocitat = [
         '#ababd7', '#4575b4', '#47b9ad', '#66c2a5', '#abdda4', '#e6f598',
@@ -495,28 +496,42 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     cmap_custom = mcolors.ListedColormap(colors_velocitat)
     norm_custom = mcolors.BoundaryNorm(levels_velocitat, cmap_custom.N)
 
-    # --- NOU ORDRE DE CAPES (ZORDER) ---
+    # --- ORDRE DE CAPES VISUALS ---
 
-    # Capa 1: Fons de color de la velocitat del vent
+    # Capa 1: Fons de color de la velocitat del vent (zorder=1)
     cont_fill_vel = ax.contourf(X, Y, speed_grid, levels=levels_velocitat, cmap=cmap_custom, norm=norm_custom, zorder=1, transform=ccrs.PlateCarree())
     fig.colorbar(cont_fill_vel, ax=ax, orientation='vertical', label='Velocitat del vent (km/h)', shrink=0.7)
 
-    # Capa 2: Línies de flux
+    # Capa 2: Línies de flux del vent (zorder=2)
     ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=2)
 
-    # Capa 3: Focus de convergència sòlida
+    # --- Capa 3: FOCUS DE CONVERGÈNCIA "ULTRA REALISTA" ---
+    
+    # Càlcul de la convergència
     dx,dy = mpcalc.lat_lon_grid_deltas(X,Y)
     divergence = mpcalc.divergence(u_grid*units('m/s'), v_grid*units('m/s'), dx=dx, dy=dy) * 1e5
+    
+    # 1. NOU LLINDAR: El focus comença a aparèixer a partir de -20.
     LLINDAR_CONVERGENCIA_SOLIDA = -20.0
     divergence_masked = np.ma.masked_where(divergence.m > LLINDAR_CONVERGENCIA_SOLIDA, divergence.m)
-    cmap_convergencia = 'hot_r'
-    levels_convergencia = np.linspace(-80, LLINDAR_CONVERGENCIA_SOLIDA, 10)
+    
+    # 2. NOVA PALETA DE COLORS: 'jet_r' va de vermell (valors més negatius/forts) a blau (valors menys negatius/febles).
+    cmap_convergencia = 'jet_r'
+    
+    # 3. NIVELLS PER A UN DEGRADAT SUAU: Creem 15 passos de color entre -100 i -20.
+    levels_convergencia = np.linspace(-100, LLINDAR_CONVERGENCIA_SOLIDA, 15)
 
+    # Dibuixem la capa del focus de convergència
     ax.contourf(
         X, Y, divergence_masked,
-        levels=levels_convergencia, cmap=cmap_convergencia, alpha=0.75,
-        zorder=3, # Es dibuixa sobre les dades de velocitat i flux, però sota les línies del mapa
-        transform=ccrs.PlateCarree(), extend='min'
+        levels=levels_convergencia, 
+        cmap=cmap_convergencia, 
+        # 4. OPACITAT AJUSTADA: Un 70% d'opacitat per a una bona integració visual.
+        alpha=0.7,
+        # Aquesta capa se situa per sobre del vent però per sota de les línies del mapa.
+        zorder=3, 
+        transform=ccrs.PlateCarree(), 
+        extend='min' # Clau per als valors més extrems
     )
     
     return fig
