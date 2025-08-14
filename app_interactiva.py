@@ -474,7 +474,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     # 2. Corregim el rang dels nivells. Perquè el mapa sigui útil, ha de mostrar un 
     #    rang ampli. El definim de -30 (convergència forta) a 0 (sense convergència).
     #    (Nota: al teu codi hi havia un rang molt estret de -30 a -28, que he corregit).
-    levels = np.linspace(-100.0, -25, 11)
+    levels = np.linspace(-70.0, -25, 11)
     
     # Amaguem els valors positius (divergència) per mostrar només la convergència.
     divergence_values = np.ma.masked_where(divergence.m >= 0, divergence.m)
