@@ -462,12 +462,12 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     divergence = mpcalc.divergence(u_grid*units('m/s'), v_grid*units('m/s'), dx=dx, dy=dy) * 1e5
     
     # --- PAS 1: Dibuixar l'àrea general de convergència (fons de color) ---
-    divergence_values = np.ma.masked_where(divergence.m >= 0, divergence.m)
-    levels = np.linspace(-30.0, 0, 11)
+    divergence_values = np.ma.masked_where(divergence.m >= 25, divergence.m)
+    levels = np.linspace(-70.0, 0, 11)
     cont_fill = ax.contourf(X, Y, divergence_values, levels=levels, cmap='hot_r', alpha=0.55, zorder=2, transform=ccrs.PlateCarree(), extend='min')
     fig.colorbar(cont_fill, ax=ax, orientation='vertical', label='Convergència (x10⁻⁵ s⁻¹)', shrink=0.7)
     
-    LLINDAR_FOCUS_CONVERGENCIA = -25.0
+    LLINDAR_FOCUS_CONVERGENCIA = -26.0
     
     # Dibuixem una línia de contorn només per als valors que superen aquest llindar.
     ax.contour(
