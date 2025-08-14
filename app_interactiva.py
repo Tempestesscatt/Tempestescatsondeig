@@ -661,7 +661,7 @@ elif sondeo:
                 st.subheader("Visualització Conceptual del Núvol"); fig_nuvol = crear_grafic_nuvol(parametros, H, u, v, is_disparador_active)
                 if fig_nuvol: st.pyplot(fig_nuvol)
                 else: st.info("No hi ha dades per visualitzar l'estructura del núvol.")
-             with tab_focus:
+            with tab_focus:
                 st.subheader("Anàlisi del Disparador de Convergència")
                 
                 # Obtenim el valor local de convergència de manera segura
