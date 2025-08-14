@@ -444,6 +444,8 @@ def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
     fig=plt.figure(figsize=(9,9),dpi=150); ax=fig.add_subplot(1,1,1,projection=ccrs.PlateCarree()); ax.set_extent([0,3.5,40.4,43],crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND,facecolor="#E0E0E0",zorder=0); ax.add_feature(cfeature.OCEAN,facecolor='#b0c4de',zorder=0); ax.add_feature(cfeature.COASTLINE,edgecolor='black',linewidth=0.5,zorder=1); ax.add_feature(cfeature.BORDERS,linestyle=':',edgecolor='black',zorder=1); ax.plot(lon_sel,lat_sel,'o',markersize=12,markerfacecolor='yellow',markeredgecolor='black',markeredgewidth=2,transform=ccrs.Geodetic(),zorder=5); ax.text(lon_sel+0.05,lat_sel+0.05,nom_poble_sel,transform=ccrs.Geodetic(),zorder=6,bbox=dict(facecolor='white',alpha=0.8,edgecolor='none',boxstyle='round,pad=0.2')); ax.set_title(f"{titol} a {nivell}hPa",weight='bold'); return fig,ax
 
 
+# Funció final per a un mapa amb degradat de color realista i net
+# Recorda que hem eliminat el decorador @st.cache_data per evitar errors
 def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     speeds,dirs = zip(*data)
     speeds_ms = (np.array(speeds)*1000/3600)*units('m/s')
@@ -461,31 +463,39 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     dx,dy = mpcalc.lat_lon_grid_deltas(X,Y)
     divergence = mpcalc.divergence(u_grid*units('m/s'), v_grid*units('m/s'), dx=dx, dy=dy) * 1e5
     
-    # --- PAS 1: Dibuixar l'àrea general de convergència (fons de color) ---
-    divergence_values = np.ma.masked_where(divergence.m >= 25, divergence.m)
-    levels = np.linspace(-70.0, -25, 11)
-    cont_fill = ax.contourf(X, Y, divergence_values, levels=levels, cmap='hot_r', alpha=0.55, zorder=2, transform=ccrs.PlateCarree(), extend='min')
+    # --- CANVIS PRINCIPALS PER A L'EFECTE REALISTA ---
+
+    # 1. Eliminem completament la línia de contorn verda i la llegenda. El mapa serà més net.
+
+    # 2. Seleccionem una paleta de colors (cmap) més adequada per a intensitat, com 'YlOrRd' 
+    #    (Groc -> Taronja -> Vermell). És molt intuïtiva.
+    #    Augmentem una mica l'opacitat (alpha) per a un color més sòlid.
+    cmap_realista = 'YlOrRd'
+    
+    # 3. Definim els nivells de color per centrar-nos en el rang que t'interessa (-30 a 0).
+    levels = np.linspace(-30.0, 0, 11)
+    
+    # Amaguem els valors positius (divergència) per mostrar només la convergència.
+    divergence_values = np.ma.masked_where(divergence.m >= 0, divergence.m)
+
+    # Dibuixem el mapa de colors. La clau és 'extend="min"'.
+    # Això fa que qualsevol valor per sota de -30 (el nostre mínim) es pinti amb el color
+    # més intens (vermell fosc), sense distorsionar la resta de l'escala.
+    cont_fill = ax.contourf(
+        X, Y, divergence_values,
+        levels=levels,
+        cmap=cmap_realista,
+        alpha=0.65, # Una mica més opac per a un efecte més marcat
+        zorder=2,
+        transform=ccrs.PlateCarree(),
+        extend='min' # Molt important!
+    )
+    
     fig.colorbar(cont_fill, ax=ax, orientation='vertical', label='Convergència (x10⁻⁵ s⁻¹)', shrink=0.7)
     
-    LLINDAR_FOCUS_CONVERGENCIA = -26.0
+    # Finalment, dibuixem les línies de flux per sobre de tot.
+    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=3, transform=ccrs.PlateCarree())
     
-    # Dibuixem una línia de contorn només per als valors que superen aquest llindar.
-    ax.contour(
-        X, Y, divergence.m,
-        levels=[LLINDAR_FOCUS_CONVERGENCIA], # Dibuixem una línia just a aquest llindar
-        colors='lime',                       # Un color molt visible que contrasta amb el fons vermell/taronja
-        linewidths=2.5,                      # Una línia gruixuda per destacar
-        zorder=3,                            # Assegurem que es dibuixi per sobre del fons de color
-        transform=ccrs.PlateCarree()
-    )
-
-    # --- PAS 3: Dibuixar el flux de vent (fletxes) ---
-    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
-    
-    # --- PAS 4 (NOU): Afegir una llegenda per al nou contorn ---
-    focus_legend_line = mlines.Line2D([], [], color='lime', linewidth=2.5, label=f'Focus de xoc (> {abs(LLINDAR_FOCUS_CONVERGENCIA)})')
-    ax.legend(handles=[focus_legend_line], loc='upper left')
-
     return fig
 
 def crear_mapa_generic(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel, titol_var, cmap, unitat, levels):
