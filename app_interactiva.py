@@ -344,14 +344,42 @@ def generar_avis_temperatura(params):
     if temp < 0: return "AVÍS PER FRED INTENS", f"Es preveu una temperatura de {temp:.1f}°C. Risc de gelades fortes.", "#0000FF", "🥶"
     return None, None, None, None
 
-def generar_avis_localitat(params, is_convergence_active):
-    cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0); cin = params.get('CIN_Fre', {}).get('value'); shear = params.get('Shear_0-6km', {}).get('value'); srh1 = params.get('SRH_0-1km', {}).get('value'); lcl_agl = params.get('LCL_AGL', {}).get('value', 9999); lfc_agl = params.get('LFC_AGL', {}).get('value', 9999)
-    dcape = params.get('DCAPE', {}).get('value', 0); stp = params.get('STP_cin', {}).get('value', 0); lr = params.get('LapseRate_700_500', {}).get('value', 0); pwat = params.get('PWAT_Total', {}).get('value', 0)
+# ==============================================================================
+# SECCIÓ A SUBSTITUIR: FUNCIÓ AMB LA LÒGICA CORREGIDA PER AL LFC
+# ==============================================================================
 
+def generar_avis_localitat(params, is_convergence_active):
+    cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0)
+    cin = params.get('CIN_Fre', {}).get('value')
+    shear = params.get('Shear_0-6km', {}).get('value')
+    srh1 = params.get('SRH_0-1km', {}).get('value')
+    lcl_agl = params.get('LCL_AGL', {}).get('value', 9999)
+    
+    # --- CORRECCIÓ CLAU ---
+    # 1. Obtenim el valor de LFC de manera segura. Si no existeix, serà 'None'.
+    lfc_agl = params.get('LFC_AGL', {}).get('value')
+    
+    dcape = params.get('DCAPE', {}).get('value', 0)
+    stp = params.get('STP_cin', {}).get('value', 0)
+    lr = params.get('LapseRate_700_500', {}).get('value', 0)
+    pwat = params.get('PWAT_Total', {}).get('value', 0)
+
+    # Condicions d'estabilitat (sense canvis)
     if cape_u < 100: return "ESTABLE", "Sense risc de tempestes significatives. L'atmosfera és estable.", "#3CB371"
     if cin is not None and cin < -150: return "ESTABLE", f"La 'tapa' atmosfèrica (CIN de {cin:.0f} J/kg) és massa forta i probablement inihibirà qualsevol convecció.", "#3CB371"
-    if not is_convergence_active and lfc_agl > 3500: return "RISC BAIX", f"L'inici de la convecció (LFC a {lfc_agl:.0f} m) és massa alt, fent les tempestes improbables sense un forçament potent.", "#4682B4"
+    
+    # --- CORRECCIÓ CLAU ---
+    # 2. Gestionem els casos de LFC de manera explícita i correcta.
+    
+    # Cas A: L'LFC existeix però és molt alt. (El teu missatge original, ara amb dades reals).
+    if lfc_agl is not None and not is_convergence_active and lfc_agl > 3500: 
+        return "RISC BAIX", f"L'inici de la convecció (LFC a {lfc_agl:.0f} m) és massa alt, fent les tempestes improbables sense un forçament potent.", "#4682B4"
 
+    # Cas B: L'LFC NO existeix, però hi ha una mica d'energia (CAPE).
+    if lfc_agl is None and cape_u > 100:
+        return "RISC BAIX", "Hi ha inestabilitat present (CAPE > 100 J/kg), però no s'ha trobat un nivell clar d'inici de la convecció (LFC). Les tempestes són molt poc probables.", "#4682B4"
+
+    # La resta de la lògica d'avisos es manté igual
     cond_supercelula = shear is not None and shear > 20 and cape_u > 1500 and srh1 is not None and srh1 > 200 and lcl_agl < 1300
     cond_avis_sever = shear is not None and shear > 18 and cape_u > 1200
     cond_precaucio = shear is not None and shear > 12 and cape_u > 500
