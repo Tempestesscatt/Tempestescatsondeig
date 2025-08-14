@@ -456,7 +456,7 @@ def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
     ax.add_feature(cfeature.BORDERS,linestyle=':',edgecolor='black',zorder=5)
     
     # El marcador i el text del poble també han de tenir un zorder alt
-    ax.plot(lon_sel,lat_sel,'o',markersize=12,markerfacecolor='yellow',markeredgecolor='black',markeredgewidth=2,transform=ccrs.Geodetic(),zorder=6)
+    ax.plot(lon_sel,lat_sel,'o',markersize=6,markerfacecolor='yellow',markeredgecolor='black',markeredgewidth=2,transform=ccrs.Geodetic(),zorder=6)
     ax.text(lon_sel+0.05,lat_sel+0.05,nom_poble_sel,transform=ccrs.Geodetic(),zorder=7,bbox=dict(facecolor='white',alpha=0.8,edgecolor='none',boxstyle='round,pad=0.2'))
     
     ax.set_title(f"{titol} a {nivell}hPa",weight='bold')
