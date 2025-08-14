@@ -465,7 +465,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
 
     # Contorn negre per als focus de convergència
     ax.contour(X, Y, divergence.m, 
-               levels=[-35, -25, -15], 
+               levels=[-75, -25, -15], 
                colors='black', 
                linewidths=[1.5, 1, 0.5],
                alpha=0.5, 
@@ -474,7 +474,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
 
     # 5. Línies de flux acolorides per velocitat
     stream = ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color=speed_grid, cmap='viridis', 
-                           linewidth=1, density=1.5, arrowsize=0.7, zorder=4, transform=ccrs.PlateCarree())
+                           linewidth=1, density=5.5, arrowsize=0.2, zorder=3, transform=ccrs.PlateCarree())
     
     cbar_stream = fig.colorbar(stream.lines, ax=ax, orientation='horizontal', pad=0.05, aspect=30, shrink=0.6)
     cbar_stream.set_label('Velocitat del Vent (km/h)')
