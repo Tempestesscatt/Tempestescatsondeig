@@ -443,7 +443,7 @@ def display_metrics(params_dict):
 def crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol):
     fig=plt.figure(figsize=(9,9),dpi=150); ax=fig.add_subplot(1,1,1,projection=ccrs.PlateCarree()); ax.set_extent([0,3.5,40.4,43],crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND,facecolor="#E0E0E0",zorder=0); ax.add_feature(cfeature.OCEAN,facecolor='#b0c4de',zorder=0); ax.add_feature(cfeature.COASTLINE,edgecolor='black',linewidth=0.5,zorder=1); ax.add_feature(cfeature.BORDERS,linestyle=':',edgecolor='black',zorder=1); ax.plot(lon_sel,lat_sel,'o',markersize=12,markerfacecolor='yellow',markeredgecolor='black',markeredgewidth=2,transform=ccrs.Geodetic(),zorder=5); ax.text(lon_sel+0.05,lat_sel+0.05,nom_poble_sel,transform=ccrs.Geodetic(),zorder=6,bbox=dict(facecolor='white',alpha=0.8,edgecolor='none',boxstyle='round,pad=0.2')); ax.set_title(f"{titol} a {nivell}hPa",weight='bold'); return fig,ax
 
-@st.cache_data(ttl=16000)
+
 def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     speeds,dirs = zip(*data)
     speeds_ms = (np.array(speeds)*1000/3600)*units('m/s')
@@ -465,14 +465,12 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
     return fig
 
-@st.cache_data(ttl=16000)
 def crear_mapa_generic(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel, titol_var, cmap, unitat, levels):
     fig,ax=crear_mapa_base(nivell,lat_sel,lon_sel,nom_poble_sel,titol_var)
     grid_lon,grid_lat=np.linspace(min(lons),max(lons),100),np.linspace(min(lats),max(lats),100); X,Y=np.meshgrid(grid_lon,grid_lat); points=np.vstack((lons,lats)).T
     grid_data=griddata(points,data,(X,Y),method='cubic'); grid_data=np.nan_to_num(grid_data)
     cont=ax.contourf(X,Y,grid_data,cmap=cmap,levels=levels,alpha=0.7,zorder=2,transform=ccrs.PlateCarree(),extend='both'); fig.colorbar(cont,ax=ax,orientation='vertical',label=f'{titol_var} ({unitat})',shrink=0.7); return fig
 
-@st.cache_data(ttl=16000)
 def crear_mapa_temp_isobares(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     temps, heights = zip(*data)
     fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Temperatura i Isobares")
