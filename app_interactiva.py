@@ -151,6 +151,7 @@ def calcular_convergencia_per_totes_les_localitats(_hourly_index, _nivell, _loca
             continue
     return convergencia_per_poble
 
+# Funció corregida per evitar l'error "Too many concurrent requests"
 @st.cache_data(ttl=16000)
 def precalcular_potencials_del_dia(_pobles_data):
     horas_muestreadas = [0, 3, 6, 9, 12, 15, 18, 21]
@@ -166,7 +167,10 @@ def precalcular_potencials_del_dia(_pobles_data):
                     if generar_avis_potencial_per_precalcul(parametros) in avisos_a_buscar:
                         return nom_poble, hora
         return None
-    with ThreadPoolExecutor(max_workers=10) as executor:
+        
+    # --- CANVI CLAU: Reduïm el nombre de treballadors simultanis ---
+    # Hem canviat max_workers de 10 a 2. Això farà les trucades de manera molt més controlada.
+    with ThreadPoolExecutor(max_workers=2) as executor:
         futures = [executor.submit(procesar_poble, nom, coord) for nom, coord in _pobles_data.items()]
         for future in as_completed(futures):
             result = future.result()
