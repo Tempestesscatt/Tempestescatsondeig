@@ -36,22 +36,27 @@ FORECAST_DAYS = 1
 CONVERGENCIA_FORTA_THRESHOLD = -25
 
 # --- DADES DE LOCALITATS ---
+# --- DADES DE LOCALITATS (LLISTA OPTIMITZADA PER A ZONES TEMPESTUOSES) ---
 pobles_data = {
-    # La Selva
+    # Prepirineu i zones de muntanya (Focus de disparador orogràfic)
+    'Berga': {'lat': 42.105, 'lon': 1.846},
+    'Solsona': {'lat': 41.994, 'lon': 1.518},
+    
+    # Plana de Vic (Conca coneguda per la formació de tempestes)
+    'Vic': {'lat': 41.930, 'lon': 2.255},
+    
+    # Ponent i Depressió Central (On les tempestes s'intensifiquen)
+    'Tàrrega': {'lat': 41.647, 'lon': 1.140},
+    'Albi': {'lat': 41.423, 'lon': 0.995},
+    
+    # Interior de Tarragona (Influència del Sistema Ibèric)
+    'Montblanc': {'lat': 41.376, 'lon': 1.161},
+    'Gandesa': {'lat': 41.052, 'lon': 0.437},
+    
+    # Zones amb influència marítima i de Montseny (Focus de convergències)
     'Arbúcies': {'lat': 41.815, 'lon': 2.515},
-    # Maresme
     'Arenys de Mar': {'lat': 41.581, 'lon': 2.551},
-    # Ripollès
-    'Ripoll': {'lat': 42.201, 'lon': 2.190},
-    # Baix Empordà
-    "La Bisbal d'Empordà": {'lat': 41.958, 'lon': 3.037},
-    # Capitals de Província
-    'Barcelona': {'lat': 41.38879, 'lon': 2.15899},
-    'Girona': {'lat': 41.98311, 'lon': 2.82493},
-    'Lleida': {'lat': 41.61674, 'lon': 0.62218},
-    'Tarragona': {'lat': 41.11905, 'lon': 1.24544},
 }
-
 # --- FUNCIÓ DE CALLBACK ---
 def actualitzar_seleccio(poble, hora):
     st.session_state.poble_selector = poble
