@@ -507,7 +507,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     # Capa 3: Focus de convergència sòlida
     dx,dy = mpcalc.lat_lon_grid_deltas(X,Y)
     divergence = mpcalc.divergence(u_grid*units('m/s'), v_grid*units('m/s'), dx=dx, dy=dy) * 1e5
-    LLINDAR_CONVERGENCIA_SOLIDA = -35.0
+    LLINDAR_CONVERGENCIA_SOLIDA = -25.0
     divergence_masked = np.ma.masked_where(divergence.m > LLINDAR_CONVERGENCIA_SOLIDA, divergence.m)
     cmap_convergencia = 'hot_r'
     levels_convergencia = np.linspace(-80, LLINDAR_CONVERGENCIA_SOLIDA, 10)
