@@ -238,38 +238,37 @@ def _calculate_parameters_cached(p_m, p_units_str, T_m, T_units_str, Td_m, Td_un
     u = u_m * units(u_units_str); v = v_m * units(v_units_str); h = h_m * units(h_units_str)
     params = {}; get_val = lambda qty, unit=None: qty.to(unit).m if unit and hasattr(qty, 'is_compatible_with') and qty.is_compatible_with(unit) else qty.m
     params['SFC_Temp'] = {'value': get_val(T[0], 'degC'), 'units': '°C'}
+    
+    # --- CÀLCUL UNIFICAT I ROBUST ---
     try:
-        parcel_prof = mpcalc.parcel_profile(p, T[0], Td[0]); cape, cin = mpcalc.cape_cin(p, T, Td, parcel_prof)
+        # Calculem el perfil de la parcel·la UNA SOLA VEGADA
+        prof = mpcalc.parcel_profile(p, T[0], Td[0])
+        
+        # Utilitzem 'prof' per a tots els càlculs
+        cape, cin = mpcalc.cape_cin(p, T, Td, prof)
         params['CAPE_Brut'] = {'value': get_val(cape, 'J/kg'), 'units': 'J/kg'}
         params['CIN_Fre'] = {'value': get_val(cin, 'J/kg'), 'units': 'J/kg'}
-        if params.get('CAPE_Brut', {}).get('value', 0) > 0:
+        if params['CAPE_Brut']['value'] > 0:
             params['W_MAX'] = {'value': np.sqrt(2 * params['CAPE_Brut']['value']), 'units': 'm/s'}
-            params['CAPE_Utilitzable'] = {'value': max(0, params['CAPE_Brut']['value'] - abs(params.get('CIN_Fre', {}).get('value', 0))), 'units': 'J/kg'}
-    except Exception: 
-        params['CAPE_Brut'] = {'value': 0, 'units': 'J/kg'}
-        params['CIN_Fre'] = {'value': None, 'units': 'J/kg'}
-
-    # --- CORRECCIÓ CLAU: LFC i EL ---
-    try: 
-        lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); lcl_h = mpcalc.pressure_to_height_std(lcl_p); 
+            params['CAPE_Utilitzable'] = {'value': max(0, params['CAPE_Brut']['value'] - abs(params['CIN_Fre']['value'])), 'units': 'J/kg'}
+        
+        lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); lcl_h = mpcalc.pressure_to_height_std(lcl_p)
         params['LCL_AGL'] = {'value': get_val(lcl_h - h[0], 'm'), 'units': 'm'}
-    except Exception: 
-        params['LCL_AGL'] = {'value': None, 'units': 'm'}
         
-    try: 
-        prof = mpcalc.parcel_profile(p, T[0], Td[0])
-        lfc_p, _ = mpcalc.lfc(p, T, Td, prof=prof); lfc_h = mpcalc.pressure_to_height_std(lfc_p); 
+        lfc_p, _ = mpcalc.lfc(p, T, Td, prof=prof); lfc_h = mpcalc.pressure_to_height_std(lfc_p)
         params['LFC_AGL'] = {'value': get_val(lfc_h - h[0], 'm'), 'units': 'm'}
-    except Exception: 
-        params['LFC_AGL'] = {'value': None, 'units': 'm'} # Si falla, guardem None
         
-    try: 
-        prof = mpcalc.parcel_profile(p, T[0], Td[0])
-        el_p, _ = mpcalc.el(p, T, Td, prof=prof); el_h = mpcalc.pressure_to_height_std(el_p); 
+        el_p, _ = mpcalc.el(p, T, Td, prof=prof); el_h = mpcalc.pressure_to_height_std(el_p)
         params['EL_MSL'] = {'value': get_val(el_h, 'km'), 'units': 'km'}
-    except Exception: 
-        params['EL_MSL'] = {'value': None, 'units': 'km'} # Si falla, guardem None
-        
+
+    except Exception:
+        # Si qualsevol d'aquests càlculs bàsics falla, assegurem que els altres es marquin com a 'None'
+        if 'CAPE_Brut' not in params: params['CAPE_Brut'] = {'value': 0, 'units': 'J/kg'}
+        if 'CIN_Fre' not in params: params['CIN_Fre'] = {'value': None, 'units': 'J/kg'}
+        if 'LCL_AGL' not in params: params['LCL_AGL'] = {'value': None, 'units': 'm'}
+        if 'LFC_AGL' not in params: params['LFC_AGL'] = {'value': None, 'units': 'm'}
+        if 'EL_MSL' not in params: params['EL_MSL'] = {'value': None, 'units': 'km'}
+    
     # La resta de paràmetres es mantenen igual...
     try: s_u, s_v = mpcalc.bulk_shear(p, u, v, height=h, depth=6*units.km); params['Shear_0-6km'] = {'value': get_val(mpcalc.wind_speed(s_u, s_v), 'm/s'), 'units': 'm/s'}
     except Exception: pass
@@ -284,10 +283,8 @@ def _calculate_parameters_cached(p_m, p_units_str, T_m, T_units_str, Td_m, Td_un
             params['ZeroIso_AGL'] = {'value': (h_zero_iso_msl - H_m[0]), 'units': 'm'}
     except Exception: pass
     try:
-        p_levels_interp = np.arange(max(100, p.m.min()), p.m.max(), -10) * units.hPa
-        T_interp = mpcalc.interpolate_1d(p_levels_interp, T, p)
-        lr = mpcalc.lapse_rate(p_levels_interp, T_interp, bottom=700*units.hPa, top=500*units.hPa)
-        params['LapseRate_700_500'] = {'value': get_val(lr, 'delta_degC/km'), 'units': '°C/km'}
+        p_levels_interp = np.arange(max(100, p.m.min()), p.m.max(), -10) * units.hPa; T_interp = mpcalc.interpolate_1d(p_levels_interp, T, p)
+        lr = mpcalc.lapse_rate(p_levels_interp, T_interp, bottom=700*units.hPa, top=500*units.hPa); params['LapseRate_700_500'] = {'value': get_val(lr, 'delta_degC/km'), 'units': '°C/km'}
     except Exception: pass
     try: dcape, _ = mpcalc.dcape(p, T, Td); params['DCAPE'] = {'value': get_val(dcape, 'J/kg'), 'units': 'J/kg'}
     except Exception: pass
@@ -627,24 +624,61 @@ def crear_hodograf(p, u, v, h):
     ax.set_xlabel('kt'); ax.set_ylabel('kt'); return fig
 
 # Funció sense cache per evitar errors de 'pickling' amb Matplotlib/MetPy
-def crear_skewt(p, T, Td, u, v):
+def crear_skewt(p, T, Td, u, v, H, params): # Afegim 'H' com a argument
     fig = plt.figure(figsize=(7, 9)); skew = SkewT(fig, rotation=45)
     skew.plot(p, T, 'r', lw=2, label='Temperatura'); skew.plot(p, Td, 'b', lw=2, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), length=7, color='black')
     skew.plot_dry_adiabats(color='lightcoral', ls='--', alpha=0.5); skew.plot_moist_adiabats(color='cornflowerblue', ls='--', alpha=0.5)
     skew.plot_mixing_lines(color='lightgreen', ls='--', alpha=0.5); skew.ax.axvline(0, color='darkturquoise', linestyle='--', label='Isoterma 0°C')
-    if len(p) > 1:
+    
+    # Obtenim els valors des del diccionari 'params' ja calculat
+    cape = params.get('CAPE_Brut', {}).get('value', 0)
+    cin = params.get('CIN_Fre', {}).get('value', 0)
+    
+    # Dibuixem les ombres si hi ha CAPE o CIN
+    if cape > 0 or (cin is not None and cin < 0):
         try:
-            prof = mpcalc.parcel_profile(p, T[0], Td[0]); skew.plot(p, prof, 'k', lw=2, ls='--', label='Trajectòria Parcel·la')
-            cape, cin = mpcalc.cape_cin(p, T, Td, prof); skew.shade_cape(p, T, prof, alpha=0.3, color='orange'); skew.shade_cin(p, T, prof, alpha=0.6, color='gray')
-            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); lfc_p, _ = mpcalc.lfc(p, T, Td, prof); el_p, _ = mpcalc.el(p, T, Td, prof)
-            if hasattr(lcl_p, 'magnitude') and lcl_p.magnitude: skew.ax.axhline(lcl_p.m, color='purple', linestyle='--', label=f'LCL {lcl_p.m:.0f} hPa')
-            if hasattr(lfc_p, 'magnitude') and lfc_p.magnitude: skew.ax.axhline(lfc_p.m, color='darkred', linestyle='--', label=f'LFC {lfc_p.m:.0f} hPa')
-            if hasattr(el_p, 'magnitude') and el_p.magnitude: skew.ax.axhline(el_p.m, color='red', linestyle='--', label=f'EL {el_p.m:.0f} hPa')
-        except: pass
-    skew.ax.set_ylim(1050, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_xlabel('Temperatura (°C)'); skew.ax.set_ylabel('Pressió (hPa)'); plt.legend(); return fig
+            prof = mpcalc.parcel_profile(p, T[0], Td[0])
+            skew.plot(p, prof, 'k', lw=2, ls='--', label='Trajectòria Parcel·la')
+            skew.shade_cape(p, T, prof, alpha=0.3, color='orange')
+            skew.shade_cin(p, T, prof, alpha=0.6, color='gray')
+        except Exception:
+            pass # Si el dibuix falla, no fem res
 
-# Funció sense cache per evitar errors de 'pickling' amb Matplotlib
+    # Obtenim els paràmetres d'altitud
+    lcl_agl = params.get('LCL_AGL', {}).get('value')
+    lfc_agl = params.get('LFC_AGL', {}).get('value')
+    el_msl = params.get('EL_MSL', {}).get('value')
+
+    # Dibuixem les línies de nivells, ara amb 'H' disponible
+    try:
+        # Trobem el nivell de pressió corresponent a cada altitud
+        if lcl_agl is not None:
+            lcl_p_val = np.interp(lcl_agl + H.m[0], H.m, p.m)
+        else: lcl_p_val = None
+        
+        if lfc_agl is not None:
+            lfc_p_val = np.interp(lfc_agl + H.m[0], H.m, p.m)
+        else: lfc_p_val = None
+            
+        if el_msl is not None:
+            el_p_val = np.interp(el_msl * 1000, H.m, p.m)
+        else: el_p_val = None
+
+        # Lògica de dibuix intel·ligent
+        if lcl_p_val and lfc_p_val and abs(lcl_p_val - lfc_p_val) < 10: # Llindar de 10hPa per més robustesa
+            skew.ax.axhline(lcl_p_val, color='purple', linestyle='--', label=f'LCL / LFC {lcl_p_val:.0f} hPa')
+        else:
+            if lcl_p_val: skew.ax.axhline(lcl_p_val, color='purple', linestyle='--', label=f'LCL {lcl_p_val:.0f} hPa')
+            if lfc_p_val: skew.ax.axhline(lfc_p_val, color='darkred', linestyle='--', label=f'LFC {lfc_p_val:.0f} hPa')
+        if el_p_val: skew.ax.axhline(el_p_val, color='red', linestyle='--', label=f'EL {el_p_val:.0f} hPa')
+    except Exception:
+        pass # Si la interpolació falla, no dibuixem les línies
+
+    skew.ax.set_ylim(1050, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_xlabel('Temperatura (°C)'); skew.ax.set_ylabel('Pressió (hPa)'); plt.legend(); 
+    return fig
+
+
 def crear_grafic_orografia(params, zero_iso_h_agl):
     lcl_agl = params.get('LCL_AGL', {}).get('value'); lfc_agl = params.get('LFC_AGL', {}).get('value')
     if lcl_agl is None or np.isnan(lcl_agl): return None
@@ -842,7 +876,7 @@ elif sondeo:
                         if fig: st.pyplot(fig)
 
             with tab_hodo: st.subheader("Hodògraf"); st.pyplot(crear_hodograf(p, u, v, H))
-            with tab_sondeig: st.subheader(f"Sondeig per a {poble_sel}"); st.pyplot(crear_skewt(p, T, Td, u, v))
+            with tab_sondeig: st.subheader(f"Sondeig per a {poble_sel}");  st.pyplot(crear_skewt(p, T, Td, u, v, H, parametros))
             with tab_oro: 
                 st.subheader("Potencial d'Activació per Orografia")
                 fig_oro = crear_grafic_orografia(parametros, parametros.get('ZeroIso_AGL', {}).get('value'))
@@ -881,3 +915,4 @@ elif sondeo:
     except Exception as e:
         st.error(f"S'ha produït un error inesperat en processar les dades per a '{poble_sel}'.")
         st.exception(e)
+
