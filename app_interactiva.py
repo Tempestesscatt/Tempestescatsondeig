@@ -442,8 +442,6 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     u_grid = rbf_u(X, Y)
     v_grid = rbf_v(X, Y)
     
-    speed_grid = np.sqrt(u_grid**2 + v_grid**2) * 3.6 # Convertim a km/h
-
     # 3. Càlcul de la convergència
     dx, dy = mpcalc.lat_lon_grid_deltas(X, Y)
     divergence = mpcalc.divergence(u_grid * units('m/s'), v_grid * units('m/s'), dx=dx, dy=dy) * 1e5
@@ -455,8 +453,8 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
 
     # --- VISUALITZACIÓ AVANÇADA ---
     
-    # 4. Paleta de colors INVERTIDA: vermell per a negatiu, blau per a positiu
-    cmap_conv_div = 'coolwarm_r' # _r inverteix la paleta
+    # 4. Paleta de colors (vermell per a convergència, blau per a divergència)
+    cmap_conv_div = 'coolwarm_r'
     max_abs_val = 30 
     levels = np.linspace(-max_abs_val, max_abs_val, 15)
     
@@ -465,19 +463,17 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
 
     # Contorn negre per als focus de convergència
     ax.contour(X, Y, divergence.m, 
-               levels=[-75, -25, -15], 
+               levels=[-35, -25, -15], 
                colors='black', 
                linewidths=[1.5, 1, 0.5],
                alpha=0.5, 
                zorder=3, 
                transform=ccrs.PlateCarree())
 
-    # 5. Línies de flux acolorides per velocitat
-    stream = ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color=speed_grid, cmap='viridis', 
-                           linewidth=1, density=5.5, arrowsize=0.2, zorder=3, transform=ccrs.PlateCarree())
-    
-    cbar_stream = fig.colorbar(stream.lines, ax=ax, orientation='horizontal', pad=0.05, aspect=30, shrink=0.6)
-    cbar_stream.set_label('Velocitat del Vent (km/h)')
+    # --- CANVI CLAU ---
+    # 5. Línies de flux de color negre
+    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', 
+                  linewidth=0.6, density=1.5, arrowsize=0.7, zorder=4, transform=ccrs.PlateCarree())
 
     return fig
 
