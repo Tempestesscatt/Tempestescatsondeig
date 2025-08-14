@@ -455,17 +455,15 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
 
     # --- VISUALITZACIÓ AVANÇADA ---
     
-    # --- CANVI CLAU: Invertim els colors ---
-    # 4. Paleta de colors: 'coolwarm'. Aquesta paleta per defecte posa el vermell
-    #    als valors negatius (convergència) i el blau als positius (divergència).
-    cmap_conv_div = 'coolwarm' 
+    # 4. Paleta de colors INVERTIDA: vermell per a negatiu, blau per a positiu
+    cmap_conv_div = 'coolwarm_r' # _r inverteix la paleta
     max_abs_val = 30 
     levels = np.linspace(-max_abs_val, max_abs_val, 15)
     
     cont_fill = ax.contourf(X, Y, divergence.m, levels=levels, cmap=cmap_conv_div, alpha=0.6, zorder=2, transform=ccrs.PlateCarree(), extend='both')
     fig.colorbar(cont_fill, ax=ax, orientation='vertical', label='Convergència (vermell) / Divergència (blau) (x10⁻⁵ s⁻¹)', shrink=0.7)
 
-    # Dibuixem un contorn negre per als focus de convergència
+    # Contorn negre per als focus de convergència
     ax.contour(X, Y, divergence.m, 
                levels=[-35, -25, -15], 
                colors='black', 
@@ -476,7 +474,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
 
     # 5. Línies de flux acolorides per velocitat
     stream = ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color=speed_grid, cmap='viridis', 
-                           linewidth=1, density=5.5, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
+                           linewidth=1, density=1.5, arrowsize=0.7, zorder=4, transform=ccrs.PlateCarree())
     
     cbar_stream = fig.colorbar(stream.lines, ax=ax, orientation='horizontal', pad=0.05, aspect=30, shrink=0.6)
     cbar_stream.set_label('Velocitat del Vent (km/h)')
