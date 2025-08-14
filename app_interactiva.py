@@ -425,6 +425,7 @@ def crear_mapa_cape(lats, lons, data, lat_sel, lon_sel, nom_poble_sel):
     cont = ax.contourf(X, Y, grid_data, cmap=cmap, levels=levels, alpha=0.7, zorder=2, transform=ccrs.PlateCarree(), extend='max')
     fig.colorbar(cont, ax=ax, orientation='vertical', label=f'{titol_var} ({unitat})', shrink=0.7); return fig
 
+
 def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     # 1. Preparació de dades
     speeds_kmh, dirs_deg_raw = zip(*data)
@@ -454,27 +455,28 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
 
     # --- VISUALITZACIÓ AVANÇADA ---
     
-    # 4. Paleta de colors perceptualment uniforme (vermell/blau)
-    cmap_conv_div = 'RdBu_r' # RdBu_r va de blau (positiu) a vermell (negatiu)
+    # --- CANVI CLAU: Invertim els colors ---
+    # 4. Paleta de colors: 'coolwarm'. Aquesta paleta per defecte posa el vermell
+    #    als valors negatius (convergència) i el blau als positius (divergència).
+    cmap_conv_div = 'coolwarm' 
     max_abs_val = 30 
     levels = np.linspace(-max_abs_val, max_abs_val, 15)
     
     cont_fill = ax.contourf(X, Y, divergence.m, levels=levels, cmap=cmap_conv_div, alpha=0.6, zorder=2, transform=ccrs.PlateCarree(), extend='both')
     fig.colorbar(cont_fill, ax=ax, orientation='vertical', label='Convergència (vermell) / Divergència (blau) (x10⁻⁵ s⁻¹)', shrink=0.7)
 
-    # --- CORRECCIÓ CLAU ---
-    # Dibuixem un contorn negre per als focus de convergència, amb els nivells ordenats correctament.
+    # Dibuixem un contorn negre per als focus de convergència
     ax.contour(X, Y, divergence.m, 
-               levels=[-35, -25, -15], # LLISTA ORDENADA DE MENOR A MAJOR
+               levels=[-35, -25, -15], 
                colors='black', 
-               linewidths=[1.5, 1, 0.5], # Línia més gruixuda per al valor més fort
+               linewidths=[1.5, 1, 0.5],
                alpha=0.5, 
                zorder=3, 
                transform=ccrs.PlateCarree())
 
     # 5. Línies de flux acolorides per velocitat
     stream = ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color=speed_grid, cmap='viridis', 
-                           linewidth=1, density=1.5, arrowsize=0.7, zorder=4, transform=ccrs.PlateCarree())
+                           linewidth=1, density=5.5, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
     
     cbar_stream = fig.colorbar(stream.lines, ax=ax, orientation='horizontal', pad=0.05, aspect=30, shrink=0.6)
     cbar_stream.set_label('Velocitat del Vent (km/h)')
