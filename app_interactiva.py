@@ -458,8 +458,8 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     u_grid,v_grid = np.nan_to_num(u_grid),np.nan_to_num(v_grid)
     dx,dy = mpcalc.lat_lon_grid_deltas(X,Y)
     divergence = mpcalc.divergence(u_grid*units('m/s'), v_grid*units('m/s'), dx=dx, dy=dy) * 1e5
-    divergence_values = np.ma.masked_where(divergence.m > -21.0, divergence.m)
-    levels = np.linspace(-50.0, -15.0, 11)
+    divergence_values = np.ma.masked_where(divergence.m >= -15.0, divergence.m)
+    levels = np.linspace(-50.0, -10.0, 11)
     cont_fill = ax.contourf(X, Y, divergence_values, levels=levels, cmap='hot_r', alpha=0.5, zorder=2, transform=ccrs.PlateCarree(), extend='min')
     fig.colorbar(cont_fill, ax=ax, orientation='vertical', label='Convergència (x10⁻⁵ s⁻¹)', shrink=0.7)
     ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
