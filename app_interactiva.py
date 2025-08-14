@@ -463,7 +463,7 @@ def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     
     # --- PAS 1: Dibuixar l'àrea general de convergència (fons de color) ---
     divergence_values = np.ma.masked_where(divergence.m >= 25, divergence.m)
-    levels = np.linspace(-70.0, 0, 11)
+    levels = np.linspace(-70.0, -25, 11)
     cont_fill = ax.contourf(X, Y, divergence_values, levels=levels, cmap='hot_r', alpha=0.55, zorder=2, transform=ccrs.PlateCarree(), extend='min')
     fig.colorbar(cont_fill, ax=ax, orientation='vertical', label='Convergència (x10⁻⁵ s⁻¹)', shrink=0.7)
     
