@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 import pytz
 import matplotlib.patheffects as path_effects
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from scipy.interpolate import Rbf # Afegeix això amb els altres imports
 
 # --- CONFIGURACIÓ INICIAL ---
 st.set_page_config(layout="wide", page_title="Tempestes.cat")
@@ -425,17 +426,61 @@ def crear_mapa_cape(lats, lons, data, lat_sel, lon_sel, nom_poble_sel):
     fig.colorbar(cont, ax=ax, orientation='vertical', label=f'{titol_var} ({unitat})', shrink=0.7); return fig
 
 def crear_mapa_vents(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
-    speeds_kmh, dirs_deg_raw = zip(*data); speeds_ms = (np.array(speeds_kmh)*1000/3600)*units('m/s'); dirs_deg = np.array(dirs_deg_raw)*units.degrees
-    u_comp,v_comp = mpcalc.wind_components(speeds_ms,dirs_deg); fig,ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, "Flux i focus de convergència")
-    grid_lon,grid_lat = np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100); X,Y = np.meshgrid(grid_lon,grid_lat); points = np.vstack((lons,lats)).T
-    u_grid = griddata(points, u_comp.m, (X,Y), method='cubic'); v_grid = griddata(points, v_comp.m, (X,Y), method='cubic')
-    u_grid,v_grid = np.nan_to_num(u_grid),np.nan_to_num(v_grid); dx,dy = mpcalc.lat_lon_grid_deltas(X,Y)
-    divergence = mpcalc.divergence(u_grid*units('m/s'), v_grid*units('m/s'), dx=dx, dy=dy) * 1e5
-    LLINDAR_CONVERGENCIA = -20.0; divergence_masked = np.ma.masked_where(divergence.m > LLINDAR_CONVERGENCIA, divergence.m)
-    cmap_convergencia = 'jet_r'; levels_convergencia = np.linspace(-100, LLINDAR_CONVERGENCIA, 20)
-    ax.contourf(X, Y, divergence_masked, levels=levels_convergencia, cmap=cmap_convergencia, alpha=0.75, zorder=2, transform=ccrs.PlateCarree(), extend='min')
-    ax.contour(X, Y, divergence_masked, levels=[LLINDAR_CONVERGENCIA], colors='black', linewidths=0.8, zorder=3, transform=ccrs.PlateCarree())
-    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color="black", density=5, linewidth=0.6, arrowsize=0.4, zorder=4); return fig
+    # 1. Preparació de dades
+    speeds_kmh, dirs_deg_raw = zip(*data)
+    speeds_ms = (np.array(speeds_kmh) * 1000 / 3600) * units('m/s')
+    dirs_deg = np.array(dirs_deg_raw) * units.degrees
+    u_comp, v_comp = mpcalc.wind_components(speeds_ms, dirs_deg)
+    
+    # 2. Creació de la graella i interpolació SUAU (RBF)
+    grid_lon, grid_lat = np.linspace(min(lons), max(lons), 150), np.linspace(min(lats), max(lats), 150) # Més resolució
+    X, Y = np.meshgrid(grid_lon, grid_lat)
+    
+    # Utilitzem Rbf per a una interpolació d'alta qualitat
+    rbf_u = Rbf(lons, lats, u_comp.m, function='thin_plate', smooth=0)
+    rbf_v = Rbf(lons, lats, v_comp.m, function='thin_plate', smooth=0)
+    u_grid = rbf_u(X, Y)
+    v_grid = rbf_v(X, Y)
+    
+    # Calculem la velocitat a la graella per acolorir les línies de flux
+    speed_grid = np.sqrt(u_grid**2 + v_grid**2) * 3.6 # Convertim a km/h
+
+    # 3. Càlcul de la convergència
+    dx, dy = mpcalc.lat_lon_grid_deltas(X, Y)
+    divergence = mpcalc.divergence(u_grid * units('m/s'), v_grid * units('m/s'), dx=dx, dy=dy) * 1e5
+    
+    # Títol intel·ligent
+    max_conv = np.min(divergence.m)
+    titol_mapa = f"Flux i Convergència (Màx: {max_conv:.1f})"
+    
+    # Creem la base del mapa
+    fig, ax = crear_mapa_base(nivell, lat_sel, lon_sel, nom_poble_sel, titol_mapa)
+
+    # --- VISUALITZACIÓ AVANÇADA ---
+    
+    # 4. Paleta de colors perceptualment uniforme
+    cmap_conv_div = 'coolwarm'
+    # Definim nivells simètrics per a convergència (vermell) i divergència (blau)
+    max_abs_val = 30 # Fins a quin valor volem el color màxim
+    levels = np.linspace(-max_abs_val, max_abs_val, 15)
+    
+    # Dibuixem el fons de color
+    cont_fill = ax.contourf(X, Y, divergence.m, levels=levels, cmap=cmap_conv_div, alpha=0.6, zorder=2, transform=ccrs.PlateCarree(), extend='both')
+    fig.colorbar(cont_fill, ax=ax, orientation='vertical', label='Convergència (vermell) / Divergència (blau) (x10⁻⁵ s⁻¹)', shrink=0.7)
+
+    # Dibuixem un contorn negre només per als focus de convergència forta
+    ax.contour(X, Y, divergence.m, levels=[-15, -25, -35], colors='black', linewidths=[0.5, 1, 1.5], alpha=0.5, zorder=3, transform=ccrs.PlateCarree())
+
+    # 5. Línies de flux acolorides per velocitat
+    stream = ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color=speed_grid, cmap='viridis_r', 
+                           linewidth=1, density=1.5, arrowsize=0.7, zorder=4, transform=ccrs.PlateCarree())
+    
+    # Afegim una barra de color per a la velocitat de les línies de flux
+    cbar_stream = fig.colorbar(stream.lines, ax=ax, orientation='horizontal', pad=0.05, aspect=30, shrink=0.6)
+    cbar_stream.set_label('Velocitat del Vent (km/h)')
+
+    return fig
+    
 
 def crear_mapa_generic(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel, titol_var, cmap, unitat, levels):
     fig,ax=crear_mapa_base(nivell,lat_sel,lon_sel,nom_poble_sel,titol_var); grid_lon,grid_lat=np.linspace(min(lons),max(lons),100),np.linspace(min(lats),max(lats),100)
