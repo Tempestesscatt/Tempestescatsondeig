@@ -62,8 +62,6 @@ if 'avisos_expanded' not in st.session_state:
     st.session_state.avisos_expanded = True
 
 # --- 1. LÒGICA DE CÀRREGA DE DADES I CÀLCUL ---
-
-# --- FUNCIÓ RECUPERADA ---
 @st.cache_data(ttl=16000)
 def carregar_sondeig_per_poble(nom_poble, lat, lon):
     p_levels = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
@@ -619,5 +617,7 @@ elif sondeo:
                 st.markdown("---"); st.markdown("**Altres localitats amb convergència forta a aquesta hora:**")
                 if localitats_convergencia_forta: st.markdown(f"_{', '.join(sorted(list(localitats_convergencia_forta)))}_")
                 else: st.markdown("*Cap altra localitat amb avís de convergència forta per a aquesta hora.*")
-        else: st.warning(f"No s'han pogut calcular els paràmetres per a les {hourly_index:02d}:00h. Dades invàlides.")
+        else:
+            st.warning(f"No s'han pogut calcular els paràmetres per a les {hourly_index:02d}:00h. Dades invàlides.")
     except Exception as e:
+        st.error(f"S'ha produït un error inesperat en processar les dades per a '{poble_sel}'."); st.exception(e)
