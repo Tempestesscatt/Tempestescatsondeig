@@ -290,25 +290,3 @@ def generar_avis_temperatura(params):
     if temp < 0: return "AVÍS PER FRED INTENS", f"Es preveu una temperatura de {temp:.1f}°C. Risc de gelades fortes.", "#0000FF", "🥶"
     return None, None, None, None
 
-def generar_avis_localitat(params, divergence_value):
-    cape_u = params.get('CAPE_Utilitzable', {}).get('value', 0); cin = params.get('CIN_Fre', {}).get('value')
-    lfc_agl = params.get('LFC_AGL', {}).get('value'); shear = params.get('Shear_0-6km', {}).get('value')
-    srh1 = params.get('SRH_0-1km', {}).get('value'); lcl_agl = params.get('LCL_AGL', {}).get('value', 9999)
-    dcape = params.get('DCAPE', {}).get('value', 0); stp = params.get('STP_cin', {}).get('value', 0)
-    lr = params.get('LapseRate_700_500', {}).get('value', 0); pwat = params.get('PWAT_Total', {}).get('value', 0)
-    is_convergence_active = divergence_value is not None and divergence_value < CONVERGENCIA_FORTA_THRESHOLD
-    if cape_u < 100: return "ESTABLE", "Sense risc de tempestes significatives. L'atmosfera és estable.", "#3CB371"
-    if cin is not None and cin < -150: return "ESTABLE", f"La 'tapa' atmosfèrica (CIN de {cin:.0f} J/kg) és massa forta i probablement inihibirà qualsevol convecció.", "#3CB371"
-    if lfc_agl is None and not is_convergence_active: return "RISC BAIX", f"Hi ha una inestabilitat considerable (CAPE de {cape_u:.0f} J/kg), però el nivell d'inici de la convecció (LFC) és inassolible sense un forçament potent com la convergència. Les tempestes són poc probables.", "#4682B4"
-    cond_supercelula = shear is not None and shear > 20 and cape_u > 1500 and srh1 is not None and srh1 > 200 and lcl_agl < 1300
-    cond_avis_sever = shear is not None and shear > 18 and cape_u > 1200
-    cond_precaucio = shear is not None and shear > 12 and cape_u > 500
-    if cond_supercelula and stp > 0.8:
-        risks = ["calamarsa grossa", "vent destructiu"];
-        if lcl_agl < 1000: risks.insert(0, "tornados")
-        risks_text = ", ".join(risks)
-        if is_convergence_active or (lfc_agl is not None and lfc_agl < 3000): return "RISC ALT", f"Entorn de SUPERCL·LULA TORNÀDICA (STP={stp:.1f}). Disparador present. Risc de {risks_text}.", "#E60073"
-        else: return "POTENCIAL SEVER", f"Potencial latent de SUPERCL·LULA TORNÀDICA (STP={stp:.1f}) a l'espera d'un disparador clar. L'entorn és perillós.", "#FFC300"
-    elif cond_avis_sever:
-        risks = [];
-        if dcape > 900: risks.append("fortes ràfegues de vent (esclaf
