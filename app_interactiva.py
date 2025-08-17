@@ -43,7 +43,7 @@ retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
 
 # Constants de l'aplicació
-FORECAST_DAYS = 2
+FORECAST_DAYS = 4
 API_URL = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE = pytz.timezone('Europe/Madrid')
 
