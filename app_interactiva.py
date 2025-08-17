@@ -18,6 +18,7 @@ from scipy.interpolate import griddata
 from datetime import datetime, timedelta
 import pytz
 import google.generativeai as genai
+import re
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 
@@ -45,10 +46,8 @@ MAP_EXTENT = [0, 3.5, 40.4, 43]
 PRESS_LEVELS = sorted([1000, 950, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 
 PROVINCIES_BOUNDS = {
-    "Barcelona": [1.3, 2.5, 41.1, 42.0],
-    "Girona": [2.0, 3.3, 41.8, 42.6],
-    "Lleida": [0.4, 1.9, 41.3, 42.8],
-    "Tarragona": [0.3, 1.5, 40.8, 41.4]
+    "Barcelona": [1.3, 2.5, 41.1, 42.0], "Girona": [2.0, 3.3, 41.8, 42.6],
+    "Lleida": [0.4, 1.9, 41.3, 42.8], "Tarragona": [0.3, 1.5, 40.8, 41.4]
 }
 
 # --- 1. FUNCIONS D'OBTENCIÓ I PROCESSAMENT DE DADES ---
@@ -82,7 +81,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(variables, hourly_index):
     try:
-        # --- LÍNIA CORREGIDA (v5.2) --- Resolució tornada a 12x12 per garantir l'estabilitat
         lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
         params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
@@ -93,11 +91,11 @@ def carregar_dades_mapa(variables, hourly_index):
             if not any(np.isnan(v) for v in vals):
                 output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
                 for i, var in enumerate(variables): output[var].append(vals[i])
-        if not output["lats"]: return None, f"No s'han rebut dades vàlides."
+        if not output["lats"]: return None, "No s'han rebut dades vàlides."
         return output, None
     except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
 
-# --- SECCIÓ DE LA IA (v5.2) ---
+# --- SECCIÓ DE LA IA (v6.0) ---
 
 @st.cache_data(ttl=3600)
 def generar_pronostic_diari_ia(dia_sel):
@@ -112,16 +110,12 @@ def generar_pronostic_diari_ia(dia_sel):
 
     dades_provincials = {}
     try:
-        lons, lats = np.array(map_data['lons']), np.array(map_data['lats'])
-        cape = np.array(map_data['cape'])
+        lons, lats, cape = np.array(map_data['lons']), np.array(map_data['lats']), np.array(map_data['cape'])
         u, v = mpcalc.wind_components(np.array(map_data['wind_speed_925hPa'])*units('km/h'), np.array(map_data['wind_direction_925hPa'])*units.degrees)
         u_ms, v_ms = u.to('m/s').m, v.to('m/s').m
-
         for provincia, bounds in PROVINCIES_BOUNDS.items():
             mask = (lons >= bounds[0]) & (lons <= bounds[1]) & (lats >= bounds[2]) & (lats <= bounds[3])
-            if not np.any(mask):
-                dades_provincials[provincia] = {"max_cape": 0, "max_conv": 0}
-                continue
+            if not np.any(mask): dades_provincials[provincia] = {"max_cape": 0, "max_conv": 0}; continue
             prov_lons, prov_lats, prov_cape, prov_u, prov_v = lons[mask], lats[mask], cape[mask], u_ms[mask], v_ms[mask]
             max_cape_prov = np.max(prov_cape) if len(prov_cape)>0 else 0
             if len(prov_lons) > 3:
@@ -131,10 +125,8 @@ def generar_pronostic_diari_ia(dia_sel):
                 dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
                 divergence = mpcalc.divergence(grid_u*units('m/s'), grid_v*units('m/s'), dx=dx, dy=dy) * 1e5
                 max_conv_prov = np.nanmin(divergence)
-            else:
-                max_conv_prov = 0
+            else: max_conv_prov = 0
             dades_provincials[provincia] = {"max_cape": int(max_cape_prov), "max_conv": round(max_conv_prov, 2)}
-    
     except Exception as e: return f"Error en el processament provincial: {e}"
 
     if not GEMINI_CONFIGURAT: return "Error: La clau API de Google no està configurada."
@@ -287,9 +279,9 @@ def ui_capcalera_selectors():
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">🌪️ Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     with st.container(border=True):
         c1, c2, c3 = st.columns(3)
-        c1.selectbox("Capital de referència (per sondeig):", sorted(CIUTATS_CATALUNYA.keys()), key="poble_selector")
+        c1.selectbox("Capital (per al sondeig vertical):", sorted(CIUTATS_CATALUNYA.keys()), key="poble_selector")
         c2.selectbox("Dia del pronòstic:", ("Avui", "Demà"), key="dia_selector")
-        c3.selectbox("Hora (Local, per a mapes):", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
+        c3.selectbox("Hora (per a mapes i sondeig):", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
 
 def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
     with st.spinner("Actualitzant mapes..."):
@@ -334,18 +326,67 @@ def ui_pestanya_vertical(hourly_index_sel, poble_sel, dia_sel, hora_sel):
         c1.pyplot(crear_skewt(sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4], f"Sondeig Vertical - {poble_sel}"))
         c2.pyplot(crear_hodograf(sounding_data[3], sounding_data[4]))
 
+# --- NOU (v6.0) - Funció per mostrar el butlletí de manera visual ---
+def mostrar_butlleti_ia(resum_text):
+    try:
+        # Extraiem el títol principal i el resum
+        titol_match = re.search(r"# (.*?)\n", resum_text)
+        resum_match = re.search(r"\n(.*?)\n---", resum_text, re.DOTALL)
+        titol = titol_match.group(1) if titol_match else "Butlletí de Risc"
+        resum = resum_match.group(1).strip() if resum_match else ""
+
+        st.header(titol)
+        st.markdown(f"> {resum}")
+        st.divider()
+
+        # Extraiem les dades de cada província
+        provincies_text = resum_text.split("## Anàlisi per Províncies")[1]
+        provincies = ["Barcelona", "Girona", "Lleida", "Tarragona"]
+        cols = st.columns(4)
+
+        for i, prov in enumerate(provincies):
+            # Aïllem el text de cada província
+            prov_text_match = re.search(fr"### {prov}(.*?)(?=###|$)", provincies_text, re.DOTALL)
+            if prov_text_match:
+                prov_text = prov_text_match.group(1)
+                risc = re.search(r"\*\*Risc:\*\* (.*?)\n", prov_text).group(1).strip()
+                analisi = re.search(r"\*\*Anàlisi:\*\* (.*?)\n", prov_text).group(1).strip()
+                fenomens_text = re.search(r"\*\*Fenòmens:\*\* (.*)", prov_text).group(1).strip()
+                
+                # Creem la targeta visual a la columna corresponent
+                with cols[i]:
+                    with st.container(border=True):
+                        st.subheader(f"📍 {prov}")
+                        st.markdown(f"**Risc:** {risc}")
+                        st.markdown(f"*{analisi}*")
+                        st.divider()
+                        
+                        # Afegim icones per als fenòmens
+                        icons = []
+                        if "calamarsa" in fenomens_text.lower() or "gran" in fenomens_text.lower(): icons.append("🧊 Calamarsa")
+                        if "vent" in fenomens_text.lower(): icons.append("💨 Vent Fort")
+                        if "xàfecs" in fenomens_text.lower() or "aiguats" in fenomens_text.lower() or "inundacions" in fenomens_text.lower() : icons.append("⛈️ Xàfecs Intensos")
+                        if not icons:
+                             st.markdown("**Fenòmens:** -")
+                        else:
+                             st.markdown(f"**Fenòmens:** {' / '.join(icons)}")
+
+    except Exception as e:
+        st.error("L'IA ha generat una resposta amb un format inesperat. Si us plau, torna-ho a intentar.")
+        st.text_area("Resposta original de l'IA:", resum_text, height=200)
+
 def ui_pestanya_ia(dia_sel):
     st.subheader(f"Butlletí de Risc per al dia: {dia_sel}")
     st.info("Aquest pronòstic es genera automàticament analitzant les dades del model AROME per a les 17:00h (hora de màxim potencial convectiu).")
     if not GEMINI_CONFIGURAT: st.error("Funcionalitat no disponible. La clau API no està configurada."); return
 
     if st.button("📝 Generar Pronòstic Diari", use_container_width=True):
-        with st.spinner(f"Analitzant la situació per al dia de {dia_sel.lower()}..."):
+        with st.spinner(f"Elaborant el butlletí per al dia de {dia_sel.lower()}..."):
             resum_text = generar_pronostic_diari_ia(dia_sel)
             if "Error" in resum_text:
                 st.error(resum_text)
             else:
-                st.markdown(resum_text)
+                mostrar_butlleti_ia(resum_text)
 
 def ui_peu_de_pagina():
     st.divider()
