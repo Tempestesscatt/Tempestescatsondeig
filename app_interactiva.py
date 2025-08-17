@@ -16,13 +16,14 @@ from scipy.interpolate import griddata, Rbf
 from datetime import datetime, timedelta
 import pytz
 import matplotlib.patheffects as path_effects
+from matplotlib.colors import ListedColormap, BoundaryNorm
 
 # --- CONFIGURACIÓ INICIAL ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
-FORECAST_DAYS = 1
+FORECAST_DAYS = 2
 
 # --- DADES DE CIUTATS PRINCIPALS ---
 ciutats_catalunya = {
@@ -33,10 +34,11 @@ ciutats_catalunya = {
 }
 
 # Llista de nivells de pressió per als mapes de vents i sondejos
-PRESS_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
+PRESS_LEVELS = sorted([1000, 950, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 
 # --- INICIALITZACIÓ ---
 if 'poble_selector' not in st.session_state: st.session_state.poble_selector = 'Barcelona'
+if 'dia_selector' not in st.session_state: st.session_state.dia_selector = 'Avui'
 if 'hora_selector' not in st.session_state: st.session_state.hora_selector = f"{datetime.now(pytz.timezone('Europe/Madrid')).hour:02d}:00h"
 
 # --- 1. LÒGICA DE CÀRREGA I CÀLCUL ---
@@ -79,7 +81,7 @@ def carregar_dades_completes(lat, lon, hourly_index):
 def obtener_dades_mapa(variable, hourly_index):
     url = "https://api.open-meteo.com/v1/forecast"; lats, lons = np.linspace(40.4, 43, 12), np.linspace(0, 3.5, 12)
     lon_grid, lat_grid = np.meshgrid(lons, lats)
-    params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": [variable], "models": "arome_seamless"}
+    params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": [variable], "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
     try:
         responses = openmeteo.weather_api(url, params=params)
         lats_out, lons_out, data_out = [], [], []
@@ -94,7 +96,7 @@ def obtener_dades_mapa(variable, hourly_index):
 def obtener_dades_vents_mapa(nivell, hourly_index):
     url = "https://api.open-meteo.com/v1/forecast"; lats, lons = np.linspace(40.4, 43, 12), np.linspace(0, 3.5, 12)
     lon_grid, lat_grid = np.meshgrid(lons, lats)
-    params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"], "models": "arome_seamless"}
+    params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"], "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
     try:
         responses = openmeteo.weather_api(url, params=params)
         lats_out, lons_out, speed_out, dir_out = [], [], [], []
@@ -105,21 +107,79 @@ def obtener_dades_vents_mapa(nivell, hourly_index):
         return (lats_out, lons_out, (speed_out, dir_out)), None
     except Exception as e: return None, str(e)
 
+@st.cache_data(ttl=16000)
+def obtener_dades_mapa_500hpa(hourly_index):
+    url = "https://api.open-meteo.com/v1/forecast"; lats, lons = np.linspace(40.4, 43, 12), np.linspace(0, 3.5, 12)
+    lon_grid, lat_grid = np.meshgrid(lons, lats)
+    variables = ["geopotential_height_500hPa", "temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
+    params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
+    try:
+        responses = openmeteo.weather_api(url, params=params)
+        lats_out, lons_out, geo_out, temp_out, ws_out, wd_out = [], [], [], [], [], []
+        for r in responses:
+            geo = r.Hourly().Variables(0).ValuesAsNumpy()[hourly_index]; temp = r.Hourly().Variables(1).ValuesAsNumpy()[hourly_index]
+            ws = r.Hourly().Variables(2).ValuesAsNumpy()[hourly_index]; wd = r.Hourly().Variables(3).ValuesAsNumpy()[hourly_index]
+            if not any(np.isnan([geo, temp, ws, wd])):
+                lats_out.append(r.Latitude()); lons_out.append(r.Longitude())
+                geo_out.append(geo); temp_out.append(temp); ws_out.append(ws); wd_out.append(wd)
+        if not lats_out: return None, "No s'han rebut dades per al nivell de 500 hPa."
+        return (lats_out, lons_out, geo_out, temp_out, ws_out, wd_out), None
+    except Exception as e: return None, str(e)
+
 # --- 2. FUNCIONS DE VISUALITZACIÓ I LÒGICA ---
 def display_metrics(params):
     cols=st.columns(4); metric_map={'CAPE':'J/kg','CIN':'J/kg','Shear_0-6km':'m/s','SRH_0-1km':'m²/s²'}
     for i,(param,unit) in enumerate(metric_map.items()): val=params.get(param); val_str=f"{val:.0f}" if val is not None else "---"; cols[i].metric(label=param,value=f"{val_str} {unit}")
 
+def get_wind_colormap():
+    colors = ['#FFFFFF', '#E0F5FF', '#B9E8FF', '#87D7F9', '#5AC7E3', '#2DB8CC', '#3FC3A3', '#5ABF7A', '#75BB51', '#98D849', '#C2E240', '#EBEC38', '#F5D03A', '#FDB43D', '#F7983F', '#E97F41', '#D76643', '#C44E45', '#B23547', '#A22428', '#881015', '#6D002F', '#860057', '#A0007F', '#B900A8', '#D300D0', '#E760E7', '#F6A9F6', '#FFFFFF', '#CCCCCC']
+    levels = list(range(0, 95, 5)) + list(range(100, 211, 10))
+    cmap = ListedColormap(colors, name='wind_speed_custom'); norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+    return cmap, norm, levels
+
+def crear_mapa_500hpa(lats, lons, geo_data, temp_data, wind_speed_data, wind_dir_data):
+    extent = [0, 3.5, 40.4, 43]; fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
+    ax.set_extent(extent, crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0); ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
+    ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5); ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
+    grid_lon, grid_lat = np.meshgrid(np.linspace(extent[0], extent[1], 200), np.linspace(extent[2], extent[3], 200))
+    grid_geo = griddata((lons, lats), geo_data, (grid_lon, grid_lat), method='cubic'); grid_temp = griddata((lons, lats), temp_data, (grid_lon, grid_lat), method='cubic')
+    temp_levels = np.arange(-30, 1, 2); cmap_temp = plt.get_cmap('coolwarm')
+    cf = ax.contourf(grid_lon, grid_lat, grid_temp, levels=temp_levels, cmap=cmap_temp, extend='min', alpha=0.7, zorder=2)
+    cbar = fig.colorbar(cf, ax=ax, orientation='vertical', shrink=0.7); cbar.set_label("Temperatura a 500 hPa (°C)", size=10)
+    temp_line_levels = np.arange(-30, 1, 1)
+    cs_temp = ax.contour(grid_lon, grid_lat, grid_temp, levels=temp_line_levels, colors='gray', linewidths=0.8, linestyles='--', zorder=4)
+    ax.clabel(cs_temp, inline=True, fontsize=7, fmt='%1.0f')
+    geo_levels = np.arange(5200, 5901, 40)
+    cs = ax.contour(grid_lon, grid_lat, grid_geo, levels=geo_levels, colors='black', linewidths=1.5, zorder=3)
+    ax.clabel(cs, inline=True, fontsize=8, fmt='%1.0f')
+    points_indices_1d = slice(None, None, 5) 
+    u, v = mpcalc.wind_components(np.array(wind_speed_data) * units('km/h'), np.array(wind_dir_data) * units.degrees)
+    ax.barbs(np.array(lons)[points_indices_1d], np.array(lats)[points_indices_1d], u.to('knots').m[points_indices_1d], v.to('knots').m[points_indices_1d], length=5, zorder=6, transform=ccrs.PlateCarree())
+    ax.set_title("Anàlisi a 500 hPa (Altura, Temperatura i Vent)", weight='bold', fontsize=16)
+    return fig
+
+def crear_mapa_vents_velocitat(lats, lons, data, nivell):
+    extent = [0, 3.5, 40.4, 43]; fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
+    ax.set_extent(extent, crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0); ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
+    ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5); ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
+    speed_data, direction_data = data; cmap, norm, levels = get_wind_colormap(); grid_lon, grid_lat = np.meshgrid(np.linspace(extent[0], extent[1], 200), np.linspace(extent[2], extent[3], 200))
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
+    ax.contourf(grid_lon, grid_lat, grid_speed, levels=levels, cmap=cmap, norm=norm, alpha=0.8, zorder=2, extend='max')
+    speeds_ms = np.array(speed_data) * units('km/h'); dirs_deg = np.array(direction_data) * units.degrees; u_comp, v_comp = mpcalc.wind_components(speeds_ms, dirs_deg)
+    rbf_u = Rbf(lons, lats, u_comp.to('m/s').m, function='thin_plate', smooth=0); rbf_v = Rbf(lons, lats, v_comp.to('m/s').m, function='thin_plate', smooth=0)
+    u_grid = rbf_u(grid_lon, grid_lat); v_grid = rbf_v(grid_lon, grid_lat)
+    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', linewidth=0.6, density=2.5, arrowsize=0.6, zorder=4)
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=levels[::2])
+    cbar.set_label(f"Velocitat del Vent (km/h)", size=10); ax.set_title(f"Vent a {nivell} hPa", weight='bold', fontsize=16); return fig
+
 def crear_mapa_vents_professional(lats, lons, data, nivell, lat_sel, lon_sel, nom_poble_sel):
     extent = [0, 3.5, 40.4, 43]; fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(extent, crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND,facecolor="#dddddd",zorder=0); ax.add_feature(cfeature.OCEAN,facecolor='#b0c4de',zorder=0)
     ax.add_feature(cfeature.COASTLINE,edgecolor='black',linewidth=0.8,zorder=5); ax.add_feature(cfeature.BORDERS,linestyle=':',edgecolor='black',linewidth=0.6,zorder=5)
-    speed_data,direction_data=data; speeds_ms=np.array(speed_data)*units('km/h'); dirs_deg=np.array(direction_data)*units.degrees
-    u_comp,v_comp=mpcalc.wind_components(speeds_ms,dirs_deg)
+    speed_data,direction_data=data; speeds_ms=np.array(speed_data)*units('km/h'); dirs_deg=np.array(direction_data)*units.degrees; u_comp,v_comp=mpcalc.wind_components(speeds_ms,dirs_deg)
     grid_lon,grid_lat=np.meshgrid(np.linspace(extent[0],extent[1],200),np.linspace(extent[2],extent[3],200))
     rbf_u = Rbf(lons,lats,u_comp.to('m/s').m,function='thin_plate',smooth=0); rbf_v = Rbf(lons,lats,v_comp.to('m/s').m,function='thin_plate',smooth=0)
-    u_grid = rbf_u(grid_lon,grid_lat); v_grid = rbf_v(grid_lon,grid_lat)
-    dx,dy=mpcalc.lat_lon_grid_deltas(grid_lon,grid_lat); divergence=mpcalc.divergence(u_grid*units('m/s'),v_grid*units('m/s'),dx=dx,dy=dy)*1e5
+    u_grid = rbf_u(grid_lon,grid_lat); v_grid = rbf_v(grid_lon,grid_lat); dx,dy=mpcalc.lat_lon_grid_deltas(grid_lon,grid_lat); divergence=mpcalc.divergence(u_grid*units('m/s'),v_grid*units('m/s'),dx=dx,dy=dy)*1e5
     max_conv=np.nanmin(divergence); ax.set_title(f"Flux i Convergència (Màx: {max_conv:.1f}) a {nivell}hPa",weight='bold',fontsize=16)
     cmap_conv_div='coolwarm_r'; max_abs_val=30; levels=np.linspace(-max_abs_val,max_abs_val,15)
     cbar=fig.colorbar(ax.contourf(grid_lon,grid_lat,divergence,levels=levels,cmap=cmap_conv_div,alpha=0.6,zorder=2,extend='both'),ax=ax,orientation='vertical',shrink=0.7)
@@ -127,28 +187,21 @@ def crear_mapa_vents_professional(lats, lons, data, nivell, lat_sel, lon_sel, no
     ax.contour(grid_lon,grid_lat,divergence,levels=[-35,-25,-15],colors='black',linewidths=[1.5,1,0.5],alpha=0.5,zorder=3)
     ax.streamplot(grid_lon,grid_lat,u_grid,v_grid,color='black',linewidth=0.4,density=5.5,arrowsize=0.3,zorder=4)
     ax.plot(lon_sel,lat_sel,'o',markerfacecolor='yellow',markeredgecolor='black',markersize=6,transform=ccrs.Geodetic(),zorder=6)
-    ax.text(lon_sel+0.05,lat_sel,nom_poble_sel,transform=ccrs.Geodetic(),zorder=7,fontsize=9,weight='bold',path_effects=[path_effects.withStroke(linewidth=2,foreground='white')])
-    return fig
+    ax.text(lon_sel+0.05,lat_sel,nom_poble_sel,transform=ccrs.Geodetic(),zorder=7,fontsize=9,weight='bold',path_effects=[path_effects.withStroke(linewidth=2,foreground='white')]); return fig
 
 def crear_mapa_escalar_professional(lats, lons, data, titol, cmap, levels, unitat):
     extent=[0,3.5,40.4,43]; fig,ax=plt.subplots(figsize=(10,10),dpi=200,subplot_kw={'projection':ccrs.PlateCarree()}); ax.set_extent(extent,crs=ccrs.PlateCarree())
-    ax.add_feature(cfeature.LAND,facecolor="#E0E0E0",zorder=0); ax.add_feature(cfeature.OCEAN,facecolor='#b0c4de',zorder=0)
-    ax.add_feature(cfeature.COASTLINE,edgecolor='black',linewidth=0.8,zorder=5); ax.add_feature(cfeature.BORDERS,linestyle='-',edgecolor='black',zorder=5)
-    grid_lon, grid_lat = np.meshgrid(np.linspace(extent[0],extent[1],200), np.linspace(extent[2],extent[3],200))
-    grid_data = griddata((lons,lats),data,(grid_lon,grid_lat),method='cubic')
-    ax.contourf(grid_lon,grid_lat,grid_data,levels=levels,cmap=cmap,alpha=0.7,zorder=2,extend='max')
-    contorns = ax.contour(grid_lon,grid_lat,grid_data,levels=levels,colors='black',linewidths=0.5,alpha=0.7,zorder=3)
-    ax.clabel(contorns, inline=True, fontsize=8, fmt='%1.0f')
-    cbar=fig.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(levels[0], levels[-1]), cmap=cmap), ax=ax, orientation='vertical', shrink=0.7)
+    ax.add_feature(cfeature.LAND,facecolor="#E0E0E0",zorder=0); ax.add_feature(cfeature.OCEAN,facecolor='#b0c4de',zorder=0); ax.add_feature(cfeature.COASTLINE,edgecolor='black',linewidth=0.8,zorder=5); ax.add_feature(cfeature.BORDERS,linestyle='-',edgecolor='black',zorder=5)
+    grid_lon, grid_lat = np.meshgrid(np.linspace(extent[0],extent[1],200), np.linspace(extent[2],extent[3],200)); grid_data = griddata((lons,lats),data,(grid_lon,grid_lat),method='cubic')
+    ax.contourf(grid_lon,grid_lat,grid_data,levels=levels,cmap=cmap,alpha=0.7,zorder=2,extend='max'); contorns = ax.contour(grid_lon,grid_lat,grid_data,levels=levels,colors='black',linewidths=0.5,alpha=0.7,zorder=3)
+    ax.clabel(contorns, inline=True, fontsize=8, fmt='%1.0f'); cbar=fig.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(levels[0], levels[-1]), cmap=cmap), ax=ax, orientation='vertical', shrink=0.7)
     cbar.set_label(f"{titol} ({unitat})",size=10); ax.set_title(titol,weight='bold',fontsize=16); return fig
 
 def crear_skewt(p, T, Td, u, v):
     fig=plt.figure(figsize=(9,9),dpi=150); skew=SkewT(fig,rotation=45,rect=(0.1,0.1,0.8,0.85)); skew.ax.grid(True,linestyle='-',alpha=0.5)
-    skew.plot(p,T,'r',lw=2,label='Temperatura'); skew.plot(p,Td,'g',lw=2,label='Punt de Rosada')
-    skew.plot_barbs(p,u.to('kt'),v.to('kt'),y_clip_radius=0.03); skew.plot_dry_adiabats(color='lightcoral',linestyle='--',alpha=0.7)
-    skew.plot_moist_adiabats(color='cornflowerblue',linestyle='--',alpha=0.7); skew.plot_mixing_lines(color='limegreen',linestyle='--',alpha=0.7)
-    prof=mpcalc.parcel_profile(p,T[0],Td[0]); skew.plot(p,prof,'k',linewidth=2,label='Trajectòria Parcel·la')
-    skew.shade_cape(p,T,prof,color='lightsteelblue',alpha=0.4); skew.shade_cin(p,T,prof,color='lightgrey',alpha=0.4)
+    skew.plot(p,T,'r',lw=2,label='Temperatura'); skew.plot(p,Td,'g',lw=2,label='Punt de Rosada'); skew.plot_barbs(p,u.to('kt'),v.to('kt'),y_clip_radius=0.03)
+    skew.plot_dry_adiabats(color='lightcoral',linestyle='--',alpha=0.7); skew.plot_moist_adiabats(color='cornflowerblue',linestyle='--',alpha=0.7); skew.plot_mixing_lines(color='limegreen',linestyle='--',alpha=0.7)
+    prof=mpcalc.parcel_profile(p,T[0],Td[0]); skew.plot(p,prof,'k',linewidth=2,label='Trajectòria Parcel·la'); skew.shade_cape(p,T,prof,color='lightsteelblue',alpha=0.4); skew.shade_cin(p,T,prof,color='lightgrey',alpha=0.4)
     skew.ax.set_ylim(1000,100); skew.ax.set_xlim(-40,40); skew.ax.set_title("Sondeig Vertical (Skew-T)",weight='bold',fontsize=14)
     skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)"); skew.ax.legend(); return fig
 
@@ -159,65 +212,77 @@ def crear_hodograf(u, v):
 # --- 3. INTERFAZ Y FLUJO PRINCIPAL ---
 st.markdown('<h1 style="text-align: center; color: #FF4B4B;">🌪️ Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
 with st.container(border=True):
-    col1,col2=st.columns(2)
-    col1.selectbox("Capital de referència:",sorted(ciutats_catalunya.keys()),key="poble_selector")
-    col2.selectbox("Hora del pronòstic (Local):",options=[f"{h:02d}:00h" for h in range(24)],key="hora_selector")
+    col1, col2, col3 = st.columns(3)
+    with col1: st.selectbox("Capital de referència:", sorted(ciutats_catalunya.keys()), key="poble_selector")
+    with col2: st.selectbox("Dia del pronòstic:", ("Avui", "Demà"), key="dia_selector")
+    with col3: st.selectbox("Hora (Local):", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
 
-hourly_index_sel=int(st.session_state.hora_selector.split(':')[0]); poble_sel=st.session_state.poble_selector
-lat_sel,lon_sel=ciutats_catalunya[poble_sel]['lat'],ciutats_catalunya[poble_sel]['lon']
-data_tuple,error_msg=carregar_dades_completes(lat_sel,lon_sel,hourly_index_sel)
-if error_msg:
-    st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
-    data_tuple = None
+hora_sel = int(st.session_state.hora_selector.split(':')[0]); dia_sel = st.session_state.dia_selector
+hourly_index_sel = hora_sel + (24 if dia_sel == "Demà" else 0)
+poble_sel = st.session_state.poble_selector
+lat_sel, lon_sel = ciutats_catalunya[poble_sel]['lat'], ciutats_catalunya[poble_sel]['lon']
+data_tuple, error_msg = carregar_dades_completes(lat_sel, lon_sel, hourly_index_sel)
+if error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}"); data_tuple = None
 if data_tuple:
-    sounding_data,params_calculats=data_tuple
+    sounding_data, params_calculats = data_tuple
     st.info("Paràmetres principals de la massa d'aire per al punt i hora seleccionats.")
     display_metrics(params_calculats)
     
-    tab1,tab2=st.tabs(["🗺️ Anàlisi de Mapes","📊 Anàlisi Vertical"])
+    tab1, tab2 = st.tabs(["🗺️ Anàlisi de Mapes", "📊 Anàlisi Vertical"])
     with tab1:
-        col_map_1,col_map_2=st.columns([2.5,1.5])
+        col_map_1, col_map_2 = st.columns([2.5, 1.5])
         with col_map_1:
-            mapa_sel=st.selectbox("Selecciona la capa del mapa:",["Flux i Convergència","CAPE (Energia)","Humitat a 700hPa"])
+            map_options = ["Flux i Convergència", "Anàlisi a 500hPa", "Vent a 300hPa", "Vent a 700hPa", "CAPE (Energia)", "Humitat a 700hPa"]
+            mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options)
             
             with st.spinner(f"Generant mapa de {mapa_sel}..."):
                 error_map = None
                 if mapa_sel == "Flux i Convergència":
-                    # Selector de nivell només per aquest mapa
-                    nivell_vents_sel = st.selectbox("Nivell d'anàlisi del vent:", options=PRESS_LEVELS, index=2, format_func=lambda x: f"{x} hPa") # Default 850hPa
-                    map_data_vents,error_map = obtener_dades_vents_mapa(nivell_vents_sel, hourly_index_sel)
-                    if map_data_vents: 
-                        lats,lons,data=map_data_vents
-                        st.pyplot(crear_mapa_vents_professional(lats, lons, data, nivell_vents_sel, lat_sel, lon_sel, poble_sel))
+                    nivells_convergencia = [p for p in PRESS_LEVELS if p >= 850]
+                    nivell_vents_sel = st.selectbox("Nivell d'anàlisi:", options=nivells_convergencia, format_func=lambda x: f"{x} hPa")
+                    map_data_vents, error_map = obtener_dades_vents_mapa(nivell_vents_sel, hourly_index_sel)
+                    if map_data_vents: lats, lons, data = map_data_vents; st.pyplot(crear_mapa_vents_professional(lats, lons, data, nivell_vents_sel, lat_sel, lon_sel, poble_sel))
+                
+                elif mapa_sel == "Anàlisi a 500hPa":
+                    map_data, error_map = obtener_dades_mapa_500hpa(hourly_index_sel)
+                    if map_data: lats, lons, geo, temp, ws, wd = map_data; st.pyplot(crear_mapa_500hpa(lats, lons, geo, temp, ws, wd))
+                
+                elif mapa_sel in ["Vent a 300hPa", "Vent a 700hPa"]:
+                    nivell_hpa = int(mapa_sel.split(' ')[2].replace('hPa', ''))
+                    map_data_vents, error_map = obtener_dades_vents_mapa(nivell_hpa, hourly_index_sel)
+                    if map_data_vents: lats, lons, data = map_data_vents; st.pyplot(crear_mapa_vents_velocitat(lats, lons, data, nivell_hpa))
+                
                 else:
                     variable = "cape" if mapa_sel == "CAPE (Energia)" else "relative_humidity_700hPa"
-                    map_data,error_map = obtener_dades_mapa(variable, hourly_index_sel)
+                    map_data, error_map = obtener_dades_mapa(variable, hourly_index_sel)
                     if map_data:
-                        lats,lons,data = map_data
-                        if mapa_sel=="CAPE (Energia)": 
-                            st.pyplot(crear_mapa_escalar_professional(lats,lons,data,"CAPE","plasma",np.arange(250,4001,250),"J/kg"))
-                        else: 
-                            st.pyplot(crear_mapa_escalar_professional(lats,lons,data,"Humitat Relativa a 700hPa","Greens",np.arange(50,101,5),"%"))
+                        lats, lons, data = map_data
+                        if mapa_sel == "CAPE (Energia)": st.pyplot(crear_mapa_escalar_professional(lats, lons, data, "CAPE", "plasma", np.arange(250, 4001, 250), "J/kg"))
+                        else: st.pyplot(crear_mapa_escalar_professional(lats, lons, data, "Humitat Relativa a 700hPa", "Greens", np.arange(50, 101, 5), "%"))
                 
-                if error_map: 
-                    st.error(f"Error en carregar el mapa: {error_map}")
+                if error_map: st.error(f"Error en carregar el mapa: {error_map}")
 
         with col_map_2:
-            st.subheader("Satèl·lit en Temps Real")
-            try:
-                satellite_url="https://modeles20.meteociel.fr/satellite/latestsatviscolmtgsp.png"; unique_url=f"{satellite_url}?ver={int(time.time())}"
-                headers={'User-Agent':'Mozilla/5.0'}; response=requests.get(unique_url,headers=headers)
-                if response.status_code==200: 
-                    st.image(response.content,caption="Satèl·lit visible. Font: Meteociel",use_container_width=True)
-                else: 
-                    st.warning("No s'ha pogut carregar el satèl·lit.")
-            except: 
-                st.error("Error de xarxa en carregar satèl·lit.")
+            st.subheader("Imatges en Temps Real")
+            view_choice = st.radio("Selecciona la vista:", ("Satèl·lit", "Radar de Precipitació"), horizontal=True)
+            if view_choice == "Satèl·lit":
+                try:
+                    satellite_url = "https://modeles20.meteociel.fr/satellite/latestsatviscolmtgsp.png"; unique_url = f"{satellite_url}?ver={int(time.time())}"
+                    headers = {'User-Agent': 'Mozilla/5.0'}; response = requests.get(unique_url, headers=headers)
+                    if response.status_code == 200: st.image(response.content, caption="Satèl·lit visible. Font: Meteociel", use_container_width=True)
+                    else: st.warning("No s'ha pogut carregar la imatge del satèl·lit.")
+                except Exception as e: st.error(f"Error de xarxa en carregar el satèl·lit.")
+            elif view_choice == "Radar de Precipitació":
+                try:
+                    radar_url = "https://www.meteociel.fr/cartes_obs/radar/lastradar_sp_ne.gif"; unique_url = f"{radar_url}?ver={int(time.time())}"
+                    headers = {'User-Agent': 'Mozilla/5.0'}; response = requests.get(unique_url, headers=headers)
+                    if response.status_code == 200: st.image(response.content, caption="Radar de precipitació (NE Península). Font: Meteociel", use_container_width=True)
+                    else: st.warning("No s'ha pogut carregar la imatge del radar.")
+                except Exception as e: st.error(f"Error de xarxa en carregar el radar.")
 
     with tab2:
-        p,T,Td,u,v,h=sounding_data
-        col_sondeig_1,col_sondeig_2=st.columns(2)
-        with col_sondeig_1: 
-            st.pyplot(crear_skewt(p,T,Td,u,v))
-        with col_sondeig_2: 
-            st.pyplot(crear_hodograf(u,v))
+        if data_tuple:
+            p,T,Td,u,v,h=sounding_data
+            col_sondeig_1, col_sondeig_2 = st.columns(2)
+            with col_sondeig_1: st.pyplot(crear_skewt(p, T, Td, u, v))
+            with col_sondeig_2: st.pyplot(crear_hodograf(u, v))
