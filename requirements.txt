@@ -1,9 +1,9 @@
 streamlit
 openmeteo-requests
+requests-cache
 retry-requests
 requests
 numpy
-pandas
 matplotlib
 metpy
 cartopy
