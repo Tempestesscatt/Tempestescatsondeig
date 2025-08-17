@@ -54,6 +54,7 @@ PROVINCIES_BOUNDS = {
 
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
+    # Aquesta funció es manté igual, és robusta.
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS]
@@ -79,109 +80,148 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
 
 @st.cache_data(ttl=3600)
-def carregar_dades_mapa(variables, hourly_index):
+def carregar_dades_mapa_24h(variables, start_hour, end_hour):
     try:
         lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
-        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
+        params = {
+            "latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(),
+            "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS,
+            "start_hour": start_hour.strftime("%Y-%m-%dT%H:%M"),
+            "end_hour": end_hour.strftime("%Y-%m-%dT%H:%M")
+        }
         responses = openmeteo.weather_api(API_URL, params=params)
         output = {var: [] for var in ["lats", "lons"] + variables}
         for r in responses:
-            vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
-            if not any(np.isnan(v) for v in vals):
-                output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
-                for i, var in enumerate(variables): output[var].append(vals[i])
+            if not r.Hourly(): continue
+            output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
+            for i, var in enumerate(variables):
+                vals = r.Hourly().Variables(i).ValuesAsNumpy()
+                output[var].append(vals)
         if not output["lats"]: return None, "No s'han rebut dades vàlides."
         return output, None
-    except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
+    except Exception as e: return None, f"Error en carregar dades horàries del mapa: {e}"
 
-# --- SECCIÓ DE LA IA (v6.0) ---
+# --- SECCIÓ DE LA IA TOTALMENT RECONSTRUÏDA (v7.0) ---
 
 @st.cache_data(ttl=3600)
 def generar_pronostic_diari_ia(dia_sel):
     target_date = datetime.now(TIMEZONE).date() + timedelta(days=1) if dia_sel == "Demà" else datetime.now(TIMEZONE).date()
-    local_dt = TIMEZONE.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=17))
-    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    hourly_index_17h = max(0, int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600))
+    start_hour_utc = pytz.utc.localize(datetime.combine(target_date, datetime.min.time()))
+    end_hour_utc = pytz.utc.localize(datetime.combine(target_date, datetime.max.time()))
 
     variables_mapa = ["cape", "wind_speed_925hPa", "wind_direction_925hPa"]
-    map_data, error = carregar_dades_mapa(variables_mapa, hourly_index_17h)
+    map_data, error = carregar_dades_mapa_24h(variables_mapa, start_hour_utc, end_hour_utc)
     if error: return f"No s'han pogut carregar les dades per a l'anàlisi diària: {error}"
 
     dades_provincials = {}
     try:
-        lons, lats, cape = np.array(map_data['lons']), np.array(map_data['lats']), np.array(map_data['cape'])
-        u, v = mpcalc.wind_components(np.array(map_data['wind_speed_925hPa'])*units('km/h'), np.array(map_data['wind_direction_925hPa'])*units.degrees)
-        u_ms, v_ms = u.to('m/s').m, v.to('m/s').m
+        lons, lats = np.array(map_data['lons']), np.array(map_data['lats'])
+        # Les dades ara tenen una dimensió temporal (24 hores)
+        cape_24h = np.array(map_data['cape'])
+        u_24h, v_24h = mpcalc.wind_components(np.array(map_data['wind_speed_925hPa'])*units('km/h'), np.array(map_data['wind_direction_925hPa'])*units.degrees)
+        
         for provincia, bounds in PROVINCIES_BOUNDS.items():
             mask = (lons >= bounds[0]) & (lons <= bounds[1]) & (lats >= bounds[2]) & (lats <= bounds[3])
-            if not np.any(mask): dades_provincials[provincia] = {"max_cape": 0, "max_conv": 0}; continue
-            prov_lons, prov_lats, prov_cape, prov_u, prov_v = lons[mask], lats[mask], cape[mask], u_ms[mask], v_ms[mask]
-            max_cape_prov = np.max(prov_cape) if len(prov_cape)>0 else 0
-            if len(prov_lons) > 3:
-                grid_lon, grid_lat = np.meshgrid(np.linspace(bounds[0], bounds[1], 10), np.linspace(bounds[2], bounds[3], 10))
-                grid_u = griddata((prov_lons, prov_lats), prov_u, (grid_lon, grid_lat), method='cubic', fill_value=0)
-                grid_v = griddata((prov_lons, prov_lats), prov_v, (grid_lon, grid_lat), method='cubic', fill_value=0)
-                dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-                divergence = mpcalc.divergence(grid_u*units('m/s'), grid_v*units('m/s'), dx=dx, dy=dy) * 1e5
-                max_conv_prov = np.nanmin(divergence)
-            else: max_conv_prov = 0
-            dades_provincials[provincia] = {"max_cape": int(max_cape_prov), "max_conv": round(max_conv_prov, 2)}
-    except Exception as e: return f"Error en el processament provincial: {e}"
+            if not np.any(mask):
+                dades_provincials[provincia] = {"max_cape": 0, "hora_cape": 0, "max_conv": 0, "hora_conv": 0}
+                continue
+
+            # Calculem convergència per a cada hora i trobem el màxim del dia
+            conv_hores = []
+            for h in range(u_24h.shape[1]): # Iterem sobre les 24 hores
+                prov_u, prov_v = u_24h[mask, h].to('m/s').m, v_24h[mask, h].to('m/s').m
+                prov_lons, prov_lats = lons[mask], lats[mask]
+                if len(prov_lons) > 3:
+                    grid_lon, grid_lat = np.meshgrid(np.linspace(bounds[0], bounds[1], 10), np.linspace(bounds[2], bounds[3], 10))
+                    grid_u = griddata((prov_lons, prov_lats), prov_u, (grid_lon, grid_lat), method='cubic', fill_value=0)
+                    grid_v = griddata((prov_lons, prov_lats), prov_v, (grid_lon, grid_lat), method='cubic', fill_value=0)
+                    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+                    divergence = mpcalc.divergence(grid_u*units('m/s'), grid_v*units('m/s'), dx=dx, dy=dy) * 1e5
+                    conv_hores.append(np.nanmin(divergence))
+                else:
+                    conv_hores.append(0)
+            
+            # Trobem els valors màxims i les hores en què ocorren
+            max_conv_prov = np.min(conv_hores)
+            hora_max_conv = np.argmin(conv_hores)
+            
+            prov_cape_24h = cape_24h[mask, :]
+            max_cape_prov = np.max(prov_cape_24h)
+            hora_max_cape = np.argmax(np.max(prov_cape_24h, axis=0)) # Hora del màxim CAPE a la província
+            
+            dades_provincials[provincia] = {
+                "max_cape": int(max_cape_prov), "hora_cape": int(hora_max_cape),
+                "max_conv": round(max_conv_prov, 2), "hora_conv": int(hora_max_conv)
+            }
+
+    except Exception as e: return f"Error en el processament provincial 24h: {e}"
 
     if not GEMINI_CONFIGURAT: return "Error: La clau API de Google no està configurada."
     model = genai.GenerativeModel('gemini-1.5-flash')
     prompt = f"""
-    Ets un predictor expert del Servei Meteorològic de Catalunya. La teva tasca és redactar un butlletí de risc de tempestes per al dia {dia_sel}, basat en les dades del model AROME a les 17:00h. Sigues clar, concís i professional.
+    Ets un predictor expert del Servei Meteorològic de Catalunya. La teva tasca és redactar un butlletí de risc de tempestes per al dia {dia_sel}, analitzant l'evolució durant les 24 hores. Has de ser tècnic, precís i seguir el format al peu de la lletra.
 
-    **DADES PROCESSADES PER PROVÍNCIES:**
-    - **Barcelona:** CAPE màxim: {dades_provincials['Barcelona']['max_cape']} J/kg, Convergència màxima: {dades_provincials['Barcelona']['max_conv']} (x10⁻⁵ s⁻¹)
-    - **Girona:** CAPE màxim: {dades_provincials['Girona']['max_cape']} J/kg, Convergència màxima: {dades_provincials['Girona']['max_conv']} (x10⁻⁵ s⁻¹)
-    - **Lleida:** CAPE màxim: {dades_provincials['Lleida']['max_cape']} J/kg, Convergència màxima: {dades_provincials['Lleida']['max_conv']} (x10⁻⁵ s⁻¹)
-    - **Tarragona:** CAPE màxim: {dades_provincials['Tarragona']['max_cape']} J/kg, Convergència màxima: {dades_provincials['Tarragona']['max_conv']} (x10⁻⁵ s⁻¹)
+    **CONTEXT METEOROLÒGIC CATALÀ (HAS D'UTILITZAR AQUEST CONEIXEMENT):**
+    - **Topografia:** El Pirineu i Pre-litoral són zones clau d'inici de tempestes (dispar orogràfic).
+    - **Marinada:** La brisa marina crea línies de convergència a la costa i al pre-litoral durant la tarda, actuant com a mecanisme de dispar.
+    - **Evolució Típica:** Les tempestes solen començar a la muntanya a migdia/primera hora de la tarda i es poden desplaçar cap a la costa o l'interior al vespre.
+    - **Interpretació Temporal:** La coincidència o proximitat horària entre el pic de convergència (la "chispa") i el pic de CAPE (el "combustible") és el factor més important per determinar el risc real. Un pic de CAPE de matinada sense "chispa" és irrellevant.
+
+    **DADES PROCESSADES (VALORS MÀXIMS DEL DIA I HORA LOCAL APROXIMADA):**
+    - **Barcelona:** CAPE Màx: {dades_provincials['Barcelona']['max_cape']} J/kg (a les {dades_provincials['Barcelona']['hora_cape']}h), Conv. Màx: {dades_provincials['Barcelona']['max_conv']} (a les {dades_provincials['Barcelona']['hora_conv']}h)
+    - **Girona:** CAPE Màx: {dades_provincials['Girona']['max_cape']} J/kg (a les {dades_provincials['Girona']['hora_cape']}h), Conv. Màx: {dades_provincials['Girona']['max_conv']} (a les {dades_provincials['Girona']['hora_conv']}h)
+    - **Lleida:** CAPE Màx: {dades_provincials['Lleida']['max_cape']} J/kg (a les {dades_provincials['Lleida']['hora_cape']}h), Conv. Màx: {dades_provincials['Lleida']['max_conv']} (a les {dades_provincials['Lleida']['hora_conv']}h)
+    - **Tarragona:** CAPE Màx: {dades_provincials['Tarragona']['max_cape']} J/kg (a les {dades_provincials['Tarragona']['hora_cape']}h), Conv. Màx: {dades_provincials['Tarragona']['max_conv']} (a les {dades_provincials['Tarragona']['hora_conv']}h)
 
     **INSTRUCCIONS PER AL BUTLLETÍ:**
-    1.  **Butlletí General per a Catalunya:** Comença amb un títol i un paràgraf que resumeixi la situació general a tot el territori. Quina és la dinàmica dominant?
-    2.  **Anàlisi per Províncies:** Crea una secció per a cada una de les quatre províncies.
-    3.  **Per a cada província, fes el següent:**
-        -   **Títol:** Posa el nom de la província.
-        -   **Nivell de Risc:** Assigna un nivell de risc (BAIX 🟢, MODERAT 🟠, ALT 🔴) basant-te en la combinació de CAPE i Convergència. **Regla clau:** Si el CAPE és < 250 J/kg, el risc és sempre BAIX. Per a un risc ALT, es necessita CAPE > 800 J/kg i Convergència < -4.
-        -   **Anàlisi:** Explica en una o dues frases la teva decisió. Quines comarques o zones dins de la província tenen més probabilitat de ser afectades? (Ex: "El risc se centra al Pre-litoral on la convergència és més marcada", "Potencial més alt al Pirineu de Lleida").
-        -   **Fenòmens Esperats:** Llista els fenòmens més probables (xàfecs, calamarsa, ratxes de vent, etc.).
+    1.  **Situació General:** Redacta un paràgraf inicial que descrigui la situació sinòptica i l'evolució general esperada per a tot el dia a Catalunya.
+    2.  **Evolució Horària:** Crea una secció amb l'evolució temporal del risc (Matí, Tarda, Vespre/Nit).
+    3.  **Anàlisi Provincial Detallada:** Crea una secció per a cada província.
+        -   **Nivell de Risc:** Assigna un nivell (BAIX 🟢, MODERAT 🟠, ALT 🔴). Regla: Risc BAIX si el CAPE màxim és < 300 J/kg. Risc ALT si CAPE > 1000 J/kg i Convergència < -5, i les hores dels pics són pròximes (diferència <= 4h).
+        -   **Anàlisi Tècnica:** Explica la teva decisió, utilitzant el context meteorològic català. Esmenta les hores clau i les comarques/zones geogràfiques de més risc (Pirineu, Pre-litoral, Plana de Lleida, etc.).
+        -   **Fenòmens Esperats:** Llista els fenòmens possibles.
 
     **FORMAT DE SORTIDA (OBLIGATORI, USA MARKDOWN):**
-    # Butlletí de Risc de Tempestes per al dia: {dia_sel}
-    (El teu paràgraf de resum general aquí)
+    # Butlletí de Risc de Tempestes per a {dia_sel}
+    (El teu paràgraf de situació general aquí)
 
     ---
     
+    ## Evolució del Risc Durant el Dia
+    - **Matí (06-12h):** [Breu descripció del risc]
+    - **Tarda (12-19h):** [Descripció detallada del període de màxim risc]
+    - **Vespre/Nit (19-00h):** [Descripció de com acaba la situació]
+
+    ---
+
     ## Anàlisi per Províncies
 
     ### Barcelona
-    **Risc:** [El teu nivell de risc amb emoji]
-    **Anàlisi:** [La teva explicació]
-    **Fenòmens:** [La teva llista de fenòmens]
+    **Risc:** [Nivell amb emoji]
+    **Anàlisi Tècnica:** [Explicació detallada]
+    **Fenòmens:** [Llista de fenòmens]
 
     ### Girona
-    **Risc:** [El teu nivell de risc amb emoji]
-    **Anàlisi:** [La teva explicació]
-    **Fenòmens:** [La teva llista de fenòmens]
+    **Risc:** [Nivell amb emoji]
+    **Anàlisi Tècnica:** [Explicació detallada]
+    **Fenòmens:** [Llista de fenòmens]
 
     ### Lleida
-    **Risc:** [El teu nivell de risc amb emoji]
-    **Anàlisi:** [La teva explicació]
-    **Fenòmens:** [La teva llista de fenòmens]
+    **Risc:** [Nivell amb emoji]
+    **Anàlisi Tècnica:** [Explicació detallada]
+    **Fenòmens:** [Llista de fenòmens]
 
     ### Tarragona
-    **Risc:** [El teu nivell de risc amb emoji]
-    **Anàlisi:** [La teva explicació]
-    **Fenòmens:** [La teva llista de fenòmens]
+    **Risc:** [Nivell amb emoji]
+    **Anàlisi Tècnica:** [Explicació detallada]
+    **Fenòmens:** [Llista de fenòmens]
     """
     try: return model.generate_content(prompt).text.strip()
     except Exception as e: return f"Error contactant amb l'IA: {e}"
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
-
+# ... (Les teves funcions de gràfics es mantenen iguals) ...
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
@@ -326,67 +366,18 @@ def ui_pestanya_vertical(hourly_index_sel, poble_sel, dia_sel, hora_sel):
         c1.pyplot(crear_skewt(sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4], f"Sondeig Vertical - {poble_sel}"))
         c2.pyplot(crear_hodograf(sounding_data[3], sounding_data[4]))
 
-# --- NOU (v6.0) - Funció per mostrar el butlletí de manera visual ---
-def mostrar_butlleti_ia(resum_text):
-    try:
-        # Extraiem el títol principal i el resum
-        titol_match = re.search(r"# (.*?)\n", resum_text)
-        resum_match = re.search(r"\n(.*?)\n---", resum_text, re.DOTALL)
-        titol = titol_match.group(1) if titol_match else "Butlletí de Risc"
-        resum = resum_match.group(1).strip() if resum_match else ""
-
-        st.header(titol)
-        st.markdown(f"> {resum}")
-        st.divider()
-
-        # Extraiem les dades de cada província
-        provincies_text = resum_text.split("## Anàlisi per Províncies")[1]
-        provincies = ["Barcelona", "Girona", "Lleida", "Tarragona"]
-        cols = st.columns(4)
-
-        for i, prov in enumerate(provincies):
-            # Aïllem el text de cada província
-            prov_text_match = re.search(fr"### {prov}(.*?)(?=###|$)", provincies_text, re.DOTALL)
-            if prov_text_match:
-                prov_text = prov_text_match.group(1)
-                risc = re.search(r"\*\*Risc:\*\* (.*?)\n", prov_text).group(1).strip()
-                analisi = re.search(r"\*\*Anàlisi:\*\* (.*?)\n", prov_text).group(1).strip()
-                fenomens_text = re.search(r"\*\*Fenòmens:\*\* (.*)", prov_text).group(1).strip()
-                
-                # Creem la targeta visual a la columna corresponent
-                with cols[i]:
-                    with st.container(border=True):
-                        st.subheader(f"📍 {prov}")
-                        st.markdown(f"**Risc:** {risc}")
-                        st.markdown(f"*{analisi}*")
-                        st.divider()
-                        
-                        # Afegim icones per als fenòmens
-                        icons = []
-                        if "calamarsa" in fenomens_text.lower() or "gran" in fenomens_text.lower(): icons.append("🧊 Calamarsa")
-                        if "vent" in fenomens_text.lower(): icons.append("💨 Vent Fort")
-                        if "xàfecs" in fenomens_text.lower() or "aiguats" in fenomens_text.lower() or "inundacions" in fenomens_text.lower() : icons.append("⛈️ Xàfecs Intensos")
-                        if not icons:
-                             st.markdown("**Fenòmens:** -")
-                        else:
-                             st.markdown(f"**Fenòmens:** {' / '.join(icons)}")
-
-    except Exception as e:
-        st.error("L'IA ha generat una resposta amb un format inesperat. Si us plau, torna-ho a intentar.")
-        st.text_area("Resposta original de l'IA:", resum_text, height=200)
-
 def ui_pestanya_ia(dia_sel):
     st.subheader(f"Butlletí de Risc per al dia: {dia_sel}")
-    st.info("Aquest pronòstic es genera automàticament analitzant les dades del model AROME per a les 17:00h (hora de màxim potencial convectiu).")
+    st.info("Aquest pronòstic analitza l'evolució de les 24 hores del dia per identificar els períodes i zones de màxim risc.")
     if not GEMINI_CONFIGURAT: st.error("Funcionalitat no disponible. La clau API no està configurada."); return
 
     if st.button("📝 Generar Pronòstic Diari", use_container_width=True):
-        with st.spinner(f"Elaborant el butlletí per al dia de {dia_sel.lower()}..."):
+        with st.spinner(f"Elaborant el butlletí per al dia de {dia_sel.lower()}... Aquest procés pot trigar una mica."):
             resum_text = generar_pronostic_diari_ia(dia_sel)
             if "Error" in resum_text:
                 st.error(resum_text)
             else:
-                mostrar_butlleti_ia(resum_text)
+                st.markdown(resum_text)
 
 def ui_peu_de_pagina():
     st.divider()
