@@ -44,7 +44,6 @@ CIUTATS_CATALUNYA = {
 MAP_EXTENT = [0, 3.5, 40.4, 43]
 PRESS_LEVELS = sorted([1000, 950, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 
-# NOU: Definicions geogràfiques de les províncies per a l'anàlisi de la IA
 PROVINCIES_BOUNDS = {
     "Barcelona": [1.3, 2.5, 41.1, 42.0],
     "Girona": [2.0, 3.3, 41.8, 42.6],
@@ -56,7 +55,6 @@ PROVINCIES_BOUNDS = {
 
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
-    # Aquesta funció es manté igual, és robusta.
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS]
@@ -83,9 +81,9 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(variables, hourly_index):
-    # Augmentem la resolució de la graella per a una millor anàlisi provincial
     try:
-        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 20), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 20)
+        # --- LÍNIA CORREGIDA --- Reduïda la resolució per evitar error 414
+        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 15), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 15)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
         params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
         responses = openmeteo.weather_api(API_URL, params=params)
@@ -99,24 +97,19 @@ def carregar_dades_mapa(variables, hourly_index):
         return output, None
     except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
 
-# --- SECCIÓ DE LA IA TOTALMENT RECONSTRUÏDA (v5.0) ---
+# --- SECCIÓ DE LA IA (v5.1) ---
 
 @st.cache_data(ttl=3600)
 def generar_pronostic_diari_ia(dia_sel):
-    """Funció principal de la IA. Prepara totes les dades provincials i genera el butlletí."""
-    
-    # 1. Fixem l'hora d'anàlisi a la tarda (17:00h local)
     target_date = datetime.now(TIMEZONE).date() + timedelta(days=1) if dia_sel == "Demà" else datetime.now(TIMEZONE).date()
     local_dt = TIMEZONE.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=17))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_17h = max(0, int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600))
 
-    # 2. Carreguem les dades del mapa per a aquesta hora
     variables_mapa = ["cape", "wind_speed_925hPa", "wind_direction_925hPa"]
     map_data, error = carregar_dades_mapa(variables_mapa, hourly_index_17h)
     if error: return f"No s'han pogut carregar les dades per a l'anàlisi diària: {error}"
 
-    # 3. Processem les dades per a cada província
     dades_provincials = {}
     try:
         lons, lats = np.array(map_data['lons']), np.array(map_data['lats'])
@@ -126,19 +119,13 @@ def generar_pronostic_diari_ia(dia_sel):
 
         for provincia, bounds in PROVINCIES_BOUNDS.items():
             mask = (lons >= bounds[0]) & (lons <= bounds[1]) & (lats >= bounds[2]) & (lats <= bounds[3])
-            
-            if not np.any(mask): # Si no hi ha punts dins la província, saltem
+            if not np.any(mask):
                 dades_provincials[provincia] = {"max_cape": 0, "max_conv": 0}
                 continue
-
-            prov_lons, prov_lats = lons[mask], lats[mask]
-            prov_cape, prov_u, prov_v = cape[mask], u_ms[mask], v_ms[mask]
-            
+            prov_lons, prov_lats, prov_cape, prov_u, prov_v = lons[mask], lats[mask], cape[mask], u_ms[mask], v_ms[mask]
             max_cape_prov = np.max(prov_cape)
-            
-            # Calculem la convergència només per a la província
-            if len(prov_lons) > 3: # Necessitem prous punts per interpolar
-                grid_lon, grid_lat = np.meshgrid(np.linspace(bounds[0], bounds[1], 15), np.linspace(bounds[2], bounds[3], 15))
+            if len(prov_lons) > 3:
+                grid_lon, grid_lat = np.meshgrid(np.linspace(bounds[0], bounds[1], 10), np.linspace(bounds[2], bounds[3], 10))
                 grid_u = griddata((prov_lons, prov_lats), prov_u, (grid_lon, grid_lat), method='cubic', fill_value=0)
                 grid_v = griddata((prov_lons, prov_lats), prov_v, (grid_lon, grid_lat), method='cubic', fill_value=0)
                 dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
@@ -146,15 +133,12 @@ def generar_pronostic_diari_ia(dia_sel):
                 max_conv_prov = np.nanmin(divergence)
             else:
                 max_conv_prov = 0
-
             dades_provincials[provincia] = {"max_cape": int(max_cape_prov), "max_conv": round(max_conv_prov, 2)}
     
     except Exception as e: return f"Error en el processament provincial: {e}"
 
-    # 4. Construïm el prompt i cridem la IA
     if not GEMINI_CONFIGURAT: return "Error: La clau API de Google no està configurada."
     model = genai.GenerativeModel('gemini-1.5-flash')
-
     prompt = f"""
     Ets un predictor expert del Servei Meteorològic de Catalunya. La teva tasca és redactar un butlletí de risc de tempestes per al dia {dia_sel}, basat en les dades del model AROME a les 17:00h. Sigues clar, concís i professional.
 
@@ -205,12 +189,13 @@ def generar_pronostic_diari_ia(dia_sel):
     except Exception as e: return f"Error contactant amb l'IA: {e}"
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
-# ... (Les funcions de visualització es mantenen igual que a la versió 4.2) ...
+
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0); ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5); return fig, ax
+
 def crear_mapa_escalar(lons, lats, data, titol, cmap, levels, unitat, timestamp_str, extend='max'):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
@@ -218,14 +203,17 @@ def crear_mapa_escalar(lons, lats, data, titol, cmap, levels, unitat, timestamp_
     norm = BoundaryNorm(levels, ncolors=plt.get_cmap(cmap).N, clip=True)
     ax.contourf(grid_lon, grid_lat, grid_data, levels=levels, cmap=cmap, norm=norm, alpha=0.8, zorder=2, extend=extend)
     if len(levels) > 1:
-        contorns = ax.contour(grid_lon, grid_lat, grid_data, levels=levels[::(len(levels)//5) if len(levels)>5 else 1], colors='black', linewidths=0.7, alpha=0.9, zorder=3)
+        step = (len(levels)//5) if len(levels)>5 else 1
+        contorns = ax.contour(grid_lon, grid_lat, grid_data, levels=levels[::step], colors='black', linewidths=0.7, alpha=0.9, zorder=3)
         ax.clabel(contorns, inline=True, fontsize=8, fmt='%1.0f')
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, orientation='vertical', shrink=0.7)
     cbar.set_label(f"{titol} ({unitat})"); ax.set_title(f"{titol}\n{timestamp_str}", weight='bold', fontsize=16); return fig
+    
 def get_wind_colormap():
     colors=['#FFFFFF','#E0F5FF','#B9E8FF','#87D7F9','#5AC7E3','#2DB8CC','#3FC3A3','#5ABF7A','#75BB51','#98D849','#C2E240','#EBEC38','#F5D03A','#FDB43D','#F7983F','#E97F41','#D76643','#C44E45','#B23547','#A22428','#881015','#6D002F','#860057','#A0007F','#B900A8','#D300D0','#E760E7','#F6A9F6','#FFFFFF','#CCCCCC']
     levels = list(range(0, 95, 5)) + list(range(100, 211, 10)); cmap = ListedColormap(colors, name='wind_speed_custom')
     norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True); return cmap, norm, levels
+
 def crear_mapa_500hpa(map_data, timestamp_str):
     fig, ax = crear_mapa_base(); lons, lats = map_data['lons'], map_data['lats']
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
@@ -237,6 +225,7 @@ def crear_mapa_500hpa(map_data, timestamp_str):
     u, v = mpcalc.wind_components(np.array(map_data['wind_speed_500hPa'])*units('km/h'), np.array(map_data['wind_direction_500hPa'])*units.degrees)
     ax.barbs(lons[::5], lats[::5], u.to('kt').m[::5], v.to('kt').m[::5], length=5, zorder=6, transform=ccrs.PlateCarree())
     ax.set_title(f"Anàlisi a 500 hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
+
 def crear_mapa_vents_velocitat(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base(); cmap, norm, levels = get_wind_colormap()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
@@ -249,6 +238,7 @@ def crear_mapa_vents_velocitat(lons, lats, speed_data, dir_data, nivell, timesta
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=2.5, arrowsize=0.6, zorder=5)
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=levels[::2])
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
+
 def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, lat_sel, lon_sel, nom_poble_sel, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
@@ -264,6 +254,7 @@ def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, lat_sel, l
     ax.plot(lon_sel, lat_sel, 'o', markerfacecolor='yellow', markeredgecolor='black', markersize=8, transform=ccrs.Geodetic(), zorder=6)
     txt = ax.text(lon_sel + 0.05, lat_sel, nom_poble_sel, transform=ccrs.Geodetic(), zorder=7, fontsize=10, weight='bold')
     txt.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')]); ax.set_title(f"Flux i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
+
 def crear_skewt(p, T, Td, u, v, titol):
     fig = plt.figure(figsize=(9, 9), dpi=150); skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
     skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2, label='Temperatura'); skew.plot(p, Td, 'g', lw=2, label='Punt de Rosada')
@@ -273,10 +264,12 @@ def crear_skewt(p, T, Td, u, v, titol):
     skew.shade_cape(p, T, prof, color='red', alpha=0.3); skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
     skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_title(titol, weight='bold', fontsize=14)
     skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)"); skew.ax.legend(); return fig
+
 def crear_hodograf(u, v):
     fig, ax = plt.subplots(1, 1, figsize=(6, 6), dpi=150); h = Hodograph(ax, component_range=60.)
     h.add_grid(increment=20, color='gray'); h.plot(u.to('kt'), v.to('kt'), color='red', linewidth=2)
     ax.set_title("Hodògraf", weight='bold'); return fig
+
 def mostrar_imatge_temps_real(tipus):
     if tipus == "Radar": url, caption = "https://www.meteociel.fr/cartes_obs/radar/lastradar_sp_ne.gif", "Radar. Font: Meteociel"
     else:
@@ -304,11 +297,10 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
         with c1:
             opts = {"CAPE":"cape","Convergència":"conv","500hPa":"500hpa","Vent 300hPa":"wind_300","Vent 700hPa":"wind_700","Humitat 700hPa":"rh_700"}
             mapa_sel = st.selectbox("Capa del mapa:", opts.keys()); map_key, err = opts[mapa_sel], None
-            # ... (Lògica de mapes, es manté igual que a la v4.2)
             if map_key == "cape":
                 data, err = carregar_dades_mapa(["cape"], hourly_index_sel)
                 if data:
-                    max_cape = np.max(data['cape']) if data.get('cape') else 0
+                    max_cape = np.max(data['cape']) if data.get('cape') and len(data['cape']) > 0 else 0
                     levels = np.arange(100, (np.ceil(max_cape/250)*250)+1 if max_cape>250 else 501, 100) if max_cape > 100 else np.arange(0, 101, 20)
                     st.pyplot(crear_mapa_escalar(data['lons'], data['lats'], data['cape'], "CAPE", "plasma", levels, "J/kg", timestamp_str))
             elif map_key == "conv":
