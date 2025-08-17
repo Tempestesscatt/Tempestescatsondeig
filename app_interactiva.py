@@ -97,20 +97,21 @@ def carregar_dades_mapa(variables, hourly_index):
         return output, None
     except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
 
+# --- CORREGIT: El decorator @st.cache_data necessita que tots els arguments que canvien estiguin presents ---
 @st.cache_data(ttl=3600)
-def preparar_dades_per_ia(hourly_index_sel):
+def preparar_dades_per_ia(_hourly_index_sel):
     dades_ia = {}
     variables_mapa = ["cape", "wind_speed_925hPa", "wind_direction_925hPa"]
-    map_data, error_mapa = carregar_dades_mapa(variables_mapa, hourly_index_sel)
+    map_data, error_mapa = carregar_dades_mapa(variables_mapa, _hourly_index_sel)
     if not map_data: return None, f"Falten dades del mapa ({error_mapa})"
-    if 'wind_speed_925hPa' in map_data and 'cape' in map_data:
+    if 'wind_speed_925hPa' in map_data and 'cape' in map_data and map_data['wind_speed_925hPa']:
         try:
             lons, lats, cape_vals = np.array(map_data['lons']), np.array(map_data['lats']), np.array(map_data['cape'])
             speeds_kmh = np.array(map_data['wind_speed_925hPa']) * units('km/h'); dirs_deg = np.array(map_data['wind_direction_925hPa']) * units.degrees
             u, v = mpcalc.wind_components(speeds_kmh, dirs_deg)
             grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 50), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 50))
-            grid_u = griddata((lons, lats), u.to('m/s').m, (grid_lon, grid_lat), method='cubic')
-            grid_v = griddata((lons, lats), v.to('m/s').m, (grid_lon, grid_lat), method='cubic')
+            grid_u = griddata((lons, lats), u.to('m/s').m, (grid_lon, grid_lat), method='cubic', fill_value=0)
+            grid_v = griddata((lons, lats), v.to('m/s').m, (grid_lon, grid_lat), method='cubic', fill_value=0)
             dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
             divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
             dades_ia['max_conv'] = np.nanmin(divergence)
@@ -118,12 +119,13 @@ def preparar_dades_per_ia(hourly_index_sel):
             idx_2d = np.unravel_index(idx_min, divergence.shape)
             lat_focus, lon_focus = grid_lat[idx_2d], grid_lon[idx_2d]
             dades_ia['lat_focus'] = lat_focus; dades_ia['lon_focus'] = lon_focus
-            cape_al_focus = griddata((lons, lats), cape_vals, (lon_focus, lat_focus), method='cubic')
+            cape_al_focus = griddata((lons, lats), cape_vals, (lon_focus, lat_focus), method='cubic', fill_value=0)
             dades_ia['cape_al_focus'] = cape_al_focus if not np.isnan(cape_al_focus) else 0
         except Exception as e: return None, f"Error calculant la co-localització: {e}"
     else: return None, "Falten dades de vent o CAPE per a l'anàlisi d'IA."
     return dades_ia, None
 
+# --- CORREGIT: El decorator @st.cache_data necessita que tots els arguments que canvien estiguin presents ---
 @st.cache_data(ttl=3600)
 def generar_resum_ia(_dades_ia, _timestamp_str):
     if not GEMINI_CONFIGURAT: return "Error: La clau API de Google no està configurada."
@@ -138,7 +140,7 @@ def generar_resum_ia(_dades_ia, _timestamp_str):
 
     **REGLES OBLIGATÒRIES:**
     1.  **Co-localització és clau:** Necessites "chispa" i "combustible" junts.
-    2.  **RISC BAIX:** Si el CAPE al focus és < 250 J/kg, el risc és BAIX, independentment de la convergència. Justifica que "falta energia".
+    2.  **RISC BAIX:** Si el CAPE al focus és < 250 J/kg, el risc és BAIX. Justifica que "falta energia".
     3.  **RISC ALT:** Si la Convergència és forta (< -5) I el CAPE al focus és significatiu (> 500 J/kg), el risc és ALT.
     4.  **RISC MODERAT:** La resta de casos.
     5.  **Identifica Poblacions:** Anomena 3-4 ciutats/pobles importants a prop de les coordenades del Focus de Risc.
@@ -149,9 +151,7 @@ def generar_resum_ia(_dades_ia, _timestamp_str):
     ZONES: [Llista de 3-4 poblacions]
     ANÀLISI: [Una única frase de justificació]
     """
-    try:
-        response = model.generate_content(prompt)
-        return response.text.strip()
+    try: return model.generate_content(prompt).text.strip()
     except Exception as e: return f"Error contactant amb l'IA: {e}"
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
@@ -162,16 +162,18 @@ def crear_mapa_base():
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0); ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5); return fig, ax
 
+# --- CORREGIT: Restaurada la línia ax.clabel per a les isolínies ---
 def crear_mapa_escalar(lons, lats, data, titol, cmap, levels, unitat, timestamp_str, extend='max'):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
     grid_data = griddata((lons, lats), data, (grid_lon, grid_lat), method='cubic')
     norm = BoundaryNorm(levels, ncolors=plt.get_cmap(cmap).N, clip=True)
     ax.contourf(grid_lon, grid_lat, grid_data, levels=levels, cmap=cmap, norm=norm, alpha=0.8, zorder=2, extend=extend)
+    contorns = ax.contour(grid_lon, grid_lat, grid_data, levels=levels[::(len(levels)//5)], colors='black', linewidths=0.7, alpha=0.9, zorder=3)
+    ax.clabel(contorns, inline=True, fontsize=8, fmt='%1.0f') # LÍNIA RESTAURADA
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, orientation='vertical', shrink=0.7)
     cbar.set_label(f"{titol} ({unitat})"); ax.set_title(f"{titol}\n{timestamp_str}", weight='bold', fontsize=16); return fig
     
-# ... (la resta de funcions de gràfics romanen iguals) ...
 def get_wind_colormap():
     colors=['#FFFFFF','#E0F5FF','#B9E8FF','#87D7F9','#5AC7E3','#2DB8CC','#3FC3A3','#5ABF7A','#75BB51','#98D849','#C2E240','#EBEC38','#F5D03A','#FDB43D','#F7983F','#E97F41','#D76643','#C44E45','#B23547','#A22428','#881015','#6D002F','#860057','#A0007F','#B900A8','#D300D0','#E760E7','#F6A9F6','#FFFFFF','#CCCCCC']
     levels = list(range(0, 95, 5)) + list(range(100, 211, 10)); cmap = ListedColormap(colors, name='wind_speed_custom')
@@ -180,10 +182,10 @@ def crear_mapa_500hpa(map_data, timestamp_str):
     fig, ax = crear_mapa_base(); lons, lats = map_data['lons'], map_data['lats']
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
     grid_temp = griddata((lons, lats), map_data['temperature_500hPa'], (grid_lon, grid_lat), method='cubic'); temp_levels = np.arange(-30, 1, 2)
-    cf = ax.contourf(grid_lon, grid_lat, grid_temp, levels=temp_levels, cmap='coolwarm', extend='min', alpha=0.7, zorder=2)
-    cbar = fig.colorbar(cf, ax=ax, orientation='vertical', shrink=0.7); cbar.set_label("Temperatura a 500 hPa (°C)")
+    ax.contourf(grid_lon, grid_lat, grid_temp, levels=temp_levels, cmap='coolwarm', extend='min', alpha=0.7, zorder=2)
+    cbar = fig.colorbar(plt.cm.ScalarMappable(cmap='coolwarm', norm=BoundaryNorm(temp_levels, ncolors=plt.get_cmap('coolwarm').N)), ax=ax, orientation='vertical', shrink=0.7); cbar.set_label("Temperatura a 500 hPa (°C)")
     cs_temp = ax.contour(grid_lon, grid_lat, grid_temp, levels=temp_levels, colors='gray', linewidths=0.8, linestyles='--', zorder=3)
-    ax.clabel(cs_temp, inline=True, fontsize=7, fmt='%1.0f°C')
+    ax.clabel(cs_temp, inline=True, fontsize=7, fmt='%1.0f°C') # LÍNIA RESTAURADA
     u, v = mpcalc.wind_components(np.array(map_data['wind_speed_500hPa'])*units('km/h'), np.array(map_data['wind_direction_500hPa'])*units.degrees)
     ax.barbs(lons[::5], lats[::5], u.to('kt').m[::5], v.to('kt').m[::5], length=5, zorder=6, transform=ccrs.PlateCarree())
     ax.set_title(f"Anàlisi a 500 hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
@@ -192,6 +194,8 @@ def crear_mapa_vents_velocitat(lons, lats, speed_data, dir_data, nivell, timesta
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
     ax.contourf(grid_lon, grid_lat, grid_speed, levels=levels, cmap=cmap, norm=norm, alpha=0.8, zorder=2, extend='max')
+    cs_speed = ax.contour(grid_lon, grid_lat, grid_speed, levels=np.arange(20, 201, 20), colors='gray', linestyles='--', linewidths=0.8, zorder=3)
+    ax.clabel(cs_speed, inline=True, fontsize=7, fmt='%1.0f') # LÍNIA RESTAURADA
     speeds_ms=np.array(speed_data)*units('km/h'); dirs_deg=np.array(dir_data)*units.degrees; u,v=mpcalc.wind_components(speeds_ms,dirs_deg)
     grid_u = griddata((lons,lats), u.to('m/s').m, (grid_lon,grid_lat), method='cubic'); grid_v = griddata((lons,lats), v.to('m/s').m, (grid_lon,grid_lat), method='cubic')
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=2.5, arrowsize=0.6, zorder=5)
@@ -206,8 +210,8 @@ def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, lat_sel, l
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u*units('m/s'), grid_v*units('m/s'), dx=dx, dy=dy) * 1e5
     levels = np.linspace(-20, 20, 15)
-    cf = ax.contourf(grid_lon, grid_lat, divergence, levels=levels, cmap='coolwarm_r', alpha=0.6, zorder=2, extend='both')
-    cbar = fig.colorbar(cf, ax=ax, orientation='vertical', shrink=0.7); cbar.set_label('Convergència (vermell) / Divergència (blau) [x10⁻⁵ s⁻¹]')
+    ax.contourf(grid_lon, grid_lat, divergence, levels=levels, cmap='coolwarm_r', alpha=0.6, zorder=2, extend='both')
+    cbar = fig.colorbar(plt.cm.ScalarMappable(cmap='coolwarm_r', norm=BoundaryNorm(levels, ncolors=plt.get_cmap('coolwarm_r').N)), ax=ax, orientation='vertical', shrink=0.7); cbar.set_label('Convergència (vermell) / Divergència (blau) [x10⁻⁵ s⁻¹]')
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.5, density=5.0, arrowsize=0.5, zorder=4)
     ax.plot(lon_sel, lat_sel, 'o', markerfacecolor='yellow', markeredgecolor='black', markersize=8, transform=ccrs.Geodetic(), zorder=6)
     txt = ax.text(lon_sel + 0.05, lat_sel, nom_poble_sel, transform=ccrs.Geodetic(), zorder=7, fontsize=10, weight='bold')
@@ -250,24 +254,28 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
     with st.spinner("Actualitzant mapes..."):
         c1, c2 = st.columns([2.5, 1.5])
         with c1:
-            opts = {"CAPE":"cape","Convergència":"conv","500hPa":"500hPa","Vent 300hPa":"w300","Vent 700hPa":"w700","Humitat 700hPa":"rh700"}
+            opts = {"CAPE":"cape","Convergència":"conv","500hPa":"500hpa","Vent 300hPa":"wind_300","Vent 700hPa":"wind_700","Humitat 700hPa":"rh_700"}
             mapa_sel = st.selectbox("Capa del mapa:", opts.keys()); map_key, err = opts[mapa_sel], None
             if map_key == "cape":
-                data, err=carregar_dades_mapa(["cape"], hourly_index_sel)
-                if data: max_cape=np.max(data['cape']) if data['cape'] else 0
-                if data: st.pyplot(crear_mapa_escalar(data['lons'],data['lats'],data['cape'],"CAPE","plasma",np.arange(100,(np.ceil(max_cape/250)*250)+1 if max_cape>250 else 501,100),"J/kg",timestamp_str))
+                data, err = carregar_dades_mapa(["cape"], hourly_index_sel)
+                if data:
+                    max_cape = np.max(data['cape']) if data.get('cape') else 0
+                    levels = np.arange(100, (np.ceil(max_cape/250)*250)+1 if max_cape>250 else 501, 100)
+                    st.pyplot(crear_mapa_escalar(data['lons'], data['lats'], data['cape'], "CAPE", "plasma", levels, "J/kg", timestamp_str))
             elif map_key == "conv":
                 lvl = st.selectbox("Nivell:", options=[1000, 950, 925, 850], format_func=lambda x: f"{x} hPa")
-                v = [f"wind_speed_{lvl}hPa",f"wind_direction_{lvl}hPa"]; data,err=carregar_dades_mapa(v,hourly_index_sel)
+                v = [f"wind_speed_{lvl}hPa", f"wind_direction_{lvl}hPa"]; data, err=carregar_dades_mapa(v, hourly_index_sel)
                 if data: st.pyplot(crear_mapa_convergencia(data['lons'],data['lats'],data[v[0]],data[v[1]],lvl,lat_sel,lon_sel,poble_sel,timestamp_str))
-            elif "hPa" in map_key:
-                v = [f"temperature_{map_key}",f"wind_speed_{map_key}",f"wind_direction_{map_key}"] if map_key=="500hPa" else [f"wind_speed_{map_key}",f"wind_direction_{map_key}"]
+            elif map_key == "500hpa":
+                v = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]; data, err=carregar_dades_mapa(v, hourly_index_sel)
+                if data: st.pyplot(crear_mapa_500hpa(data, timestamp_str))
+            elif map_key in ["wind_300", "wind_700"]:
+                lvl = int(map_key.replace("wind_", "")); v = [f"wind_speed_{lvl}hPa", f"wind_direction_{lvl}hPa"]
                 data, err=carregar_dades_mapa(v, hourly_index_sel)
-                if data and map_key=="500hPa": st.pyplot(crear_mapa_500hpa(data,timestamp_str))
-                elif data: st.pyplot(crear_mapa_vents_velocitat(data['lons'], data['lats'], data[v[0]], data[v[1]], int(map_key.replace("hPa","")), timestamp_str))
-            elif map_key=="rh700":
+                if data: st.pyplot(crear_mapa_vents_velocitat(data['lons'], data['lats'], data[v[0]], data[v[1]], lvl, timestamp_str))
+            elif map_key == "rh_700":
                 data, err=carregar_dades_mapa(["relative_humidity_700hPa"], hourly_index_sel)
-                if data: st.pyplot(crear_mapa_escalar(data['lons'],data['lats'],data['relative_humidity_700hPa'],"Humitat Relativa 700hPa","Greens",np.arange(50,101,5),"%",timestamp_str))
+                if data: st.pyplot(crear_mapa_escalar(data['lons'], data['lats'], data['relative_humidity_700hPa'], "Humitat Relativa 700hPa", "Greens", np.arange(50,101,5), "%", timestamp_str))
             if err: st.error(f"Error en carregar el mapa: {err}")
         with c2: st.subheader("Temps Real"); mostrar_imatge_temps_real(st.radio("Vista:", ("Satèl·lit", "Radar"), horizontal=True, label_visibility="collapsed"))
 
@@ -285,7 +293,6 @@ def ui_pestanya_vertical(hourly_index_sel, poble_sel, dia_sel, hora_sel):
         c1.pyplot(crear_skewt(sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4], f"Sondeig Vertical - {poble_sel}"))
         c2.pyplot(crear_hodograf(sounding_data[3], sounding_data[4]))
 
-# --- MODIFICAT (v4.1) - Nova Pestanya IA amb Targetes Visuals ---
 def ui_pestanya_ia(hourly_index_sel, timestamp_str):
     st.subheader(f"Assistent d'Anàlisi per IA")
     if not GEMINI_CONFIGURAT: st.error("Funcionalitat no disponible. La clau API no està configurada."); return
@@ -296,39 +303,22 @@ def ui_pestanya_ia(hourly_index_sel, timestamp_str):
             if error: st.error(f"No s'ha pogut generar l'anàlisi: {error}"); return
             
             resum_text = generar_resum_ia(dades_ia, timestamp_str)
-            
-            # NOU: Parseig del text i creació de la targeta d'avís
             try:
-                avis = {}
-                for line in resum_text.splitlines():
-                    if "RISC:" in line: avis['risc'] = line.split(":", 1)[1].strip()
-                    elif "ZONES:" in line: avis['zones'] = line.split(":", 1)[1].strip()
-                    elif "ANÀLISI:" in line: avis['analisi'] = line.split(":", 1)[1].strip()
-                    elif "TÍTOL:" in line: avis['titol'] = line.split(":", 1)[1].strip()
-
+                avis = {line.split(":", 1)[0].strip(): line.split(":", 1)[1].strip() for line in resum_text.splitlines() if ":" in line}
+                titol = avis.get('TÍTOL', 'AVÍS DE TEMPESTES')
+                risc = avis.get('RISC', 'INDETERMINAT')
                 with st.container(border=True):
-                    if "ALT" in avis.get('risc', ''):
-                        col1, col2 = st.columns([0.1, 0.9])
-                        with col1: st.markdown("<h1 style='text-align: center; color: red;'>🔴</h1>", unsafe_allow_html=True)
-                        with col2: st.error(f"**{avis.get('titol', 'AVÍS DE TEMPESTES')}**")
-                    elif "MODERAT" in avis.get('risc', ''):
-                        col1, col2 = st.columns([0.1, 0.9])
-                        with col1: st.markdown("<h1 style='text-align: center; color: orange;'>🟠</h1>", unsafe_allow_html=True)
-                        with col2: st.warning(f"**{avis.get('titol', 'AVÍS DE TEMPESTES')}**")
-                    else: # BAIX
-                        col1, col2 = st.columns([0.1, 0.9])
-                        with col1: st.markdown("<h1 style='text-align: center; color: green;'>🟢</h1>", unsafe_allow_html=True)
-                        with col2: st.success(f"**{avis.get('titol', 'AVÍS DE TEMPESTES')}**")
-                    
-                    st.markdown(f"**Nivell de Risc:** `{avis.get('risc', 'Indeterminat')}`")
-                    st.markdown(f"**📍 Zones de Major Probabilitat:** {avis.get('zones', 'Sense dades')}")
-                    st.markdown(f"**🔬 Anàlisi Directa:** *{avis.get('analisi', 'Sense dades')}*")
+                    color, icon = ("red", "🔴") if "ALT" in risc else (("orange", "🟠") if "MODERAT" in risc else ("green", "🟢"))
+                    c1,c2 = st.columns([0.1,0.9]); c1.markdown(f"<h1 style='text-align: center; color: {color};'>{icon}</h1>", unsafe_allow_html=True)
+                    if color=="red": c2.error(f"**{titol}**")
+                    elif color=="orange": c2.warning(f"**{titol}**")
+                    else: c2.success(f"**{titol}**")
+                    st.markdown(f"**Nivell de Risc:** `{risc}`")
+                    st.markdown(f"**📍 Zones de Major Probabilitat:** {avis.get('ZONES', 'Sense dades')}")
+                    st.markdown(f"**🔬 Anàlisi Directa:** *{avis.get('ANÀLISI', 'Sense dades')}*")
+            except Exception:
+                st.error("L'IA ha generat una resposta en un format invàlid. Reintentant..."); st.text_area("Resposta original de l'IA:", resum_text, height=150)
 
-            except Exception as e:
-                st.error("L'IA ha generat una resposta en un format invàlid. Reintentant...")
-                st.text_area("Resposta original de l'IA:", resum_text, height=150)
-
-# --- NOU (v4.1) - Funció de peu de pàgina restaurada ---
 def ui_peu_de_pagina():
     st.divider()
     st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades del model AROME via <a href='https://open-meteo.com/'>Open-Meteo</a> | Imatges via <a href='https://www.meteociel.fr/'>Meteociel</a> | Anàlisi IA per Google Gemini.</p>", unsafe_allow_html=True)
@@ -356,7 +346,6 @@ def main():
     with tab_vertical: ui_pestanya_vertical(hourly_index_sel, poble_sel, dia_sel, hora_sel)
     with tab_ia: ui_pestanya_ia(hourly_index_sel, timestamp_str)
     
-    # CRIDA A LA FUNCIÓ RESTAURADA
     ui_peu_de_pagina()
 
 if __name__ == "__main__":
