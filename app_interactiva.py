@@ -356,7 +356,6 @@ def generar_avis_visual(cape, shear, humitat):
             <p style='margin:0'>Sense alertes significatives</p>
         </div>
         """
-
 def ui_preguntes_meteo(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
     """Nova pestanya per fer preguntes a la IA"""
     st.subheader("❓ Fes preguntes sobre el temps")
@@ -371,7 +370,7 @@ def ui_preguntes_meteo(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_
                 resposta = generar_resum_ia(dades_ia, poble_sel, timestamp_str)
                 st.markdown(f"""
                 <div style='background:#f5f5f5; border-radius:10px; padding:1em; margin-top:1em'>
-                    <p style='font-size:1.1em; margin:0'>{resposta}</p>
+                    <p style='font-size:1.1em; margin:0; color: #333;'>{resposta}</p>
                 </div>
                 """, unsafe_allow_html=True)
     elif pregunta:
