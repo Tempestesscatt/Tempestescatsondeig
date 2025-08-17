@@ -23,9 +23,10 @@ import google.generativeai as genai
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
 
 try:
+    # Intenta configurar Gemini. Si falla, la funció d'IA es desactivarà.
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
     GEMINI_CONFIGURAT = True
-except:
+except (KeyError, AttributeError):
     GEMINI_CONFIGURAT = False
 
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
@@ -332,67 +333,15 @@ def mostrar_imatge_temps_real(tipus):
         else: st.warning(f"No s'ha pogut carregar la imatge del {tipus.lower()}. (Codi: {response.status_code})")
     except Exception as e: st.error(f"Error de xarxa en carregar la imatge del {tipus.lower()}.")
 
-# --- 3. NOVES FUNCIONS PER ALS AVISOS I PREGUNTES ---
-def generar_avis_visual(cape, shear, humitat):
-    """Genera avisos visuals amb emojis i colors"""
-    if cape > 2000 and shear > 15:
-        return f"""
-        <div style='background:#ffebee; border-left:6px solid #f44336; padding:1em; margin:1em 0; border-radius:0 8px 8px 0'>
-            <h3 style='color:#d32f2f; margin:0'>🌩️ <b>PERILL!</b> Tempestes fortes</h3>
-            <p style='margin:0.5em 0'>• Possible calamarsa<br>• Risc d'inundacions</p>
-        </div>
-        """
-    elif cape > 1000:
-        return f"""
-        <div style='background:#fff8e1; border-left:6px solid #ffc107; padding:1em; margin:1em 0; border-radius:0 8px 8px 0'>
-            <h3 style='color:#ff8f00; margin:0'>🌧️ Avis moderat</h3>
-            <p style='margin:0'>Xàfecs aïllats possibles</p>
-        </div>
-        """
-    else:
-        return f"""
-        <div style='background:#e8f5e9; border-left:6px solid #4caf50; padding:1em; margin:1em 0; border-radius:0 8px 8px 0'>
-            <h3 style='color:#2e7d32; margin:0'>🌤️ Temps estable</h3>
-            <p style='margin:0'>Sense alertes significatives</p>
-        </div>
-        """
-def ui_preguntes_meteo(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
-    """Nova pestanya per fer preguntes a la IA"""
-    st.subheader("❓ Fes preguntes sobre el temps")
-    
-    pregunta = st.text_input("Escriu la teva pregunta (ex: 'Quin temps farà demà a la tarda?')", 
-                           key="pregunta_meteo")
-    
-    if pregunta and GEMINI_CONFIGURAT:
-        with st.spinner("Analitzant..."):
-            dades_ia, _ = preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel)
-            if dades_ia:
-                resposta = generar_resum_ia(dades_ia, poble_sel, timestamp_str)
-                st.markdown(f"""
-                <div style='background:#f5f5f5; border-radius:10px; padding:1em; margin-top:1em'>
-                    <p style='font-size:1.1em; margin:0; color: #333;'>{resposta}</p>
-                </div>
-                """, unsafe_allow_html=True)
-    elif pregunta:
-        st.warning("⚠️ Configura la clau API de Google Gemini a secrets.toml")
+# --- 3. INTERFÍCIE D'USUARI (UI) ---
+# S'utilitzen components nadius de Streamlit per garantir la compatibilitat amb el mode clar i fosc.
 
-# --- 4. INTERFÍCIE MODIFICADA ---
 def ui_capcalera_selectors():
-    st.markdown("""
-    <style>
-    .header {
-        background: linear-gradient(45deg, #0061ff, #60efff);
-        padding: 1.5em;
-        border-radius: 10px;
-        color: white;
-        text-align: center;
-    }
-    </style>
-    <div class="header">
-        <h1 style="margin:0">🌦️ Terminal Meteorològic de Catalunya</h1>
-        <p style="margin:0">Avisos senzills i explicacions clares</p>
-    </div>
-    """, unsafe_allow_html=True)
+    """
+    Mostra el títol i els selectors principals utilitzant components nadius de Streamlit.
+    """
+    st.title("🌦️ Terminal Meteorològic de Catalunya")
+    st.caption("Dades del model AROME, anàlisi de mapes i paràmetres de temps sever.")
     
     with st.container(border=True):
         col1, col2, col3 = st.columns(3)
@@ -464,11 +413,33 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 
-def ui_peu_de_pagina():
-    st.divider()
-    st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades del model AROME via <a href='https://open-meteo.com/'>Open-Meteo</a> | Imatges via <a href='https://www.meteociel.fr/'>Meteociel</a> | Anàlisi IA per Google Gemini.</p>", unsafe_allow_html=True)
+def ui_pestanya_avisos_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
+    """
+    Pestanya que mostra un resum del risc meteorològic generat per IA.
+    """
+    st.subheader(f"📢 Avaluació del Risc per a {timestamp_str}")
+    
+    if not GEMINI_CONFIGURAT:
+        st.warning("La funció d'anàlisi per IA no està disponible. Configura la clau API de Google Gemini a l'arxiu `secrets.toml`.")
+        return
 
-# --- 5. APLICACIÓ PRINCIPAL ---
+    with st.spinner("Generant resum del risc amb IA..."):
+        dades_ia, error = preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel)
+        if dades_ia:
+            resposta_ia = generar_resum_ia(dades_ia, poble_sel, timestamp_str)
+            with st.container(border=True):
+                st.markdown(resposta_ia)
+        else:
+            st.error(f"No s'ha pogut generar el resum: {error}")
+
+def ui_peu_de_pagina():
+    """
+    Mostra el peu de pàgina utilitzant st.caption per a la compatibilitat de temes.
+    """
+    st.divider()
+    st.caption("Dades del model AROME via [Open-Meteo](https://open-meteo.com/) | Imatges via [Meteociel](https://www.meteociel.fr/) | Anàlisi IA per Google Gemini.")
+
+# --- 4. APLICACIÓ PRINCIPAL ---
 def main():
     # Obtenim seleccions de l'usuari
     poble_sel, dia_sel, hora_sel = ui_capcalera_selectors()
@@ -491,31 +462,22 @@ def main():
 
     timestamp_str = f"{dia_sel} a les {hora_sel} (Hora Local)"
     
-    # Carregar dades del sondeig
+    # Carregar dades del sondeig (necessari per a la pestanya vertical)
     data_tuple, error_msg = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
     if error_msg: 
         st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
 
-    # Pestanyes
-    tab_mapes, tab_vertical, tab_ia, tab_preguntes = st.tabs(
-        ["🗺️ Mapes", "📊 Dades", "📢 Avisos", "❓ Preguntes"]
+    # Definició de les pestanyes de l'aplicació
+    tab_avisos, tab_mapes, tab_vertical = st.tabs(
+        ["📢 Avisos IA", "🗺️ Mapes Interactius", "📊 Anàlisi Vertical"]
     )
     
+    with tab_avisos:
+        ui_pestanya_avisos_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
     with tab_mapes:
         ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
     with tab_vertical:
         ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
-    with tab_ia:
-        st.markdown("## 📢 Avisos visuals per a avui")
-        # Exemple amb valors reals si estan disponibles
-        if data_tuple:
-            cape_val = data_tuple[1].get('CAPE', 0)
-            shear_val = data_tuple[1].get('Shear_0-6km', 0)
-            st.markdown(generar_avis_visual(cape_val, shear_val, 70), unsafe_allow_html=True)
-        else:
-            st.markdown(generar_avis_visual(0, 0, 0), unsafe_allow_html=True)
-    with tab_preguntes:
-        ui_preguntes_meteo(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
     
     ui_peu_de_pagina()
 
