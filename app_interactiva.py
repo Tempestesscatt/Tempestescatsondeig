@@ -85,7 +85,6 @@ def carregar_dades_mapa(variables, hourly_index):
         output = {var: [] for var in ["lats", "lons"] + variables}
         for r in responses:
             if not r.Hourly(): continue
-            # Gestió robusta per a múltiples variables
             is_valid_point = True
             all_vals_at_index = []
             for i in range(len(variables)):
@@ -94,12 +93,10 @@ def carregar_dades_mapa(variables, hourly_index):
                     is_valid_point = False
                     break
                 all_vals_at_index.append(vals_array[hourly_index])
-            
             if is_valid_point:
                 output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
                 for i, var in enumerate(variables): 
                     output[var].append(all_vals_at_index[i])
-
         if not output["lats"]: return None, "No s'han rebut dades vàlides per a aquesta hora."
         return output, None
     except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
@@ -115,7 +112,7 @@ def crear_mapa_base():
 def crear_mapa_escalar(lons, lats, data, titol, cmap, levels, unitat, timestamp_str, extend='max'):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100))
-    grid_data = griddata((lons, lats), data, (grid_lon, grid_lat), method='cubic')
+    grid_data = griddata((lons, lats), data, (grid_lon, grid_lat), method='cubic', fill_value=0)
     norm = BoundaryNorm(levels, ncolors=plt.get_cmap(cmap).N, clip=True)
     ax.contourf(grid_lon, grid_lat, grid_data, levels=levels, cmap=cmap, norm=norm, alpha=0.8, zorder=2, extend=extend)
     if len(levels) > 1:
@@ -137,15 +134,33 @@ def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, timestamp_
     ax.contourf(grid_lon, grid_lat, divergence, levels=levels, cmap='coolwarm_r', alpha=0.6, zorder=2, extend='both')
     cbar = fig.colorbar(plt.cm.ScalarMappable(cmap='coolwarm_r', norm=BoundaryNorm(levels, ncolors=plt.get_cmap('coolwarm_r').N)), ax=ax, orientation='vertical', shrink=0.7); cbar.set_label('Convergència (vermell) [x10⁻⁵ s⁻¹]')
     ax.set_title(f"Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
-    
+
 def crear_mapa_500hpa(map_data, timestamp_str):
     fig, ax = crear_mapa_base(); lons, lats = map_data['lons'], map_data['lats']
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100))
-    grid_temp = griddata((lons, lats), map_data['temperature_500hPa'], (grid_lon, grid_lat), method='cubic'); temp_levels = np.arange(-30, 1, 2)
+    grid_temp = griddata((lons, lats), map_data['temperature_500hPa'], (grid_lon, grid_lat), method='cubic', fill_value=0); temp_levels = np.arange(-30, 1, 2)
     ax.contourf(grid_lon, grid_lat, grid_temp, levels=temp_levels, cmap='coolwarm', extend='min', alpha=0.7, zorder=2)
     u, v = mpcalc.wind_components(np.array(map_data['wind_speed_500hPa'])*units('km/h'), np.array(map_data['wind_direction_500hPa'])*units.degrees)
     ax.barbs(lons[::5], lats[::5], u.to('kt').m[::5], v.to('kt').m[::5], length=5, zorder=6, transform=ccrs.PlateCarree())
     ax.set_title(f"Anàlisi a 500 hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
+    
+def get_wind_colormap():
+    colors=['#FFFFFF','#E0F5FF','#B9E8FF','#87D7F9','#5AC7E3','#2DB8CC','#3FC3A3','#5ABF7A','#75BB51','#98D849','#C2E240','#EBEC38','#F5D03A','#FDB43D','#F7983F','#E97F41','#D76643','#C44E45','#B23547','#A22428','#881015','#6D002F','#860057','#A0007F','#B900A8','#D300D0','#E760E7','#F6A9F6','#FFFFFF','#CCCCCC']
+    levels = list(range(0, 95, 5)) + list(range(100, 211, 10)); cmap = ListedColormap(colors, name='wind_speed_custom')
+    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True); return cmap, norm, levels
+
+def crear_mapa_vents_velocitat(lons, lats, speed_data, dir_data, nivell, timestamp_str):
+    fig, ax = crear_mapa_base(); cmap, norm, levels = get_wind_colormap()
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100))
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic', fill_value=0)
+    ax.contourf(grid_lon, grid_lat, grid_speed, levels=levels, cmap=cmap, norm=norm, alpha=0.8, zorder=2, extend='max')
+    cs_speed = ax.contour(grid_lon, grid_lat, grid_speed, levels=np.arange(20, 201, 20), colors='gray', linestyles='--', linewidths=0.8, zorder=3)
+    ax.clabel(cs_speed, inline=True, fontsize=7, fmt='%1.0f')
+    speeds_ms=np.array(speed_data)*units('km/h'); dirs_deg=np.array(dir_data)*units.degrees; u,v=mpcalc.wind_components(speeds_ms,dirs_deg)
+    grid_u=griddata((lons,lats), u.to('m/s').m, (grid_lon,grid_lat), method='cubic', fill_value=0); grid_v=griddata((lons,lats), v.to('m/s').m, (grid_lon,grid_lat), method='cubic', fill_value=0)
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=2.5, arrowsize=0.6, zorder=5)
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=levels[::2])
+    cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 
 def crear_skewt(p, T, Td, u, v, titol):
     fig = plt.figure(figsize=(9, 9), dpi=150); skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
@@ -162,7 +177,7 @@ def crear_hodograf(u, v):
     h.add_grid(increment=20, color='gray'); h.plot(u.to('kt'), v.to('kt'), color='red', linewidth=2)
     ax.set_title("Hodògraf", weight='bold'); return fig
 
-# --- SECCIÓ DE LA IA (v8.1 - Visual) ---
+# --- SECCIÓ DE LA IA (v8.2 - Visual) ---
 
 @st.cache_data(ttl=3600)
 def generar_pronostic_visual_ia(dia_sel):
@@ -174,10 +189,10 @@ def generar_pronostic_visual_ia(dia_sel):
 
     images_for_ia, map_titles = [], []
     
-    # Generar i desar mapes en memòria
     data_cape, err_cape = carregar_dades_mapa(["cape"], hourly_index_17h)
     if data_cape and data_cape.get('cape'):
-        max_cape = np.max(data_cape['cape']); levels = np.arange(100, (np.ceil(max_cape/250)*250)+1 if max_cape>250 else 501, 100) if max_cape > 100 else np.arange(0, 101, 20)
+        max_cape = np.max(data_cape['cape']) if data_cape.get('cape') and len(data_cape['cape']) > 0 else 0
+        levels = np.arange(100, (np.ceil(max_cape/250)*250)+1 if max_cape>250 else 501, 100) if max_cape > 100 else np.arange(0, 101, 20)
         fig_cape = crear_mapa_escalar(data_cape['lons'], data_cape['lats'], data_cape['cape'], "CAPE (Energia)", "plasma", levels, "J/kg", timestamp_17h)
         buf = io.BytesIO(); fig_cape.savefig(buf, format="png", bbox_inches='tight'); buf.seek(0); images_for_ia.append(Image.open(buf)); map_titles.append("Mapa de CAPE (energia disponible)")
         plt.close(fig_cape)
@@ -249,9 +264,7 @@ def generar_pronostic_visual_ia(dia_sel):
     **Fenòmens:** [Llista de fenòmens]
     """] + images_for_ia
 
-    try:
-        response = model.generate_content(prompt_parts)
-        return response.text.strip()
+    try: return model.generate_content(prompt_parts).text.strip()
     except Exception as e: return f"Error contactant amb l'IA visual: {e}"
 
 # --- 3. LÒGICA DE LA INTERFÍCIE D'USUARI ---
@@ -279,7 +292,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             elif map_key == "conv":
                 lvl = st.selectbox("Nivell:", options=[1000, 950, 925, 850], format_func=lambda x: f"{x} hPa")
                 v = [f"wind_speed_{lvl}hPa", f"wind_direction_{lvl}hPa"]; data, err=carregar_dades_mapa(v, hourly_index_sel)
-                if data: st.pyplot(crear_mapa_convergencia(data['lons'],data['lats'],data[v[0]],data[v[1]],lvl, timestamp_str)) # Eliminat pas de dades de poble
+                if data: st.pyplot(crear_mapa_convergencia(data['lons'],data['lats'],data[v[0]],data[v[1]],lvl, timestamp_str))
             elif map_key == "500hpa":
                 v = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]; data, err=carregar_dades_mapa(v, hourly_index_sel)
                 if data: st.pyplot(crear_mapa_500hpa(data, timestamp_str))
