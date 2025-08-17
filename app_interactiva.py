@@ -82,8 +82,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(variables, hourly_index):
     try:
-        # --- LÍNIA CORREGIDA --- Reduïda la resolució per evitar error 414
-        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 15), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 15)
+        # --- LÍNIA CORREGIDA (v5.2) --- Resolució tornada a 12x12 per garantir l'estabilitat
+        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
         params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
         responses = openmeteo.weather_api(API_URL, params=params)
@@ -97,7 +97,7 @@ def carregar_dades_mapa(variables, hourly_index):
         return output, None
     except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
 
-# --- SECCIÓ DE LA IA (v5.1) ---
+# --- SECCIÓ DE LA IA (v5.2) ---
 
 @st.cache_data(ttl=3600)
 def generar_pronostic_diari_ia(dia_sel):
@@ -123,7 +123,7 @@ def generar_pronostic_diari_ia(dia_sel):
                 dades_provincials[provincia] = {"max_cape": 0, "max_conv": 0}
                 continue
             prov_lons, prov_lats, prov_cape, prov_u, prov_v = lons[mask], lats[mask], cape[mask], u_ms[mask], v_ms[mask]
-            max_cape_prov = np.max(prov_cape)
+            max_cape_prov = np.max(prov_cape) if len(prov_cape)>0 else 0
             if len(prov_lons) > 3:
                 grid_lon, grid_lat = np.meshgrid(np.linspace(bounds[0], bounds[1], 10), np.linspace(bounds[2], bounds[3], 10))
                 grid_u = griddata((prov_lons, prov_lats), prov_u, (grid_lon, grid_lat), method='cubic', fill_value=0)
