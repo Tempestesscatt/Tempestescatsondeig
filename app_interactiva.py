@@ -210,7 +210,7 @@ def crear_hodograf(u, v):
     ax.set_title("Hodògraf",weight='bold'); return fig
 
 # --- 3. INTERFAZ Y FLUJO PRINCIPAL ---
-st.markdown('<h1 style="text-align: center; color: #FF4B4B;">🌪️ Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
+st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Tempestes.cat</h1>', unsafe_allow_html=True)
 with st.container(border=True):
     col1, col2, col3 = st.columns(3)
     with col1: st.selectbox("Capital de referència:", sorted(ciutats_catalunya.keys()), key="poble_selector")
