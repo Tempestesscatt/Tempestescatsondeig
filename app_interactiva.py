@@ -19,7 +19,7 @@ import matplotlib.patheffects as path_effects
 from matplotlib.colors import ListedColormap, BoundaryNorm
 
 # --- CONFIGURACIÓ INICIAL ---
-st.set_page_config(layout="wide", page_title="Tempestes.cat")
+st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
@@ -210,12 +210,12 @@ def crear_hodograf(u, v):
     ax.set_title("Hodògraf",weight='bold'); return fig
 
 # --- 3. INTERFAZ Y FLUJO PRINCIPAL ---
-st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Tempestes.cat</h1>', unsafe_allow_html=True)
+st.markdown('<h1 style="text-align: center; color: #FF4B4B;">🌪️ Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
 with st.container(border=True):
     col1, col2, col3 = st.columns(3)
     with col1: st.selectbox("Capital de referència:", sorted(ciutats_catalunya.keys()), key="poble_selector")
     with col2: st.selectbox("Dia del pronòstic:", ("Avui", "Demà"), key="dia_selector")
-    with col3: st.selectbox("Hora (Local):", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
+    with col3: st.selectbox("Hora del pronòstic:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
 
 hora_sel = int(st.session_state.hora_selector.split(':')[0]); dia_sel = st.session_state.dia_selector
 hourly_index_sel = hora_sel + (24 if dia_sel == "Demà" else 0)
@@ -223,66 +223,75 @@ poble_sel = st.session_state.poble_selector
 lat_sel, lon_sel = ciutats_catalunya[poble_sel]['lat'], ciutats_catalunya[poble_sel]['lon']
 data_tuple, error_msg = carregar_dades_completes(lat_sel, lon_sel, hourly_index_sel)
 if error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}"); data_tuple = None
-if data_tuple:
-    sounding_data, params_calculats = data_tuple
-    st.info("Paràmetres principals de la massa d'aire per al punt i hora seleccionats.")
-    display_metrics(params_calculats)
-    
-    tab1, tab2 = st.tabs(["🗺️ Anàlisi de Mapes", "📊 Anàlisi Vertical"])
-    with tab1:
-        col_map_1, col_map_2 = st.columns([2.5, 1.5])
-        with col_map_1:
-            map_options = ["Flux i Convergència", "Anàlisi a 500hPa", "Vent a 300hPa", "Vent a 700hPa", "CAPE (Energia)", "Humitat a 700hPa"]
-            mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options)
+
+tab1, tab2 = st.tabs(["🗺️ Anàlisi de Mapes", "📊 Anàlisi Vertical"])
+with tab1:
+    col_map_1, col_map_2 = st.columns([2.5, 1.5])
+    with col_map_1:
+        map_options = ["Flux i Convergència", "Anàlisi a 500hPa", "Vent a 300hPa", "Vent a 700hPa", "CAPE (Energia)", "Humitat a 700hPa"]
+        mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options)
+        
+        with st.spinner(f"🛰️ Processant dades i generant el mapa de {mapa_sel}..."):
+            start_time = time.time()
+            error_map = None
             
-            with st.spinner(f"Generant mapa de {mapa_sel}..."):
-                error_map = None
-                if mapa_sel == "Flux i Convergència":
-                    nivells_convergencia = [p for p in PRESS_LEVELS if p >= 850]
-                    nivell_vents_sel = st.selectbox("Nivell d'anàlisi:", options=nivells_convergencia, format_func=lambda x: f"{x} hPa")
-                    map_data_vents, error_map = obtener_dades_vents_mapa(nivell_vents_sel, hourly_index_sel)
-                    if map_data_vents: lats, lons, data = map_data_vents; st.pyplot(crear_mapa_vents_professional(lats, lons, data, nivell_vents_sel, lat_sel, lon_sel, poble_sel))
-                
-                elif mapa_sel == "Anàlisi a 500hPa":
-                    map_data, error_map = obtener_dades_mapa_500hpa(hourly_index_sel)
-                    if map_data: lats, lons, geo, temp, ws, wd = map_data; st.pyplot(crear_mapa_500hpa(lats, lons, geo, temp, ws, wd))
-                
-                elif mapa_sel in ["Vent a 300hPa", "Vent a 700hPa"]:
-                    nivell_hpa = int(mapa_sel.split(' ')[2].replace('hPa', ''))
-                    map_data_vents, error_map = obtener_dades_vents_mapa(nivell_hpa, hourly_index_sel)
-                    if map_data_vents: lats, lons, data = map_data_vents; st.pyplot(crear_mapa_vents_velocitat(lats, lons, data, nivell_hpa))
-                
-                else:
-                    variable = "cape" if mapa_sel == "CAPE (Energia)" else "relative_humidity_700hPa"
-                    map_data, error_map = obtener_dades_mapa(variable, hourly_index_sel)
-                    if map_data:
-                        lats, lons, data = map_data
-                        if mapa_sel == "CAPE (Energia)": st.pyplot(crear_mapa_escalar_professional(lats, lons, data, "CAPE", "plasma", np.arange(250, 4001, 250), "J/kg"))
-                        else: st.pyplot(crear_mapa_escalar_professional(lats, lons, data, "Humitat Relativa a 700hPa", "Greens", np.arange(50, 101, 5), "%"))
-                
-                if error_map: st.error(f"Error en carregar el mapa: {error_map}")
+            if mapa_sel == "Flux i Convergència":
+                nivells_convergencia = [p for p in PRESS_LEVELS if p >= 850]
+                nivell_vents_sel = st.selectbox("Nivell d'anàlisi:", options=nivells_convergencia, format_func=lambda x: f"{x} hPa")
+                map_data_vents, error_map = obtener_dades_vents_mapa(nivell_vents_sel, hourly_index_sel)
+                if map_data_vents: lats, lons, data = map_data_vents; st.pyplot(crear_mapa_vents_professional(lats, lons, data, nivell_vents_sel, lat_sel, lon_sel, poble_sel))
+            
+            elif mapa_sel == "Anàlisi a 500hPa":
+                map_data, error_map = obtener_dades_mapa_500hpa(hourly_index_sel)
+                if map_data: lats, lons, geo, temp, ws, wd = map_data; st.pyplot(crear_mapa_500hpa(lats, lons, geo, temp, ws, wd))
+            
+            elif mapa_sel in ["Vent a 300hPa", "Vent a 700hPa"]:
+                nivell_hpa = int(mapa_sel.split(' ')[2].replace('hPa', ''))
+                map_data_vents, error_map = obtener_dades_vents_mapa(nivell_hpa, hourly_index_sel)
+                if map_data_vents: lats, lons, data = map_data_vents; st.pyplot(crear_mapa_vents_velocitat(lats, lons, data, nivell_hpa))
+            
+            else:
+                variable = "cape" if mapa_sel == "CAPE (Energia)" else "relative_humidity_700hPa"
+                map_data, error_map = obtener_dades_mapa(variable, hourly_index_sel)
+                if map_data:
+                    lats, lons, data = map_data
+                    if mapa_sel == "CAPE (Energia)": st.pyplot(crear_mapa_escalar_professional(lats, lons, data, "CAPE", "plasma", np.arange(250, 4001, 250), "J/kg"))
+                    else: st.pyplot(crear_mapa_escalar_professional(lats, lons, data, "Humitat Relativa a 700hPa", "Greens", np.arange(50, 101, 5), "%"))
+            
+            if error_map: st.error(f"Error en carregar el mapa: {error_map}")
+            
+            # Assegurem que la pantalla de càrrega duri almenys 4 segons
+            elapsed_time = time.time() - start_time
+            if elapsed_time < 4:
+                time.sleep(4 - elapsed_time)
 
-        with col_map_2:
-            st.subheader("Imatges en Temps Real")
-            view_choice = st.radio("Selecciona la vista:", ("Satèl·lit", "Radar de Precipitació"), horizontal=True)
-            if view_choice == "Satèl·lit":
-                try:
-                    satellite_url = "https://modeles20.meteociel.fr/satellite/latestsatviscolmtgsp.png"; unique_url = f"{satellite_url}?ver={int(time.time())}"
-                    headers = {'User-Agent': 'Mozilla/5.0'}; response = requests.get(unique_url, headers=headers)
-                    if response.status_code == 200: st.image(response.content, caption="Satèl·lit visible. Font: Meteociel", use_container_width=True)
-                    else: st.warning("No s'ha pogut carregar la imatge del satèl·lit.")
-                except Exception as e: st.error(f"Error de xarxa en carregar el satèl·lit.")
-            elif view_choice == "Radar de Precipitació":
-                try:
-                    radar_url = "https://www.meteociel.fr/cartes_obs/radar/lastradar_sp_ne.gif"; unique_url = f"{radar_url}?ver={int(time.time())}"
-                    headers = {'User-Agent': 'Mozilla/5.0'}; response = requests.get(unique_url, headers=headers)
-                    if response.status_code == 200: st.image(response.content, caption="Radar de precipitació (NE Península). Font: Meteociel", use_container_width=True)
-                    else: st.warning("No s'ha pogut carregar la imatge del radar.")
-                except Exception as e: st.error(f"Error de xarxa en carregar el radar.")
+    with col_map_2:
+        st.subheader("Imatges en Temps Real")
+        view_choice = st.radio("Selecciona la vista:", ("Satèl·lit", "Radar de Precipitació"), horizontal=True)
+        if view_choice == "Satèl·lit":
+            try:
+                satellite_url = "https://modeles20.meteociel.fr/satellite/latestsatviscolmtgsp.png"; unique_url = f"{satellite_url}?ver={int(time.time())}"
+                headers = {'User-Agent': 'Mozilla/5.0'}; response = requests.get(unique_url, headers=headers)
+                if response.status_code == 200: st.image(response.content, caption="Satèl·lit visible. Font: Meteociel", use_container_width=True)
+                else: st.warning("No s'ha pogut carregar la imatge del satèl·lit.")
+            except Exception as e: st.error(f"Error de xarxa en carregar el satèl·lit.")
+        elif view_choice == "Radar de Precipitació":
+            try:
+                radar_url = "https://www.meteociel.fr/cartes_obs/radar/lastradar_sp_ne.gif"; unique_url = f"{radar_url}?ver={int(time.time())}"
+                headers = {'User-Agent': 'Mozilla/5.0'}; response = requests.get(unique_url, headers=headers)
+                if response.status_code == 200: st.image(response.content, caption="Radar de precipitació (NE Península). Font: Meteociel", use_container_width=True)
+                else: st.warning("No s'ha pogut carregar la imatge del radar.")
+            except Exception as e: st.error(f"Error de xarxa en carregar el radar.")
 
-    with tab2:
-        if data_tuple:
-            p,T,Td,u,v,h=sounding_data
-            col_sondeig_1, col_sondeig_2 = st.columns(2)
-            with col_sondeig_1: st.pyplot(crear_skewt(p, T, Td, u, v))
-            with col_sondeig_2: st.pyplot(crear_hodograf(u, v))
+with tab2:
+    if data_tuple:
+        sounding_data, params_calculats = data_tuple
+        st.subheader("Paràmetres Clau del Sondeig")
+        st.info("Aquests paràmetres s'han calculat a partir del perfil vertical per al punt i hora seleccionats.")
+        display_metrics(params_calculats)
+        st.divider()
+        col_sondeig_1, col_sondeig_2 = st.columns(2)
+        with col_sondeig_1: st.pyplot(crear_skewt(sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4]))
+        with col_sondeig_2: st.pyplot(crear_hodograf(sounding_data[3], sounding_data[4]))
+    else:
+        st.warning("No hi ha dades de sondeo disponibles per mostrar.")
