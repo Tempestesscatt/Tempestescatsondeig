@@ -54,7 +54,6 @@ PROVINCIES_BOUNDS = {
 
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
-    # Aquesta funció es manté igual, és robusta.
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS]
@@ -79,47 +78,63 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         return ((p, T, Td, u, v, h), params_calc), None
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
 
+# --- FUNCIÓ RESTAURADA (v7.1) --- Aquesta és per als mapes per hores
+@st.cache_data(ttl=3600)
+def carregar_dades_mapa(variables, hourly_index):
+    try:
+        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
+        lon_grid, lat_grid = np.meshgrid(lons, lats)
+        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
+        responses = openmeteo.weather_api(API_URL, params=params)
+        output = {var: [] for var in ["lats", "lons"] + variables}
+        for r in responses:
+            if not r.Hourly(): continue
+            vals = r.Hourly().Variables(0).ValuesAsNumpy()
+            if hourly_index < len(vals):
+                val_at_index = vals[hourly_index]
+                if not np.isnan(val_at_index):
+                    output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
+                    for i, var in enumerate(variables): 
+                        output[var].append(r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index])
+        if not output["lats"]: return None, "No s'han rebut dades vàlides per a aquesta hora."
+        return output, None
+    except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
+
+# Aquesta és la funció per a l'anàlisi de 24h de la IA
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_24h(variables, start_hour, end_hour):
     try:
         lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
-        params = {
-            "latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(),
-            "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS,
-            "start_hour": start_hour.strftime("%Y-%m-%dT%H:%M"),
-            "end_hour": end_hour.strftime("%Y-%m-%dT%H:%M")
-        }
+        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "start_date": start_hour.strftime("%Y-%m-%d"), "end_date": end_hour.strftime("%Y-%m-%d")}
         responses = openmeteo.weather_api(API_URL, params=params)
         output = {var: [] for var in ["lats", "lons"] + variables}
         for r in responses:
             if not r.Hourly(): continue
             output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
             for i, var in enumerate(variables):
-                vals = r.Hourly().Variables(i).ValuesAsNumpy()
-                output[var].append(vals)
+                output[var].append(r.Hourly().Variables(i).ValuesAsNumpy())
         if not output["lats"]: return None, "No s'han rebut dades vàlides."
         return output, None
     except Exception as e: return None, f"Error en carregar dades horàries del mapa: {e}"
 
-# --- SECCIÓ DE LA IA TOTALMENT RECONSTRUÏDA (v7.0) ---
+# --- SECCIÓ DE LA IA (v7.1) ---
 
 @st.cache_data(ttl=3600)
 def generar_pronostic_diari_ia(dia_sel):
     target_date = datetime.now(TIMEZONE).date() + timedelta(days=1) if dia_sel == "Demà" else datetime.now(TIMEZONE).date()
-    start_hour_utc = pytz.utc.localize(datetime.combine(target_date, datetime.min.time()))
-    end_hour_utc = pytz.utc.localize(datetime.combine(target_date, datetime.max.time()))
+    start_hour = TIMEZONE.localize(datetime.combine(target_date, datetime.min.time()))
+    end_hour = TIMEZONE.localize(datetime.combine(target_date, datetime.max.time()))
 
     variables_mapa = ["cape", "wind_speed_925hPa", "wind_direction_925hPa"]
-    map_data, error = carregar_dades_mapa_24h(variables_mapa, start_hour_utc, end_hour_utc)
+    map_data, error = carregar_dades_mapa_24h(variables_mapa, start_hour, end_hour)
     if error: return f"No s'han pogut carregar les dades per a l'anàlisi diària: {error}"
+    if not map_data['cape']: return "Dades de CAPE buides rebudes de l'API."
 
     dades_provincials = {}
     try:
         lons, lats = np.array(map_data['lons']), np.array(map_data['lats'])
-        # Les dades ara tenen una dimensió temporal (24 hores)
-        cape_24h = np.array(map_data['cape'])
-        u_24h, v_24h = mpcalc.wind_components(np.array(map_data['wind_speed_925hPa'])*units('km/h'), np.array(map_data['wind_direction_925hPa'])*units.degrees)
+        cape_24h = np.array(map_data['cape']); u_24h, v_24h = mpcalc.wind_components(np.array(map_data['wind_speed_925hPa'])*units('km/h'), np.array(map_data['wind_direction_925hPa'])*units.degrees)
         
         for provincia, bounds in PROVINCIES_BOUNDS.items():
             mask = (lons >= bounds[0]) & (lons <= bounds[1]) & (lats >= bounds[2]) & (lats <= bounds[3])
@@ -127,11 +142,9 @@ def generar_pronostic_diari_ia(dia_sel):
                 dades_provincials[provincia] = {"max_cape": 0, "hora_cape": 0, "max_conv": 0, "hora_conv": 0}
                 continue
 
-            # Calculem convergència per a cada hora i trobem el màxim del dia
             conv_hores = []
-            for h in range(u_24h.shape[1]): # Iterem sobre les 24 hores
-                prov_u, prov_v = u_24h[mask, h].to('m/s').m, v_24h[mask, h].to('m/s').m
-                prov_lons, prov_lats = lons[mask], lats[mask]
+            for h in range(u_24h.shape[1]):
+                prov_u, prov_v, prov_lons, prov_lats = u_24h[mask, h].to('m/s').m, v_24h[mask, h].to('m/s').m, lons[mask], lats[mask]
                 if len(prov_lons) > 3:
                     grid_lon, grid_lat = np.meshgrid(np.linspace(bounds[0], bounds[1], 10), np.linspace(bounds[2], bounds[3], 10))
                     grid_u = griddata((prov_lons, prov_lats), prov_u, (grid_lon, grid_lat), method='cubic', fill_value=0)
@@ -139,21 +152,14 @@ def generar_pronostic_diari_ia(dia_sel):
                     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
                     divergence = mpcalc.divergence(grid_u*units('m/s'), grid_v*units('m/s'), dx=dx, dy=dy) * 1e5
                     conv_hores.append(np.nanmin(divergence))
-                else:
-                    conv_hores.append(0)
+                else: conv_hores.append(0)
             
-            # Trobem els valors màxims i les hores en què ocorren
-            max_conv_prov = np.min(conv_hores)
-            hora_max_conv = np.argmin(conv_hores)
-            
+            max_conv_prov, hora_max_conv = np.min(conv_hores), np.argmin(conv_hores)
             prov_cape_24h = cape_24h[mask, :]
-            max_cape_prov = np.max(prov_cape_24h)
-            hora_max_cape = np.argmax(np.max(prov_cape_24h, axis=0)) # Hora del màxim CAPE a la província
+            max_cape_prov = np.max(prov_cape_24h) if prov_cape_24h.size > 0 else 0
+            hora_max_cape = np.argmax(np.max(prov_cape_24h, axis=0)) if prov_cape_24h.size > 0 else 0
             
-            dades_provincials[provincia] = {
-                "max_cape": int(max_cape_prov), "hora_cape": int(hora_max_cape),
-                "max_conv": round(max_conv_prov, 2), "hora_conv": int(hora_max_conv)
-            }
+            dades_provincials[provincia] = {"max_cape": int(max_cape_prov), "hora_cape": int(hora_max_cape), "max_conv": round(max_conv_prov, 2), "hora_conv": int(hora_max_conv)}
 
     except Exception as e: return f"Error en el processament provincial 24h: {e}"
 
@@ -221,7 +227,7 @@ def generar_pronostic_diari_ia(dia_sel):
     except Exception as e: return f"Error contactant amb l'IA: {e}"
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
-# ... (Les teves funcions de gràfics es mantenen iguals) ...
+# (Les funcions de gràfics es mantenen iguals)
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
