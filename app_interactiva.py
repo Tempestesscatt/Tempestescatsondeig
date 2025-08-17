@@ -78,7 +78,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         return ((p, T, Td, u, v, h), params_calc), None
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
 
-# --- FUNCIÓ RESTAURADA (v7.1) --- Aquesta és per als mapes per hores
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(variables, hourly_index):
     try:
@@ -89,10 +88,9 @@ def carregar_dades_mapa(variables, hourly_index):
         output = {var: [] for var in ["lats", "lons"] + variables}
         for r in responses:
             if not r.Hourly(): continue
-            vals = r.Hourly().Variables(0).ValuesAsNumpy()
-            if hourly_index < len(vals):
-                val_at_index = vals[hourly_index]
-                if not np.isnan(val_at_index):
+            vals_array = r.Hourly().Variables(0).ValuesAsNumpy()
+            if hourly_index < len(vals_array):
+                if not np.isnan(vals_array[hourly_index]):
                     output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
                     for i, var in enumerate(variables): 
                         output[var].append(r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index])
@@ -100,7 +98,7 @@ def carregar_dades_mapa(variables, hourly_index):
         return output, None
     except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
 
-# Aquesta és la funció per a l'anàlisi de 24h de la IA
+# --- FUNCIÓ CORREGIDA (v7.2) ---
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_24h(variables, start_hour, end_hour):
     try:
@@ -109,16 +107,31 @@ def carregar_dades_mapa_24h(variables, start_hour, end_hour):
         params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "start_date": start_hour.strftime("%Y-%m-%d"), "end_date": end_hour.strftime("%Y-%m-%d")}
         responses = openmeteo.weather_api(API_URL, params=params)
         output = {var: [] for var in ["lats", "lons"] + variables}
+        
+        # Trobem la longitud esperada (haurien de ser 24 hores)
+        expected_len = 0
+        for r in responses:
+            if r.Hourly() and r.Hourly().Variables(0).ValuesAsNumpy().size > 0:
+                expected_len = r.Hourly().Variables(0).ValuesAsNumpy().size
+                break
+        if expected_len == 0: return None, "Les dades rebudes de l'API estan buides."
+
         for r in responses:
             if not r.Hourly(): continue
             output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
             for i, var in enumerate(variables):
-                output[var].append(r.Hourly().Variables(i).ValuesAsNumpy())
+                vals = r.Hourly().Variables(i).ValuesAsNumpy()
+                # Si un punt té dades incompletes, l'omplim amb zeros per mantenir la forma de l'array
+                if len(vals) < expected_len:
+                    vals = np.pad(vals, (0, expected_len - len(vals)), 'constant', constant_values=0)
+                output[var].append(vals)
+
         if not output["lats"]: return None, "No s'han rebut dades vàlides."
         return output, None
     except Exception as e: return None, f"Error en carregar dades horàries del mapa: {e}"
 
-# --- SECCIÓ DE LA IA (v7.1) ---
+
+# --- SECCIÓ DE LA IA ---
 
 @st.cache_data(ttl=3600)
 def generar_pronostic_diari_ia(dia_sel):
