@@ -17,9 +17,7 @@ import cartopy.feature as cfeature
 from scipy.interpolate import griddata, Rbf
 from datetime import datetime, timedelta
 import pytz
-# --- NOU ---
 import google.generativeai as genai
-# --- FI NOU ---
 
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
@@ -27,15 +25,12 @@ import google.generativeai as genai
 # Configuració de la pàgina de Streamlit
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
 
-# --- NOU ---
 # Configuració de l'API de Google Gemini
 try:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
     GEMINI_CONFIGURAT = True
 except (KeyError, Exception):
     GEMINI_CONFIGURAT = False
-# --- FI NOU ---
-
 
 # Configuració de la sessió per a les peticions a l'API amb cache i reintents
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
@@ -43,7 +38,7 @@ retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
 
 # Constants de l'aplicació
-FORECAST_DAYS = 4
+FORECAST_DAYS = 4 # MODIFICAT: Augmentat a 4 per evitar errors d'índex
 API_URL = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE = pytz.timezone('Europe/Madrid')
 
@@ -154,7 +149,7 @@ def carregar_dades_mapa(variables, hourly_index):
     except Exception as e:
         return None, f"Error en carregar les dades del mapa: {e}"
 
-# --- NOU ---
+# --- NOU I MILLORAT (IA v2.0) ---
 @st.cache_data(ttl=3600)
 def preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel):
     """Recopila i resumeix totes les dades necessàries per a l'anàlisi d'IA."""
@@ -165,24 +160,55 @@ def preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel):
     if data_tuple:
         dades_ia['sondeig'] = data_tuple[1]
     else:
-        return None, error_sondeig
+        # Si el sondeig falla, no podem continuar
+        return None, f"No s'han pogut obtenir les dades del sondeig vertical. ({error_sondeig})"
 
-    # 2. Dades generals del mapa de Catalunya (valors màxims)
-    variables_mapa = ["cape", "relative_humidity_700hPa"]
+    # 2. Dades generals del mapa de Catalunya (valors màxims i disparadors)
+    #    ARA AFEGIM ELS VENTS A 925HPA PER CALCULAR LA CONVERGÈNCIA
+    variables_mapa = ["cape", "relative_humidity_700hPa", "wind_speed_925hPa", "wind_direction_925hPa"]
     map_data, error_mapa = carregar_dades_mapa(variables_mapa, hourly_index_sel)
     
     if map_data:
         resum_mapa = {}
+        # Valors termodinàmics
         if 'cape' in map_data and map_data['cape']:
             resum_mapa['max_cape_catalunya'] = max(map_data['cape'])
         if 'relative_humidity_700hPa' in map_data and map_data['relative_humidity_700hPa']:
             resum_mapa['max_rh700_catalunya'] = max(map_data['relative_humidity_700hPa'])
+            
+        # NOU: Càlcul de la convergència màxima
+        if 'wind_speed_925hPa' in map_data and map_data['wind_speed_925hPa']:
+            try:
+                lons, lats = np.array(map_data['lons']), np.array(map_data['lats'])
+                speeds_kmh = np.array(map_data['wind_speed_925hPa']) * units('km/h')
+                dirs_deg = np.array(map_data['wind_direction_925hPa']) * units.degrees
+                u_comp, v_comp = mpcalc.wind_components(speeds_kmh, dirs_deg)
+
+                # Creem una graella per a l'anàlisi
+                grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 50), 
+                                                 np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 50))
+
+                # Interpolem els components del vent a la graella
+                grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
+                grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
+                
+                # Calculem la divergència
+                dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+                divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
+                
+                # La convergència màxima és el valor mínim de la divergència
+                max_convergencia = np.nanmin(divergence)
+                resum_mapa['max_conv_925hpa'] = max_convergencia
+            except Exception:
+                resum_mapa['max_conv_925hpa'] = 0 # Valor neutre si el càlcul falla
+
         dades_ia['mapa_resum'] = resum_mapa
     else:
-        return None, error_mapa
+        return None, f"No s'han pogut obtenir les dades generals del mapa. ({error_mapa})"
         
     return dades_ia, None
 
+# --- NOU I MILLORAT (IA v2.0) ---
 @st.cache_data(ttl=3600)
 def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str):
     """Envia les dades a l'API de Gemini i retorna el resum."""
@@ -191,38 +217,55 @@ def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str):
         
     model = genai.GenerativeModel('gemini-1.5-flash')
     
-    # Construcció del prompt
+    # Obtenim el nou valor de convergència de forma segura
+    max_conv_valor = _dades_ia.get('mapa_resum', {}).get('max_conv_925hpa', 0)
+
+    # Construcció del prompt v2.0
     prompt = f"""
-    Ets un meteoròleg expert en temps sever a Catalunya. La teva tasca és analitzar les següents dades del model AROME
-    i generar un butlletí de pronòstic de convecció concís i clar en català.
+    Ets un meteoròleg expert en la predicció de tempestes severes a Catalunya, especialitzat en l'anàlisi de models de meso-escala com l'AROME. 
+    La teva missió és generar un butlletí de pronòstic tècnic però comprensible, centrat en el potencial convectiu.
 
     **Context del Pronòstic:**
     - Data i hora d'anàlisi: {_timestamp_str}
-    - Punt de referència principal: {_poble_sel}
+    - Punt de referència per al sondeig: {_poble_sel}
 
-    **Dades a Analitzar:**
+    **Dades d'Anàlisi del Model AROME:**
 
-    1.  **Paràmetres del Sondeig Vertical a {_poble_sel}:**
-        - CAPE (Energia per convecció): {int(_dades_ia['sondeig'].get('CAPE', 0))} J/kg
-        - CIN (Inhibició de la convecció): {int(_dades_ia['sondeig'].get('CIN', 0))} J/kg
-        - Cisallament del vent (0-6 km): {int(_dades_ia['sondeig'].get('Shear_0-6km', 0))} m/s
-        - Helicitat Relativa a la Tempesta (SRH 0-3 km): {int(_dades_ia['sondeig'].get('SRH_0-3km', 0))} m²/s²
+    1.  **Paràmetres del Sondeig Vertical a {_poble_sel} (Indicadors d'Organització i Potencial):**
+        - CAPE (Energia disponible): {int(_dades_ia['sondeig'].get('CAPE', 0))} J/kg
+        - CIN (Inhibició a vèncer): {int(_dades_ia['sondeig'].get('CIN', 0))} J/kg
+        - Cisallament 0-6 km (Organització de tempestes): {int(_dades_ia['sondeig'].get('Shear_0-6km', 0))} m/s
+        - SRH 0-3 km (Potencial de rotació/supercèl·lules): {int(_dades_ia['sondeig'].get('SRH_0-3km', 0))} m²/s²
 
-    2.  **Valors Màxims Previstos a Catalunya (Visió general del mapa):**
-        - CAPE màxima a Catalunya: {int(_dades_ia.get('mapa_resum', {}).get('max_cape_catalunya', 0))} J/kg
-        - Humitat relativa màxima a 700 hPa: {int(_dades_ia.get('mapa_resum', {}).get('max_rh700_catalunya', 0))}%
+    2.  **Paràmetres Termodinàmics a Catalunya (Visió General):**
+        - CAPE màxima a Catalunya ("Combustible" màxim): {int(_dades_ia.get('mapa_resum', {}).get('max_cape_catalunya', 0))} J/kg
+        - Humitat relativa màxima a 700 hPa (Humitat en nivells mitjans): {int(_dades_ia.get('mapa_resum', {}).get('max_rh700_catalunya', 0))}%
 
-    **Instruccions per al Butlletí:**
+    3.  **Dades de Dinàmica Atmosfèrica (El Disparador/La "Chispa"):**
+        - Convergència màxima a 925 hPa a Catalunya: {max_conv_valor:.2f} (x10⁻⁵ s⁻¹)
 
-    - **Idioma:** Català.
-    - **To:** Professional però fàcil d'entendre per a aficionats a la meteorologia.
-    - **Estructura:**
-        1.  **Sinopsi General:** Un paràgraf breu (2-3 línies) descrivint la situació general a Catalunya.
-        2.  **Zones de Major Risc:** Identifica les àrees geogràfiques de Catalunya (p. ex., Pre-litoral, Pirineu oriental, Ponent, interior de Girona) amb més potencial de temps sever basant-te en la combinació de CAPE, humitat i paràmetres d'organització (cisallament, helicitat).
-        3.  **Potencials Fenòmens:** Descriu breument els principals fenòmens meteorològics esperats (xàfecs intensos, calamarsa, ratxes fortes de vent, etc.). Si hi ha potencial per a estructures organitzades com supercèl·lules, esmenta-ho explícitament.
-        4.  **Conclusió:** Una frase final de resum.
+    **Instruccions CRÍTIQUES per a la teva Anàlisi (Has de seguir-les):**
 
-    - **Molt important:** No et limitis a llistar els valors. Interpreta'ls en el context de la meteorologia de Catalunya. Per exemple, un cisallament de 20 m/s és significatiu i afavoreix l'organització. Una CAPE de 1500 J/kg indica un potencial considerable de tempestes fortes.
+    1.  **Analitza la Convergència Primer:** Aquest és el teu indicador CLAU per al "disparador".
+        - La convergència mesura com "s'apila" l'aire en nivells baixos, forçant-lo a ascendir i iniciar les tempestes. Valors NEGATIUS indiquen convergència.
+        - **Escala d'Interpretació de la Convergència (valors x10⁻⁵ s⁻¹):**
+            - **< -5:** Convergència FORÇA. És un mecanisme de dispar molt eficaç. Les tempestes són ALTAMENT PROBABLES a les zones on coincideixi amb CAPE.
+            - **-3 a -5:** Convergència MODERADA. Pot ajudar a iniciar tempestes, especialment si la inhibició (CIN) és baixa.
+            - **> -3:** Convergència DÈBIL o irrellevant. El tret de les tempestes dependrà d'altres factors (p. ex., la topografia).
+
+    2.  **Sintetitza i Connecta les Dades:** No et limitis a llistar valors. La teva tasca principal és connectar el disparador (convergència) amb el combustible (CAPE).
+        - **Escenari d'Alt Risc:** Si veus convergència FORÇA (< -5) i valors de CAPE elevats (> 1000 J/kg) junts, el potencial de tempestes fortes és molt alt. Esmenta les zones geogràfiques més probables (Pre-litoral, Pirineu, Ponent, etc.).
+        - **Escenari de Risc Moderat:** Si la convergència és moderada o el CAPE és més limitat, indica que es poden formar xàfecs o tempestes, però potser de manera més aïllada o menys organitzada.
+        - **Escenari de Baix Risc:** Si la convergència és dèbil i/o el CAPE és baix, indica que la probabilitat de tempestes és baixa.
+
+    3.  **Estructura del Butlletí:**
+        - **Títol:** "Anàlisi de Potencial Convectiu per a {_timestamp_str}".
+        - **Sinopsi General:** Un paràgraf que resumeixi la situació: Hi ha "combustible" (CAPE)? Hi ha una "chispa" (convergència)?
+        - **Anàlisi Tècnica:** Explica la interacció entre la convergència, el CAPE i els paràmetres d'organització (cisallament/SRH). Identifica les zones geogràfiques de Catalunya amb la combinació més favorable per a la formació de tempestes.
+        - **Fenòmens Esperats:** Basant-te en la teva anàlisi, descriu els fenòmens més probables (xàfecs intensos, calamarsa, fortes ratxes de vent, o fins i tot supercèl·lules si el cisallament i SRH són alts).
+        - **Nivell de Confiança:** Acaba amb una frase sobre el teu nivell de confiança en el pronòstic (baix, moderat, alt).
+
+    - **Idioma:** Català. To professional i directe.
     """
     
     try:
@@ -230,11 +273,9 @@ def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str):
         return response.text
     except Exception as e:
         return f"S'ha produït un error en contactar amb l'assistent d'IA: {e}"
-# --- FI NOU ---
-
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ (GRÀFICS I MAPES) ---
-# ... (Totes les teves funcions de visualització romanen exactament iguals) ...
+
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree())
@@ -366,19 +407,15 @@ def mostrar_imatge_temps_real(tipus):
     
     elif tipus == "Satèl·lit":
         now_local = datetime.now(TIMEZONE)
-        # Comprova si l'hora actual està entre les 22:00 i les 06:59
         if now_local.hour >= 22 or now_local.hour < 7:
-            # Període nocturn: mostra l'animació infraroja
             url_a_utilitzar = "https://modeles20.meteociel.fr/satellite/animsatircolmtgsp.gif"
             caption_a_utilitzar = "Satèl·lit infraroig (animació nocturna). Font: Meteociel"
         else:
-            # Període diürn: mostra la imatge visible estàtica
             url_a_utilitzar = "https://modeles20.meteociel.fr/satellite/latestsatviscolmtgsp.png"
             caption_a_utilitzar = "Satèl·lit visible. Font: Meteociel"
 
     if url_a_utilitzar:
         try:
-            # Afegim un paràmetre 'ver' a l'URL per evitar problemes de cache
             unique_url = f"{url_a_utilitzar}?ver={int(time.time())}"
             headers = {'User-Agent': 'Mozilla/5.0'}
             response = requests.get(unique_url, headers=headers, timeout=10)
@@ -425,20 +462,15 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             if map_key == "cape":
                 map_data, error_map = carregar_dades_mapa(["cape"], hourly_index_sel)
                 if map_data:
-                    # Lògica per a l'escala de colors dinàmica
                     if map_data['cape']:
                         max_cape = np.max(map_data['cape'])
                     else:
                         max_cape = 0
 
-                    if max_cape <= 500:
-                        cape_levels = np.arange(50, 501, 50)  # Més detall per a valors baixos
-                    elif max_cape <= 1500:
-                        cape_levels = np.arange(100, 1501, 100) # Escala estàndard per a Catalunya
-                    elif max_cape <= 2500:
-                        cape_levels = np.arange(250, 2501, 250) # Per a esdeveniments més severs
+                    if max_cape <= 500: cape_levels = np.arange(50, 501, 50)
+                    elif max_cape <= 1500: cape_levels = np.arange(100, 1501, 100)
+                    elif max_cape <= 2500: cape_levels = np.arange(250, 2501, 250)
                     else:
-                        # Per a valors extrems, arrodoneix el màxim cap amunt al següent múltiple de 500
                         rounded_max = np.ceil(max_cape / 500) * 500
                         cape_levels = np.arange(250, rounded_max + 1, 250)
 
@@ -497,14 +529,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             - **CIN (Convective Inhibition):** Representa l'energia necessària per iniciar la convecció. Actua com una "tapa". Valors alts poden impedir la formació de tempestes.
             - **Shear 0-6km (Cisallament del vent):** És la diferència en el vector del vent entre la superfície i els 6 km d'altura. Valors alts (>15-20 m/s) són cruials per a l'organització de les tempestes (supercèl·lules, línies de torbonada).
             - **SRH 0-3km (Storm-Relative Helicity):** Mesura el potencial de rotació en una tempesta. Valors elevats (>150 m²/s²) afavoreixen el desenvolupament de supercèl·lules i tornados.
-            
-            ---
-
-            **Nota important sobre la discrepància de CAPE:**
-
-            És possible que el valor de CAPE calculat aquí (i l'àrea vermella del gràfic) sigui significativament més alt que el que es mostra al mapa per al mateix punt. Això passa perquè **aquest sondeig calcula el CAPE teòric màxim** a partir de les dades brutes del perfil vertical. En canvi, el **mapa mostra un valor de CAPE que el propi model AROME ha processat internament**, el qual pot ser més conservador.
-
-            No és un error: el sondeig revela el potencial real de la massa d'aire en aquest punt, mentre que el mapa ofereix una visió més general i suavitzada.
             """)
         st.divider()
         col_sondeig_1, col_sondeig_2 = st.columns(2)
@@ -518,7 +542,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual. Pot ser degut a dades no vàlides del model o a una petició fallida.")
 
-# --- NOU ---
 def ui_pestanya_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
     st.subheader(f"Assistent d'Anàlisi per IA per a {timestamp_str}")
     
@@ -530,25 +553,18 @@ def ui_pestanya_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
     
     if st.button("🤖 Generar Anàlisi d'IA", use_container_width=True):
         with st.spinner("L'assistent d'IA està analitzant les dades... Aquest procés pot trigar uns segons."):
-            # 1. Preparar les dades
             dades_ia, error_dades = preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel)
             
             if error_dades:
                 st.error(f"No s'ha pogut generar l'anàlisi perquè falten dades: {error_dades}")
                 return
             
-            # 2. Generar el resum
             resum_text = generar_resum_ia(dades_ia, poble_sel, timestamp_str)
-            
-            # 3. Mostrar el resultat
             st.markdown(resum_text)
-# --- FI NOU ---
 
 def ui_peu_de_pagina():
     st.divider()
-    # --- MODIFICAT ---
     st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades del model AROME via <a href='https://open-meteo.com/'>Open-Meteo</a> | Imatges en temps real via <a href='https://www.meteociel.fr/'>Meteociel</a> | Anàlisi IA per Google Gemini.</p>", unsafe_allow_html=True)
-    # --- FI MODIFICAT ---
 
 # --- 4. APLICACIÓ PRINCIPAL ---
 
@@ -580,14 +596,11 @@ def main():
     lat_sel = CIUTATS_CATALUNYA[poble_sel]['lat']
     lon_sel = CIUTATS_CATALUNYA[poble_sel]['lon']
 
-    # --- MODIFICAT ---
-    # Carreguem el sondeig aquí per tenir-lo disponible per a la pestanya vertical
     with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
         data_tuple, error_msg = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
     if error_msg:
         st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
 
-    # Creació de les pestanyes
     tab_mapes, tab_vertical, tab_ia = st.tabs(["🗺️ Anàlisi de Mapes", "📊 Anàlisi Vertical", "🤖 Resum IA"])
 
     with tab_mapes:
@@ -598,7 +611,6 @@ def main():
         
     with tab_ia:
         ui_pestanya_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
-    # --- FI MODIFICAT ---
         
     ui_peu_de_pagina()
 
