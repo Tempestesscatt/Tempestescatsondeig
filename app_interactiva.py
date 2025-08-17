@@ -19,7 +19,7 @@ import matplotlib.patheffects as path_effects
 from matplotlib.colors import ListedColormap, BoundaryNorm
 
 # --- CONFIGURACIÓ INICIAL ---
-st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
+st.set_page_config(layout="wide", page_title="Tempestes.cat")
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
