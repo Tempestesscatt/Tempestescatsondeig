@@ -134,7 +134,7 @@ def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, timestamp_
     ax.contourf(grid_lon, grid_lat, divergence, levels=levels, cmap='coolwarm_r', alpha=0.6, zorder=2, extend='both')
     cbar = fig.colorbar(plt.cm.ScalarMappable(cmap='coolwarm_r', norm=BoundaryNorm(levels, ncolors=plt.get_cmap('coolwarm_r').N)), ax=ax, orientation='vertical', shrink=0.7); cbar.set_label('Convergència (vermell) [x10⁻⁵ s⁻¹]')
     ax.set_title(f"Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
-
+    
 def crear_mapa_500hpa(map_data, timestamp_str):
     fig, ax = crear_mapa_base(); lons, lats = map_data['lons'], map_data['lats']
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100))
@@ -143,14 +143,10 @@ def crear_mapa_500hpa(map_data, timestamp_str):
     u, v = mpcalc.wind_components(np.array(map_data['wind_speed_500hPa'])*units('km/h'), np.array(map_data['wind_direction_500hPa'])*units.degrees)
     ax.barbs(lons[::5], lats[::5], u.to('kt').m[::5], v.to('kt').m[::5], length=5, zorder=6, transform=ccrs.PlateCarree())
     ax.set_title(f"Anàlisi a 500 hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
-    
-def get_wind_colormap():
-    colors=['#FFFFFF','#E0F5FF','#B9E8FF','#87D7F9','#5AC7E3','#2DB8CC','#3FC3A3','#5ABF7A','#75BB51','#98D849','#C2E240','#EBEC38','#F5D03A','#FDB43D','#F7983F','#E97F41','#D76643','#C44E45','#B23547','#A22428','#881015','#6D002F','#860057','#A0007F','#B900A8','#D300D0','#E760E7','#F6A9F6','#FFFFFF','#CCCCCC']
-    levels = list(range(0, 95, 5)) + list(range(100, 211, 10)); cmap = ListedColormap(colors, name='wind_speed_custom')
-    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True); return cmap, norm, levels
 
 def crear_mapa_vents_velocitat(lons, lats, speed_data, dir_data, nivell, timestamp_str):
-    fig, ax = crear_mapa_base(); cmap, norm, levels = get_wind_colormap()
+    fig, ax = crear_mapa_base(); 
+    cmap, norm, levels = get_wind_colormap()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100))
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic', fill_value=0)
     ax.contourf(grid_lon, grid_lat, grid_speed, levels=levels, cmap=cmap, norm=norm, alpha=0.8, zorder=2, extend='max')
@@ -161,6 +157,11 @@ def crear_mapa_vents_velocitat(lons, lats, speed_data, dir_data, nivell, timesta
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=2.5, arrowsize=0.6, zorder=5)
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=levels[::2])
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
+
+def get_wind_colormap():
+    colors=['#FFFFFF','#E0F5FF','#B9E8FF','#87D7F9','#5AC7E3','#2DB8CC','#3FC3A3','#5ABF7A','#75BB51','#98D849','#C2E240','#EBEC38','#F5D03A','#FDB43D','#F7983F','#E97F41','#D76643','#C44E45','#B23547','#A22428','#881015','#6D002F','#860057','#A0007F','#B900A8','#D300D0','#E760E7','#F6A9F6','#FFFFFF','#CCCCCC']
+    levels = list(range(0, 95, 5)) + list(range(100, 211, 10)); cmap = ListedColormap(colors, name='wind_speed_custom')
+    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True); return cmap, norm, levels
 
 def crear_skewt(p, T, Td, u, v, titol):
     fig = plt.figure(figsize=(9, 9), dpi=150); skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
@@ -177,7 +178,19 @@ def crear_hodograf(u, v):
     h.add_grid(increment=20, color='gray'); h.plot(u.to('kt'), v.to('kt'), color='red', linewidth=2)
     ax.set_title("Hodògraf", weight='bold'); return fig
 
-# --- SECCIÓ DE LA IA (v8.2 - Visual) ---
+# --- FUNCIÓ RESTAURADA (v8.3) ---
+def mostrar_imatge_temps_real(tipus):
+    if tipus == "Radar": url, caption = "https://www.meteociel.fr/cartes_obs/radar/lastradar_sp_ne.gif", "Radar. Font: Meteociel"
+    else:
+        now_local = datetime.now(TIMEZONE)
+        if now_local.hour >= 22 or now_local.hour < 7: url, caption = "https://modeles20.meteociel.fr/satellite/animsatircolmtgsp.gif", "Satèl·lit IR. Font: Meteociel"
+        else: url, caption = "https://modeles20.meteociel.fr/satellite/latestsatviscolmtgsp.png", "Satèl·lit VIS. Font: Meteociel"
+    try:
+        response = requests.get(f"{url}?ver={int(time.time())}", headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+        if response.status_code == 200: st.image(response.content, caption=caption, use_container_width=True)
+    except: pass
+
+# --- SECCIÓ DE LA IA (v8.3) ---
 
 @st.cache_data(ttl=3600)
 def generar_pronostic_visual_ia(dia_sel):
@@ -297,7 +310,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                 v = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]; data, err=carregar_dades_mapa(v, hourly_index_sel)
                 if data: st.pyplot(crear_mapa_500hpa(data, timestamp_str))
             elif map_key in ["wind_300", "wind_700"]:
-                lvl = int(map_key.replace("wind_", "")); v = [f"wind_speed_{lvl}hPa", f"wind_direction_{lvl}hPa"]
+                lvl = int(map_key.replace("wind_", ""))*10; v = [f"wind_speed_{lvl}hPa", f"wind_direction_{lvl}hPa"] # Simple fix
                 data, err=carregar_dades_mapa(v, hourly_index_sel)
                 if data: st.pyplot(crear_mapa_vents_velocitat(data['lons'], data['lats'], data[v[0]], data[v[1]], lvl, timestamp_str))
             elif map_key == "rh_700":
