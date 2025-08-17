@@ -9,3 +9,4 @@ metpy
 cartopy
 scipy
 pytz
+google-generativeai
