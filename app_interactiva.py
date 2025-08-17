@@ -98,7 +98,7 @@ def carregar_dades_mapa(variables, hourly_index):
         return output, None
     except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
 
-# --- FUNCIÓ CORREGIDA (v7.2) ---
+# --- FUNCIÓ CORREGIDA (v7.3) ---
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_24h(variables, start_hour, end_hour):
     try:
@@ -108,30 +108,32 @@ def carregar_dades_mapa_24h(variables, start_hour, end_hour):
         responses = openmeteo.weather_api(API_URL, params=params)
         output = {var: [] for var in ["lats", "lons"] + variables}
         
-        # Trobem la longitud esperada (haurien de ser 24 hores)
-        expected_len = 0
-        for r in responses:
-            if r.Hourly() and r.Hourly().Variables(0).ValuesAsNumpy().size > 0:
-                expected_len = r.Hourly().Variables(0).ValuesAsNumpy().size
-                break
-        if expected_len == 0: return None, "Les dades rebudes de l'API estan buides."
-
         for r in responses:
             if not r.Hourly(): continue
-            output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
-            for i, var in enumerate(variables):
+            
+            # Guardem temporalment les dades horàries per aquest punt
+            hourly_data_for_point = []
+            is_point_valid = True
+            for i in range(len(variables)):
                 vals = r.Hourly().Variables(i).ValuesAsNumpy()
-                # Si un punt té dades incompletes, l'omplim amb zeros per mantenir la forma de l'array
-                if len(vals) < expected_len:
-                    vals = np.pad(vals, (0, expected_len - len(vals)), 'constant', constant_values=0)
-                output[var].append(vals)
+                # Condició estricta: només acceptem punts amb 24 hores de dades
+                if vals.size != 24:
+                    is_point_valid = False
+                    break
+                hourly_data_for_point.append(vals)
 
-        if not output["lats"]: return None, "No s'han rebut dades vàlides."
+            # Si el punt és vàlid, l'afegim a la nostra sortida
+            if is_point_valid:
+                output["lats"].append(r.Latitude())
+                output["lons"].append(r.Longitude())
+                for i, var in enumerate(variables):
+                    output[var].append(hourly_data_for_point[i])
+
+        if not output["lats"]: return None, "No s'han rebut dades completes (24h) per a cap punt."
         return output, None
     except Exception as e: return None, f"Error en carregar dades horàries del mapa: {e}"
 
-
-# --- SECCIÓ DE LA IA ---
+# --- SECCIÓ DE LA IA (v7.3) ---
 
 @st.cache_data(ttl=3600)
 def generar_pronostic_diari_ia(dia_sel):
@@ -141,7 +143,7 @@ def generar_pronostic_diari_ia(dia_sel):
 
     variables_mapa = ["cape", "wind_speed_925hPa", "wind_direction_925hPa"]
     map_data, error = carregar_dades_mapa_24h(variables_mapa, start_hour, end_hour)
-    if error: return f"No s'han pogut carregar les dades per a l'anàlisi diària: {error}"
+    if error: return f"Error durant la càrrega de dades per a la IA: {error}"
     if not map_data['cape']: return "Dades de CAPE buides rebudes de l'API."
 
     dades_provincials = {}
@@ -396,7 +398,7 @@ def ui_pestanya_ia(dia_sel):
             if "Error" in resum_text:
                 st.error(resum_text)
             else:
-                st.markdown(resum_text)
+                st.markdown(resum_text, unsafe_allow_html=True)
 
 def ui_peu_de_pagina():
     st.divider()
