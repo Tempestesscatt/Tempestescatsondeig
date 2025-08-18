@@ -178,9 +178,9 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
     
-    # --- CANVI: Nova escala de colors estil 'jet' per al punt de rosada ---
+    # Escala de colors per al punt de rosada
     custom_cmap = plt.get_cmap('jet')
-    dewpoint_levels = np.arange(-4, 32, 4) # Nivells de -4 a 28, en trams de 4
+    dewpoint_levels = np.arange(-4, 32, 4)
     norm_dewpoint = BoundaryNorm(dewpoint_levels, ncolors=custom_cmap.N, clip=True)
     
     # Dibuixar el mapa base
@@ -189,9 +189,8 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     cbar.set_label(title_dewpoint) 
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=2.5, arrowsize=0.6, zorder=4)
 
-    # Lògica d'alertes i convergència (es manté igual)
+    # Lògica d'alertes i convergència
     convergence_levels = [-60, -50, -40, -30]
-    # Fem les isolínies de convergència discontínues (dashed) per diferenciar-les millor del mapa base
     ax.contour(grid_lon, grid_lat, divergence.magnitude, levels=convergence_levels, colors='black', linewidths=1.5, linestyles='--', zorder=6)
     
     risk_mask = divergence.magnitude <= -30
@@ -201,8 +200,9 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
             points = np.argwhere(labels == i)
             center_y, center_x = points.mean(axis=0)
             center_lon, center_lat = grid_lon[0, int(center_x)], grid_lat[int(center_y), 0]
-            # Símbol d'alerta amb contorn negre per a més visibilitat
-            warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=18, ha='center', va='center', zorder=8)
+            
+            # --- CANVI: Mida de l'emoji reduïda a 15 ---
+            warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=15, ha='center', va='center', zorder=8)
             warning_txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
     min_conv_val = np.nanmin(divergence.magnitude)
@@ -215,7 +215,6 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
 
     ax.set_title(f"Forecast: Humitat + Focus de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
-    
 def crear_mapa_500hpa(map_data, timestamp_str):
     fig, ax = crear_mapa_base(); lons, lats = map_data['lons'], map_data['lats']
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
@@ -344,11 +343,12 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             map_key, error_map = map_options[mapa_sel], None
 
             if map_key == "forecast_combinat":
-                nivell_sel = st.selectbox("Nivell d'anàlisi de convergència i humitat:", options=[1000, 950, 850, 700, 600, 500], format_func=lambda x: f"{x} hPa")
+                # --- CANVI: S'ha afegit 925 a la llista d'opcions ---
+                nivell_sel = st.selectbox("Nivell d'anàlisi de convergència i humitat:", 
+                                          options=[1000, 950, 925, 850, 700, 600, 500], 
+                                          format_func=lambda x: f"{x} hPa")
                 
-                # --- CORRECCIÓ DE LÒGICA ---
-                # Si el nivell és a prop de la superfície (pressió alta), fem servir el punt de rosada de superfície.
-                if nivell_sel >= 950: # AQUESTA ÉS LA CORRECCIÓ, abans era <=
+                if nivell_sel >= 950:
                     variables = ["dew_point_2m", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
                     map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
                     if map_data:
@@ -356,8 +356,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                         title_dewpoint = "Punt de Rosada en Superfície (°C)"
                         st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], dewpoint_to_plot, map_data[variables[1]], map_data[variables[2]], nivell_sel, timestamp_str, title_dewpoint))
                 
-                # Si el nivell és en altura (pressió més baixa), calculem el punt de rosada en aquest nivell.
-                else:
+                else: # Aquesta lògica ara inclou correctament 925, 850, 700, etc.
                     variables = [f"temperature_{nivell_sel}hPa", f"relative_humidity_{nivell_sel}hPa", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
                     map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
                     if map_data:
@@ -368,8 +367,6 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                         title_dewpoint = f"Punt de Rosada a {nivell_sel}hPa (°C)"
                         st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], dewpoint_to_plot, map_data[variables[2]], map_data[variables[3]], nivell_sel, timestamp_str, title_dewpoint))
 
-            # ... (la resta de la funció es manté igual) ...
-            
             elif map_key == "500hpa":
                 variables = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
                 map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
