@@ -203,11 +203,9 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     convergence_scaled = divergence.magnitude * -1e5
     
     CONVERGENCE_THRESHOLD_FOR_DRAWING = 15
-    max_convergence = np.nanmax(convergence_scaled) # Usem nanmax per ignorar possibles valors NaN
+    max_convergence = np.nanmax(convergence_scaled)
     
     if max_convergence >= CONVERGENCE_THRESHOLD_FOR_DRAWING:
-        # Creem els nivells de les isòlines de manera segura
-        # Assegurem que l'últim valor sigui almenys un pas més gran que l'inici
         contour_levels = np.arange(CONVERGENCE_THRESHOLD_FOR_DRAWING, max_convergence + 1, 5)
         
         if nivell >= 950: DEWPOINT_THRESHOLD = 14
@@ -217,17 +215,15 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
         convergence_in_humid_areas = np.where(humid_mask, convergence_scaled, 0)
         
-        # Dibuixem només si encara hi ha valors per sobre del llindar després de filtrar per humitat
         if np.nanmax(convergence_in_humid_areas) >= CONVERGENCE_THRESHOLD_FOR_DRAWING:
             contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=contour_levels,
                                   colors='darkred', linestyles='--', linewidths=1.5, zorder=6,
                                   transform=ccrs.PlateCarree())
-            if len(contours.collections) > 0:
-                ax.clabel(contours, inline=True, fontsize=10, fmt='%1.0f')
+            # CORRECCIÓ: Cridem clabel directament
+            ax.clabel(contours, inline=True, fontsize=10, fmt='%1.0f')
             
     ax.set_title(f"Anàlisi de Vent i Isòlines de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
-
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
