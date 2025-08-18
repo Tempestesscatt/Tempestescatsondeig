@@ -176,6 +176,9 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     
+    # --- LÍNIA CORREGIDA: Aquesta línia faltava i causava l'error ---
+    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+    
     # Càlcul de la convergència
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
     
@@ -204,7 +207,7 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
         zorder=4
     )
 
-    # --- CANVI FINAL: Dibuixar ISO NEGRA i etiquetar NOMÉS EL VALOR MÉS ALT ---
+    # Dibuixar ISO NEGRA i etiquetar NOMÉS EL VALOR MÉS ALT
     convergence_levels = [-60, -50, -40, -30]
     
     # 1. Dibuixem les isolínies en negre i sense cap etiqueta
@@ -219,13 +222,10 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     # 2. Busquem el punt de màxima convergència per posar una única etiqueta
     min_conv_val = np.nanmin(divergence.magnitude)
     
-    # Només posem l'etiqueta si la convergència és prou forta (més enllà del nostre llindar més baix)
+    # Només posem l'etiqueta si la convergència és prou forta
     if min_conv_val < -30:
-        # Trobem la posició (índex) del valor mínim
         idx_min = np.nanargmin(divergence.magnitude)
-        # Convertim l'índex 1D a un índex 2D per a la nostra graella
         idx_2d = np.unravel_index(idx_min, divergence.shape)
-        # Obtenim les coordenades geogràfiques d'aquest punt
         lon_min, lat_min = grid_lon[idx_2d], grid_lat[idx_2d]
         
         # 3. Creem l'etiqueta de text en aquell punt exacte
@@ -238,7 +238,6 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
             va='center',
             zorder=7
         )
-        # Afegim un contorn blanc al text per a una llegibilitat perfecta
         txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='white')])
 
     ax.set_title(f"Forecast: P. Rosada + Focus de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
