@@ -145,7 +145,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
     except Exception as e:
         return None, f"Error crític en processar dades del sondeig: {e}"
 
-# --- [EL RESTA DE FUNCIONS DE DADES (carregar_dades_mapa, etc.) ES MANTENEN IGUAL] ---
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(variables, hourly_index):
     try:
@@ -375,13 +374,11 @@ def crear_hodograf(u, v, params_calc):
     ax.legend()
     return fig
 
-# *** NOVA FUNCIÓ DE VISUALITZACIÓ ***
 def crear_grafic_perfil_tempesta(sounding_data, params_calc):
     fig, ax = plt.subplots(figsize=(4, 6), dpi=150)
-    
+
     p, _, _, u, v, h = sounding_data
-    
-    # Comprovar si tenim LFC i EL
+
     if 'LFC_p' not in params_calc or 'EL_p' not in params_calc or np.isnan(params_calc['LFC_p']) or np.isnan(params_calc['EL_p']):
         ax.text(0.5, 0.5, "No hi ha convecció\n(LFC/EL no trobats)", ha='center', va='center', fontsize=12, wrap=True)
         ax.set_xlim(0, 1)
@@ -393,38 +390,27 @@ def crear_grafic_perfil_tempesta(sounding_data, params_calc):
         ax.grid(axis='y', linestyle='--', alpha=0.7)
         return fig
 
-    # Convertir pressió de LFC i EL a altura (km)
     h_lfc_km = np.interp(params_calc['LFC_p'], p.magnitude[::-1], h.magnitude[::-1]) / 1000
     h_el_km = np.interp(params_calc['EL_p'], p.magnitude[::-1], h.magnitude[::-1]) / 1000
-    
-    # Dibuixar el terra
+
     ax.axhline(0, color='darkgreen', linewidth=6)
-    
-    # Dibuixar la forma del núvol
+
     verts = [
-        (0.35, h_lfc_km),  # Base esquerra
-        (0.65, h_lfc_km),  # Base dreta
-        (0.85, (h_lfc_km + h_el_km) / 2), # Mig dreta
-        (0.75, h_el_km),   # Top dreta
-        (0.25, h_el_km),   # Top esquerra
-        (0.15, (h_lfc_km + h_el_km) / 2), # Mig esquerra
-        (0.35, h_lfc_km),
+        (0.35, h_lfc_km), (0.65, h_lfc_km), (0.85, (h_lfc_km + h_el_km) / 2), (0.75, h_el_km),
+        (0.25, h_el_km), (0.15, (h_lfc_km + h_el_km) / 2), (0.35, h_lfc_km),
     ]
     codes = [Path.MOVETO, Path.LINETO, Path.CURVE3, Path.LINETO, Path.LINETO, Path.CURVE3, Path.CLOSEPOLY]
     path = Path(verts, codes)
     patch = patches.PathPatch(path, facecolor='lightgray', lw=1, edgecolor='black', zorder=2)
     ax.add_patch(patch)
-    
-    # Dibuixar "wind barbs"
+
     barb_levels_km = np.arange(1, int(h_el_km) + 2, 1)
     barb_p = np.interp(barb_levels_km * 1000, h.magnitude, p.magnitude)
-    
-    # Interpolar u i v als nivells de les barbes
+
     barb_u = np.interp(barb_p, p.magnitude[::-1], u.to('kt').magnitude[::-1])
     barb_v = np.interp(barb_p, p.magnitude[::-1], v.to('kt').magnitude[::-1])
     ax.barbs(np.full_like(barb_levels_km, 1.1), barb_levels_km, barb_u, barb_v, length=7)
 
-    # Configuració dels eixos
     ax.set_xlim(0, 1.3)
     ax.set_ylim(0, int(h_el_km) + 2)
     ax.set_xticks([])
@@ -432,7 +418,7 @@ def crear_grafic_perfil_tempesta(sounding_data, params_calc):
     ax.set_ylabel("Altura (km)")
     ax.set_title("Perfil de Tempesta", weight='bold', fontsize=12)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
-    
+
     return fig
 
 def mostrar_imatge_temps_real(tipus):
@@ -517,17 +503,38 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         if data_tuple:
             sounding_data, params = data_tuple
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
-            cols = st.columns(4)
-            for i, (param, unit) in enumerate({'CAPE': 'J/kg', 'CIN': 'J/kg', 'Shear_0-6km': 'm/s', 'SRH_0-3km': 'm²/s²'}.items()):
-                val = params.get(param)
-                cols[i].metric(label=param, value=f"{f'{val:.0f}' if val is not None and not np.isnan(val) else '---'} {unit}")
+
+            # --- SECCIÓ DE PARÀMETRES MODIFICADA ---
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                val = params.get('CAPE')
+                st.metric(label="CAPE", value=f"{f'{val:.0f}' if val is not None and not np.isnan(val) else '---'} J/kg")
+            with col2:
+                val = params.get('CIN')
+                st.metric(label="CIN", value=f"{f'{val:.0f}' if val is not None and not np.isnan(val) else '---'} J/kg")
+            with col3:
+                val = params.get('Shear_0-6km')
+                st.metric(label="Shear 0-6km", value=f"{f'{val:.0f}' if val is not None and not np.isnan(val) else '---'} m/s")
+
+            col4, col5, col6 = st.columns(3)
+            with col4:
+                val = params.get('SRH_0-3km')
+                st.metric(label="SRH 0-3km", value=f"{f'{val:.0f}' if val is not None and not np.isnan(val) else '---'} m²/s²")
+            with col5:
+                val = params.get('LFC_p')
+                st.metric(label="LFC (Nivell Conv. Lliure)", value=f"{f'{val:.0f}' if val is not None and not np.isnan(val) else '---'} hPa")
+            with col6:
+                val = params.get('EL_p')
+                st.metric(label="EL (Nivell Equilibri)", value=f"{f'{val:.0f}' if val is not None and not np.isnan(val) else '---'} hPa")
+            # --- FI DE LA SECCIÓ MODIFICADA ---
+
             with st.expander("ℹ️ Què signifiquen aquests paràmetres?"):
                 st.markdown("""
                 - **CAPE:** Energia per a tempestes. >1000 J/kg és significatiu.
                 - **CIN:** "Tapa" que impedeix la convecció. Valors negatius petits afavoreixen l'inici.
                 - **Shear 0-6km:** Cisallament (diferència de vent amb l'altura). >15-20 m/s afavoreix l'organització (supercèl·lules).
                 - **SRH 0-3km:** Helicitat (potencial de rotació). >150 m²/s² afavoreix supercèl·lules i tornados.
-                - **LCL, LFC, EL:** Nivells clau del sondeig que indiquen la base del núvol (LCL), on comença l'ascens lliure (LFC) i el cim de la tempesta (EL).
+                - **LFC, EL:** Nivells clau del sondeig que indiquen la base del núvol (LCL), on comença l'ascens lliure (LFC) i el cim de la tempesta (EL).
                 """)
             st.divider()
             col1, col2 = st.columns([1.5, 1])
@@ -537,7 +544,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             with col2:
                 _, _, _, u, v, _ = sounding_data
                 st.pyplot(crear_hodograf(u, v, params))
-                # *** INTEGRACIÓ DEL NOU GRÀFIC ***
                 st.pyplot(crear_grafic_perfil_tempesta(sounding_data, params))
         else:
             st.warning("No hi ha dades de sondeig disponibles per a la selecció actual. Pot ser degut a dades invàlides del model.")
