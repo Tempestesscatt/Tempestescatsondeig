@@ -151,9 +151,10 @@ def preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel):
             dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
             divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
             
-            resum_mapa['max_conv_925hpa'] = np.nanmin(divergence)
+            # --- CORREGIT ---: Usem .magnitude per extreure el valor numèric per a les funcions de numpy
+            resum_mapa['max_conv_925hpa'] = np.nanmin(divergence.magnitude)
+            idx_min = np.nanargmin(divergence.magnitude)
             
-            idx_min = np.nanargmin(divergence)
             idx_2d = np.unravel_index(idx_min, divergence.shape)
             resum_mapa['lat_max_conv'] = grid_lat[idx_2d]
             resum_mapa['lon_max_conv'] = grid_lon[idx_2d]
@@ -225,7 +226,6 @@ def get_wind_colormap():
     norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
     return cmap, norm, levels
 
-# --- NOU MAPA COMBINAT ---
 def crear_mapa_forecast_combinat(lons, lats, cape_data, speed_data, dir_data, nivell, timestamp_str):
     """
     Crea un mapa combinat que mostra CAPE, línies de flux i focus de convergència.
@@ -256,12 +256,13 @@ def crear_mapa_forecast_combinat(lons, lats, cape_data, speed_data, dir_data, ni
     ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', linewidth=0.7, density=2.0, arrowsize=0.7, zorder=4)
 
     # 4. Identificar i dibuixar els focus de convergència amb icones
-    conv_points_indices = np.where(divergence < -30) # Llindar de -30
+    # --- CORREGIT ---: Usem .magnitude per extreure el valor numèric per a la comparació
+    conv_points_indices = np.where(divergence.magnitude < -30)
+    
     conv_lons = grid_lon[conv_points_indices]
     conv_lats = grid_lat[conv_points_indices]
     if conv_lons.size > 0:
-        # Per evitar sobreposar moltes icones, les filtrem una mica
-        for i in range(0, len(conv_lons), 5): # Ajusta el '5' per a més o menys icones
+        for i in range(0, len(conv_lons), 5):
             txt = ax.text(conv_lons[i], conv_lats[i], '⛈️', fontsize=16, ha='center', va='center',
                           transform=ccrs.PlateCarree(), zorder=7)
             txt.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
@@ -371,7 +372,6 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
     with st.spinner("Actualitzant anàlisi de mapes..."):
         col_map_1, col_map_2 = st.columns([2.5, 1.5])
         with col_map_1:
-            # --- MODIFICAT: Nova llista de mapes amb el mapa combinat com a principal ---
             map_options = {
                 "Forecast: Tempestes (CAPE + Convergència)": "forecast_combinat",
                 "CAPE (Energia Convectiva)": "cape",
@@ -383,7 +383,6 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
             map_key, error_map = map_options[mapa_sel], None
             
-            # --- NOU BLOC PER AL MAPA COMBINAT ---
             if map_key == "forecast_combinat":
                 nivell_sel = st.selectbox("Nivell d'anàlisi de convergència:", options=[1000, 950, 925, 850, 700], format_func=lambda x: f"{x} hPa")
                 variables = ["cape", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
