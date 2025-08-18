@@ -47,6 +47,7 @@ PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 2
 # --- 1. FUNCIONS D'OBTENCIÓ I PROCESSAMENT DE DADES ---
 # SUBSTITUEIX LA TEVA VERSIÓ D'AQUESTA FUNCIÓ PER AQUESTA
 # SUBSTITUEIX LA TEVA FUNCIÓ ANTIGA PER AQUESTA VERSIÓ FINAL
+# SUBSTITUEIX NOMÉS AQUESTA FUNCIÓ AL TEU CODI
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
@@ -83,19 +84,15 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                 
         if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
         
-        # Combinem i ordenem les dades per pressió descendent (altitud creixent)
-        combined_data = sorted(zip(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile), key=lambda x: x[0], reverse=True)
-        p_sorted, T_sorted, Td_sorted, u_sorted, v_sorted, h_sorted = [np.array(col) for col in zip(*combined_data)]
-        
-        # Creem els arrays amb unitats
-        p = p_sorted * units.hPa
-        T = T_sorted * units.degC
-        Td = Td_sorted * units.degC
-        u = u_sorted * units('m/s')
-        v = v_sorted * units('m/s')
-        heights = h_sorted * units.meter
-        
-        # Ara els càlculs es fan amb les dades ordenades
+        # Creem els arrays amb unitats directament, sense ordenar de moment
+        p = np.array(p_profile) * units.hPa
+        T = np.array(T_profile) * units.degC
+        Td = np.array(Td_profile) * units.degC
+        u = np.array(u_profile) * units('m/s')
+        v = np.array(v_profile) * units('m/s')
+        heights = np.array(h_profile) * units.meter
+
+        # Càlculs bàsics (no necessiten ordenació)
         prof = mpcalc.parcel_profile(p, T[0], Td[0])
         params_calc = {}
         cape, cin = mpcalc.cape_cin(p, T, Td, prof)
@@ -107,35 +104,24 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             params_calc['LFC_hPa'] = p_lfc.m if not np.isnan(p_lfc.m) else np.nan
         except Exception: params_calc['LFC_hPa'] = np.nan
         
-        # NOU MÈTODE DE CÀLCUL DE CISALLAMENT (MÉS ROBUST)
+        # CÀLCUL DE CISALLAMENT AMB MÈTODE COMPATIBLE
         params_calc['Shear 0-1km'] = np.nan
         params_calc['Shear 0-6km'] = np.nan
-        
+
         try:
-            # Seleccionem la capa de 0 a 1 km sobre el terra
-            layer_1km = mpcalc.get_layer_agl(p, heights, depth=1000 * units.m)
-            shear_1km_u, shear_1km_v = mpcalc.wind_shear(p[layer_1km], u[layer_1km], v[layer_1km])
-            params_calc['Shear 0-1km'] = mpcalc.wind_speed(shear_1km_u, shear_1km_v).to('knots').m
+            # Utilitzem bulk_shear, que és més antic i compatible
+            shear_0_1km_u, shear_0_1km_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=1000 * units.m)
+            params_calc['Shear 0-1km'] = mpcalc.wind_speed(shear_0_1km_u, shear_0_1km_v).to('knots').m
         except (ValueError, IndexError):
-            # Aquest error pot passar si el sondeig és massa curt
             pass
 
         try:
-            # Seleccionem la capa de 0 a 6 km sobre el terra
-            layer_6km = mpcalc.get_layer_agl(p, heights, depth=6000 * units.m)
-            shear_6km_u, shear_6km_v = mpcalc.wind_shear(p[layer_6km], u[layer_6km], v[layer_6km])
-            params_calc['Shear 0-6km'] = mpcalc.wind_speed(shear_6km_u, shear_6km_v).to('knots').m
+            shear_0_6km_u, shear_0_6km_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=6000 * units.m)
+            params_calc['Shear 0-6km'] = mpcalc.wind_speed(shear_0_6km_u, shear_0_6km_v).to('knots').m
         except (ValueError, IndexError):
             pass
             
-        # Retornem les dades originals (sense ordenar) per als gràfics Skew-T, que ho gestionen internament
-        p_orig = np.array(p_profile) * units.hPa
-        T_orig = np.array(T_profile) * units.degC
-        Td_orig = np.array(Td_profile) * units.degC
-        u_orig = np.array(u_profile) * units('m/s')
-        v_orig = np.array(v_profile) * units('m/s')
-        
-        return ((p_orig, T_orig, Td_orig, u_orig, v_orig), params_calc), None
+        return ((p, T, Td, u, v), params_calc), None
         
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
         
