@@ -9,6 +9,8 @@ import time
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as path_effects
 from matplotlib.colors import ListedColormap, BoundaryNorm
+from matplotlib.path import Path
+import matplotlib.patches as patches
 from metpy.plots import SkewT, Hodograph
 from metpy.units import units
 import metpy.calc as mpcalc
@@ -120,7 +122,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             s_u, s_v = mpcalc.bulk_shear(p, u, v, height=h, depth=6 * units.km)
             params_calc['Shear_0-6km'] = mpcalc.wind_speed(s_u, s_v).to('m/s').m
 
-            # --- NOU CÀLCUL DEL MOVIMENT DE LA TEMPESTA ---
             try:
                 h_agl = h - h[0]
                 mid_level_mask = (h_agl >= 3000 * units.meter) & (h_agl <= 6000 * units.meter)
@@ -135,7 +136,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             except Exception:
                 params_calc.update({'storm_motion_u': np.nan, 'storm_motion_v': np.nan})
                 storm_motion_vector = (np.nan*units('m/s'), np.nan*units('m/s'))
-            # --- FI DEL NOU CÀLCUL ---
 
             storm_u_comp, storm_v_comp = storm_motion_vector
             _, srh, _ = mpcalc.storm_relative_helicity(h, u, v, depth=3 * units.km, storm_u=storm_u_comp, storm_v=storm_v_comp)
@@ -145,6 +145,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
     except Exception as e:
         return None, f"Error crític en processar dades del sondeig: {e}"
 
+# --- [EL RESTA DE FUNCIONS DE DADES (carregar_dades_mapa, etc.) ES MANTENEN IGUAL] ---
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(variables, hourly_index):
     try:
@@ -337,8 +338,8 @@ def crear_skewt(p, T, Td, u, v, titol, params_calc):
     skew.plot(p, T, 'r', lw=2, label='Temperatura'); skew.plot(p, Td, 'g', lw=2, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03, length=6)
     skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.5); skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.5); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.5)
-    
-    with METPY_LOCK: # Protegim també la creació del perfil aquí per seguretat
+
+    with METPY_LOCK:
         prof = mpcalc.parcel_profile(p, T[0], Td[0])
 
     skew.plot(p, prof, 'k', linewidth=2, label='Trajectòria Parcel·la')
@@ -372,6 +373,66 @@ def crear_hodograf(u, v, params_calc):
 
     ax.set_title("Hodògraf i Moviment de Tempesta", weight='bold'); ax.set_xlabel("Component U (kt)"); ax.set_ylabel("Component V (kt)")
     ax.legend()
+    return fig
+
+# *** NOVA FUNCIÓ DE VISUALITZACIÓ ***
+def crear_grafic_perfil_tempesta(sounding_data, params_calc):
+    fig, ax = plt.subplots(figsize=(4, 6), dpi=150)
+    
+    p, _, _, u, v, h = sounding_data
+    
+    # Comprovar si tenim LFC i EL
+    if 'LFC_p' not in params_calc or 'EL_p' not in params_calc or np.isnan(params_calc['LFC_p']) or np.isnan(params_calc['EL_p']):
+        ax.text(0.5, 0.5, "No hi ha convecció\n(LFC/EL no trobats)", ha='center', va='center', fontsize=12, wrap=True)
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 15)
+        ax.set_xticks([])
+        ax.set_yticks(np.arange(0, 16, 1))
+        ax.set_ylabel("Altura (km)")
+        ax.set_title("Perfil de Tempesta", weight='bold')
+        ax.grid(axis='y', linestyle='--', alpha=0.7)
+        return fig
+
+    # Convertir pressió de LFC i EL a altura (km)
+    h_lfc_km = np.interp(params_calc['LFC_p'], p.magnitude[::-1], h.magnitude[::-1]) / 1000
+    h_el_km = np.interp(params_calc['EL_p'], p.magnitude[::-1], h.magnitude[::-1]) / 1000
+    
+    # Dibuixar el terra
+    ax.axhline(0, color='darkgreen', linewidth=6)
+    
+    # Dibuixar la forma del núvol
+    verts = [
+        (0.35, h_lfc_km),  # Base esquerra
+        (0.65, h_lfc_km),  # Base dreta
+        (0.85, (h_lfc_km + h_el_km) / 2), # Mig dreta
+        (0.75, h_el_km),   # Top dreta
+        (0.25, h_el_km),   # Top esquerra
+        (0.15, (h_lfc_km + h_el_km) / 2), # Mig esquerra
+        (0.35, h_lfc_km),
+    ]
+    codes = [Path.MOVETO, Path.LINETO, Path.CURVE3, Path.LINETO, Path.LINETO, Path.CURVE3, Path.CLOSEPOLY]
+    path = Path(verts, codes)
+    patch = patches.PathPatch(path, facecolor='lightgray', lw=1, edgecolor='black', zorder=2)
+    ax.add_patch(patch)
+    
+    # Dibuixar "wind barbs"
+    barb_levels_km = np.arange(1, int(h_el_km) + 2, 1)
+    barb_p = np.interp(barb_levels_km * 1000, h.magnitude, p.magnitude)
+    
+    # Interpolar u i v als nivells de les barbes
+    barb_u = np.interp(barb_p, p.magnitude[::-1], u.to('kt').magnitude[::-1])
+    barb_v = np.interp(barb_p, p.magnitude[::-1], v.to('kt').magnitude[::-1])
+    ax.barbs(np.full_like(barb_levels_km, 1.1), barb_levels_km, barb_u, barb_v, length=7)
+
+    # Configuració dels eixos
+    ax.set_xlim(0, 1.3)
+    ax.set_ylim(0, int(h_el_km) + 2)
+    ax.set_xticks([])
+    ax.set_yticks(np.arange(0, int(h_el_km) + 3, 2))
+    ax.set_ylabel("Altura (km)")
+    ax.set_title("Perfil de Tempesta", weight='bold', fontsize=12)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    
     return fig
 
 def mostrar_imatge_temps_real(tipus):
@@ -476,6 +537,8 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             with col2:
                 _, _, _, u, v, _ = sounding_data
                 st.pyplot(crear_hodograf(u, v, params))
+                # *** INTEGRACIÓ DEL NOU GRÀFIC ***
+                st.pyplot(crear_grafic_perfil_tempesta(sounding_data, params))
         else:
             st.warning("No hi ha dades de sondeig disponibles per a la selecció actual. Pot ser degut a dades invàlides del model.")
 
