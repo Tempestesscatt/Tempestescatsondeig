@@ -248,42 +248,45 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
 
-    # 1. Calculem els components U i V del vent
+    # Calculem els components U i V del vent
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
 
-    # 2. Interpolem els components U, V i la velocitat a la graella
+    # Interpolem els components U, V i la velocitat a la graella
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
 
-    # 3. Definim l'escala de colors per a la velocitat
-    speed_levels = np.arange(20, 161, 10)
-    cmap = 'plasma'
+    # --- CANVI CLAU: Combinació de fons de color + streamlines negres ---
+
+    # 1. Definim l'escala de colors i els nivells per al fons (basat en la imatge)
+    speed_levels = np.arange(0, 211, 10)  # De 0 a 210 km/h en trams de 10
+    cmap = 'viridis_r'  # Aquest mapa de colors invertit és molt semblant al de l'exemple
     norm = BoundaryNorm(speed_levels, ncolors=plt.get_cmap(cmap).N, clip=True)
 
-    # 4. Dibuixem les streamlines, acolorides segons la velocitat
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, 
-                       color=grid_speed, 
-                       cmap=cmap,
-                       norm=norm,
-                       linewidth=1.5,   # Augmentem el gruix per veure millor els colors
-                       density=3.8,     # Ajustem una mica la densitat
-                       arrowsize=0.7,
-                       zorder=3)
+    # 2. Dibuixem el fons de color amb 'contourf' basat en la velocitat del vent
+    cf = ax.contourf(grid_lon, grid_lat, grid_speed,
+                     levels=speed_levels,
+                     cmap=cmap,
+                     norm=norm,
+                     alpha=0.85, # Una mica de transparència per suavitzar
+                     zorder=2,
+                     extend='max')
 
-    # --- CORRECCIÓ CLAU ---
-    # 5. Creem un objecte ScalarMappable per poder generar la barra de color correctament.
-    # Aquesta era la part que fallava.
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([]) # És necessari posar un array buit
+    # 3. Superposem les streamlines en color negre per sobre del fons
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v,
+                  color='black',
+                  linewidth=0.7,
+                  density=2.5,  # Augmentem la densitat per a més detall
+                  arrowsize=0.6,
+                  zorder=3)
 
-    # Ara passem aquest objecte 'sm' a la funció colorbar
-    cbar = fig.colorbar(sm, ax=ax, orientation='vertical', shrink=0.7)
+    # 4. Creem la barra de color a partir del 'contourf', que ara sí que és correcte
+    cbar = fig.colorbar(cf, ax=ax, orientation='vertical', shrink=0.7)
     cbar.set_label("Velocitat del Vent (km/h)")
     
-    ax.set_title(f"Vent a {nivell} hPa (Streamlines)\n{timestamp_str}", weight='bold', fontsize=16)
+    ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    
     return fig
-
 def crear_mapa_escalar(lons, lats, data, titol, cmap, levels, unitat, timestamp_str, extend='max'):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
