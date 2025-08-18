@@ -182,6 +182,37 @@ def crear_mapa_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _niv
     
     return gif_data
 
+def mostrar_imatge_temps_real(tipus):
+    # --- Aquesta funció gestiona les dues vistes de satèl·lit ---
+    
+    if tipus == "Satèl·lit (Europa)":
+        # Aquesta és la URL del satèl·lit europeu
+        url = "https://modeles20.meteociel.fr/satellite/animsatsandvisirmtgeu.gif"
+        caption = "Satèl·lit Sandvitx (Visible + Infraroig). Font: Meteociel"
+        
+    elif tipus == "Satèl·lit (NE Península)":
+        now_local = datetime.now(TIMEZONE)
+        if 7 <= now_local.hour < 21:
+            url = "https://www.meteociel.fr/modeles/satanim_espagne-ne.gif"
+            caption = "Satèl·lit Visible (Nord-est). Font: Meteociel"
+        else:
+            url = "https://www.meteociel.fr/modeles/satanim_ir_espagne-ne.gif"
+            caption = "Satèl·lit Infraroig (Nord-est). Font: Meteociel"
+    
+    else:
+        st.error("Tipus d'imatge no reconegut.")
+        return
+
+    # Lògica comuna per carregar i mostrar la imatge
+    try:
+        response = requests.get(f"{url}?ver={int(time.time())}", headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+        if response.status_code == 200: 
+            st.image(response.content, caption=caption, use_container_width=True)
+        else: 
+            st.warning(f"No s'ha pogut carregar la imatge. (Codi: {response.status_code})")
+    except Exception as e: 
+        st.error(f"Error de xarxa en carregar la imatge.")
+
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(variables, hourly_index):
     try:
@@ -488,9 +519,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             if map_data:
                 if map_key == "forecast_animat":
                     with st.spinner("Generant animació del flux de vent... Aquesta operació pot trigar uns segons la primera vegada."):
-                        # La funció crear_mapa_animat ara retorna dades en brut (bytes)
                         gif_data = crear_mapa_animat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str)
-                        # st.image gestiona perfectament les dades en brut
                         st.image(gif_data)
                 else: # forecast_estatic
                     st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str))
@@ -504,13 +533,17 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
 
         elif map_key == "vent_700":
             nivell = 700
-            variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell_sel}hPa"]
+            # --- CORRECCIÓ ---
+            # Ara utilitza 'nivell' per a les dues variables, no 'nivell_sel'
+            variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
             map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
             if map_data: st.pyplot(crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str))
 
         elif map_key == "vent_300":
             nivell = 300
-            variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell_sel}hPa"]
+            # --- CORRECCIÓ ---
+            # Ara utilitza 'nivell' per a les dues variables, no 'nivell_sel'
+            variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
             map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
             if map_data: st.pyplot(crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str))
 
@@ -527,6 +560,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             mostrar_imatge_temps_real("Satèl·lit (Europa)")
         with tab_ne:
             mostrar_imatge_temps_real("Satèl·lit (NE Península)")
+            
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
         sounding_data, params_calculats = data_tuple; st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
