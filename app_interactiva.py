@@ -233,57 +233,65 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
     except Exception as e:
         return None, f"Error en processar dades del sondeig: {str(e)}"
 
+
 @st.cache_data(ttl=3600, show_spinner="Generant mapes...")
 def carregar_dades_mapa(variables, hourly_index):
     try:
-        # Creem la graella de coordenades
+        # 1. Creem la graella de coordenades com abans
         lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 15), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 15)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
         flat_lats = lat_grid.flatten()
         flat_lons = lon_grid.flatten()
 
-        # >>> INICI DE LA CORRECCIÓ <<<
-        # Llista per guardar totes les respostes individuals de l'API
-        all_responses = []
+        # >>> INICI DE LA CORRECCIÓ FINAL <<<
+        
+        # 2. Definim la mida del lot i dividim les coordenades
+        CHUNK_SIZE = 50  # Demanarem les dades en grups de 50 punts
+        
+        # Llistes per anar guardant els resultats de tots els lots
+        all_lats, all_lons = [], []
+        all_vars_data = {var: [] for var in variables}
 
-        # Iterem sobre cada coordenada i fem una petició individual a l'API.
-        # Això evita crear una URL massa llarga.
-        for lat, lon in zip(flat_lats, flat_lons):
+        # 3. Iterem sobre els lots (chunks) de coordenades
+        for i in range(0, len(flat_lats), CHUNK_SIZE):
+            # Obtenim el subconjunt de coordenades per a aquesta petició
+            lat_chunk = flat_lats[i:i + CHUNK_SIZE]
+            lon_chunk = flat_lons[i:i + CHUNK_SIZE]
+            
+            # Creem els paràmetres per a aquest lot
             params = {
-                "latitude": lat,
-                "longitude": lon,
+                "latitude": lat_chunk.tolist(),
+                "longitude": lon_chunk.tolist(),
                 "hourly": variables,
                 "models": "arome_seamless",
                 "forecast_days": FORECAST_DAYS
             }
-            # La petició per a un sol punt retorna una llista amb un únic element.
-            response = openmeteo.weather_api(API_URL, params=params)
-            if response:
-                # Afegim l'únic objecte de resposta a la nostra llista.
-                all_responses.append(response[0])
+            
+            # Fem la petició a l'API per a aquest lot
+            responses = openmeteo.weather_api(API_URL, params=params)
 
-        # A partir d'aquí, processem la llista `all_responses` que hem construït.
-        output = {var: [] for var in ["lats", "lons"] + variables}
+            # 4. Processem les respostes del lot i les afegim a les llistes generals
+            for r in responses:
+                hourly = r.Hourly()
+                if hourly and hourly.Variables(0) and len(hourly.Variables(0).ValuesAsNumpy()) > hourly_index:
+                    vals = [hourly.Variables(j).ValuesAsNumpy()[hourly_index] for j in range(len(variables))]
+                    if not any(np.isnan(v) for v in vals):
+                        all_lats.append(r.Latitude())
+                        all_lons.append(r.Longitude())
+                        for k, var in enumerate(variables):
+                            all_vars_data[var].append(vals[k])
+
+        # 5. Creem el diccionari de sortida final amb totes les dades recopilades
+        output = {"lats": all_lats, "lons": all_lons}
+        output.update(all_vars_data)
         
-        for r in all_responses:
-            hourly = r.Hourly()
-            # Assegurem que l'objecte i l'índex són vàlids abans de processar
-            if hourly and hourly.Variables(0) and len(hourly.Variables(0).ValuesAsNumpy()) > hourly_index:
-                 vals = [hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
-                 if not any(np.isnan(v) for v in vals):
-                    output["lats"].append(r.Latitude())
-                    output["lons"].append(r.Longitude())
-                    for i, var in enumerate(variables): 
-                        output[var].append(vals[i])
-        # >>> FI DE LA CORRECCIÓ <<<
-                    
+        # >>> FI DE LA CORRECCIÓ FINAL <<<
+
         if not output["lats"]: 
             return None, "No s'han rebut dades vàlides de l'API per als punts del mapa."
         return output, None
     except Exception as e:
-        # Proporcionem un missatge d'error més detallat
         return None, f"Error en carregar dades del mapa: {str(e)}"
-
 @st.cache_data(ttl=3600, show_spinner="Preparant anàlisi d'IA...")
 def preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
     """Recopila dades clau i localitza el focus de convergència."""
