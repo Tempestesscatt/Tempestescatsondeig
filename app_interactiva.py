@@ -243,8 +243,8 @@ def crear_mapa_base():
     ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree())
     ax.add_feature(cfeature.LAND, facecolor="#2A3B4C", zorder=0)
     ax.add_feature(cfeature.OCEAN, facecolor='#161B22', zorder=0)
-    ax.add_feature(cfeature.COASTLINE, edgecolor='white', linewidth=0.8, zorder=5)
-    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='white', zorder=5)
+    ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
+    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
     return fig, ax
 
 def get_wind_colormap():
@@ -296,7 +296,7 @@ def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, lat_sel, l
     # MILLORA: Afegim punts de referència geogràfica (capitals)
     for ciutat, coords in CIUTATS_CATALUNYA.items():
         ax.plot(coords['lon'], coords['lat'], 'o', color='white', markersize=3, transform=ccrs.Geodetic(), zorder=6)
-        ax.text(coords['lon'] + 0.04, coords['lat'] + 0.04, ciutat, transform=ccrs.Geodetic(), fontsize=8, color='white', alpha=0.7, zorder=6)
+        ax.text(coords['lon'] + 0.04, coords['lat'] + 0.04, ciutat, transform=ccrs.Geodetic(), fontsize=8, color='black', alpha=0.7, zorder=6)
 
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100))
     speeds_ms=np.array(speed_data)*units('km/h'); dirs_deg=np.array(dir_data)*units.degrees
@@ -314,7 +314,7 @@ def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, lat_sel, l
     cbar = fig.colorbar(cf, ax=ax, orientation='vertical', shrink=0.7); cbar.set_label('Convergència (vermell) / Divergència (blau) [x10⁻⁵ s⁻¹]')
     cs_conv = ax.contour(grid_lon, grid_lat, divergence, levels=levels, colors='white', linewidths=0.7, alpha=0.3, zorder=3)
     ax.clabel(cs_conv, inline=True, fontsize=8, fmt='%1.0f')
-    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='white', linewidth=0.5, density=5.0, arrowsize=0.5, zorder=4)
+    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', linewidth=0.5, density=5.0, arrowsize=0.3, zorder=4)
     ax.plot(lon_sel, lat_sel, 'o', markerfacecolor='#FF00FF', markeredgecolor='black', markersize=10, transform=ccrs.Geodetic(), zorder=7)
     txt = ax.text(lon_sel + 0.05, lat_sel, nom_poble_sel, transform=ccrs.Geodetic(), zorder=8, fontsize=12, weight='bold', color='yellow')
     txt.set_path_effects(TEXT_GLOW)
