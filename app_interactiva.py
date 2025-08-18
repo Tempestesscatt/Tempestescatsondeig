@@ -193,38 +193,72 @@ def crear_mapa_base():
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0); ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5); return fig, ax
 
+# SUBSTITUEIX LA TEVA VERSIÓ D'AQUESTA FUNCIó PER AQUESTA
+
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
+    
+    # Preparació de la graella (grid)
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
+    
+    # Interpolació de les dades bàsiques
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), method='cubic')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
-    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-    divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
-    if nivell >= 950: CONVERGENCE_THRESHOLD = -45; DEWPOINT_THRESHOLD_FOR_RISK = 14
-    elif nivell >= 925: CONVERGENCE_THRESHOLD = -35; DEWPOINT_THRESHOLD_FOR_RISK = 12
-    elif nivell >= 850: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 7
-    else: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 5
+
+    # Dibuixar el fons de color amb la velocitat del vent (igual que abans)
     colors_wind_final = ['#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700', '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF', '#FFC0CB', '#D3D3D3', '#A9A9A9']
     speed_levels_final = np.arange(0, 171, 10)
     custom_cmap = ListedColormap(colors_wind_final); norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels_final[::2])
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
+    
+    # Dibuixar les línies de flux (streamlines)
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=4, arrowsize=0.7, zorder=4, transform=ccrs.PlateCarree())
-    effective_risk_mask = (divergence.magnitude <= CONVERGENCE_THRESHOLD) & (grid_dewpoint >= DEWPOINT_THRESHOLD_FOR_RISK)
-    labels, num_features = label(effective_risk_mask)
-    if num_features > 0:
-        for i in range(1, num_features + 1):
-            points = np.argwhere(labels == i); center_y, center_x = points.mean(axis=0)
-            center_lon, center_lat = grid_lon[0, int(center_x)], grid_lat[int(center_y), 0]
-            warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=15, ha='center', va='center', zorder=8, transform=ccrs.PlateCarree())
-            warning_txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
-    ax.set_title(f"Anàlisi de Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
-    return fig
 
+    # --- NOVA IMPLEMENTACIÓ: ISÒLINES DE CONVERGÈNCIA ---
+    
+    # 1. Càlcul de la divergència
+    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+    divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
+    
+    # 2. Filtre i definició de nivells per a les isòlines
+    # La convergència és divergència negativa. La unitat és 1/s.
+    # Multipliquem per 1e5 per a una llegibilitat més fàcil (una pràctica estàndard).
+    convergence_scaled = divergence.magnitude * -1e5
+    
+    # Definim el llindar a partir del qual dibuixem. Un valor de 15 és fort.
+    CONVERGENCE_THRESHOLD_FOR_DRAWING = 15
+    # Creem els nivells de les isòlines, des del llindar cap a valors més forts
+    contour_levels = np.arange(CONVERGENCE_THRESHOLD_FOR_DRAWING, np.max(convergence_scaled), 5)
+
+    # Només continuem si hi ha nivells per dibuixar
+    if len(contour_levels) > 0:
+        # 3. Comprovació d'humitat (per evitar zones de convergència seca)
+        if nivell >= 950: DEWPOINT_THRESHOLD = 14
+        elif nivell >= 925: DEWPOINT_THRESHOLD = 12
+        else: DEWPOINT_THRESHOLD = 7
+        
+        # Creem una màscara: només volem convergència on hi ha prou humitat
+        humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
+        convergence_in_humid_areas = np.where(humid_mask, convergence_scaled, 0)
+        
+        # 4. Dibuixar les isòlines i les seves etiquetes
+        # Dibuixem les isòlines amb un color vermell fosc i estil discontinu
+        contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=contour_levels,
+                              colors='darkred', linestyles='--', linewidths=1.5, zorder=6,
+                              transform=ccrs.PlateCarree())
+        
+        # Afegim les etiquetes numèriques sobre les línies
+        ax.clabel(contours, inline=True, fontsize=10, fmt='%1.0f')
+
+    ax.set_title(f"Anàlisi de Vent i Isòlines de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    
+    return fig
+    
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
