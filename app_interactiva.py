@@ -151,7 +151,6 @@ def preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel):
             dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
             divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
             
-            # --- CORREGIT ---: Usem .magnitude per extreure el valor numèric per a les funcions de numpy
             resum_mapa['max_conv_925hpa'] = np.nanmin(divergence.magnitude)
             idx_min = np.nanargmin(divergence.magnitude)
             
@@ -226,6 +225,7 @@ def get_wind_colormap():
     norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
     return cmap, norm, levels
 
+# --- FUNCIÓ MODIFICADA ---
 def crear_mapa_forecast_combinat(lons, lats, cape_data, speed_data, dir_data, nivell, timestamp_str):
     """
     Crea un mapa combinat que mostra CAPE, línies de flux i focus de convergència.
@@ -252,23 +252,29 @@ def crear_mapa_forecast_combinat(lons, lats, cape_data, speed_data, dir_data, ni
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(u_grid * units('m/s'), v_grid * units('m/s'), dx=dx, dy=dy) * 1e5
 
-    # 3. Dibuixar línies de flux
-    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', linewidth=0.7, density=2.0, arrowsize=0.7, zorder=4)
+    # 3. Dibuixar línies de flux amb més densitat
+    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', linewidth=0.7, density=5.5, arrowsize=0.7, zorder=4)
 
-    # 4. Identificar i dibuixar els focus de convergència amb icones
-    # --- CORREGIT ---: Usem .magnitude per extreure el valor numèric per a la comparació
+    # 4. Identificar i dibuixar els focus de convergència amb les noves condicions
     conv_points_indices = np.where(divergence.magnitude < -30)
     
-    conv_lons = grid_lon[conv_points_indices]
-    conv_lats = grid_lat[conv_points_indices]
-    if conv_lons.size > 0:
-        for i in range(0, len(conv_lons), 5):
-            txt = ax.text(conv_lons[i], conv_lats[i], '⛈️', fontsize=16, ha='center', va='center',
-                          transform=ccrs.PlateCarree(), zorder=7)
-            txt.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
+    if conv_points_indices[0].size > 0:
+        # Obtenim les coordenades i el valor de CAPE en aquests punts
+        conv_lons = grid_lon[conv_points_indices]
+        conv_lats = grid_lat[conv_points_indices]
+        conv_capes = grid_cape[conv_points_indices]
+
+        # Iterem per cada punt de convergència
+        for i in range(len(conv_lons)):
+            # Dibuixem la 'X' NOMÉS si el CAPE en aquell punt és > 500
+            if conv_capes[i] > 500:
+                txt = ax.text(conv_lons[i], conv_lats[i], 'X', fontsize=14, color='red', weight='bold',
+                              ha='center', va='center', transform=ccrs.PlateCarree(), zorder=7)
+                txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='white')])
 
     ax.set_title(f"Forecast Tempestes: CAPE + Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
+
 
 def crear_mapa_500hpa(map_data, timestamp_str):
     fig, ax = crear_mapa_base()
