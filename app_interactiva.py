@@ -308,30 +308,55 @@ def get_color_for_param(param_name, value):
         return "#BC13FE"
     return "#FFFFFF"
 
+# SUBSTITUEIX LA TEVA FUNCIÓ ANTIGA PER AQUESTA VERSIÓ
 def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, timestamp_str):
-    resum_sondeig = "No s'han pogut carregar les dades del sondeig."
+    """
+    Prepara un resum que inclou dades del sondeig i la informació del mapa,
+    amb instruccions més precises per a l'IA.
+    """
+    resum_sondeig = "No s'han pogut carregar les dades del sondeig vertical."
     if data_tuple:
         sounding_data, params_calculats = data_tuple
-        cape = params_calculats.get('CAPE', 0); cin = params_calculats.get('CIN', 0)
-        lfc = params_calculats.get('LFC_hPa', float('nan')); shear_1km = params_calculats.get('Shear 0-1km', np.nan)
+        cape = params_calculats.get('CAPE', 0)
+        cin = params_calculats.get('CIN', 0)
+        lfc = params_calculats.get('LFC_hPa', float('nan'))
+        shear_1km = params_calculats.get('Shear 0-1km', np.nan)
         shear_6km = params_calculats.get('Shear 0-6km', np.nan)
+        
         resum_sondeig = f"""
-    - CAPE (Energia): {cape:.0f} J/kg.
-    - CIN (Inhibidor): {cin:.0f} J/kg.
-    - LFC (Nivell d'inici): {'No trobat' if np.isnan(lfc) else f'{lfc:.0f} hPa'}.
-    - Cisallament 0-1km (Tornados): {'No calculat' if np.isnan(shear_1km) else f'{shear_1km:.0f} nusos'}.
-    - Cisallament 0-6km (Supercèl·lules): {'No calculat' if np.isnan(shear_6km) else f'{shear_6km:.0f} nusos'}."""
-    resum_mapa = "No s'han pogut carregar les dades del mapa."
+    - CAPE (Energia atmosfèrica): {cape:.0f} J/kg.
+    - CIN (Inhibidor / 'Tapa'): {cin:.0f} J/kg.
+    - LFC (Nivell d'inici de la convecció): {'No trobat' if np.isnan(lfc) else f'{lfc:.0f} hPa'}.
+    - Cisallament 0-1km (Potencial de tornados): {'No calculat' if np.isnan(shear_1km) else f'{shear_1km:.0f} nusos'}.
+    - Cisallament 0-6km (Potencial de supercèl·lules): {'No calculat' if np.isnan(shear_6km) else f'{shear_6km:.0f} nusos'}."""
+
+    resum_mapa = "No s'han pogut carregar les dades del mapa general."
     if map_data:
         num_alertes = map_data.get('num_alertes', 0)
-        resum_mapa = f"S'han detectat {num_alertes} focus de convergència amb humitat a {nivell_mapa}hPa." if num_alertes > 0 else f"No es detecten focus significatius de convergència amb humitat a {nivell_mapa}hPa."
+        if num_alertes > 0:
+            resum_mapa = f"S'han detectat {num_alertes} focus de convergència amb humitat a {nivell_mapa}hPa repartits per Catalunya. Aquests focus actuen com a 'disparadors' per a les tempestes."
+        else:
+            resum_mapa = f"No es detecten focus significatius de convergència amb humitat a {nivell_mapa}hPa a tot Catalunya."
+
     resum_final = f"""
-    CONTEXT DE L'ANÀLISI:
-    - Lloc de referència (per al sondeig): {poble_sel} - Data i Hora: {timestamp_str}
-    DADES DEL SONDEIG VERTICAL (per a {poble_sel}):{resum_sondeig}
-    DADES DEL MAPA (per a tot Catalunya a {nivell_mapa}hPa):
+    CONTEXT DE L'ANÀLISI METEOROLÒGICA:
+    - Punt d'Anàlisi Vertical (Sondeig): Estrictament per a la ciutat de {poble_sel}.
+    - Cobertura de l'Anàlisi Horitzontal (Mapa): Tot el territori de Catalunya.
+    - Data i Hora: {timestamp_str}
+
+    DADES DEL SONDEIG VERTICAL (només per a {poble_sel}):
+    {resum_sondeig}
+
+    DADES DEL MAPA GENERAL (per a tot Catalunya a {nivell_mapa}hPa):
     - {resum_mapa}
-    INSTRUCCIONS: Ets un meteoròleg expert anomenat MeteoIA. Respon basant-te ÚNICAMENT en les dades proporcionades.
+    
+    INSTRUCCIONS PER A L'ASSISTENT:
+    Ets un meteoròleg molt expert i et dius Tempestes.catIA. La teva tasca és interpretar les dades proporcionades i intentar entendre que podria passar.
+    1.  Basa la part de la teva anàlisi  en les dades numèriques anteriors. No inventis informació que pugui ser delirant.
+    2.  És crucial que diferenciïs entre les dades del sondeig (que són per a un punt específic, {poble_sel}) i les dades del mapa (que són per a tot Catalunya).
+    3.  Quan parlis dels focus de convergència, has de intentar saber on s'esta donant del poblr aproximadament de Catalunya, i opona sobre la evolució de la zona i els núvols que podran apareixer.
+    4.  Combina les dues fonts d'informació però si la convergencia no es troba per Barcelonès, només sobre la de la convergencia. Per exemple: "L'entorn a {poble_sel} és molt inestable (CAPE alt), i a més, hi ha mecanismes de disparador (convergència) presents a Catalunya que podrien activar tempestes en aquesta zona si coincideixen."
+    5.  Sigues clar, concís i  sempre ha de ser un resum de la situació general de Catalunya per la hora prevista.
     """
     return resum_final
 
