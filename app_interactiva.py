@@ -48,39 +48,81 @@ PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 2
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
-        h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
+        # MODIFICACIÓ: Afegim el vent a 10m per a l'hodògraf
+        h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS]
         params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
+        
         response = openmeteo.weather_api(API_URL, params=params)[0]
         hourly = response.Hourly()
         sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i, v in enumerate(h_base)}
+        
         if any(np.isnan(val) for val in sfc_data.values()): return None, "Dades de superfície invàlides."
+        
         p_data = {}
         var_count = len(h_base)
         for i, var in enumerate(["T", "RH", "WS", "WD", "H"]):
             p_data[var] = [hourly.Variables(var_count + i * len(PRESS_LEVELS) + j).ValuesAsNumpy()[hourly_index] for j in range(len(PRESS_LEVELS))]
-        p_profile, T_profile, Td_profile, u_profile, v_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [0.0], [0.0]
+        
+        # MODIFICACIÓ: Calculem el vent real a superfície
+        sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
+
+        # Iniciem el perfil amb les dades reals de superfície
+        p_profile = [sfc_data["surface_pressure"]]
+        T_profile = [sfc_data["temperature_2m"]]
+        Td_profile = [sfc_data["dew_point_2m"]]
+        u_profile = [sfc_u.to('m/s').m]
+        v_profile = [sfc_v.to('m/s').m]
+        
         for i, p_val in enumerate(PRESS_LEVELS):
-            if p_val < sfc_data["surface_pressure"] and all(not np.isnan(p_data[v][i]) for v in ["T", "RH", "WS", "WD"]):
-                p_profile.append(p_val); T_profile.append(p_data["T"][i])
+            if p_val < sfc_data["surface_pressure"] and all(not np.isnan(p_data[v][i]) for v in ["T", "RH", "WS", "WD", "H"]):
+                p_profile.append(p_val)
+                T_profile.append(p_data["T"][i])
                 Td_profile.append(mpcalc.dewpoint_from_relative_humidity(p_data["T"][i] * units.degC, p_data["RH"][i] * units.percent).m)
                 u, v = mpcalc.wind_components(p_data["WS"][i] * units('km/h'), p_data["WD"][i] * units.degrees)
-                u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m)
+                u_profile.append(u.to('m/s').m)
+                v_profile.append(v.to('m/s').m)
+                
         if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
-        p = np.array(p_profile) * units.hPa; T = np.array(T_profile) * units.degC; Td = np.array(Td_profile) * units.degC
-        u = np.array(u_profile) * units('m/s'); v = np.array(v_profile) * units('m/s')
+        
+        p = np.array(p_profile) * units.hPa
+        T = np.array(T_profile) * units.degC
+        Td = np.array(Td_profile) * units.degC
+        u = np.array(u_profile) * units('m/s')
+        v = np.array(v_profile) * units('m/s')
+        
         prof = mpcalc.parcel_profile(p, T[0], Td[0])
         params_calc = {}
         cape, cin = mpcalc.cape_cin(p, T, Td, prof)
         params_calc['CAPE'] = cape.to('J/kg').m if cape.magnitude > 0 else 0
         params_calc['CIN'] = cin.to('J/kg').m
+        
         try:
             p_lfc, _ = mpcalc.lfc(p, T, Td)
             params_calc['LFC_hPa'] = p_lfc.m if not np.isnan(p_lfc.m) else np.nan
         except Exception: params_calc['LFC_hPa'] = np.nan
+        
+        # NOU: Càlcul del Cisallament (Shear)
+        heights = mpcalc.pressure_to_height_std(p)
+        
+        try:
+            shear_0_1km = mpcalc.bulk_shear(p, u, v, height=heights, depth=1000 * units.m)
+            params_calc['Shear 0-1km'] = shear_0_1km.to('knots').m
+        except:
+            params_calc['Shear 0-1km'] = np.nan
+            
+        try:
+            shear_0_6km = mpcalc.bulk_shear(p, u, v, height=heights, depth=6000 * units.m)
+            params_calc['Shear 0-6km'] = shear_0_6km.to('knots').m
+        except:
+            params_calc['Shear 0-6km'] = np.nan
+
         return ((p, T, Td, u, v), params_calc), None
+        
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
 
+# ... (La resta de funcions de càrrega de dades i visualització de mapes es mantenen igual) ...
+# (Aquí anirien carregar_dades_mapa_base, carregar_dades_mapa, crear_mapa_base, etc. sense canvis)
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base(variables, hourly_index):
     try:
@@ -231,23 +273,24 @@ def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, ti
     resum_sondeig = "No s'han pogut carregar les dades del sondeig."
     if data_tuple:
         sounding_data, params_calculats = data_tuple
-        p, T, Td, u, v = sounding_data
         cape = params_calculats.get('CAPE', 0)
         cin = params_calculats.get('CIN', 0)
         lfc = params_calculats.get('LFC_hPa', float('nan'))
-        try:
-            shear_0_6km = mpcalc.bulk_shear(p, u, v, height_agl=np.array([0, 6000]) * units.m)
-            shear_text = f"{shear_0_6km.to('knots').m:.1f} nusos."
-        except: shear_text = "No calculat."
+        shear_1km = params_calculats.get('Shear 0-1km', np.nan)
+        shear_6km = params_calculats.get('Shear 0-6km', np.nan)
+        
         resum_sondeig = f"""
-    - CAPE (Energia): {cape:.1f} J/kg.
-    - CIN (Inhibidor): {cin:.1f} J/kg.
-    - LFC (Nivell d'inici): {'No trobat' if np.isnan(lfc) else f'{lfc:.1f} hPa'}.
-    - Cisallament 0-6km (Shear): {shear_text}"""
+    - CAPE (Energia): {cape:.0f} J/kg.
+    - CIN (Inhibidor): {cin:.0f} J/kg.
+    - LFC (Nivell d'inici): {'No trobat' if np.isnan(lfc) else f'{lfc:.0f} hPa'}.
+    - Cisallament 0-1km (Tornados): {'No calculat' if np.isnan(shear_1km) else f'{shear_1km:.0f} nusos'}.
+    - Cisallament 0-6km (Supercèl·lules): {'No calculat' if np.isnan(shear_6km) else f'{shear_6km:.0f} nusos'}."""
+
     resum_mapa = "No s'han pogut carregar les dades del mapa."
     if map_data:
         num_alertes = map_data.get('num_alertes', 0)
         resum_mapa = f"S'han detectat {num_alertes} focus de convergència amb humitat a {nivell_mapa}hPa, indicant zones amb potencial per iniciar tempestes." if num_alertes > 0 else f"No es detecten focus significatius de convergència amb humitat a {nivell_mapa}hPa."
+    
     resum_final = f"""
     CONTEXT DE L'ANÀLISI:
     - Lloc de referència (per al sondeig): {poble_sel}
@@ -285,11 +328,11 @@ def ui_capcalera_selectors():
 
 def ui_explicacio_alertes():
     with st.expander("📖 Què signifiquen les alertes ⚠️ que veig al mapa?"):
-        st.markdown("""Cada símbol d'alerta **⚠️** assenyala un **focus de risc convectiu**. No és una predicció de tempesta garantida, sinó la detecció d'una zona on es compleix la **"recepta perfecta"** per iniciar-ne una. El nostre sistema analitza les dades del model i només marca les àrees on es donen **dues condicions clau simultàniament**:""")
+        st.markdown("""Cada símbol d'alerta **⚠️** assenyala un **focus de risc convectiu**. No és una predicció de tempesta garantida, sinó la detecció d'una zona on es compleix la **"recepta perfecta"** per iniciar-ne una.""")
         col1, col2 = st.columns(2)
-        with col1: st.markdown("#### **1. El Disparador: Convergència ↗️**\nL'aire a nivells baixos està sent forçat a ascendir amb molta intensitat. És el mecanisme que \"dispara\" el moviment vertical necessari per crear un núvol de tempesta (cumulonimbus).")
-        with col2: st.markdown("#### **2. El Combustible: Humitat 💧**\nAquest aire que puja no és sec; està carregat de vapor d'aigua (punt de rosada elevat). Aquesta humitat és el \"combustible\" que, en condensar-se, allibera energia i permet que el núvol creixi verticalment.")
-        st.info("**En resum:** Una ⚠️ indica una zona on un potent **disparador** està actuant sobre una massa d'aire amb abundant **combustible**. Per tant, són els punts als quals cal prestar més atenció.", icon="🎯")
+        with col1: st.markdown("#### 1. El Disparador: Convergència ↗️\nL'aire a nivells baixos és forçat a ascendir amb intensitat.")
+        with col2: st.markdown("#### 2. El Combustible: Humitat 💧\nAquest aire que puja està carregat de vapor d'aigua.")
+        st.info("**En resum:** Una ⚠️ indica una zona on un potent **disparador** actua sobre una massa d'aire amb abundant **combustible**.", icon="🎯")
 
 def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
     col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large")
@@ -328,13 +371,25 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
         sounding_data, params_calculats = data_tuple
         st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
-        cols = st.columns(4)
-        for i, (param, unit) in enumerate({'CAPE': 'J/kg', 'CIN': 'J/kg', 'LFC_hPa': 'hPa'}.items()):
+        # MODIFICACIÓ: Afegim més mètriques
+        cols = st.columns(5)
+        metric_params = {'CAPE': 'J/kg', 'CIN': 'J/kg', 'LFC_hPa': 'hPa', 'Shear 0-1km': 'nusos', 'Shear 0-6km': 'nusos'}
+        for i, (param, unit) in enumerate(metric_params.items()):
             val = params_calculats.get(param)
             cols[i].metric(label=param, value=f"{f'{val:.0f}' if val is not None and not np.isnan(val) else '---'} {unit}")
+        
+        # MODIFICACIÓ: Actualitzem l'explicació
         with st.expander("ℹ️ Què signifiquen aquests paràmetres?"):
-            st.markdown("- **CAPE:** Energia per a tempestes. >1000 J/kg és significatiu.\n- **CIN:** \"Tapa\" que impedeix la convecció.\n- **LFC:** Nivell on comença la convecció lliure.")
-        st.divider(); col1, col2 = st.columns(2)
+            st.markdown("""
+            - **CAPE:** Energia disponible per a les tempestes. >1000 J/kg és significatiu.
+            - **CIN:** "Tapa" que impedeix la convecció. Valors molt negatius (> -50) són una tapa forta.
+            - **LFC:** Nivell on comença la convecció lliure. Com més baix, més fàcil és iniciar tempestes.
+            - **Shear 0-1km:** Cisallament a nivells baixos. >15-20 nusos afavoreix la rotació i el risc de **tornados**.
+            - **Shear 0-6km:** Cisallament profund. >35-40 nusos és clau per a l'organització de **supercèl·lules**.
+            """)
+            
+        st.divider()
+        col1, col2 = st.columns(2)
         with col1: st.pyplot(crear_skewt(sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4], f"Sondeig Vertical - {poble_sel}"))
         with col2: st.pyplot(crear_hodograf(sounding_data[3], sounding_data[4]))
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
