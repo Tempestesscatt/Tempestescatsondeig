@@ -247,18 +247,38 @@ def crear_mapa_500hpa(map_data, timestamp_str):
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
+
+    # 1. Calculem els components U i V del vent a partir de les dades originals
+    u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+
+    # 2. Interpolem els components U, V i la velocitat a la graella del mapa
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
+    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
+
+    # 3. Definim l'escala de colors per a la velocitat del vent
     speed_levels = np.arange(20, 161, 10)
     cmap = 'plasma'
     norm = BoundaryNorm(speed_levels, ncolors=plt.get_cmap(cmap).N, clip=True)
-    cf = ax.contourf(grid_lon, grid_lat, grid_speed, levels=speed_levels, cmap=cmap, norm=norm, alpha=0.7, zorder=2, extend='max')
-    contorns = ax.contour(grid_lon, grid_lat, grid_speed, levels=speed_levels[::2], colors='white', linewidths=0.8, alpha=0.9, zorder=3)
-    ax.clabel(contorns, inline=True, fontsize=8, fmt='%1.0f')
-    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, orientation='vertical', shrink=0.7)
+
+    # 4. Dibuixem les streamlines, acolorides segons la velocitat del vent.
+    # Aquesta és la part clau del canvi.
+    st = ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, 
+                       color=grid_speed, 
+                       cmap=cmap,
+                       norm=norm,
+                       linewidth=0.8, 
+                       density=2.0, 
+                       arrowsize=0.7,
+                       zorder=3)
+
+    # 5. Afegim una barra de color per interpretar la velocitat de les línies
+    cbar = fig.colorbar(st.lines, ax=ax, orientation='vertical', shrink=0.7)
     cbar.set_label("Velocitat del Vent (km/h)")
-    u, v = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
-    ax.barbs(lons[::4], lats[::4], u.to('kt').m[::4], v.to('kt').m[::4], length=5, zorder=6, transform=ccrs.PlateCarree())
-    ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    
+    # S'han eliminat els barbs i el contourf, que ja no són necessaris amb les streamlines.
+    
+    ax.set_title(f"Vent a {nivell} hPa (Streamlines)\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
 def crear_mapa_escalar(lons, lats, data, titol, cmap, levels, unitat, timestamp_str, extend='max'):
