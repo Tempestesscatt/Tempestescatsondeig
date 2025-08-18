@@ -114,8 +114,11 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 
             try:
                 lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); params_calc['LCL_p'] = lcl_p.to('hPa').m
-                lfc_p, _ = mpcalc.lfc(p, T, Td, which='most_cape', parcel_prof=prof); params_calc['LFC_p'] = lfc_p.to('hPa').m
-                el_p, _ = mpcalc.el(p, T, Td, parcel_prof=prof); params_calc['EL_p'] = el_p.to('hPa').m
+                
+                # --- LÍNIES CORREGIDES ---
+                # Deixem que les funcions facin el seu càlcul intern del perfil, que és més robust
+                lfc_p, _ = mpcalc.lfc(p, T, Td, which='most_cape'); params_calc['LFC_p'] = lfc_p.to('hPa').m
+                el_p, _ = mpcalc.el(p, T, Td); params_calc['EL_p'] = el_p.to('hPa').m
             except Exception:
                  params_calc.update({'LCL_p': np.nan, 'LFC_p': np.nan, 'EL_p': np.nan})
 
@@ -504,7 +507,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             sounding_data, params = data_tuple
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
 
-            # --- SECCIÓ DE PARÀMETRES MODIFICADA ---
             col1, col2, col3 = st.columns(3)
             with col1:
                 val = params.get('CAPE')
@@ -526,7 +528,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             with col6:
                 val = params.get('EL_p')
                 st.metric(label="EL (Nivell Equilibri)", value=f"{f'{val:.0f}' if val is not None and not np.isnan(val) else '---'} hPa")
-            # --- FI DE LA SECCIÓ MODIFICADA ---
 
             with st.expander("ℹ️ Què signifiquen aquests paràmetres?"):
                 st.markdown("""
