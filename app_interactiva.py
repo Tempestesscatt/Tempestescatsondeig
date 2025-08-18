@@ -82,6 +82,14 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         cape, cin = mpcalc.cape_cin(p, T, Td, prof)
         params_calc['CAPE'] = cape.to('J/kg').m if cape.magnitude > 0 else 0
         params_calc['CIN'] = cin.to('J/kg').m
+        
+        # --- NOU: Càlcul del LFC ---
+        try:
+            p_lfc, _ = mpcalc.lfc(p, T, Td)
+            params_calc['LFC_hPa'] = p_lfc.m if not np.isnan(p_lfc.m) else np.nan
+        except Exception:
+            params_calc['LFC_hPa'] = np.nan # Si hi ha un error, el marquem com a no disponible
+
         s_u, s_v = mpcalc.bulk_shear(p, u, v, height=h, depth=6 * units.km)
         params_calc['Shear_0-6km'] = mpcalc.wind_speed(s_u, s_v).to('m/s').m
         _, srh, _ = mpcalc.storm_relative_helicity(h, u, v, depth=3 * units.km)
@@ -369,21 +377,28 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
 
             if map_key == "forecast_combinat":
                 
-                # --- NOVA LÒGICA D'AVÍS INTEL·LIGENT BASAT EN CIN ---
-                # Primer, extraiem el valor de CIN del sondeig de referència
+                # --- LÒGICA D'AVISOS INTEL·LIGENTS ---
                 cin_value = 0
-                if data_tuple and data_tuple[1] and 'CIN' in data_tuple[1]:
-                    cin_value = data_tuple[1]['CIN']
-                
-                # Si la CIN és significativa, mostrem un avís i recomanació
-                CIN_THRESHOLD_FOR_WARNING = -25 # J/kg
+                lfc_hpa = np.nan
+                if data_tuple and data_tuple[1]:
+                    cin_value = data_tuple[1].get('CIN', 0)
+                    lfc_hpa = data_tuple[1].get('LFC_hPa', np.nan)
+
+                # Avís per CIN (Tapa convectiva)
+                CIN_THRESHOLD_FOR_WARNING = -25
                 if cin_value < CIN_THRESHOLD_FOR_WARNING:
-                    st.warning(
-                        f"**AVÍS DE 'TAPA' CONVECTIVA (CIN = {cin_value:.0f} J/kg):** "
-                        f"El sondeig de **{poble_sel}** mostra una forta inversió que pot inhibir les tempestes."
-                        f" **Es recomana analitzar la convergència a 850 hPa** per buscar forçaments elevats que puguin trencar la tapa."
-                    )
+                    st.warning(f"**AVÍS DE 'TAPA' (CIN = {cin_value:.0f} J/kg):** El sondeig de **{poble_sel}** mostra una forta inversió. Es necessita un forçament dinàmic potent.")
                 
+                # NOU: Avís per LFC (Nivell d'inici de la convecció)
+                if np.isnan(lfc_hpa):
+                    st.error("**AVÍS DE LFC:** No s'ha trobat LFC. La convecció espontània és molt improbable.")
+                elif lfc_hpa >= 900:
+                    st.success(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base superficial. **Recomanació: Analitzar convergència a 1000-925 hPa.**")
+                elif lfc_hpa >= 750:
+                    st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base baixa. **Recomanació: Analitzar convergència a 850 hPa.**")
+                else: # lfc_hpa < 750
+                    st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada. **Recomanació: Analitzar convergència a 700-600 hPa.**")
+
                 nivell_sel = st.selectbox("Nivell d'anàlisi de convergència i humitat:", 
                                           options=[1000, 950, 925, 850, 700, 600, 500], 
                                           format_func=lambda x: f"{x} hPa")
@@ -407,6 +422,8 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                         title_dewpoint = f"Punt de Rosada a {nivell_sel}hPa (°C)"
                         st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], dewpoint_to_plot, map_data[variables[2]], map_data[variables[3]], nivell_sel, timestamp_str, title_dewpoint))
 
+            # ... (la resta de la funció es manté igual) ...
+            
             elif map_key == "500hpa":
                 variables = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
                 map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
