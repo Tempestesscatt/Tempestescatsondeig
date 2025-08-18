@@ -423,98 +423,36 @@ def ui_capcalera_selectors():
         with col2: st.selectbox("Dia del pronòstic:", ("Avui", "Demà"), key="dia_selector")
         with col3: st.selectbox("Hora del pronòstic (Hora Local):", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
 
-def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str, data_tuple):
-    # CANVI: Ara la disposició de columnes ocupa tota la pàgina
-    col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large") # Donem més espai al mapa (70%)
+def mostrar_imatge_temps_real(tipus):
+    # --- CANVI: Ara gestionem dues vistes de satèl·lit ---
     
-    with col_map_1:
-        map_options = {
-            "Forecast: Vent + Convergència Efectiva": "forecast_combinat",
-            "Temperatura i Vent a 500hPa": "500hpa",
-            "Vent a 700hPa (Streamlines)": "vent_700",
-            "Vent a 300hPa (Streamlines)": "vent_300",
-            "Humitat a 700hPa": "rh_700"
-        }
-        mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
-        map_key, error_map = map_options[mapa_sel], None
-
-        if map_key == "forecast_combinat":
-            
-            cin_value = 0; lfc_hpa = np.nan
-            if data_tuple and data_tuple[1]:
-                cin_value = data_tuple[1].get('CIN', 0); lfc_hpa = data_tuple[1].get('LFC_hPa', np.nan)
-            
-            if cin_value < -25:
-                st.warning(f"**AVÍS DE 'TAPA' (CIN = {cin_value:.0f} J/kg):** El sondeig de **{poble_sel}** mostra una forta inversió. Es necessita un forçament dinàmic potent per trencar-la.")
-            
-            if np.isnan(lfc_hpa):
-                st.error("**DIAGNÒSTIC LFC:** No s'ha trobat LFC. L'atmosfera és estable i la convecció espontània és molt improbable.")
-            elif lfc_hpa >= 900:
-                st.success(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base superficial. **Recomanació: Buscar zones d'alerta ⚠️ a 1000-925 hPa.**")
-            elif lfc_hpa >= 750:
-                st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base baixa. **Recomanació: Buscar zones d'alerta ⚠️ a 850-800 hPa.**")
-            else:
-                st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada. **Recomanació: Buscar zones d'alerta ⚠️ a 700 hPa.**")
-
-            nivell_sel = st.selectbox("Nivell d'anàlisi:", 
-                                      options=[1000, 950, 925, 850, 800, 700], 
-                                      format_func=lambda x: f"{x} hPa")
-            
-            if nivell_sel >= 950:
-                variables = ["dew_point_2m", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
-                map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
-                if map_data:
-                    dewpoint_for_calc = map_data['dew_point_2m']
-                    speed_data = map_data[f"wind_speed_{nivell_sel}hPa"]
-                    dir_data = map_data[f"wind_direction_{nivell_sel}hPa"]
-                    st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str))
-                    ui_explicacio_alertes()
-            
-            else:
-                variables = [f"temperature_{nivell_sel}hPa", f"relative_humidity_{nivell_sel}hPa", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
-                map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
-                if map_data:
-                    temp_data = np.array(map_data[f'temperature_{nivell_sel}hPa']) * units.degC
-                    rh_data = np.array(map_data[f'relative_humidity_{nivell_sel}hPa']) * units.percent
-                    dewpoint_for_calc = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
-                    speed_data = map_data[f"wind_speed_{nivell_sel}hPa"]
-                    dir_data = map_data[f"wind_direction_{nivell_sel}hPa"]
-                    st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str))
-                    ui_explicacio_alertes()
-
-        elif map_key == "500hpa":
-            variables = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
-            map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
-            if map_data: st.pyplot(crear_mapa_500hpa(map_data, timestamp_str))
-
-        elif map_key == "vent_700":
-            nivell = 700
-            variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-            map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
-            if map_data: st.pyplot(crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str))
-
-        elif map_key == "vent_300":
-            nivell = 300
-            variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-            map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
-            if map_data: st.pyplot(crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str))
-
-        elif map_key == "rh_700":
-            map_data, error_map = carregar_dades_mapa(["relative_humidity_700hPa"], hourly_index_sel)
-            if map_data: st.pyplot(crear_mapa_escalar(map_data['lons'], map_data['lats'], map_data['relative_humidity_700hPa'], "Humitat Relativa a 700hPa", "Greens", np.arange(50, 101, 5), "%", timestamp_str))
+    if tipus == "Satèl·lit (Europa)":
+        # Aquesta és la nova URL del satèl·lit europeu que has triat
+        url = "https://modeles20.meteociel.fr/satellite/animsatsandvisirmtgeu.gif"
+        caption = "Satèl·lit Sandvitx (Visible + Infraroig). Font: Meteociel"
         
-        if error_map: st.error(f"Error en carregar el mapa: {error_map}")
+    elif tipus == "Satèl·lit (NE Península)":
+        now_local = datetime.now(TIMEZONE)
+        if 7 <= now_local.hour < 21:
+            url = "https://www.meteociel.fr/modeles/satanim_espagne-ne.gif"
+            caption = "Satèl·lit Visible (Nord-est). Font: Meteociel"
+        else:
+            url = "https://www.meteociel.fr/modeles/satanim_ir_espagne-ne.gif"
+            caption = "Satèl·lit Infraroig (Nord-est). Font: Meteociel"
+    
+    else:
+        st.error("Tipus d'imatge no reconegut.")
+        return
 
-    with col_map_2:
-        # --- CANVI: Utilitzem pestanyes per al radar i el satèl·lit ---
-        st.subheader("Imatges en Temps Real")
-        tab_radar, tab_satelit = st.tabs(["📡 Radar", "🛰️ Satèl·lit"])
-
-        with tab_radar:
-            mostrar_imatge_temps_real("Radar")
-        
-        with tab_satelit:
-            mostrar_imatge_temps_real("Satèl·lit")
+    # Lògica comuna per carregar i mostrar la imatge
+    try:
+        response = requests.get(f"{url}?ver={int(time.time())}", headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+        if response.status_code == 200: 
+            st.image(response.content, caption=caption, use_container_width=True)
+        else: 
+            st.warning(f"No s'ha pogut carregar la imatge. (Codi: {response.status_code})")
+    except Exception as e: 
+        st.error(f"Error de xarxa en carregar la imatge.")
 
 def ui_explicacio_alertes():
     """
