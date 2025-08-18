@@ -122,7 +122,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             params_calc.update({'storm_motion_u': np.nan, 'storm_motion_v': np.nan})
             storm_motion_vector = (np.nan*units('m/s'), np.nan*units('m/s'))
 
-        # --- LÍNIA CORREGIDA ---
         storm_u_comp, storm_v_comp = storm_motion_vector
         _, srh, _ = mpcalc.storm_relative_helicity(h, u, v, depth=3 * units.km, storm_u=storm_u_comp, storm_v=storm_v_comp)
         params_calc['SRH_0-3km'] = np.sum(srh).to('m^2/s^2').m
@@ -130,7 +129,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         return ((p, T, Td, u, v, h), params_calc), None
     except Exception as e:
         return None, f"Error crític en processar dades del sondeig: {e}"
-
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(variables, hourly_index):
@@ -233,11 +231,54 @@ def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str):
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree())
-    ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
+    ax.add_feature(cfeature.LAND, facecolor="#E0EE00", zorder=0)
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
     ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
     return fig, ax
+
+def crear_mapa_500hpa(map_data, timestamp_str):
+    fig, ax = crear_mapa_base()
+    lons, lats = map_data['lons'], map_data['lats']
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
+    grid_temp = griddata((lons, lats), map_data['temperature_500hPa'], (grid_lon, grid_lat), method='cubic')
+    temp_levels = np.arange(-30, 1, 2)
+    cf = ax.contourf(grid_lon, grid_lat, grid_temp, levels=temp_levels, cmap='coolwarm', extend='min', alpha=0.7, zorder=2)
+    cbar = fig.colorbar(cf, ax=ax, orientation='vertical', shrink=0.7); cbar.set_label("Temperatura a 500 hPa (°C)")
+    cs_temp = ax.contour(grid_lon, grid_lat, grid_temp, levels=temp_levels, colors='gray', linewidths=0.8, linestyles='--', zorder=3)
+    ax.clabel(cs_temp, inline=True, fontsize=7, fmt='%1.0f°C')
+    u, v = mpcalc.wind_components(np.array(map_data['wind_speed_500hPa']) * units('km/h'), np.array(map_data['wind_direction_500hPa']) * units.degrees)
+    ax.barbs(lons, lats, u.to('kt').m, v.to('kt').m, length=5, zorder=6, transform=ccrs.PlateCarree())
+    ax.set_title(f"Anàlisi a 500 hPa (Temperatura i Vent)\n{timestamp_str}", weight='bold', fontsize=16)
+    return fig
+
+def crear_mapa_vents_velocitat(map_data, nivell, timestamp_str):
+    fig, ax = crear_mapa_base()
+    speed_data = map_data[f'wind_speed_{nivell}hPa']
+    dir_data = map_data[f'wind_direction_{nivell}hPa']
+    lons, lats = map_data['lons'], map_data['lats']
+    
+    levels = list(range(20, 100, 10)) + list(range(100, 211, 20))
+    cmap = plt.get_cmap('viridis')
+    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+    
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
+    
+    ax.contourf(grid_lon, grid_lat, grid_speed, levels=levels, cmap=cmap, norm=norm, alpha=0.8, zorder=2, extend='max')
+    
+    speeds_ms = np.array(speed_data) * units('km/h'); dirs_deg = np.array(dir_data) * units.degrees
+    u_comp, v_comp = mpcalc.wind_components(speeds_ms, dirs_deg)
+    
+    u_grid = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
+    v_grid = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
+
+    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', linewidth=0.6, density=2.5, arrowsize=0.6, zorder=5)
+    
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=levels[::2])
+    cbar.set_label("Velocitat del Vent (km/h)")
+    ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    return fig
 
 def crear_mapa_convergencia(map_data, nivell, lat_sel, lon_sel, nom_poble_sel, timestamp_str):
     fig, ax = crear_mapa_base()
@@ -344,10 +385,17 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
         col_map_1, col_map_2 = st.columns([2.5, 1.5])
         with col_map_1:
             with st.spinner("Actualitzant anàlisi de mapes..."):
-                map_options = {"CAPE (Energia)": "cape", "Flux i Convergència (Disparador)": "conv", "Humitat a 700hPa": "rh_700"}
+                map_options = {
+                    "CAPE (Energia)": "cape", 
+                    "Flux i Convergència (Disparador)": "conv", 
+                    "Anàlisi a 500hPa": "500hpa",
+                    "Vent a 300hPa (Jet Stream)": "wind_300",
+                    "Vent a 700hPa": "wind_700",
+                    "Humitat a 700hPa": "rh_700"
+                }
                 mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
                 map_key = map_options[mapa_sel]
-
+                
                 if map_key == "cape":
                     map_data, error = carregar_dades_mapa(["cape"], hourly_index_sel)
                     if map_data:
@@ -362,11 +410,25 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                     map_data, error = carregar_dades_mapa(variables, hourly_index_sel)
                     if map_data: st.pyplot(crear_mapa_convergencia(map_data, nivell_sel, lat_sel, lon_sel, poble_sel, timestamp_str))
                     elif error: st.error(f"Error en carregar el mapa: {error}")
+                
+                elif map_key == "500hpa":
+                    variables = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
+                    map_data, error = carregar_dades_mapa(variables, hourly_index_sel)
+                    if map_data: st.pyplot(crear_mapa_500hpa(map_data, timestamp_str))
+                    elif error: st.error(f"Error en carregar el mapa: {error}")
 
+                elif map_key in ["wind_300", "wind_700"]:
+                    nivell_hpa = int(map_key.split('_')[1])
+                    variables = [f"wind_speed_{nivell_hpa}hPa", f"wind_direction_{nivell_hpa}hPa"]
+                    map_data, error = carregar_dades_mapa(variables, hourly_index_sel)
+                    if map_data: st.pyplot(crear_mapa_vents_velocitat(map_data, nivell_hpa, timestamp_str))
+                    elif error: st.error(f"Error en carregar el mapa: {error}")
+                
                 elif map_key == "rh_700":
                     map_data, error = carregar_dades_mapa(["relative_humidity_700hPa"], hourly_index_sel)
                     if map_data: st.pyplot(crear_mapa_escalar(map_data, "relative_humidity_700hPa", "Humitat Relativa a 700hPa", "Greens", np.arange(50, 101, 10), "%", timestamp_str))
                     elif error: st.error(f"Error en carregar el mapa: {error}")
+
         with col_map_2:
             st.subheader("Imatges en Temps Real")
             view_choice = st.radio("Selecciona la vista:", ("Satèl·lit", "Radar"), horizontal=True, label_visibility="collapsed")
@@ -391,8 +453,13 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                 """)
             st.divider()
             col1, col2 = st.columns([1.5, 1])
-            with col1: st.pyplot(crear_skewt(*sounding_data, f"Sondeig Vertical - {poble_sel}", params))
-            with col2: st.pyplot(crear_hodograf(sounding_data[3], sounding_data[4], params))
+            with col1:
+                # --- CRIDA CORREGIDA ---
+                p, T, Td, u, v, h = sounding_data
+                st.pyplot(crear_skewt(p, T, Td, u, v, f"Sondeig Vertical - {poble_sel}", params))
+            with col2:
+                _, _, _, u, v, _ = sounding_data
+                st.pyplot(crear_hodograf(u, v, params))
         else:
             st.warning("No hi ha dades de sondeig disponibles per a la selecció actual. Pot ser degut a dades invàlides del model.")
 
@@ -436,7 +503,7 @@ def main():
     # Mostra un missatge d'espera mentre es carreguen les dades inicials
     with st.spinner('Carregant dades del sondeig inicial...'):
         data_tuple, error_msg = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
-        if error_msg: 
+        if error_msg:
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
 
     tab_mapes, tab_vertical, tab_ia = st.tabs(["🗺️ Anàlisi de Mapes", "📊 Anàlisi Vertical", "🤖 Resum IA"])
