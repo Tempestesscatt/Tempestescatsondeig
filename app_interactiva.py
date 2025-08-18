@@ -23,6 +23,7 @@ from scipy.ndimage import label
 from matplotlib.patches import PathPatch
 import streamlit.components.v1 as components
 from matplotlib.animation import FuncAnimation
+import tempfile
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 
@@ -424,7 +425,6 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
     col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large")
     
     with col_map_1:
-        # AFEGIM LA NOVA OPCIÓ AL MENÚ
         map_options = {
             "Forecast: Vent ANIMAT + Convergència": "forecast_animat",
             "Forecast: Vent Estàtic + Convergència": "forecast_estatic",
@@ -433,11 +433,9 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             "Vent a 300hPa (Streamlines)": "vent_300",
             "Humitat a 700hPa": "rh_700"
         }
-        # Canviem el nom de l'opció per defecte per ser més clar
         mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
         map_key, error_map = map_options[mapa_sel], None
 
-        # Gestionem les dues opcions de forecast (animat i estàtic)
         if map_key in ["forecast_animat", "forecast_estatic"]:
             
             cin_value = 0; lfc_hpa = np.nan
@@ -452,7 +450,6 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
 
             nivell_sel = st.selectbox("Nivell d'anàlisi:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa")
             
-            # Recollim les dades necessàries (és el mateix per a les dues vistes)
             with st.spinner("Carregant dades del model..."):
                 if nivell_sel >= 950:
                     variables = ["dew_point_2m", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
@@ -475,26 +472,36 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                 if map_key == "forecast_animat":
                     with st.spinner("Generant animació del flux de vent... Aquesta operació pot trigar uns segons la primera vegada."):
                         gif_data = crear_mapa_animat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str)
-                        st.image(gif_data)
+                        
+                        # --- SOLUCIÓ ROBUSTA AMB ARXIU TEMPORAL ---
+                        # 1. Creem un arxiu temporal amb l'extensió .gif
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".gif") as tmpfile:
+                            # 2. Escrivim les dades del GIF a l'arxiu
+                            tmpfile.write(gif_data)
+                            # 3. Li passem a st.image el NOM de l'arxiu, no les dades
+                            st.image(tmpfile.name)
+
                 else: # forecast_estatic
                     st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str))
                 
                 ui_explicacio_alertes()
 
+        # ... (la resta de la funció es manté exactament igual) ...
+        
         elif map_key == "500hpa":
-            variables = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
+            variables = ["temperature_500hpa", "wind_speed_500hPa", "wind_direction_500hPa"]
             map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
             if map_data: st.pyplot(crear_mapa_500hpa(map_data, timestamp_str))
 
         elif map_key == "vent_700":
             nivell = 700
-            variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell_sel}hPa"]
             map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
             if map_data: st.pyplot(crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str))
 
         elif map_key == "vent_300":
             nivell = 300
-            variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell_sel}hPa"]
             map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
             if map_data: st.pyplot(crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str))
 
