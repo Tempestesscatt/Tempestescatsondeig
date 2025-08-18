@@ -248,40 +248,49 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
 
-    # Calculem els components U i V del vent
+    # Calculem i interpolem els components del vent i la velocitat
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
-
-    # Interpolem els components U, V i la velocitat a la graella
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
 
-    # --- CANVI CLAU: Combinació de fons de color + streamlines negres ---
+    # --- CANVI CLAU: Nova escala de colors i nivells de Meteociel ---
 
-    # 1. Definim l'escala de colors i els nivells per al fons (basat en la imatge)
-    speed_levels = np.arange(0, 211, 10)  # De 0 a 210 km/h en trams de 10
-    cmap = 'viridis_r'  # Aquest mapa de colors invertit és molt semblant al de l'exemple
-    norm = BoundaryNorm(speed_levels, ncolors=plt.get_cmap(cmap).N, clip=True)
+    # 1. Definim la llista de colors (hexadecimal) extreta de la imatge de referència
+    colors_meteo_vent = [
+        '#FFFFFF', '#B4F0FF', '#82D3FF', '#41B4FF', '#0096FF', '#00D278', '#00B43C', 
+        '#64D200', '#96F500', '#C8FF00', '#F5DC00', '#FFB400', '#FF8C00', '#FF6400', 
+        '#F53C00', '#D21400', '#B40000', '#820000', '#640000', '#82004B', '#B40082', 
+        '#D200B4', '#F000DC', '#FF00FF', '#FF64FF', '#FF96FF', '#FFFFFF', '#DCDCDC', 
+        '#BEBEBE', '#A0A0A0'
+    ]
+    # Creem el mapa de colors personalitzat
+    custom_cmap = ListedColormap(colors_meteo_vent)
+    
+    # 2. Definim els nivells de velocitat que corresponen a cada color
+    speed_levels = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 
+                    160, 170, 180, 190, 200, 220, 240, 260, 280, 300, 320, 340, 
+                    360, 380, 400, 420, 440]
+    norm = BoundaryNorm(speed_levels, ncolors=custom_cmap.N)
 
-    # 2. Dibuixem el fons de color amb 'contourf' basat en la velocitat del vent
+    # 3. Dibuixem el fons de color amb la nova escala personalitzada
     cf = ax.contourf(grid_lon, grid_lat, grid_speed,
                      levels=speed_levels,
-                     cmap=cmap,
+                     cmap=custom_cmap,
                      norm=norm,
-                     alpha=0.85, # Una mica de transparència per suavitzar
                      zorder=2,
-                     extend='max')
+                     extend='both') # 'both' per si hi ha valors fora del rang
 
-    # 3. Superposem les streamlines en color negre per sobre del fons
+    # 4. Superposem les streamlines en negre, com abans
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v,
                   color='black',
                   linewidth=0.7,
-                  density=2.5,  # Augmentem la densitat per a més detall
+                  density=2.5,
                   arrowsize=0.6,
                   zorder=3)
 
-    # 4. Creem la barra de color a partir del 'contourf', que ara sí que és correcte
-    cbar = fig.colorbar(cf, ax=ax, orientation='vertical', shrink=0.7)
+    # 5. Creem la barra de color
+    cbar = fig.colorbar(cf, ax=ax, orientation='vertical', shrink=0.7, ticks=speed_levels[::2]) # Mostrem ticks de 40 en 40
     cbar.set_label("Velocitat del Vent (km/h)")
     
     ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16)
