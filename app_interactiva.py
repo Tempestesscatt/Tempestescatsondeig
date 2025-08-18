@@ -237,8 +237,8 @@ def generar_resposta_ia(historial_conversa_text, resum_dades, prompt_usuari):
     if not GEMINI_CONFIGURAT:
         return "La funcionalitat d'IA no està configurada."
 
-    # AQUESTA ÉS LA LÍNIA QUE HEM CANVIAT
-    model = genai.GenerativeModel('gemini-1.0-pro') 
+    # AQUESTA ÉS LA LÍNIA QUE TORNEM A CANVIAR
+    model = genai.GenerativeModel('gemini-pro-vision') 
     
     prompt_final = resum_dades + f"\n\nHISTORIAL DE LA CONVERSA:\n{historial_conversa_text}\n\nPREGUNTA ACTUAL DE L'USUARI:\n'{prompt_usuari}'\n\nLA TEVA RESPOSTA COM A METEOIA:"
 
