@@ -272,15 +272,26 @@ def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, lat_sel, l
     u_grid = rbf_u(grid_lon, grid_lat); v_grid = rbf_v(grid_lon, grid_lat)
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(u_grid*units('m/s'), v_grid*units('m/s'), dx=dx, dy=dy) * 1e5
-    # --- MODIFICACIÓ SOL·LICITADA ---
-    # S'ha canviat el rang de la llegenda de (-20, 20) a (-200, 200)
+    
     levels = np.arange(-200, 201, 20)
-    # --- FI DE LA MODIFICACIÓ ---
-    cf = ax.contourf(grid_lon, grid_lat, divergence, levels=levels, cmap='coolwarm_r', alpha=0.6, zorder=2, extend='both')
+    
+    # --- MODIFICACIONES PARA MAYOR IMPACTO VISUAL ---
+    
+    # 1. Alpha aumentado para colores más sólidos y cambio de cmap para mayor contraste.
+    cf = ax.contourf(grid_lon, grid_lat, divergence, levels=levels, cmap='RdBu_r', alpha=0.85, zorder=2, extend='both') # <-- MODIFICADO
+    
     cbar = fig.colorbar(cf, ax=ax, orientation='vertical', shrink=0.7); cbar.set_label('Convergència (vermell) / Divergència (blau) [x10⁻⁵ s⁻¹]')
-    cs_conv = ax.contour(grid_lon, grid_lat, divergence, levels=levels, colors='black', linewidths=0.7, alpha=0.2, zorder=3)
+    
+    # 2. Contornos más visibles para delimitar mejor las zonas.
+    cs_conv = ax.contour(grid_lon, grid_lat, divergence, levels=levels, colors='black', linewidths=0.8, alpha=0.5, zorder=3) # <-- MODIFICADO
+    
     ax.clabel(cs_conv, inline=True, fontsize=8, fmt='%1.0f')
-    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', linewidth=0.5, density=5.0, arrowsize=0.5, zorder=4)
+    
+    # 3. Líneas de flujo en gris para no interferir con los colores principales.
+    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='grey', linewidth=0.7, density=4.0, arrowsize=0.7, zorder=4) # <-- MODIFICADO
+    
+    # --- FIN DE LAS MODIFICACIONES ---
+
     ax.plot(lon_sel, lat_sel, 'o', markerfacecolor='yellow', markeredgecolor='black', markersize=8, transform=ccrs.Geodetic(), zorder=6)
     txt = ax.text(lon_sel + 0.05, lat_sel, nom_poble_sel, transform=ccrs.Geodetic(), zorder=7, fontsize=10, weight='bold')
     txt.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
