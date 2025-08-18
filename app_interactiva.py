@@ -353,7 +353,7 @@ def ui_capcalera_selectors():
         with col2: st.selectbox("Dia del pronòstic:", ("Avui", "Demà"), key="dia_selector")
         with col3: st.selectbox("Hora del pronòstic (Hora Local):", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
 
-def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
+def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str, data_tuple):
     with st.spinner("Actualitzant anàlisi de mapes..."):
         col_map_1, col_map_2 = st.columns([2.5, 1.5])
         with col_map_1:
@@ -368,7 +368,22 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             map_key, error_map = map_options[mapa_sel], None
 
             if map_key == "forecast_combinat":
-                # --- CANVI: S'ha afegit 925 a la llista d'opcions ---
+                
+                # --- NOVA LÒGICA D'AVÍS INTEL·LIGENT BASAT EN CIN ---
+                # Primer, extraiem el valor de CIN del sondeig de referència
+                cin_value = 0
+                if data_tuple and data_tuple[1] and 'CIN' in data_tuple[1]:
+                    cin_value = data_tuple[1]['CIN']
+                
+                # Si la CIN és significativa, mostrem un avís i recomanació
+                CIN_THRESHOLD_FOR_WARNING = -25 # J/kg
+                if cin_value < CIN_THRESHOLD_FOR_WARNING:
+                    st.warning(
+                        f"**AVÍS DE 'TAPA' CONVECTIVA (CIN = {cin_value:.0f} J/kg):** "
+                        f"El sondeig de **{poble_sel}** mostra una forta inversió que pot inhibir les tempestes."
+                        f" **Es recomana analitzar la convergència a 850 hPa** per buscar forçaments elevats que puguin trencar la tapa."
+                    )
+                
                 nivell_sel = st.selectbox("Nivell d'anàlisi de convergència i humitat:", 
                                           options=[1000, 950, 925, 850, 700, 600, 500], 
                                           format_func=lambda x: f"{x} hPa")
@@ -381,7 +396,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                         title_dewpoint = "Punt de Rosada en Superfície (°C)"
                         st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], dewpoint_to_plot, map_data[variables[1]], map_data[variables[2]], nivell_sel, timestamp_str, title_dewpoint))
                 
-                else: # Aquesta lògica ara inclou correctament 925, 850, 700, etc.
+                else:
                     variables = [f"temperature_{nivell_sel}hPa", f"relative_humidity_{nivell_sel}hPa", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
                     map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
                     if map_data:
@@ -458,12 +473,21 @@ def main():
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     time_diff_hours = int((utc_dt - start_of_today_utc).total_seconds() / 3600); hourly_index_sel = max(0, time_diff_hours)
     timestamp_str = f"{dia_sel} a les {hora_sel} (Hora Local)"; lat_sel = CIUTATS_CATALUNYA[poble_sel]['lat']; lon_sel = CIUTATS_CATALUNYA[poble_sel]['lon']
+    
+    # Carreguem les dades del sondeig aquí, una sola vegada
     data_tuple, error_msg = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
     if error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+    
     tab_mapes, tab_vertical, tab_ia = st.tabs(["🗺️ Anàlisi de Mapes", "📊 Anàlisi Vertical", "🤖 Resum IA"])
-    with tab_mapes: ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
-    with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
-    with tab_ia: ui_pestanya_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
+    
+    with tab_mapes:
+        # Passem les dades del sondeig (data_tuple) a la pestanya de mapes
+        ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str, data_tuple)
+    with tab_vertical: 
+        ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
+    with tab_ia: 
+        ui_pestanya_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
+        
     ui_peu_de_pagina()
 
 if __name__ == "__main__":
