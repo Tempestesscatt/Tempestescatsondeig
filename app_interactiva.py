@@ -9,6 +9,7 @@ import time
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as path_effects
 from matplotlib.colors import ListedColormap, BoundaryNorm
+from matplotlib.animation import FuncAnimation
 from metpy.plots import SkewT, Hodograph
 from metpy.units import units
 import metpy.calc as mpcalc
@@ -18,6 +19,7 @@ from scipy.interpolate import griddata, Rbf
 from datetime import datetime, timedelta
 import pytz
 import google.generativeai as genai
+import io
 
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
@@ -298,6 +300,65 @@ def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, lat_sel, l
     ax.set_title(f"Flux i Convergència a {nivell}hPa (Mín: {max_conv:.1f})\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
+# --- NOVA FUNCIÓ PER A L'ANIMACIÓ ---
+@st.cache_data(ttl=3600)
+def crear_mapa_convergencia_animado(lons, lats, speed_data, dir_data, nivell, lat_sel, lon_sel, nom_poble_sel, timestamp_str):
+    """Genera un GIF animat del mapa de convergència."""
+    fig, ax = crear_mapa_base()
+    
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
+    speeds_ms = np.array(speed_data) * units('km/h')
+    dirs_deg = np.array(dir_data) * units.degrees
+    u_comp, v_comp = mpcalc.wind_components(speeds_ms, dirs_deg)
+    
+    rbf_u = Rbf(lons, lats, u_comp.to('m/s').m, function='thin_plate', smooth=0)
+    rbf_v = Rbf(lons, lats, v_comp.to('m/s').m, function='thin_plate', smooth=0)
+    u_grid = rbf_u(grid_lon, grid_lat)
+    v_grid = rbf_v(grid_lon, grid_lat)
+    
+    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+    divergence = mpcalc.divergence(u_grid * units('m/s'), v_grid * units('m/s'), dx=dx, dy=dy) * 1e5
+    
+    levels = np.arange(-200, 201, 20)
+    
+    # Dibuixa totes les capes estàtiques UNA SOLA VEGADA
+    cf = ax.contourf(grid_lon, grid_lat, divergence, levels=levels, cmap='coolwarm_r', alpha=0.9, zorder=2, extend='both')
+    cbar = fig.colorbar(cf, ax=ax, orientation='vertical', shrink=0.7)
+    cbar.set_label('Convergència (vermell) / Divergència (blau) [x10⁻⁵ s⁻¹]')
+    cs_conv = ax.contour(grid_lon, grid_lat, divergence, levels=levels, colors='black', linewidths=0.7, alpha=0.4, zorder=3)
+    ax.clabel(cs_conv, inline=True, fontsize=8, fmt='%1.0f')
+    ax.plot(lon_sel, lat_sel, 'o', markerfacecolor='yellow', markeredgecolor='black', markersize=8, transform=ccrs.Geodetic(), zorder=6)
+    txt = ax.text(lon_sel + 0.05, lat_sel, nom_poble_sel, transform=ccrs.Geodetic(), zorder=7, fontsize=10, weight='bold')
+    txt.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
+    max_conv = np.nanmin(divergence)
+    ax.set_title(f"Flux i Convergència a {nivell}hPa (Mín: {max_conv:.1f})\n{timestamp_str}", weight='bold', fontsize=16)
+
+    # L'element que s'actualitzarà a cada fotograma
+    stream_plot_object = ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', linewidth=0.8, density=3.0, arrowsize=0.8, zorder=4)
+
+    def update(frame):
+        nonlocal stream_plot_object
+        # Esborrem les línies de flux anteriors
+        stream_plot_object.lines.remove()
+        for art in ax.get_children():
+            if isinstance(art, plt.Polygon): # Les fletxes del streamplot són polígons
+                art.remove()
+        
+        # Creem les noves línies de flux amb una nova llavor aleatòria
+        stream_plot_object = ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', linewidth=0.8, density=3.0, arrowsize=0.8, zorder=4, seed=frame)
+        return ax.get_children()
+
+    # Creem l'animació
+    # 20 fotogrames a 100ms per fotograma = animació de 2 segons que es repeteix
+    ani = FuncAnimation(fig, update, frames=range(20), interval=100, blit=False)
+    
+    # Guardem l'animació en un buffer de memòria en lloc d'un fitxer físic
+    gif_buffer = io.BytesIO()
+    ani.save(gif_buffer, writer='pillow', fps=10)
+    plt.close(fig) # Tanquem la figura per alliberar memòria
+    
+    return gif_buffer.getvalue()
+
 def crear_mapa_escalar(lons, lats, data, titol, cmap, levels, unitat, timestamp_str, extend='max'):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
@@ -362,6 +423,7 @@ def ui_capcalera_selectors():
         with col2: st.selectbox("Dia del pronòstic:", ("Avui", "Demà"), key="dia_selector")
         with col3: st.selectbox("Hora del pronòstic (Hora Local):", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
 
+# --- FUNCIÓ DE LA UI MODIFICADA PER INCLOURE L'ANIMACIÓ ---
 def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
     with st.spinner("Actualitzant anàlisi de mapes..."):
         col_map_1, col_map_2 = st.columns([2.5, 1.5])
@@ -379,27 +441,41 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                     elif max_cape <= 2500: cape_levels = np.arange(250, 2501, 250)
                     else: cape_levels = np.arange(250, np.ceil(max_cape / 500) * 500 + 1, 250)
                     st.pyplot(crear_mapa_escalar(map_data['lons'], map_data['lats'], map_data['cape'], "CAPE", "plasma", cape_levels, "J/kg", timestamp_str))
+            
             elif map_key == "conv":
-                # --- MODIFICACIÓ SOL·LICITADA ---
-                # S'han afegit els nivells 700, 600 i 500 hPa a les opcions.
                 nivell_sel = st.selectbox("Nivell d'anàlisi:", options=[1000, 950, 925, 850, 700, 600, 500], format_func=lambda x: f"{x} hPa")
-                # --- FI DE LA MODIFICACIÓ ---
+                
+                animar = st.checkbox("🌊 Activar animació de les línies de flux (pot trigar a carregar)")
+
                 variables = [f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
                 map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
-                if map_data: st.pyplot(crear_mapa_convergencia(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell_sel, lat_sel, lon_sel, poble_sel, timestamp_str))
+                
+                if map_data:
+                    if animar:
+                        with st.spinner("⏳ Generant animació... Aquest procés pot trigar 10-20 segons la primera vegada."):
+                            gif_bytes = crear_mapa_convergencia_animado(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell_sel, lat_sel, lon_sel, poble_sel, timestamp_str)
+                            st.image(gif_bytes, caption="Animació de les línies de flux")
+                    else:
+                        fig = crear_mapa_convergencia(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell_sel, lat_sel, lon_sel, poble_sel, timestamp_str)
+                        st.pyplot(fig)
+
             elif map_key == "500hpa":
                 variables = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
                 map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
                 if map_data: st.pyplot(crear_mapa_500hpa(map_data, timestamp_str))
+            
             elif map_key in ["wind_300", "wind_700"]:
                 nivell_hpa = int(map_key.split('_')[1])
                 variables = [f"wind_speed_{nivell_hpa}hPa", f"wind_direction_{nivell_hpa}hPa"]
                 map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
                 if map_data: st.pyplot(crear_mapa_vents_velocitat(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell_hpa, timestamp_str))
+            
             elif map_key == "rh_700":
                 map_data, error_map = carregar_dades_mapa(["relative_humidity_700hPa"], hourly_index_sel)
                 if map_data: st.pyplot(crear_mapa_escalar(map_data['lons'], map_data['lats'], map_data['relative_humidity_700hPa'], "Humitat Relativa a 700hPa", "Greens", np.arange(50, 101, 5), "%", timestamp_str))
+            
             if error_map: st.error(f"Error en carregar el mapa: {error_map}")
+
         with col_map_2:
             st.subheader("Imatges en Temps Real")
             view_choice = st.radio("Selecciona la vista:", ("Satèl·lit", "Radar"), horizontal=True, label_visibility="collapsed")
