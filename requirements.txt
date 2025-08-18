@@ -10,3 +10,5 @@ retry-requests
 openmeteo-requests
 pytz
 google-generativeai
+geopandas
+shapely
