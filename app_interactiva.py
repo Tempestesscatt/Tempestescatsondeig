@@ -18,19 +18,18 @@ from scipy.interpolate import griddata
 from datetime import datetime, timedelta
 import pytz
 from scipy.ndimage import label
-import openai # IMPORT IMPORTANT: HEM CANVIAT A OPENAI
+import google.generativeai as genai # TORNEM A GOOGLE
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
 
-# AQUEST BLOC ÉS EL QUE CANVIA I SOLUCIONA L'ERROR
+# AQUEST BLOC ARA BUSCA LA CLAU DE GOOGLE
 try:
-    # Ara busca la clau correcta als teus secrets
-    openai.api_key = st.secrets["OPENAI_API_KEY"]
-    OPENAI_CONFIGURAT = True
+    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+    GEMINI_CONFIGURAT = True
 except (KeyError, Exception):
-    OPENAI_CONFIGURAT = False
+    GEMINI_CONFIGURAT = False
 
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
@@ -193,12 +192,13 @@ def mostrar_imatge_temps_real(tipus):
         else: st.warning(f"No s'ha pogut carregar la imatge. (Codi: {response.status_code})")
     except Exception as e: st.error(f"Error de xarxa en carregar la imatge.")
 
-# --- 3. FUNCIONS PER A L'ASSISTENT D'IA (MODIFICADES PER A OPENAI) ---
+
+# --- 3. FUNCIONS PER A L'ASSISTENT D'IA (Versió Google Gemini) ---
 
 def preparar_resum_dades_per_ia(data_tuple, poble_sel, timestamp_str):
-    # ... (codi idèntic)
+    # ... (codi idèntic a la versió original de Gemini) ...
     if not data_tuple:
-        return "No s'han pogut carregar les dades del sondeig."
+        return "No s'han pogut carregar les dades del sondeig. No es pot fer l'anàlisi."
 
     sounding_data, params_calculats = data_tuple
     p, T, Td, u, v = sounding_data
@@ -211,43 +211,42 @@ def preparar_resum_dades_per_ia(data_tuple, poble_sel, timestamp_str):
         shear_0_6km = mpcalc.bulk_shear(p, u, v, height_agl=np.array([0, 6000]) * units.m)
         shear_text = f"{shear_0_6km.to('knots').m:.1f} nusos."
     except:
-        shear_text = "No calculat."
+        shear_text = "No s'ha pogut calcular."
 
-    resum_dades_text = f"""
-    Dades del sondeig vertical per a {poble_sel} a les {timestamp_str}:
-    - CAPE: {cape:.1f} J/kg.
-    - CIN: {cin:.1f} J/kg.
-    - LFC: {'No trobat' if np.isnan(lfc) else f'{lfc:.1f} hPa'}.
+    resum = f"""
+    CONTEXT DE L'ANÀLISI:
+    - Lloc: {poble_sel}
+    - Data i Hora: {timestamp_str}
+
+    DADES DEL SONDEIG VERTICAL:
+    - CAPE (Energia per a tempestes): {cape:.1f} J/kg.
+    - CIN (Inhibidor de convecció): {cin:.1f} J/kg.
+    - LFC (Nivell de convecció lliure): {'No trobat' if np.isnan(lfc) else f'{lfc:.1f} hPa'}.
     - Cisallament 0-6km (Shear): {shear_text}
-    """
     
-    instruccions_sistema = """
+    INSTRUCCIONS PER A L'ASSISTENT:
     Ets un meteoròleg expert en temps sever a Catalunya, anomenat MeteoIA.
-    Respon les preguntes de l'usuari basant-te ÚNICAMENT en les dades numèriques que et proporcionaré.
-    No facis servir coneixement extern. Si les dades no són suficients per respondre, indica-ho.
-    Sigues concís, directe i utilitza un llenguatge entenedor. Comença la teva primera resposta amb un resum general del potencial de temps sever.
+    La teva missió és respondre les preguntes de l'usuari basant-te ÚNICAMENT i ESTRICTAMENT en les dades numèriques proporcionades.
+    No facis servir coneixement extern. Si les dades no són suficients per respondre, indica-ho clarament.
+    Sigues concís i entenedor.
     """
-    return resum_dades_text, instruccions_sistema
+    return resum
 
-def generar_resposta_ia(historial_conversa, resum_dades, instruccions_sistema):
-    # ... (codi idèntic)
-    if not OPENAI_CONFIGURAT:
+def generar_resposta_ia(historial_conversa_text, resum_dades, prompt_usuari):
+    """Crida a l'API de Gemini amb l'historial i les dades."""
+    if not GEMINI_CONFIGURAT:
         return "La funcionalitat d'IA no està configurada."
 
-    try:
-        missatges = [{"role": "system", "content": instruccions_sistema + "\n" + resum_dades}]
-        
-        for message in historial_conversa:
-            missatges.append({"role": message["role"], "content": message["content"]})
+    model = genai.GenerativeModel('gemini-pro')
+    
+    prompt_final = resum_dades + f"\n\nHISTORIAL DE LA CONVERSA:\n{historial_conversa_text}\n\nPREGUNTA ACTUAL DE L'USUARI:\n'{prompt_usuari}'\n\nLA TEVA RESPOSTA COM A METEOIA:"
 
-        client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=missatges
-        )
-        return response.choices[0].message.content
+    try:
+        response = model.generate_content(prompt_final)
+        return response.text
     except Exception as e:
-        return f"Hi ha hagut un error contactant amb l'IA d'OpenAI: {e}"
+        return f"Hi ha hagut un error contactant amb l'IA de Google: {e}"
+
 
 # --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
 
@@ -327,18 +326,18 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 
 def ui_pestanya_ia(data_tuple, poble_sel, timestamp_str):
-    st.subheader(f"💬 Assistent MeteoIA (amb OpenAI)")
+    st.subheader(f"💬 Assistent MeteoIA (amb Google Gemini)")
     st.markdown("Fes-me preguntes sobre el potencial de temps sever basant-me en les dades carregades.")
     
-    if not OPENAI_CONFIGURAT:
-        st.error("Funcionalitat no disponible. La clau API d'OpenAI no està configurada correctament als secrets de Streamlit.")
+    if not GEMINI_CONFIGURAT:
+        st.error("Funcionalitat no disponible. La clau API de Google no està configurada correctament als secrets de Streamlit.")
         return
         
     if not data_tuple:
         st.warning("No hi ha dades de sondeig per analitzar. L'assistent no pot funcionar.")
         return
 
-    resum_dades, instruccions_sistema = preparar_resum_dades_per_ia(data_tuple, poble_sel, timestamp_str)
+    resum_dades = preparar_resum_dades_per_ia(data_tuple, poble_sel, timestamp_str)
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -354,14 +353,14 @@ def ui_pestanya_ia(data_tuple, poble_sel, timestamp_str):
 
         with st.chat_message("assistant"):
             with st.spinner("MeteoIA està pensant..."):
-                response = generar_resposta_ia(st.session_state.messages, resum_dades, instruccions_sistema)
+                historial_text = "\n".join([f'{m["role"]}: {m["content"]}' for m in st.session_state.messages])
+                response = generar_resposta_ia(historial_text, resum_dades, prompt)
                 st.markdown(response)
         
         st.session_state.messages.append({"role": "assistant", "content": response})
 
 def ui_peu_de_pagina():
-    # Canviem el text per reflectir que fem servir OpenAI
-    st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades del model AROME via <a href='https://open-meteo.com/'>Open-Meteo</a> | Imatges via <a href='https://www.meteociel.fr/'>Meteociel</a> | Anàlisi IA per OpenAI.</p>", unsafe_allow_html=True)
+    st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades del model AROME via <a href='https://open-meteo.com/'>Open-Meteo</a> | Imatges via <a href='https://www.meteociel.fr/'>Meteociel</a> | Anàlisi IA per Google Gemini.</p>", unsafe_allow_html=True)
 
 # --- 5. APLICACIÓ PRINCIPAL ---
 
