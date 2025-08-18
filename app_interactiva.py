@@ -432,17 +432,20 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 
+
+def main():
+    # Obtenim seleccions de l'usuari
 def ui_pestanya_avisos_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
     """
-    Pestanya que mostra un resum visual del risc meteorològic generat per IA.
+    Pestanya que mostra un resum visual del risc meteorològic per a Catalunya.
     """
-    st.subheader(f"📢 Avaluació del Risc per a {timestamp_str}")
+    st.subheader(f"📢 Butlletí de Risc per a Catalunya | {timestamp_str}")
     
     if not GEMINI_CONFIGURAT:
         st.warning("La funció d'anàlisi per IA no està disponible. Configura la clau API de Google Gemini a l'arxiu `secrets.toml`.")
         return
 
-    with st.spinner("Generant resum del risc amb IA..."):
+    with st.spinner("Generant butlletí per a Catalunya..."):
         dades_ia, error_dades = preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel)
         
         if dades_ia:
@@ -453,9 +456,8 @@ def ui_pestanya_avisos_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timesta
                     st.error(data["error"])
                     return
 
-                # --- MAQUETACIÓ VISUAL ---
+                # --- MAQUETACIÓ VISUAL DEL BUTLLETÍ ---
                 
-                # 1. Indicadors de Risc (Emoji i Color)
                 risc_map = {
                     "Baix": {"emoji": "✅", "color": "success"},
                     "Moderat": {"emoji": "⚠️", "color": "info"},
@@ -466,46 +468,45 @@ def ui_pestanya_avisos_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timesta
 
                 st.header(f'{risc_info["emoji"]} {data.get("titol", "Anàlisi no disponible")}')
 
-                # 2. Paràmetres clau amb st.metric
-                sondeig = dades_ia.get('sondeig', {})
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("⚡ CAPE (Energia)", f"{int(sondeig.get('CAPE', 0))} J/kg")
-                with col2:
-                    st.metric("🌪️ Cisallament (0-6km)", f"{int(sondeig.get('Shear_0-6km', 0))} m/s")
-                with col3:
-                    st.metric("🔄 SRH (Rotació 0-3km)", f"{int(sondeig.get('SRH_0-3km', 0))} m²/s²")
-                
-                # 3. Resum general dins d'una caixa de color
                 alert_box = getattr(st, risc_info["color"])
-                alert_box(data.get("resum_general", ""), icon="📄")
+                alert_box(data.get("resum_general", ""), icon="📰")
 
-                # 4. Detalls tècnics i fenòmens en un expander
-                with st.expander("Veure l'anàlisi tècnica i fenòmens probables"):
+                # Mostrem les zones de risc de manera destacada
+                st.subheader("📍 Zones amb Major Probabilitat d'Afectació")
+                zones = data.get("zones_potencials", [])
+                if zones:
+                    # Presentem les zones en columnes per a una millor visualització
+                    num_columnes = min(len(zones), 3)
+                    cols = st.columns(num_columnes)
+                    for i, zona in enumerate(zones):
+                        cols[i % num_columnes].info(zona, icon="🗺️")
+                else:
+                    st.info("No s'han identificat zones de risc específiques.")
+
+                with st.expander("Veure l'anàlisi tècnica i paràmetres clau"):
                     st.subheader("Justificació Tècnica")
                     st.markdown(data.get("justificacio_tecnica", ""))
                     
                     st.subheader("Fenòmens Més Probables")
                     for fenomen in data.get("fenomens_probables", []):
                         st.markdown(f"- {fenomen}")
+                    
+                    st.divider()
+                    st.subheader("Paràmetres de Referència (Sondeig)")
+                    sondeig = dades_ia.get('sondeig', {})
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("⚡ CAPE (Energia)", f"{int(sondeig.get('CAPE', 0))} J/kg")
+                    with col2:
+                        st.metric("🌪️ Cisallament (0-6km)", f"{int(sondeig.get('Shear_0-6km', 0))} m/s")
+                    with col3:
+                        st.metric("🔄 SRH (Rotació 0-3km)", f"{int(sondeig.get('SRH_0-3km', 0))} m²/s²")
 
             except json.JSONDecodeError:
                 st.error("No s'ha pogut interpretar la resposta de la IA. Podria ser un error de format.")
-                st.text(resposta_json_str) # Mostrem la resposta crua per depurar
+                st.text(resposta_json_str)
         else:
-            st.error(f"No s'ha pogut generar el resum: {error_dades}")
-
-def ui_peu_de_pagina():
-    """
-    Mostra el peu de pàgina utilitzant st.caption per a la compatibilitat de temes.
-    """
-    st.divider()
-    st.caption("Dades del model AROME via [Open-Meteo](https://open-meteo.com/) | Imatges via [Meteociel](https://www.meteociel.fr/) | Anàlisi IA per Google Gemini.")
-
-# --- 4. APLICACIÓ PRINCIPAL ---
-def main():
-    # Obtenim seleccions de l'usuari
-    poble_sel, dia_sel, hora_sel = ui_capcalera_selectors()
+            st.error(f"No s'ha pogut generar el resum: {error_dades}")    poble_sel, dia_sel, hora_sel = ui_capcalera_selectors()
     lat_sel = CIUTATS_CATALUNYA[poble_sel]['lat']
     lon_sel = CIUTATS_CATALUNYA[poble_sel]['lon']
     
