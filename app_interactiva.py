@@ -411,6 +411,15 @@ def crear_hodograf(u, v):
     h.add_grid(increment=20, color='gray'); h.plot(u.to('kt'), v.to('kt'), color='red', linewidth=2)
     ax.set_title("Hodògraf", weight='bold'); return fig
     
+def ui_capcalera_selectors():
+    st.markdown('<h1 style="text-align: center; color: #FF4B4B;">🌪️ Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
+    st.markdown('<p style="text-align: center;">Eina per al pronòstic de convecció mitjançant paràmetres clau.</p>', unsafe_allow_html=True)
+    with st.container(border=True):
+        col1, col2, col3 = st.columns(3)
+        with col1: st.selectbox("Capital de referència:", sorted(CIUTATS_CATALUNYA.keys()), key="poble_selector")
+        with col2: st.selectbox("Dia del pronòstic:", ("Avui", "Demà"), key="dia_selector")
+        with col3: st.selectbox("Hora del pronòstic (Hora Local):", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
+    
 def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str, data_tuple):
     col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large")
     
