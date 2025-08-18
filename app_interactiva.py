@@ -833,8 +833,8 @@ def main():
     if dia_sel == "Demà": 
         target_date += timedelta(days=1)
     
-    local_dt = TIMEZONE.localize(
-        datetime.combine(target_date, datetime.min.time()).replace(hour=hora_int)
+    local_dt = TIMEZONE.localize
+    datetime.combine(target_date, datetime.min.time()).replace(hour=hora_int)
     utc_dt = local_dt.astimezone(pytz.utc)
     
     start_of_today_utc = datetime.now(pytz.utc).replace(
