@@ -178,28 +178,42 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
     
-    # --- CANVI #1: LLINDARS MOLT MÉS ESTRICTES ---
-    CONVERGENCE_THRESHOLD = -35  # Més exigent que abans (-30)
-    DEWPOINT_THRESHOLD_FOR_RISK = 16 # Més exigent que abans (14)
+    # --- CANVI CLAU: LLINDARS DINÀMICS PER NIVELL D'ALTURA ---
+    # Definim els llindars segons el nivell de pressió seleccionat.
+    if nivell >= 950:
+        CONVERGENCE_THRESHOLD = -35
+        DEWPOINT_THRESHOLD_FOR_RISK = 15
+        
+    elif nivell >= 925: # Cobreix 925 i 850 hPa
+        CONVERGENCE_THRESHOLD = -30
+        DEWPOINT_THRESHOLD_FOR_RISK = 13
+        
+    elif nivell >= 850: # Cobreix 925 i 850 hPa
+        CONVERGENCE_THRESHOLD = -30
+        DEWPOINT_THRESHOLD_FOR_RISK = 10
+        
+    elif nivell >= 700:
+        CONVERGENCE_THRESHOLD = -25
+        DEWPOINT_THRESHOLD_FOR_RISK = 2
+        
+    else: # Per a 600 i 500 hPa
+        CONVERGENCE_THRESHOLD = -20
+        DEWPOINT_THRESHOLD_FOR_RISK = -5
 
-    # Escala de colors per al punt de rosada
+    # Escala de colors i dibuix del mapa base
     custom_cmap = plt.get_cmap('jet')
     dewpoint_levels = np.arange(-4, 32, 4)
     norm_dewpoint = BoundaryNorm(dewpoint_levels, ncolors=custom_cmap.N, clip=True)
-    
-    # --- CANVI #2: VISUALITZACIÓ DE DADES EN BRUT AMB PCOLORMESH ---
-    # Això crea l'efecte de blocs de color sòlids, sense suavitzat
     ax.pcolormesh(grid_lon, grid_lat, grid_dewpoint, cmap=custom_cmap, norm=norm_dewpoint, zorder=2)
-    
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_dewpoint, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label(title_dewpoint) 
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=4.5, arrowsize=0.6, zorder=4)
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=2.5, arrowsize=0.6, zorder=4)
 
-    # Lògica de visualització de risc
+    # Lògica de visualització de risc, ara amb els llindars dinàmics
     effective_risk_mask = (divergence.magnitude <= CONVERGENCE_THRESHOLD) & (grid_dewpoint >= DEWPOINT_THRESHOLD_FOR_RISK)
     ax.contourf(grid_lon, grid_lat, effective_risk_mask, 
                 levels=[0.5, 1.5], 
-                colors=['#FF4500A0'], # Taronja-vermellós amb transparència
+                colors=['#FF4500A0'],
                 zorder=5)
 
     labels, num_features = label(effective_risk_mask)
@@ -211,12 +225,9 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
             warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=15, ha='center', va='center', zorder=8)
             warning_txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
-    # --- CANVI #3: ELIMINACIÓ DE L'ETIQUETA NUMÈRICA ---
-    # S'ha eliminat el codi que buscava i dibuixava el valor màxim de convergència.
-    # El mapa ara és purament visual: si hi ha una zona vermella, és un focus de risc.
-
     ax.set_title(f"Forecast: Focus de Convergència Efectiva a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
+    
 def crear_mapa_500hpa(map_data, timestamp_str):
     fig, ax = crear_mapa_base(); lons, lats = map_data['lons'], map_data['lats']
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
