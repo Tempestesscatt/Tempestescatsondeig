@@ -6,7 +6,7 @@ from retry_requests import retry
 import requests
 import numpy as np
 import time
-import json # Import necessari per processar la resposta de la IA
+import json
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as path_effects
 from matplotlib.colors import ListedColormap, BoundaryNorm
@@ -163,12 +163,11 @@ def preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel):
 
 # --- 2. FUNCIÓ D'ANÀLISI AMB IA ---
 
-@st.cache_data(ttl=3600)
-def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str, _hourly_index_sel):
+# S'ha eliminat @st.cache_data per garantir que la funció s'executa sempre.
+def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str):
     """
-    Genera un resum meteorològic per a TOT CATALUNYA, utilitzant la ciutat
-    seleccionada només com a referència per al sondeig vertical.
-    Retorna la informació en format JSON estructurat.
+    Genera un resum meteorològic per a TOT CATALUNYA. Aquesta funció s'executa
+    sempre que es canvia l'hora per garantir que la informació és correcta.
     """
     if not GEMINI_CONFIGURAT:
         return json.dumps({"error": "La clau API de Google no està configurada."})
@@ -178,19 +177,20 @@ def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str, _hourly_index_sel):
     sondeig = _dades_ia.get('sondeig', {})
 
     prompt = f"""
-    Ets un meteoròleg del Servei Meteorològic de Catalunya (SMC). La teva missió és redactar un butlletí de previsió a curt termini per a TOT CATALUNYA, basat en les dades del model AROME. La ciutat seleccionada és només un punt de referència per a l'anàlisi vertical (sondeig).
+    Ets un meteoròleg expert del Servei Meteorològic de Catalunya (SMC). La teva missió és redactar un butlletí de previsió clar i concís per a TOT CATALUNYA, basat en les dades del model AROME per a la franja horària de '{_timestamp_str}'.
+
+    **INSTRUCCIÓ CLAU: INTEGRA LA TEMPORALITAT**
+    A la teva redacció, fes referència explícita a la franja horària de l'anàlisi (matí, tarda, vespre, matinada) per donar context. Per exemple, si són les 15:00h, parla de 'durant la tarda'. Si és 'Demà a les 02:00h', parla de 'durant la matinada de demà'.
 
     DADES D'ANÀLISI:
-    - Hora del pronòstic: {_timestamp_str}
-    - Punt de Referència per al Sondeig Vertical: {_poble_sel}
     - CAPE Màxim a Catalunya (Energia): {int(mapa.get('max_cape_catalunya', 0))} J/kg
     - Focus de Convergència 925hPa (Disparador): {mapa.get('max_conv_925hpa', 0):.2f} (x10⁻⁵ s⁻¹), localitzat a lat {mapa.get('lat_max_conv', 0):.2f}, lon {mapa.get('lon_max_conv', 0):.2f}
-    - Dades del Sondeig de Referència:
+    - Dades del Sondeig de Referència (prop de {_poble_sel}):
         - Cisallament 0-6km (Organització): {int(sondeig.get('Shear_0-6km', 0))} m/s
         - SRH 0-3km (Rotació): {int(sondeig.get('SRH_0-3km', 0))} m²/s²
 
     INSTRUCCIONS:
-    Analitza les dades per a tot el territori i retorna un objecte JSON amb la següent estructura EXACTA. NO AFEGEIXIS TEXT FORA DEL JSON.
+    Retorna un objecte JSON amb la següent estructura EXACTA. NO AFEGEIXIS TEXT FORA DEL JSON.
     {{
       "nivell_risc": "String",
       "titol": "String",
@@ -203,9 +203,9 @@ def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str, _hourly_index_sel):
     DETALLS DELS CAMPS:
     - "nivell_risc": Classifica el risc general a Catalunya (Baix, Moderat, Alt, Molt Alt).
     - "titol": Un titular que resumeixi la situació a Catalunya (ex: "Tarda de tempestes intenses al Prepirineu i Catalunya Central").
-    - "resum_general": Descriu on s'iniciaran les tempestes (a prop del focus de convergència) i cap a on es mouran. Explica la situació general del territori.
+    - "resum_general": Descriu on s'iniciaran les tempestes i cap a on es mouran, **integrant el context temporal (tarda, vespre, etc.)**.
     - "zones_potencials": Llista les comarques o àrees geogràfiques amb més probabilitat de veure's afectades.
-    - "justificacio_tecnica": Explica breument per què hi ha risc, basant-te en els paràmetres (CAPE, cisallament, etc.).
+    - "justificacio_tecnica": Explica breument per què hi ha risc, basant-te en els paràmetres.
     - "fenomens_probables": Llista els fenòmens meteorològics més probables a les zones de risc.
     """
     
@@ -362,9 +362,6 @@ def ui_capcalera_selectors():
     return poble, dia, hora
 
 def ui_pestanya_avisos_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
-    """
-    Pestanya que mostra un resum visual del risc meteorològic per a Catalunya.
-    """
     st.subheader(f"📢 Butlletí de Risc per a Catalunya | {timestamp_str}")
     
     if not GEMINI_CONFIGURAT:
@@ -375,7 +372,7 @@ def ui_pestanya_avisos_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timesta
         dades_ia, error_dades = preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel)
         
         if dades_ia:
-            resposta_json_str = generar_resum_ia(dades_ia, poble_sel, timestamp_str, hourly_index_sel)
+            resposta_json_str = generar_resum_ia(dades_ia, poble_sel, timestamp_str)
             try:
                 data = json.loads(resposta_json_str)
                 if "error" in data:
