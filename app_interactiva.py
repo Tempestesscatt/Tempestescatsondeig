@@ -174,20 +174,20 @@ def crear_mapa_base():
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0); ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5); return fig, ax
 
-def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data, nivell, timestamp_str, title_dewpoint):
+def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
     
-    # Interpolar dades i calcular convergència
+    # Interpolar TOTES les dades necessàries: vent per al gràfic, punt de rosada per a l'anàlisi
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), method='cubic')
-    speeds_ms = np.array(speed_data) * units('km/h'); dirs_deg = np.array(dir_data) * units.degrees
-    u_comp, v_comp = mpcalc.wind_components(speeds_ms, dirs_deg)
+    u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
     
-    # Llindars dinàmics per nivell d'altura
+    # Llindars dinàmics per nivell d'altura (es mantenen igual)
     if nivell >= 950:
         CONVERGENCE_THRESHOLD = -35; DEWPOINT_THRESHOLD_FOR_RISK = 15
     elif nivell >= 925:
@@ -199,43 +199,30 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     else:
         CONVERGENCE_THRESHOLD = -20; DEWPOINT_THRESHOLD_FOR_RISK = -5
 
-    # Dibuix del mapa base (punt de rosada i streamlines)
-    custom_cmap = plt.get_cmap('jet')
-    dewpoint_levels = np.arange(-4, 32, 4)
-    norm_dewpoint = BoundaryNorm(dewpoint_levels, ncolors=custom_cmap.N, clip=True)
-    ax.pcolormesh(grid_lon, grid_lat, grid_dewpoint, cmap=custom_cmap, norm=norm_dewpoint, zorder=2)
-    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_dewpoint, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
-    cbar.set_label(title_dewpoint) 
+    # --- CANVI VISUAL PRINCIPAL: El fons ara és la FORÇA DEL VENT ---
+    # Utilitzem l'escala de colors de Meteociel que ja teníem per als mapes de vent
+    colors_meteo_vent = [
+        '#FFFFFF', '#B4F0FF', '#82D3FF', '#41B4FF', '#0096FF', '#00D278', '#00B43C', '#64D200', '#96F500', 
+        '#C8FF00', '#F5DC00', '#FFB400', '#FF8C00', '#FF6400', '#F53C00', '#D21400', '#B40000', '#820000', 
+        '#640000', '#82004B', '#B40082', '#D200B4', '#F000DC', '#FF00FF', '#FF64FF', '#FF96FF'
+    ]
+    speed_levels = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 220, 240, 260, 280, 300, 320, 340, 360]
+    custom_cmap = ListedColormap(colors_meteo_vent)
+    norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N)
     
-    # Densitat de les streamlines augmentada a 5
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2)
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels[::2])
+    cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
+    
+    # Dibuixem les streamlines negres a sobre
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=5, arrowsize=0.6, zorder=4)
 
-    # --- LÒGICA DEFINITIVA AMB EMMASCARAMENT DE DADES ---
-
-    # 1. Creem la màscara de risc efectiu (on es compleixen les dues condicions)
+    # --- LÒGICA D'ANÀLISI "INVISIBLE" ---
+    # La màscara de risc encara utilitza el PUNT DE ROSADA, tot i que no es vegi al mapa
     effective_risk_mask = (divergence.magnitude <= CONVERGENCE_THRESHOLD) & (grid_dewpoint >= DEWPOINT_THRESHOLD_FOR_RISK)
-
-    # 2. Creem una versió emmascarada de les dades de convergència.
-    # El '~' inverteix la màscara, amagant tot el que està FORA de la zona de risc.
-    masked_divergence = np.ma.masked_where(~effective_risk_mask, divergence.magnitude)
-
-    # 3. Dibuixem les línies de convergència sobre les dades emmascarades.
-    # Matplotlib només dibuixarà les línies on les dades són visibles.
-    convergence_levels = np.arange(-80, 0, 5) # Nivells més densos per a més detall
-    ax.contour(grid_lon, grid_lat, masked_divergence,
-               levels=convergence_levels,
-               colors='black',
-               linewidths=0.8,
-               linestyles='--',
-               zorder=6)
-
-    # 4. Dibuixem l'àrea vermella de fons per ressaltar la zona.
-    ax.contourf(grid_lon, grid_lat, effective_risk_mask, 
-                levels=[0.5, 1.5], 
-                colors=['#FF4500A0'],
-                zorder=5)
-
-    # 5. Afegim l'emoji d'alerta dins de cada zona de risc
+    
+    # La resta de la visualització de risc es manté igual
+    ax.contourf(grid_lon, grid_lat, effective_risk_mask, levels=[0.5, 1.5], colors=['#FF0000A0'], zorder=5)
     labels, num_features = label(effective_risk_mask)
     if num_features > 0:
         for i in range(1, num_features + 1):
@@ -245,7 +232,7 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
             warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=15, ha='center', va='center', zorder=8)
             warning_txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
-    ax.set_title(f"Forecast: Focus de Convergència Efectiva a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    ax.set_title(f"Forecast: Força del Vent + Focus de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
     
 def crear_mapa_500hpa(map_data, timestamp_str):
@@ -366,10 +353,10 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
         col_map_1, col_map_2 = st.columns([2.5, 1.5])
         with col_map_1:
             map_options = {
-                "Forecast: Humitat + Convergència": "forecast_combinat",
+                "Forecast: Vent + Convergència Efectiva": "forecast_combinat",
                 "Temperatura i Vent a 500hPa": "500hpa",
-                "Vent a 700hPa": "vent_700",
-                "Vent a 300hPa": "vent_300",
+                "Vent a 700hPa (Streamlines)": "vent_700",
+                "Vent a 300hPa (Streamlines)": "vent_300",
                 "Humitat a 700hPa": "rh_700"
             }
             mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
@@ -377,39 +364,33 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
 
             if map_key == "forecast_combinat":
                 
-                # --- LÒGICA D'AVISOS INTEL·LIGENTS ---
-                cin_value = 0
-                lfc_hpa = np.nan
+                cin_value = 0; lfc_hpa = np.nan
                 if data_tuple and data_tuple[1]:
-                    cin_value = data_tuple[1].get('CIN', 0)
-                    lfc_hpa = data_tuple[1].get('LFC_hPa', np.nan)
-
-                # Avís per CIN (Tapa convectiva)
-                CIN_THRESHOLD_FOR_WARNING = -25
-                if cin_value < CIN_THRESHOLD_FOR_WARNING:
+                    cin_value = data_tuple[1].get('CIN', 0); lfc_hpa = data_tuple[1].get('LFC_hPa', np.nan)
+                if cin_value < -25:
                     st.warning(f"**AVÍS DE 'TAPA' (CIN = {cin_value:.0f} J/kg):** El sondeig de **{poble_sel}** mostra una forta inversió. Es necessita un forçament dinàmic potent.")
-                
-                # NOU: Avís per LFC (Nivell d'inici de la convecció)
                 if np.isnan(lfc_hpa):
                     st.error("**AVÍS DE LFC:** No s'ha trobat LFC. La convecció espontània és molt improbable.")
                 elif lfc_hpa >= 900:
                     st.success(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base superficial. **Recomanació: Analitzar convergència a 1000-925 hPa.**")
                 elif lfc_hpa >= 750:
                     st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base baixa. **Recomanació: Analitzar convergència a 850 hPa.**")
-                else: # lfc_hpa < 750
+                else:
                     st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada. **Recomanació: Analitzar convergència a 700-600 hPa.**")
 
-                nivell_sel = st.selectbox("Nivell d'anàlisi de convergència i humitat:", 
+                nivell_sel = st.selectbox("Nivell d'anàlisi:", 
                                           options=[1000, 950, 925, 850, 700, 600, 500], 
                                           format_func=lambda x: f"{x} hPa")
                 
+                # S'ha de recollir les dades de vent (per pintar) i les dades d'humitat (per analitzar)
                 if nivell_sel >= 950:
                     variables = ["dew_point_2m", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
                     map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
                     if map_data:
-                        dewpoint_to_plot = map_data['dew_point_2m']
-                        title_dewpoint = "Punt de Rosada en Superfície (°C)"
-                        st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], dewpoint_to_plot, map_data[variables[1]], map_data[variables[2]], nivell_sel, timestamp_str, title_dewpoint))
+                        dewpoint_for_calc = map_data['dew_point_2m']
+                        speed_data = map_data[f"wind_speed_{nivell_sel}hPa"]
+                        dir_data = map_data[f"wind_direction_{nivell_sel}hPa"]
+                        st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str))
                 
                 else:
                     variables = [f"temperature_{nivell_sel}hPa", f"relative_humidity_{nivell_sel}hPa", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
@@ -417,13 +398,11 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                     if map_data:
                         temp_data = np.array(map_data[f'temperature_{nivell_sel}hPa']) * units.degC
                         rh_data = np.array(map_data[f'relative_humidity_{nivell_sel}hPa']) * units.percent
-                        dewpoint_calculated = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data)
-                        dewpoint_to_plot = dewpoint_calculated.m
-                        title_dewpoint = f"Punt de Rosada a {nivell_sel}hPa (°C)"
-                        st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], dewpoint_to_plot, map_data[variables[2]], map_data[variables[3]], nivell_sel, timestamp_str, title_dewpoint))
+                        dewpoint_for_calc = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
+                        speed_data = map_data[f"wind_speed_{nivell_sel}hPa"]
+                        dir_data = map_data[f"wind_direction_{nivell_sel}hPa"]
+                        st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str))
 
-            # ... (la resta de la funció es manté igual) ...
-            
             elif map_key == "500hpa":
                 variables = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
                 map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
@@ -450,6 +429,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
         with col_map_2:
             st.subheader("Imatges en Temps Real"); view_choice = st.radio("Selecciona la vista:", ("Satèl·lit", "Radar"), horizontal=True, label_visibility="collapsed")
             mostrar_imatge_temps_real(view_choice)
+            
 
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
