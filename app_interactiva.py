@@ -292,47 +292,7 @@ def update(frame_num):
     
     return gif_data
 
-def update(frame):
-        nonlocal px, py, px_prev, py_prev
-        # La posició actual es converteix en la cua de la línia
-        px_prev = px.copy()
-        py_prev = py.copy()
-        
-        # Calculem el desplaçament
-        u_vals = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_u.flatten(), (px, py), method='linear', fill_value=0)
-        v_vals = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_v.flatten(), (px, py), method='linear', fill_value=0)
-        
-        # La nova posició és el cap de la línia
-        px += u_vals * PARTICLE_SPEED_FACTOR
-        py += v_vals * PARTICLE_SPEED_FACTOR
-        
-        # Resetejem les partícules que surten del mapa
-        out_of_bounds = (px < MAP_EXTENT[0]) | (px > MAP_EXTENT[1]) | (py < MAP_EXTENT[2]) | (py > MAP_EXTENT[3])
-        px[out_of_bounds] = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], out_of_bounds.sum())
-        py[out_of_bounds] = np.random.uniform(MAP_EXTENT[2], MAP_EXTENT[3], out_of_bounds.sum())
-        
-        # Per a les partícules resetejades, fem que la cua i el cap coincideixin per evitar línies llargues
-        px_prev[out_of_bounds] = px[out_of_bounds]
-        py_prev[out_of_bounds] = py[out_of_bounds]
 
-        # Creem la nova llista de segments i actualitzem la col·lecció de línies
-        new_segments = [[(px_prev[i], py_prev[i]), (px[i], py[i])] for i in range(NUM_PARTICLES)]
-        line_collection.set_segments(new_segments)
-        
-        return line_collection,
-
-    ax.set_title(f"Forecast: Flux del Vent + Focus de Convergència a {_nivell}hPa\n{_timestamp_str}", weight='bold', fontsize=16)
-    ani = FuncAnimation(fig, update, frames=40, blit=False, interval=50)
-    
-    with tempfile.NamedTemporaryFile(suffix=".gif", delete=False) as tmpfile:
-        temp_filename = tmpfile.name
-        ani.save(temp_filename, writer='pillow', fps=20, dpi=96)
-    
-    plt.close(fig)
-    with open(temp_filename, "rb") as f: gif_data = f.read()
-    os.remove(temp_filename)
-    
-    return gif_data
 
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
