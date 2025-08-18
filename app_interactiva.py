@@ -24,6 +24,7 @@ from matplotlib.patches import PathPatch
 import streamlit.components.v1 as components
 from matplotlib.animation import FuncAnimation
 import tempfile
+import os
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 
