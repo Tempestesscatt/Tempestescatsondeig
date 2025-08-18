@@ -330,9 +330,12 @@ def crear_mapa_escalar(map_data, var, titol, cmap, levels, unitat, timestamp_str
     ax.set_title(f"{titol}\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
+# --- FUNCIÓ MODIFICADA ---
 def crear_skewt(p, T, Td, u, v, titol, params_calc):
-    fig = plt.figure(figsize=(9, 9), dpi=150)
-    skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
+    # Ajust de la mida per a una millor adaptació a la columna
+    fig = plt.figure(figsize=(7, 9), dpi=150)
+    skew = SkewT(fig, rotation=45) # Deixem que SkewT gestioni la mida interna
+    
     skew.ax.grid(True, linestyle='-', alpha=0.5)
     skew.plot(p, T, 'r', lw=2, label='Temperatura'); skew.plot(p, Td, 'g', lw=2, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03, length=6)
@@ -344,11 +347,13 @@ def crear_skewt(p, T, Td, u, v, titol, params_calc):
     skew.plot(p, prof, 'k', linewidth=2, label='Trajectòria Parcel·la')
     skew.shade_cape(p, T, prof, color='red', alpha=0.3); skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
 
+    # Ajust de la posició i alineació de les etiquetes
     for level_name, color in [('LCL_p', 'orange'), ('LFC_p', 'darkred'), ('EL_p', 'purple')]:
         if level_name in params_calc and not np.isnan(params_calc[level_name]):
             p_level = params_calc[level_name]
             skew.ax.axhline(p_level, color=color, linestyle='--', lw=2)
-            skew.ax.text(skew.ax.get_xlim()[1], p_level, f" {level_name.split('_')[0]}", color=color, ha='left', va='center', weight='bold', fontsize=10)
+            # Canvi clau: Alineació a la dreta (ha='right') i una petita separació de la vora
+            skew.ax.text(skew.ax.get_xlim()[1] - 1, p_level, f"{level_name.split('_')[0]} ", color=color, ha='right', va='center', weight='bold', fontsize=10)
 
     skew.ax.set_ylim(1000, 150); skew.ax.set_xlim(-30, 40)
     skew.ax.set_title(titol, weight='bold', fontsize=14); skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
@@ -535,8 +540,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                 - **LFC, EL:** Nivells clau del sondeig que indiquen la base del núvol (LCL), on comença l'ascens lliure (LFC) i el cim de la tempesta (EL).
                 """)
             st.divider()
-            
-            # --- DISPOSICIÓ MODIFICADA ---
+
             col_graf_1, col_graf_2 = st.columns([1.8, 1])
             with col_graf_1:
                 p, T, Td, u, v, _ = sounding_data
