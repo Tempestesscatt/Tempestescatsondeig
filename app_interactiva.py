@@ -9,7 +9,8 @@ import time
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as path_effects
 from matplotlib.colors import ListedColormap, BoundaryNorm
-from matplotlib.animation import FuncAnimation
+# --- MODIFICACIÓ 1: Afegim PillowWriter ---
+from matplotlib.animation import FuncAnimation, PillowWriter
 from metpy.plots import SkewT, Hodograph
 from metpy.units import units
 import metpy.calc as mpcalc
@@ -277,10 +278,6 @@ def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, lat_sel, l
     
     levels = np.arange(-200, 201, 20)
     
-    # --- MODIFICACIONS CLAU PER A MÀXIMA VISIBILITAT ---
-
-    # 1. ALPHA AL MÀXIM: Augmentem l'alpha a 0.9. Això fa que els colors siguin molt més sòlids i intensos.
-    #    El cmap 'coolwarm_r' s'assegura que el vermell sigui convergència (negatiu) i el blau divergència (positiu).
     cf = ax.contourf(grid_lon, grid_lat, divergence, levels=levels, cmap='coolwarm_r', alpha= 1, zorder=2, extend='both')
     
     cbar = fig.colorbar(cf, ax=ax, orientation='vertical', shrink=0.7); cbar.set_label('Convergència (vermell) / Divergència (blau) [x10⁻⁵ s⁻¹]')
@@ -288,10 +285,7 @@ def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, lat_sel, l
     cs_conv = ax.contour(grid_lon, grid_lat, divergence, levels=levels, colors='black', linewidths=0.7, alpha=0.4, zorder=3)
     ax.clabel(cs_conv, inline=True, fontsize=8, fmt='%1.0f')
     
-    # 2. LÍNIES DE FLUX RESTAURADES: Les tornem a posar en negre i amb un gruix notable per a que siguin ben visibles.
     ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', linewidth=0.8, density=3.0, arrowsize=0.8, zorder=4)
-
-    # --- FI DE LES MODIFICACIONS ---
 
     ax.plot(lon_sel, lat_sel, 'o', markerfacecolor='yellow', markeredgecolor='black', markersize=8, transform=ccrs.Geodetic(), zorder=6)
     txt = ax.text(lon_sel + 0.05, lat_sel, nom_poble_sel, transform=ccrs.Geodetic(), zorder=7, fontsize=10, weight='bold')
@@ -300,7 +294,6 @@ def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, lat_sel, l
     ax.set_title(f"Flux i Convergència a {nivell}hPa (Mín: {max_conv:.1f})\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
-# --- NOVA FUNCIÓ PER A L'ANIMACIÓ ---
 @st.cache_data(ttl=3600)
 def crear_mapa_convergencia_animado(lons, lats, speed_data, dir_data, nivell, lat_sel, lon_sel, nom_poble_sel, timestamp_str):
     """Genera un GIF animat del mapa de convergència."""
@@ -348,14 +341,14 @@ def crear_mapa_convergencia_animado(lons, lats, speed_data, dir_data, nivell, la
         stream_plot_object = ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', linewidth=0.8, density=3.0, arrowsize=0.8, zorder=4, seed=frame)
         return ax.get_children()
 
-    # Creem l'animació
-    # 20 fotogrames a 100ms per fotograma = animació de 2 segons que es repeteix
     ani = FuncAnimation(fig, update, frames=range(20), interval=100, blit=False)
     
-    # Guardem l'animació en un buffer de memòria en lloc d'un fitxer físic
     gif_buffer = io.BytesIO()
-    ani.save(gif_buffer, writer='pillow', fps=10)
-    plt.close(fig) # Tanquem la figura per alliberar memòria
+    # --- MODIFICACIÓ 2: Canviem la manera de guardar l'animació per evitar el TypeError ---
+    writer = PillowWriter(fps=10)
+    ani.save(gif_buffer, writer=writer)
+    
+    plt.close(fig) 
     
     return gif_buffer.getvalue()
 
@@ -423,7 +416,6 @@ def ui_capcalera_selectors():
         with col2: st.selectbox("Dia del pronòstic:", ("Avui", "Demà"), key="dia_selector")
         with col3: st.selectbox("Hora del pronòstic (Hora Local):", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
 
-# --- FUNCIÓ DE LA UI MODIFICADA PER INCLOURE L'ANIMACIÓ ---
 def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
     with st.spinner("Actualitzant anàlisi de mapes..."):
         col_map_1, col_map_2 = st.columns([2.5, 1.5])
