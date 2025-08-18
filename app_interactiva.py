@@ -434,7 +434,7 @@ def mostrar_imatge_temps_real(tipus):
     elif tipus == "Satèl·lit (NE Península)":
         now_local = datetime.now(TIMEZONE)
         if 7 <= now_local.hour < 21:
-            url = "https://www.meteociel.fr/modeles/satanim_espagne-ne.gif"
+            url = "https://modeles20.meteociel.fr/satellite/animsatviscolmtgsp.gif"
             caption = "Satèl·lit Visible (Nord-est). Font: Meteociel"
         else:
             url = "https://www.meteociel.fr/modeles/satanim_ir_espagne-ne.gif"
