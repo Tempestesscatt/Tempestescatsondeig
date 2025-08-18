@@ -19,6 +19,8 @@ from datetime import datetime, timedelta
 import pytz
 import google.generativeai as genai
 import io
+# NOU IMPORT NECESSARI PER A LA FUNCIÓ MILLORADA
+from scipy.ndimage import label
 
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
@@ -125,7 +127,6 @@ def carregar_dades_mapa(variables, hourly_index):
 
 @st.cache_data(ttl=3600)
 def preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel):
-    """Recopila dades clau i localitza el focus de convergència."""
     dades_ia = {}
     data_tuple, error_sondeig = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
     if not data_tuple: return None, f"Falten dades del sondeig ({error_sondeig})"
@@ -153,31 +154,22 @@ def preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel):
             
             resum_mapa['max_conv_925hpa'] = np.nanmin(divergence.magnitude)
             idx_min = np.nanargmin(divergence.magnitude)
-            
             idx_2d = np.unravel_index(idx_min, divergence.shape)
             resum_mapa['lat_max_conv'] = grid_lat[idx_2d]
             resum_mapa['lon_max_conv'] = grid_lon[idx_2d]
         except Exception:
-            resum_mapa['max_conv_925hpa'] = 0
-            resum_mapa['lat_max_conv'] = 0
-            resum_mapa['lon_max_conv'] = 0
+            resum_mapa['max_conv_925hpa'] = 0; resum_mapa['lat_max_conv'] = 0; resum_mapa['lon_max_conv'] = 0
     
     dades_ia['mapa_resum'] = resum_mapa
     return dades_ia, None
 
 @st.cache_data(ttl=3600)
 def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str):
-    """Genera un resum directe i identifica poblacions afectades."""
     if not GEMINI_CONFIGURAT: return "Error: La clau API de Google no està configurada."
-        
     model = genai.GenerativeModel('gemini-1.5-flash')
-    
-    mapa = _dades_ia.get('mapa_resum', {})
-    sondeig = _dades_ia.get('sondeig', {})
-
+    mapa = _dades_ia.get('mapa_resum', {}); sondeig = _dades_ia.get('sondeig', {})
     prompt = f"""
     Ets un assistent de meteorologia directe i concís. La teva única tasca és analitzar les dades del model AROME per a Catalunya i generar un avís curt i clar.
-
     **DADES:**
     - Hora de l'anàlisi: {_timestamp_str}
     - CAPE màxim (energia): {int(mapa.get('max_cape_catalunya', 0))} J/kg
@@ -186,26 +178,18 @@ def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str):
     - Longitud del focus de convergència: {mapa.get('lon_max_conv', 0):.2f}
     - Cisallament 0-6km (organització): {int(sondeig.get('Shear_0-6km', 0))} m/s
     - SRH 0-3km (rotació): {int(sondeig.get('SRH_0-3km', 0))} m²/s²
-
     **INSTRUCCIONS (MOLT IMPORTANT):**
     Vés directament al gra. Prohibides les frases llargues o explicacions tècniques complexes.
-
     1.  **Resumeix el Risc:** Comença amb una única frase que defineixi el nivell de risc (Baix, Moderat, Alt, Molt Alt) de tempestes.
     2.  **Anomena les Poblacions Clau:** La teva tasca més important. Utilitzant el teu coneixement geogràfic de Catalunya, identifica 3-5 ciutats o pobles importants a prop de les coordenades del "focus de convergència" que t'he proporcionat. Aquestes són les zones de màxima probabilitat de tempestes.
     3.  **Justificació Breu:** Explica en una frase per què hi ha risc, connectant la "chispa" (convergència) amb el "combustible" (CAPE).
-
     **FORMAT DE SORTIDA OBLIGATORI (utilitza Markdown):**
     **Resum del Risc:** [La teva frase de resum aquí]
     **Poblacions Potencialment Afectades:** [Llista de 3-5 poblacions separades per comes]
     **Justificació Tècnica (Molt Breu):** [La teva única frase d'explicació aquí]
     """
-    
-    try:
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"S'ha produït un error en contactar amb l'assistent d'IA: {e}"
-
+    try: return model.generate_content(prompt).text
+    except Exception as e: return f"S'ha produït un error en contactar amb l'assistent d'IA: {e}"
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ (GRÀFICS I MAPES) ---
 
@@ -218,63 +202,47 @@ def crear_mapa_base():
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
     return fig, ax
 
-def get_wind_colormap():
-    colors = ['#FFFFFF', '#E0F5FF', '#B9E8FF', '#87D7F9', '#5AC7E3', '#2DB8CC', '#3FC3A3', '#5ABF7A', '#75BB51', '#98D849', '#C2E240', '#EBEC38', '#F5D03A', '#FDB43D', '#F7983F', '#E97F41', '#D76643', '#C44E45', '#B23547', '#A22428', '#881015', '#6D002F', '#860057', '#A0007F', '#B900A8', '#D300D0', '#E760E7', '#F6A9F6', '#FFFFFF', '#CCCCCC']
-    levels = list(range(0, 95, 5)) + list(range(100, 211, 10))
-    cmap = ListedColormap(colors, name='wind_speed_custom')
-    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
-    return cmap, norm, levels
-
-# --- FUNCIÓ MODIFICADA ---
-def crear_mapa_forecast_combinat(lons, lats, cape_data, speed_data, dir_data, nivell, timestamp_str):
-    """
-    Crea un mapa combinat que mostra CAPE, línies de flux i focus de convergència.
-    """
+# --- FUNCIÓ MODIFICADA I MILLORADA ---
+def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
-    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 150), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 150))
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
 
-    # 1. Dibuixar CAPE com a fons
-    cape_levels = np.arange(100, 2501, 100)
-    grid_cape = griddata((lons, lats), cape_data, (grid_lon, grid_lat), method='cubic')
-    norm_cape = BoundaryNorm(cape_levels, ncolors=plt.get_cmap('plasma').N, clip=True)
-    cf = ax.contourf(grid_lon, grid_lat, grid_cape, levels=cape_levels, cmap='plasma', norm=norm_cape, alpha=0.7, zorder=2, extend='max')
-    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_cape, cmap='plasma'), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
-    cbar.set_label("CAPE (J/kg)")
-
-    # 2. Calcular convergència i línies de flux
+    # --- 1. Preparació de Dades i Càlculs ---
+    grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), method='cubic')
     speeds_ms = np.array(speed_data) * units('km/h')
     dirs_deg = np.array(dir_data) * units.degrees
     u_comp, v_comp = mpcalc.wind_components(speeds_ms, dirs_deg)
-    rbf_u = Rbf(lons, lats, u_comp.to('m/s').m, function='thin_plate', smooth=0)
-    rbf_v = Rbf(lons, lats, v_comp.to('m/s').m, function='thin_plate', smooth=0)
-    u_grid = rbf_u(grid_lon, grid_lat)
-    v_grid = rbf_v(grid_lon, grid_lat)
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
+    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-    divergence = mpcalc.divergence(u_grid * units('m/s'), v_grid * units('m/s'), dx=dx, dy=dy) * 1e5
+    divergence = mpcalc.divergence(grid_u * units('m/s'), v_grid * units('m/s'), dx=dx, dy=dy) * 1e5
+    grid_speed = np.sqrt(grid_u**2 + grid_v**2)
 
-    # 3. Dibuixar línies de flux amb més densitat
-    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', linewidth=0.7, density=5.5, arrowsize=0.7, zorder=4)
+    # --- 2. Dibuix de Capa Base (Punt de Rosada) ---
+    dewpoint_levels = np.arange(14, 25, 1) # Nivells de 14°C a 24°C
+    norm_dewpoint = BoundaryNorm(dewpoint_levels, ncolors=plt.get_cmap('YlGnBu').N, clip=True)
+    cf = ax.contourf(grid_lon, grid_lat, grid_dewpoint, levels=dewpoint_levels, cmap='YlGnBu', norm=norm_dewpoint, alpha=0.7, zorder=2, extend='max')
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_dewpoint, cmap='YlGnBu'), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
+    cbar.set_label("Punt de Rosada en Superfície (°C)")
+    cs_dew = ax.contour(grid_lon, grid_lat, grid_dewpoint, levels=[18, 20], colors='white', linestyles='--', linewidths=1.2, zorder=3)
+    ax.clabel(cs_dew, inline=True, fontsize=9, fmt='%1.0f°C')
 
-    # 4. Identificar i dibuixar els focus de convergència amb les noves condicions
-    conv_points_indices = np.where(divergence.magnitude < -30)
+    # --- 3. Dibuix de les Línies de Flux ---
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color=grid_speed, cmap='autumn_r', linewidth=1.0, density=5.5, arrowsize=0.8, zorder=4)
+
+    # --- 4. Dibuix dels Focus de Tempesta (Clustering) ---
+    mask_risc = (divergence.magnitude < -30) & (grid_dewpoint > 18) # NOU LLINDAR: P. Rosada > 18°C
+    labels, num_features = label(mask_risc)
     
-    if conv_points_indices[0].size > 0:
-        # Obtenim les coordenades i el valor de CAPE en aquests punts
-        conv_lons = grid_lon[conv_points_indices]
-        conv_lats = grid_lat[conv_points_indices]
-        conv_capes = grid_cape[conv_points_indices]
+    for i in range(1, num_features + 1):
+        points = np.argwhere(labels == i)
+        center_y, center_x = points.mean(axis=0)
+        center_lon, center_lat = grid_lon[0, int(center_x)], grid_lat[int(center_y), 0]
+        txt = ax.text(center_lon, center_lat, 'X', fontsize=20, color='red', weight='bold', ha='center', va='center', transform=ccrs.PlateCarree(), zorder=7)
+        txt.set_path_effects([path_effects.withStroke(linewidth=3.5, foreground='white')])
 
-        # Iterem per cada punt de convergència
-        for i in range(len(conv_lons)):
-            # Dibuixem la 'X' NOMÉS si el CAPE en aquell punt és > 500
-            if conv_capes[i] > 500:
-                txt = ax.text(conv_lons[i], conv_lats[i], 'X', fontsize=14, color='red', weight='bold',
-                              ha='center', va='center', transform=ccrs.PlateCarree(), zorder=7)
-                txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='white')])
-
-    ax.set_title(f"Forecast Tempestes: CAPE + Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    ax.set_title(f"Forecast: P. Rosada + Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
-
 
 def crear_mapa_500hpa(map_data, timestamp_str):
     fig, ax = crear_mapa_base()
@@ -289,25 +257,6 @@ def crear_mapa_500hpa(map_data, timestamp_str):
     u, v = mpcalc.wind_components(np.array(map_data['wind_speed_500hPa']) * units('km/h'), np.array(map_data['wind_direction_500hPa']) * units.degrees)
     ax.barbs(lons[::5], lats[::5], u.to('kt').m[::5], v.to('kt').m[::5], length=5, zorder=6, transform=ccrs.PlateCarree())
     ax.set_title(f"Anàlisi a 500 hPa (Temperatura i Vent)\n{timestamp_str}", weight='bold', fontsize=16)
-    return fig
-
-def crear_mapa_vents_velocitat(lons, lats, speed_data, dir_data, nivell, timestamp_str):
-    fig, ax = crear_mapa_base()
-    cmap, norm, levels = get_wind_colormap()
-    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
-    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
-    ax.contourf(grid_lon, grid_lat, grid_speed, levels=levels, cmap=cmap, norm=norm, alpha=0.8, zorder=2, extend='max')
-    cs_speed = ax.contour(grid_lon, grid_lat, grid_speed, levels=np.arange(20, 201, 20), colors='gray', linestyles='--', linewidths=0.8, zorder=3)
-    ax.clabel(cs_speed, inline=True, fontsize=7, fmt='%1.0f')
-    speeds_ms = np.array(speed_data) * units('km/h'); dirs_deg = np.array(dir_data) * units.degrees
-    u_comp, v_comp = mpcalc.wind_components(speeds_ms, dirs_deg)
-    rbf_u = Rbf(lons, lats, u_comp.to('m/s').m, function='thin_plate', smooth=0)
-    rbf_v = Rbf(lons, lats, v_comp.to('m/s').m, function='thin_plate', smooth=0)
-    u_grid = rbf_u(grid_lon, grid_lat); v_grid = rbf_v(grid_lon, grid_lat)
-    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', linewidth=0.6, density=2.5, arrowsize=0.6, zorder=5)
-    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=levels[::2])
-    cbar.set_label("Velocitat del Vent (km/h)")
-    ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
 def crear_mapa_escalar(lons, lats, data, titol, cmap, levels, unitat, timestamp_str, extend='max'):
@@ -349,14 +298,11 @@ def crear_hodograf(u, v):
     return fig
     
 def mostrar_imatge_temps_real(tipus):
-    if tipus == "Radar":
-        url, caption = "https://www.meteociel.fr/cartes_obs/radar/lastradar_sp_ne.gif", "Radar de precipitació. Font: Meteociel"
+    if tipus == "Radar": url, caption = "https://www.meteociel.fr/cartes_obs/radar/lastradar_sp_ne.gif", "Radar de precipitació. Font: Meteociel"
     else:
         now_local = datetime.now(TIMEZONE)
-        if now_local.hour >= 22 or now_local.hour < 7:
-            url, caption = "https://modeles20.meteociel.fr/satellite/animsatircolmtgsp.gif", "Satèl·lit infraroig. Font: Meteociel"
-        else:
-            url, caption = "https://modeles20.meteociel.fr/satellite/latestsatviscolmtgsp.png", "Satèl·lit visible. Font: Meteociel"
+        if now_local.hour >= 22 or now_local.hour < 7: url, caption = "https://modeles20.meteociel.fr/satellite/animsatircolmtgsp.gif", "Satèl·lit infraroig. Font: Meteociel"
+        else: url, caption = "https://modeles20.meteociel.fr/satellite/latestsatviscolmtgsp.png", "Satèl·lit visible. Font: Meteociel"
     try:
         response = requests.get(f"{url}?ver={int(time.time())}", headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
         if response.status_code == 200: st.image(response.content, caption=caption, use_container_width=True)
@@ -379,40 +325,35 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
         col_map_1, col_map_2 = st.columns([2.5, 1.5])
         with col_map_1:
             map_options = {
-                "Forecast: Tempestes (CAPE + Convergència)": "forecast_combinat",
+                "Forecast: P. Rosada + Convergència": "forecast_combinat",
                 "CAPE (Energia Convectiva)": "cape",
                 "Anàlisi a 500hPa": "500hpa",
-                "Vent a 300hPa": "wind_300",
-                "Vent a 700hPa": "wind_700",
                 "Humitat a 700hPa": "rh_700"
             }
             mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
             map_key, error_map = map_options[mapa_sel], None
             
             if map_key == "forecast_combinat":
-                nivell_sel = st.selectbox("Nivell d'anàlisi de convergència:", options=[1000, 950, 925, 850, 700], format_func=lambda x: f"{x} hPa")
-                variables = ["cape", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
+                # NIVELLS AMPLIATS FINS A 500 HPA
+                nivell_sel = st.selectbox("Nivell d'anàlisi de convergència:", options=[1000, 950, 925, 850, 700, 600, 500], format_func=lambda x: f"{x} hPa")
+                # DEMANEM EL PUNT DE ROSADA EN LLOC DEL CAPE
+                variables = ["dew_point_2m", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
                 map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
                 if map_data:
-                    fig = crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], map_data['cape'], map_data[variables[1]], map_data[variables[2]], nivell_sel, timestamp_str)
+                    # PASSEM LES NOVES DADES A LA FUNCIÓ
+                    fig = crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], map_data['dew_point_2m'], map_data[variables[1]], map_data[variables[2]], nivell_sel, timestamp_str)
                     st.pyplot(fig)
             
             elif map_key == "cape":
                 map_data, error_map = carregar_dades_mapa(["cape"], hourly_index_sel)
                 if map_data:
-                    cape_levels = np.arange(100, 2501, 100)
+                    cape_levels = np.arange(250, 2501, 250)
                     st.pyplot(crear_mapa_escalar(map_data['lons'], map_data['lats'], map_data['cape'], "CAPE", "plasma", cape_levels, "J/kg", timestamp_str))
             
             elif map_key == "500hpa":
                 variables = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
                 map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
                 if map_data: st.pyplot(crear_mapa_500hpa(map_data, timestamp_str))
-            
-            elif map_key in ["wind_300", "wind_700"]:
-                nivell_hpa = int(map_key.split('_')[1])
-                variables = [f"wind_speed_{nivell_hpa}hPa", f"wind_direction_{nivell_hpa}hPa"]
-                map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
-                if map_data: st.pyplot(crear_mapa_vents_velocitat(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell_hpa, timestamp_str))
             
             elif map_key == "rh_700":
                 map_data, error_map = carregar_dades_mapa(["relative_humidity_700hPa"], hourly_index_sel)
@@ -434,10 +375,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             val = params_calculats.get(param)
             cols[i].metric(label=param, value=f"{f'{val:.0f}' if val is not None else '---'} {unit}")
         with st.expander("ℹ️ Què signifiquen aquests paràmetres?"):
-            st.markdown("- **CAPE:** Energia per a tempestes. >1000 J/kg és significatiu.\n- **CIN:** "
-                        "\"Tapa\" que impedeix la convecció.\n- **Shear 0-6km:** Diferència de vent amb l'altura. "
-                        ">15-20 m/s afavoreix l'organització (supercèl·lules).\n- **SRH 0-3km:** Potencial de rotació. "
-                        ">150 m²/s² afavoreix supercèl·lules i tornados.")
+            st.markdown("- **CAPE:** Energia per a tempestes. >1000 J/kg és significatiu.\n- **CIN:** \"Tapa\" que impedeix la convecció.\n- **Shear 0-6km:** Diferència de vent amb l'altura. >15-20 m/s afavoreix l'organització (supercèl·lules).\n- **SRH 0-3km:** Potencial de rotació. >150 m²/s² afavoreix supercèl·lules i tornados.")
         st.divider()
         col1, col2 = st.columns(2)
         with col1: st.pyplot(crear_skewt(sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4], f"Sondeig Vertical - {poble_sel}"))
@@ -453,9 +391,7 @@ def ui_pestanya_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
     if st.button("🤖 Generar Anàlisi d'IA", use_container_width=True):
         with st.spinner("L'assistent d'IA està analitzant les dades..."):
             dades_ia, error = preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel)
-            if error:
-                st.error(f"No s'ha pogut generar l'anàlisi: {error}")
-                return
+            if error: st.error(f"No s'ha pogut generar l'anàlisi: {error}"); return
             resum_text = generar_resum_ia(dades_ia, poble_sel, timestamp_str)
             st.markdown(resum_text)
 
