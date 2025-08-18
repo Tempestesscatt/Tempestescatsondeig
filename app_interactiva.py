@@ -176,41 +176,54 @@ def crear_mapa_base():
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0); ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5); return fig, ax
 
+# SUBSTITUEIX LA TEVA FUNCIÓ ANTIGA PER AQUESTA VERSIÓ FINAL
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
+    
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
+    
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), method='cubic')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
+    
     colors_wind_final = ['#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700', '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF', '#FFC0CB', '#D3D3D3', '#A9A9A9']
     speed_levels_final = np.arange(0, 171, 10)
     custom_cmap = ListedColormap(colors_wind_final); norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels_final[::2])
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
+    
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=4, arrowsize=0.7, zorder=4, transform=ccrs.PlateCarree())
     
-    # --- ISÒLINES DE CONVERGÈNCIA (VERSIÓ CORREGIDA) ---
+    # --- ISÒLINES DE CONVERGÈNCIA (VERSIÓ FINAL I ROBUSTA) ---
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
     convergence_scaled = divergence.magnitude * -1e5
+    
     CONVERGENCE_THRESHOLD_FOR_DRAWING = 15
-    max_convergence = np.max(convergence_scaled)
+    max_convergence = np.nanmax(convergence_scaled) # Usem nanmax per ignorar possibles valors NaN
     
     if max_convergence >= CONVERGENCE_THRESHOLD_FOR_DRAWING:
-        contour_levels = np.arange(CONVERGENCE_THRESHOLD_FOR_DRAWING, max_convergence, 5)
-        if len(contour_levels) > 0:
-            if nivell >= 950: DEWPOINT_THRESHOLD = 14
-            elif nivell >= 925: DEWPOINT_THRESHOLD = 12
-            else: DEWPOINT_THRESHOLD = 7
-            humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
-            convergence_in_humid_areas = np.where(humid_mask, convergence_scaled, 0)
+        # Creem els nivells de les isòlines de manera segura
+        # Assegurem que l'últim valor sigui almenys un pas més gran que l'inici
+        contour_levels = np.arange(CONVERGENCE_THRESHOLD_FOR_DRAWING, max_convergence + 1, 5)
+        
+        if nivell >= 950: DEWPOINT_THRESHOLD = 14
+        elif nivell >= 925: DEWPOINT_THRESHOLD = 12
+        else: DEWPOINT_THRESHOLD = 7
+        
+        humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
+        convergence_in_humid_areas = np.where(humid_mask, convergence_scaled, 0)
+        
+        # Dibuixem només si encara hi ha valors per sobre del llindar després de filtrar per humitat
+        if np.nanmax(convergence_in_humid_areas) >= CONVERGENCE_THRESHOLD_FOR_DRAWING:
             contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=contour_levels,
                                   colors='darkred', linestyles='--', linewidths=1.5, zorder=6,
                                   transform=ccrs.PlateCarree())
-            ax.clabel(contours, inline=True, fontsize=10, fmt='%1.0f')
+            if len(contours.collections) > 0:
+                ax.clabel(contours, inline=True, fontsize=10, fmt='%1.0f')
             
     ax.set_title(f"Anàlisi de Vent i Isòlines de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
