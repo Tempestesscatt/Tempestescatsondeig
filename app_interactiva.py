@@ -414,6 +414,32 @@ def ui_capcalera_selectors():
         with col1: st.selectbox("Capital de referència:", sorted(CIUTATS_CATALUNYA.keys()), key="poble_selector")
         with col2: st.selectbox("Dia del pronòstic:", ("Avui", "Demà"), key="dia_selector")
         with col3: st.selectbox("Hora del pronòstic (Hora Local):", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
+def ui_explicacio_alertes():
+    """
+    Crea un desplegable informatiu que explica el significat de les alertes de risc.
+    """
+    with st.expander("📖 Què signifiquen les alertes ⚠️ que veig al mapa?"):
+        st.markdown("""
+        Cada símbol d'alerta **⚠️** assenyala un **focus de risc convectiu**. No és una predicció de tempesta garantida, sinó la detecció d'una zona on es compleix la **"recepta perfecta"** per iniciar-ne una.
+
+        El nostre sistema analitza les dades del model i només marca les àrees on es donen **dues condicions clau simultàniament**:
+        """)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("""
+            #### **1. El Disparador: Convergència ↗️**
+            L'aire a nivells baixos està sent forçat a ascendir amb molta intensitat. És el mecanisme que "dispara" el moviment vertical necessari per crear un núvol de tempesta (cumulonimbus).
+            """)
+
+        with col2:
+            st.markdown("""
+            #### **2. El Combustible: Humitat 💧**
+            Aquest aire que puja no és sec; està carregat de vapor d'aigua (punt de rosada elevat). Aquesta humitat és el "combustible" que, en condensar-se, allibera energia i permet que el núvol creixi verticalment.
+            """)
+        
+        st.info("**En resum:** Una ⚠️ indica una zona on un potent **disparador** està actuant sobre una massa d'aire amb abundant **combustible**. Per tant, són els punts als quals cal prestar més atenció.", icon="🎯")
     
 def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str, data_tuple):
     col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large")
