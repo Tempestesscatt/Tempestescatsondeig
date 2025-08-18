@@ -18,6 +18,7 @@ from scipy.interpolate import griddata, Rbf
 from datetime import datetime, timedelta
 import pytz
 import google.generativeai as genai
+import json
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
@@ -164,55 +165,66 @@ def preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel):
     dades_ia['mapa_resum'] = resum_mapa
     return dades_ia, None
 
-# IMPORTANT: Assegura't d'ELIMINAR la línia "@st.cache_data(ttl=3600)" de sobre d'aquesta funció.
-def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str):
+@st.cache_data(ttl=3600)
+def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str, _hourly_index_sel):
     """
-    Genera un resum meteorològic detallat.
-    Aquesta funció JA NO FA SERVIR CACHE per garantir que sempre s'actualitzi amb l'hora seleccionada.
+    Genera un resum meteorològic estructurat en format JSON.
+    La memòria cau depèn de l'índex de l'hora (_hourly_index_sel) per garantir
+    que es regenera només quan l'usuari canvia l'hora.
     """
     if not GEMINI_CONFIGURAT:
-        return "Error: La clau API de Google no està configurada."
-        
+        return json.dumps({"error": "La clau API de Google no està configurada."})
+
     model = genai.GenerativeModel('gemini-1.5-flash')
-    
     mapa = _dades_ia.get('mapa_resum', {})
     sondeig = _dades_ia.get('sondeig', {})
 
-    # NOU PROMPT MOLT MÉS AVANÇAT
     prompt = f"""
-    Ets un meteoròleg expert especialitzat en temps sever a Catalunya. La teva missió és analitzar les dades del model AROME i redactar un butlletí de risc clar, detallat i útil per a un usuari interessat en la meteorologia.
+    Ets un expert en anàlisi de models meteorològics per a Catalunya. La teva tasca és analitzar les dades del model AROME i retornar una anàlisi concisa en format JSON. NO AFEGEIXIS TEXT FORA DEL JSON.
 
-    **DADES METEOROLÒGIQUES PER A L'ANÀLISI:**
-    - **Data i Hora de l'Anàlisi:** {_timestamp_str}
-    - **Poble d'interès principal:** {_poble_sel}
-    - **Paràmetres Generals a Catalunya:**
-        - CAPE Màxim (Energia): {int(mapa.get('max_cape_catalunya', 0))} J/kg
-        - Focus de Convergència a 925hPa (Disparador): {mapa.get('max_conv_925hpa', 0):.2f} (x10⁻⁵ s⁻¹), localitzat a lat {mapa.get('lat_max_conv', 0):.2f}, lon {mapa.get('lon_max_conv', 0):.2f}
-    - **Paràmetres Específics del Sondeig (verticals, prop de {_poble_sel}):**
-        - Cisallament 0-6km (Organització de tempestes): {int(sondeig.get('Shear_0-6km', 0))} m/s
-        - SRH 0-3km (Potencial de rotació/tornados): {int(sondeig.get('SRH_0-3km', 0))} m²/s²
+    DADES:
+    - Hora: {_timestamp_str}
+    - Localització principal: {_poble_sel}
+    - CAPE Màxim (Energia): {int(mapa.get('max_cape_catalunya', 0))} J/kg
+    - Convergència 925hPa (Disparador): {mapa.get('max_conv_925hpa', 0):.2f} (x10⁻⁵ s⁻¹)
+    - Cisallament 0-6km (Organització): {int(sondeig.get('Shear_0-6km', 0))} m/s
+    - SRH 0-3km (Rotació): {int(sondeig.get('SRH_0-3km', 0))} m²/s²
 
-    **INSTRUCCIONS PER A LA REDACCIÓ DEL BUTLLETÍ:**
-    Redacta l'informe seguint estrictament aquesta estructura i utilitzant Markdown. Utilitza un llenguatge entenedor però amb rigor tècnic.
+    INSTRUCCIONS:
+    Genera un objecte JSON amb la següent estructura EXACTA:
+    {{
+      "nivell_risc": "String",
+      "titol": "String",
+      "resum_general": "String",
+      "justificacio_tecnica": "String",
+      "fenomens_probables": ["String", "String", ...]
+    }}
 
-    1.  **Títol:** Comença amb un títol clar en negreta que resumeixi el risc. (Ex: "**Risc Alt de Tempestes Organitzades al Prepirineu**").
-    2.  **Resum General per a Catalunya:** En un paràgraf, descriu la situació general. On es troba el "combustible" (CAPE)? On és el "disparador" principal (convergència)?
-    3.  **Focus Específic (Zona de {_poble_sel}):** Analitza la situació més local. El poble seleccionat està a prop de la zona de màxim risc? Què pot esperar la gent d'aquesta àrea concreta?
-    4.  **Factors Clau i Justificació Tècnica:** Explica el "perquè" del pronòstic en 2-3 punts.
-        - Comenta la quantitat de CAPE: És baixa, moderada, alta?
-        - Avalua el cisallament (Shear): És suficient per a tempestes desorganitzades, multicèl·lules o supercèl·lules (>18-20 m/s)?
-        - Interpreta l'SRH: Indica potencial de rotació significatiu (>150 m²/s²)?
-    5.  **Fenòmens Més Probables:** Fes una llista dels possibles fenòmens adversos (calamarsa/pedra, ratxes fortes de vent, pluja intensa, tornados).
-    6.  **Recomanacions:** Proporciona un o dos consells pràctics (p. ex., "Vigilar zones inundables", "Assegurar objectes a l'exterior").
+    VALORS PER A "nivell_risc":
+    - "Baix": Condicions estables o de tempestes molt aïllades i dèbils.
+    - "Moderat": Potencial per a xàfecs i tempestes localment fortes.
+    - "Alt": Alta probabilitat de tempestes fortes i organitzades.
+    - "Molt Alt": Condicions extremes, probabilitat de temps sever generalitzat.
 
-    Sigues professional, clar i evita el llenguatge alarmista si no està justificat per dades extremes.
+    EXEMPLE DE SORTIDA:
+    {{
+      "nivell_risc": "Alt",
+      "titol": "Risc Alt de Tempestes Organitzades al Prepirineu",
+      "resum_general": "S'observa una combinació perillosa de valors elevats de CAPE i un fort cisallament del vent, especialment a les comarques del nord de Catalunya. El principal disparador serà la forta convergència de vents en capes baixes.",
+      "justificacio_tecnica": "El cisallament de més de 20 m/s és propici per a la formació de supercèl·lules. Valors d'SRH superiors a 200 m²/s² indiquen un alt potencial de rotació en les tempestes, afavorint fenòmens severs.",
+      "fenomens_probables": ["Calamarsa o pedra (>2cm)", "Fortes ratxes de vent (>80 km/h)", "Pluges localment intenses"]
+    }}
     """
     
     try:
         response = model.generate_content(prompt)
-        return response.text
+        # Neteja la resposta per assegurar-nos que és un JSON vàlid
+        clean_response = response.text.strip().replace("```json", "").replace("```", "")
+        # Validem que el JSON és correcte abans de retornar-lo
+        json.loads(clean_response)
+        return clean_response
     except Exception as e:
-        return f"S'ha produït un error en contactar amb l'assistent d'IA: {e}"
+        return json.dumps({"error": f"Error de l'API o format JSON invàlid: {e}"})
 
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
@@ -422,7 +434,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
 
 def ui_pestanya_avisos_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
     """
-    Pestanya que mostra un resum del risc meteorològic generat per IA.
+    Pestanya que mostra un resum visual del risc meteorològic generat per IA.
     """
     st.subheader(f"📢 Avaluació del Risc per a {timestamp_str}")
     
@@ -431,13 +443,57 @@ def ui_pestanya_avisos_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timesta
         return
 
     with st.spinner("Generant resum del risc amb IA..."):
-        dades_ia, error = preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel)
+        dades_ia, error_dades = preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel)
+        
         if dades_ia:
-            resposta_ia = generar_resum_ia(dades_ia, poble_sel, timestamp_str)
-            with st.container(border=True):
-                st.markdown(resposta_ia)
+            resposta_json_str = generar_resum_ia(dades_ia, poble_sel, timestamp_str, hourly_index_sel)
+            try:
+                data = json.loads(resposta_json_str)
+                if "error" in data:
+                    st.error(data["error"])
+                    return
+
+                # --- MAQUETACIÓ VISUAL ---
+                
+                # 1. Indicadors de Risc (Emoji i Color)
+                risc_map = {
+                    "Baix": {"emoji": "✅", "color": "success"},
+                    "Moderat": {"emoji": "⚠️", "color": "info"},
+                    "Alt": {"emoji": "🔥", "color": "warning"},
+                    "Molt Alt": {"emoji": "🚨", "color": "error"}
+                }
+                risc_info = risc_map.get(data.get("nivell_risc", "Baix"), {"emoji": "❓", "color": "info"})
+
+                st.header(f'{risc_info["emoji"]} {data.get("titol", "Anàlisi no disponible")}')
+
+                # 2. Paràmetres clau amb st.metric
+                sondeig = dades_ia.get('sondeig', {})
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("⚡ CAPE (Energia)", f"{int(sondeig.get('CAPE', 0))} J/kg")
+                with col2:
+                    st.metric("🌪️ Cisallament (0-6km)", f"{int(sondeig.get('Shear_0-6km', 0))} m/s")
+                with col3:
+                    st.metric("🔄 SRH (Rotació 0-3km)", f"{int(sondeig.get('SRH_0-3km', 0))} m²/s²")
+                
+                # 3. Resum general dins d'una caixa de color
+                alert_box = getattr(st, risc_info["color"])
+                alert_box(data.get("resum_general", ""), icon="📄")
+
+                # 4. Detalls tècnics i fenòmens en un expander
+                with st.expander("Veure l'anàlisi tècnica i fenòmens probables"):
+                    st.subheader("Justificació Tècnica")
+                    st.markdown(data.get("justificacio_tecnica", ""))
+                    
+                    st.subheader("Fenòmens Més Probables")
+                    for fenomen in data.get("fenomens_probables", []):
+                        st.markdown(f"- {fenomen}")
+
+            except json.JSONDecodeError:
+                st.error("No s'ha pogut interpretar la resposta de la IA. Podria ser un error de format.")
+                st.text(resposta_json_str) # Mostrem la resposta crua per depurar
         else:
-            st.error(f"No s'ha pogut generar el resum: {error}")
+            st.error(f"No s'ha pogut generar el resum: {error_dades}")
 
 def ui_peu_de_pagina():
     """
