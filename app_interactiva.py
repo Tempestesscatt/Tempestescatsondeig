@@ -207,8 +207,8 @@ def generar_gif_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _ni
             warning_txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
     # --- CANVIS PER A DENSITAT I DURADA ---
-    NUM_PARTICLES = 600             # Més densitat
-    PARTICLE_SPEED_FACTOR = 0.012
+    NUM_PARTICLES = 200             # Més densitat
+    PARTICLE_SPEED_FACTOR = 0.0050
 
     px = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], NUM_PARTICLES)
     py = np.random.uniform(MAP_EXTENT[2], MAP_EXTENT[3], NUM_PARTICLES)
