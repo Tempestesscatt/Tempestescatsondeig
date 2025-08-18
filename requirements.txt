@@ -10,3 +10,4 @@ cartopy
 scipy
 pytz
 google-generativeai
+openai
