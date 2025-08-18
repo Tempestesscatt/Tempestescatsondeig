@@ -176,11 +176,12 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     
-    # --- LÍNIA CORREGIDA: Aquesta línia faltava i causava l'error ---
-    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-    
     # Càlcul de la convergència
+    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
+    
+    # NOU: Llindar per al signe de perill. Ajusta aquest valor si vols que sigui més o menys sensible.
+    CONVERGENCE_DANGER_THRESHOLD = -50
     
     # Escala de colors personalitzada per al punt de rosada
     colors_meteo = [
@@ -197,48 +198,28 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_dewpoint, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label("Punt de Rosada en Superfície (°C)")
     
-    # Línies de vent (streamlines) amb alta densitat i fletxes petites
-    ax.streamplot(
-        grid_lon, grid_lat, grid_u, grid_v, 
-        color='black', 
-        linewidth=0.6,
-        density=4.5,
-        arrowsize=0.6,
-        zorder=4
-    )
+    # Línies de vent (streamlines)
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=2.5, arrowsize=0.6, zorder=4)
 
     # Dibuixar ISO NEGRA i etiquetar NOMÉS EL VALOR MÉS ALT
     convergence_levels = [-60, -50, -40, -30]
-    
-    # 1. Dibuixem les isolínies en negre i sense cap etiqueta
-    ax.contour(
-        grid_lon, grid_lat, divergence.magnitude,
-        levels=convergence_levels,
-        colors='black',
-        linewidths=1.5,
-        zorder=6
-    )
+    ax.contour(grid_lon, grid_lat, divergence.magnitude, levels=convergence_levels, colors='black', linewidths=1.5, zorder=6)
 
-    # 2. Busquem el punt de màxima convergència per posar una única etiqueta
     min_conv_val = np.nanmin(divergence.magnitude)
     
-    # Només posem l'etiqueta si la convergència és prou forta
     if min_conv_val < -30:
         idx_min = np.nanargmin(divergence.magnitude)
         idx_2d = np.unravel_index(idx_min, divergence.shape)
         lon_min, lat_min = grid_lon[idx_2d], grid_lat[idx_2d]
         
-        # 3. Creem l'etiqueta de text en aquell punt exacte
-        txt = ax.text(
-            lon_min, lat_min, f'{min_conv_val:.0f}',
-            color='black',
-            fontsize=10,
-            weight='bold',
-            ha='center',
-            va='center',
-            zorder=7
-        )
+        # Dibuixem l'etiqueta amb el valor numèric
+        txt = ax.text(lon_min, lat_min, f'{min_conv_val:.0f}', color='black', fontsize=10, weight='bold', ha='center', va='center', zorder=7)
         txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='white')])
+
+        # NOU: Si la convergència és extremadament forta, afegim un signe de perill a sobre
+        if min_conv_val <= CONVERGENCE_DANGER_THRESHOLD:
+            warning_txt = ax.text(lon_min, lat_min + 0.05, '⚠️', color='yellow', fontsize=16, ha='center', va='bottom', zorder=8)
+            warning_txt.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')])
 
     ax.set_title(f"Forecast: P. Rosada + Focus de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
