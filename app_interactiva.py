@@ -211,7 +211,7 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
     
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2)
-    cbar = fig.colorbar(plt.cm.ScalarM
+    cbar = fig.colorbarplt.cm.ScalarM
                         
     
 def crear_mapa_500hpa(map_data, timestamp_str):
