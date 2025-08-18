@@ -202,7 +202,7 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
         grid_lon, grid_lat, grid_u, grid_v, 
         color='black', 
         linewidth=0.6,
-        density=2.5,
+        density=4.5,
         arrowsize=0.6,
         zorder=4
     )
