@@ -25,6 +25,7 @@ from matplotlib.animation import FuncAnimation
 import tempfile
 import os
 from matplotlib.collections import LineCollection
+from scipy.interpolate import interpn
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 
