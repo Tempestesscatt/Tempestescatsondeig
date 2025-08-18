@@ -189,15 +189,15 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     
     # Llindars dinàmics
     if nivell >= 950:
-        CONVERGENCE_THRESHOLD = -35; DEWPOINT_THRESHOLD_FOR_RISK = 15
+        CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 15
     elif nivell >= 925:
-        CONVERGENCE_THRESHOLD = -30; DEWPOINT_THRESHOLD_FOR_RISK = 13
+        CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 13
     elif nivell >= 850:
-        CONVERGENCE_THRESHOLD = -30; DEWPOINT_THRESHOLD_FOR_RISK = 10
+        CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 10
     elif nivell >= 700:
         CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 2
     else:
-        CONVERGENCE_THRESHOLD = -20; DEWPOINT_THRESHOLD_FOR_RISK = -5
+        CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = -5
 
     # Escala de colors per al vent
     colors_wind_final = [
