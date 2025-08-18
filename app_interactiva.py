@@ -105,7 +105,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 def crear_mapa_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _nivell, _timestamp_str):
     """
     Crea un GIF animat de partícules seguint el flux del vent.
-    Aquesta funció està dissenyada per ser emmagatzemada a la memòria cau.
+    Aquesta versió utilitza un arxiu temporal per garantir la compatibilitat.
     """
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100))
@@ -117,7 +117,7 @@ def crear_mapa_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _niv
     grid_u = griddata((_lons, _lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='linear')
     grid_v = griddata((_lons, _lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='linear')
     
-    # Dibuixar el fons de color (velocitat del vent)
+    # Dibuixar el fons de color i les alertes (codi idèntic a l'anterior)
     colors_wind_final = ['#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700', '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF', '#FFC0CB', '#D3D3D3', '#A9A9A9']
     speed_levels_final = np.arange(0, 171, 10)
     custom_cmap = ListedColormap(colors_wind_final)
@@ -125,9 +125,7 @@ def crear_mapa_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _niv
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2)
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels_final[::2])
     cbar.set_label(f"Velocitat del Vent a {_nivell}hPa (km/h)")
-
-    # Dibuixar les alertes de convergència efectiva (es mantenen estàtiques)
-    # (Codi de la lògica de risc que ja teníem)
+    
     if _nivell >= 950: CONVERGENCE_THRESHOLD = -45; DEWPOINT_THRESHOLD_FOR_RISK = 14
     elif _nivell >= 925: CONVERGENCE_THRESHOLD = -35; DEWPOINT_THRESHOLD_FOR_RISK = 12
     elif _nivell >= 850: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 7
@@ -140,52 +138,47 @@ def crear_mapa_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _niv
     labels, num_features = label(effective_risk_mask)
     if num_features > 0:
         for i in range(1, num_features + 1):
-            points = np.argwhere(labels == i)
-            center_y, center_x = points.mean(axis=0)
+            points = np.argwhere(labels == i); center_y, center_x = points.mean(axis=0)
             center_lon, center_lat = grid_lon[0, int(center_x)], grid_lat[int(center_y), 0]
             warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=15, ha='center', va='center', zorder=8)
             warning_txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
-    # --- LÒGICA DE L'ANIMACIÓ ---
-    NUM_PARTICLES = 500
-    PARTICLE_SPEED_FACTOR = 0.005 # Ajusta per a més o menys velocitat
-    
-    # Posició inicial aleatòria de les partícules
+    # Lògica de l'animació
+    NUM_PARTICLES = 500; PARTICLE_SPEED_FACTOR = 0.005
     px = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], NUM_PARTICLES)
     py = np.random.uniform(MAP_EXTENT[2], MAP_EXTENT[3], NUM_PARTICLES)
-    
-    # Creem els punts que s'animaran
     particles, = ax.plot(px, py, '.', markersize=0.8, color='black', zorder=4)
 
     def update(frame):
         nonlocal px, py
-        # Interpolem el vent a la posició actual de cada partícula
         u_vals = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_u.flatten(), (px, py), method='linear')
         v_vals = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_v.flatten(), (px, py), method='linear')
-        
-        # Movem les partícules
-        px += u_vals * PARTICLE_SPEED_FACTOR
-        py += v_vals * PARTICLE_SPEED_FACTOR
-        
-        # Resetejem les partícules que surten del mapa
+        px += u_vals * PARTICLE_SPEED_FACTOR; py += v_vals * PARTICLE_SPEED_FACTOR
         out_of_bounds = (px < MAP_EXTENT[0]) | (px > MAP_EXTENT[1]) | (py < MAP_EXTENT[2]) | (py > MAP_EXTENT[3])
         px[out_of_bounds] = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], out_of_bounds.sum())
         py[out_of_bounds] = np.random.uniform(MAP_EXTENT[2], MAP_EXTENT[3], out_of_bounds.sum())
-
         particles.set_data(px, py)
         return particles,
 
     ax.set_title(f"Forecast: Flux del Vent + Focus de Convergència a {_nivell}hPa\n{_timestamp_str}", weight='bold', fontsize=16)
-    
-    # Creem l'animació
     ani = FuncAnimation(fig, update, frames=100, blit=True, interval=50)
     
-    # Guardem l'animació en un buffer de memòria com a GIF
-    buf = io.BytesIO()
-    ani.save(buf, writer='imagemagick', fps=20, dpi=150)
+    # --- SOLUCIÓ DEFINITIVA: Guardar a un arxiu temporal i després llegir-lo ---
+    with tempfile.NamedTemporaryFile(suffix=".gif", delete=False) as tmpfile:
+        temp_filename = tmpfile.name
+        # Donem a ani.save() el NOM del fitxer, que és el que necessita
+        ani.save(temp_filename, writer='imagemagick', fps=20, dpi=150)
+    
     plt.close(fig) # Tanquem la figura per alliberar memòria
     
-    return buf.getvalue()
+    # Llegim les dades del fitxer temporal que acabem de crear
+    with open(temp_filename, "rb") as f:
+        gif_data = f.read()
+    
+    # Esborrem el fitxer temporal del disc
+    os.remove(temp_filename)
+    
+    return gif_data
     
 
 @st.cache_data(ttl=3600)
@@ -455,9 +448,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                     variables = ["dew_point_2m", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
                     map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
                     if map_data:
-                        dewpoint_for_calc = map_data['dew_point_2m']
-                        speed_data = map_data[f"wind_speed_{nivell_sel}hPa"]
-                        dir_data = map_data[f"wind_direction_{nivell_sel}hPa"]
+                        dewpoint_for_calc = map_data['dew_point_2m']; speed_data = map_data[f"wind_speed_{nivell_sel}hPa"]; dir_data = map_data[f"wind_direction_{nivell_sel}hPa"]
                 else:
                     variables = [f"temperature_{nivell_sel}hPa", f"relative_humidity_{nivell_sel}hPa", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
                     map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
@@ -465,31 +456,22 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                         temp_data = np.array(map_data[f'temperature_{nivell_sel}hPa']) * units.degC
                         rh_data = np.array(map_data[f'relative_humidity_{nivell_sel}hPa']) * units.percent
                         dewpoint_for_calc = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
-                        speed_data = map_data[f"wind_speed_{nivell_sel}hPa"]
-                        dir_data = map_data[f"wind_direction_{nivell_sel}hPa"]
+                        speed_data = map_data[f"wind_speed_{nivell_sel}hPa"]; dir_data = map_data[f"wind_direction_{nivell_sel}hPa"]
             
             if map_data:
                 if map_key == "forecast_animat":
                     with st.spinner("Generant animació del flux de vent... Aquesta operació pot trigar uns segons la primera vegada."):
+                        # La funció crear_mapa_animat ara retorna dades en brut (bytes)
                         gif_data = crear_mapa_animat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str)
-                        
-                        # --- SOLUCIÓ ROBUSTA AMB ARXIU TEMPORAL ---
-                        # 1. Creem un arxiu temporal amb l'extensió .gif
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".gif") as tmpfile:
-                            # 2. Escrivim les dades del GIF a l'arxiu
-                            tmpfile.write(gif_data)
-                            # 3. Li passem a st.image el NOM de l'arxiu, no les dades
-                            st.image(tmpfile.name)
-
+                        # st.image gestiona perfectament les dades en brut
+                        st.image(gif_data)
                 else: # forecast_estatic
                     st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str))
                 
                 ui_explicacio_alertes()
 
-        # ... (la resta de la funció es manté exactament igual) ...
-        
         elif map_key == "500hpa":
-            variables = ["temperature_500hpa", "wind_speed_500hPa", "wind_direction_500hPa"]
+            variables = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
             map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
             if map_data: st.pyplot(crear_mapa_500hpa(map_data, timestamp_str))
 
@@ -518,7 +500,6 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             mostrar_imatge_temps_real("Satèl·lit (Europa)")
         with tab_ne:
             mostrar_imatge_temps_real("Satèl·lit (NE Península)")
-
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
         sounding_data, params_calculats = data_tuple; st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
