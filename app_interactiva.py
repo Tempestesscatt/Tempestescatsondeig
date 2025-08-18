@@ -178,7 +178,7 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
     
-    # Interpolar TOTES les dades necessàries: vent per al gràfic, punt de rosada per a l'anàlisi
+    # Interpolar dades
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), method='cubic')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
@@ -187,7 +187,7 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
     
-    # Llindars dinàmics per nivell d'altura (es mantenen igual)
+    # Llindars dinàmics
     if nivell >= 950:
         CONVERGENCE_THRESHOLD = -35; DEWPOINT_THRESHOLD_FOR_RISK = 15
     elif nivell >= 925:
@@ -199,29 +199,26 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     else:
         CONVERGENCE_THRESHOLD = -20; DEWPOINT_THRESHOLD_FOR_RISK = -5
 
-    # --- CANVI VISUAL PRINCIPAL: El fons ara és la FORÇA DEL VENT ---
-    # Utilitzem l'escala de colors de Meteociel que ja teníem per als mapes de vent
-    colors_meteo_vent = [
-        '#FFFFFF', '#B4F0FF', '#82D3FF', '#41B4FF', '#0096FF', '#00D278', '#00B43C', '#64D200', '#96F500', 
-        '#C8FF00', '#F5DC00', '#FFB400', '#FF8C00', '#FF6400', '#F53C00', '#D21400', '#B40000', '#820000', 
-        '#640000', '#82004B', '#B40082', '#D200B4', '#F000DC', '#FF00FF', '#FF64FF', '#FF96FF'
+    # --- CANVI: NOVA ESCALA DE COLORS PER AL VENT ---
+    colors_wind_final = [
+        '#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700',
+        '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF',
+        '#FFC0CB', '#D3D3D3', '#A9A9A9'
     ]
-    speed_levels = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 220, 240, 260, 280, 300, 320, 340, 360]
-    custom_cmap = ListedColormap(colors_meteo_vent)
-    norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N)
+    speed_levels_final = np.arange(0, 171, 10) # Nivells de 0 a 170 km/h
+    
+    custom_cmap = ListedColormap(colors_wind_final)
+    norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
     
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2)
-    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels[::2])
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels_final[::2])
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
     
     # Dibuixem les streamlines negres a sobre
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=5, arrowsize=0.6, zorder=4)
 
-    # --- LÒGICA D'ANÀLISI "INVISIBLE" ---
-    # La màscara de risc encara utilitza el PUNT DE ROSADA, tot i que no es vegi al mapa
+    # Lògica de risc amb anàlisi "invisible" de punt de rosada
     effective_risk_mask = (divergence.magnitude <= CONVERGENCE_THRESHOLD) & (grid_dewpoint >= DEWPOINT_THRESHOLD_FOR_RISK)
-    
-    # La resta de la visualització de risc es manté igual
     ax.contourf(grid_lon, grid_lat, effective_risk_mask, levels=[0.5, 1.5], colors=['#FF0000A0'], zorder=5)
     labels, num_features = label(effective_risk_mask)
     if num_features > 0:
