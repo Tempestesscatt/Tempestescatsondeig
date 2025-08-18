@@ -236,26 +236,42 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 @st.cache_data(ttl=3600, show_spinner="Generant mapes...")
 def carregar_dades_mapa(variables, hourly_index):
     try:
+        # Creem la graella de coordenades
         lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 15), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 15)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
-        params = {
-            "latitude": lat_grid.flatten().tolist(), 
-            "longitude": lon_grid.flatten().tolist(), 
-            "hourly": variables, 
-            "models": "arome_seamless", 
-            "forecast_days": FORECAST_DAYS
-        }
-        responses = openmeteo.weather_api(API_URL, params=params)
+        flat_lats = lat_grid.flatten()
+        flat_lons = lon_grid.flatten()
+
+        # >>> INICI DE LA CORRECCIÓ <<<
+        # Creem una LLISTA de diccionaris, un per cada punt de la graella.
+        # Això li diu a la llibreria que faci múltiples peticions petites en lloc d'una de gegant.
+        params_list = [
+            {
+                "latitude": lat,
+                "longitude": lon,
+                "hourly": variables,
+                "models": "arome_seamless",
+                "forecast_days": FORECAST_DAYS
+            } for lat, lon in zip(flat_lats, flat_lons)
+        ]
+
+        # Fem la petició a l'API amb la llista de paràmetres
+        responses = openmeteo.weather_api(API_URL, params=params_list)
+        # >>> FI DE LA CORRECCIÓ <<<
+
         output = {var: [] for var in ["lats", "lons"] + variables}
         
         for r in responses:
-            vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
-            if not any(np.isnan(v) for v in vals):
-                output["lats"].append(r.Latitude())
-                output["lons"].append(r.Longitude())
-                for i, var in enumerate(variables): 
-                    output[var].append(vals[i])
-                    
+            hourly = r.Hourly()
+            # Assegurem que l'índex no està fora de rang
+            if hourly and hourly.Variables(0) and len(hourly.Variables(0).ValuesAsNumpy()) > hourly_index:
+                 vals = [hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
+                 if not any(np.isnan(v) for v in vals):
+                    output["lats"].append(r.Latitude())
+                    output["lons"].append(r.Longitude())
+                    for i, var in enumerate(variables): 
+                        output[var].append(vals[i])
+            
         if not output["lats"]: 
             return None, "No s'han rebut dades vàlides."
         return output, None
@@ -675,7 +691,8 @@ def ui_capcalera_selectors():
             st.selectbox(
                 "**Hora del pronòstic (Hora Local):**", 
                 options=[f"{h:02d}:00h" for h in range(24)], 
-                key="hora_selector"
+                key="hora_selector",
+                index=st.session_state.get('default_hour_index', datetime.now(TIMEZONE).hour) # Set default index
             )
 
 def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
@@ -695,6 +712,9 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                 map_options.keys()
             )
             map_key = map_options[mapa_sel]
+            
+            # Inicialitzem la variable d'error
+            error_map = None
             
             if map_key == "cape":
                 map_data, error_map = carregar_dades_mapa(["cape"], hourly_index_sel)
@@ -770,6 +790,8 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                             np.arange(50, 101, 5), "%", timestamp_str
                         )
                     )
+            
+            # Mostrem el missatge d'error només si n'hi ha un
             if error_map: 
                 st.error(f"Error en carregar el mapa: {error_map}")
                 
@@ -887,13 +909,13 @@ def ui_peu_de_pagina():
 
 def main():
     # Inicialització de l'estat de la sessió
-    default_hour = f"{datetime.now().hour:02d}:00h"
     if 'poble_selector' not in st.session_state: 
         st.session_state.poble_selector = 'Barcelona'
     if 'dia_selector' not in st.session_state: 
         st.session_state.dia_selector = 'Avui'
     if 'hora_selector' not in st.session_state: 
-        st.session_state.hora_selector = default_hour
+        st.session_state.hora_selector = f"{datetime.now(TIMEZONE).hour:02d}:00h"
+        st.session_state.default_hour_index = datetime.now(TIMEZONE).hour
 
     ui_capcalera_selectors()
 
@@ -902,17 +924,16 @@ def main():
     hora_sel = st.session_state.hora_selector
     
     hora_int = int(hora_sel.split(':')[0])
-    now_local = datetime.now()
+    
+    local_tz = pytz.timezone('Europe/Madrid')
+    now_local = datetime.now(local_tz)
     target_date = now_local.date()
     if dia_sel == "Demà": 
         target_date += timedelta(days=1)
     
-    # CORRECCIÓ: Utilitzar pytz per a la conversió de zona horària
-    local_tz = pytz.timezone('Europe/Madrid')
     local_dt = local_tz.localize(datetime(target_date.year, target_date.month, target_date.day, hora_int))
     utc_dt = local_dt.astimezone(pytz.utc)
     
-    # Calcular l'índex horari
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     time_diff = utc_dt - start_of_today_utc
     hourly_index_sel = int(time_diff.total_seconds() / 3600)
