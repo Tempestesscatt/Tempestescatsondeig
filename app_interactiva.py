@@ -45,7 +45,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS]
-        params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
+        params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "meteofrance_arome_france_hd", "forecast_days": FORECAST_DAYS}
         
         response = openmeteo.weather_api(API_URL, params=params)[0]
         hourly = response.Hourly()
@@ -102,7 +102,7 @@ def carregar_dades_mapa(variables, hourly_index):
     try:
         lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
-        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
+        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "meteofrance_arome_france_hd", "forecast_days": FORECAST_DAYS}
         responses = openmeteo.weather_api(API_URL, params=params)
         output = {var: [] for var in ["lats", "lons"] + variables}
         for r in responses:
@@ -248,6 +248,7 @@ def mostrar_imatge_temps_real(tipus):
 
 def ui_capcalera_selectors():
     st.title("🌦️ Terminal Meteorològic de Catalunya")
+    st.caption("Dades del model AROME (Meteo-France HD), anàlisi de mapes i paràmetres de temps sever.")
     
     with st.container(border=True):
         col1, col2, col3 = st.columns(3)
@@ -266,13 +267,13 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
     with st.spinner("Actualitzant anàlisi de mapes..."):
         col_map_1, col_map_2 = st.columns([2.5, 1.5])
         with col_map_1:
-            map_options = {"MUCAPE (Energia Màxima)": "mucape", "Flux i Convergència": "conv", "Anàlisi a 500hPa": "500hpa", "Vent a 300hPa": "wind_300", "Vent a 700hPa": "wind_700", "Humitat a 700hPa": "rh_700"}
+            map_options = {"CAPE (Energia Convectiva)": "cape", "Flux i Convergència": "conv", "Anàlisi a 500hPa": "500hpa", "Vent a 300hPa": "wind_300", "Vent a 700hPa": "wind_700", "Humitat a 700hPa": "rh_700"}
             mapa_sel = st.selectbox("Selecciona la capa del mapa:", list(map_options.keys()))
             map_key = map_options[mapa_sel]
             
             variables_necessaries = []
-            if map_key == "mucape":
-                variables_necessaries = ["mucape"]
+            if map_key == "cape":
+                variables_necessaries = ["cape"]
             elif map_key == "conv":
                 nivell_sel = st.selectbox("Nivell d'anàlisi:", options=[1000, 950, 925, 850], format_func=lambda x: f"{x} hPa")
                 variables_necessaries = [f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
@@ -287,12 +288,12 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             map_data, error_map = carregar_dades_mapa(variables_necessaries, hourly_index_sel)
 
             if map_data:
-                if map_key == "mucape":
-                    max_mucape = np.max(map_data['mucape']) if map_data['mucape'] else 0
-                    if max_mucape <= 500: cape_levels = np.arange(50, 501, 50)
-                    elif max_mucape <= 1500: cape_levels = np.arange(100, 1501, 100)
-                    else: cape_levels = np.arange(250, np.ceil(max_mucape / 500) * 500 + 1, 250)
-                    st.pyplot(crear_mapa_escalar(map_data['lons'], map_data['lats'], map_data['mucape'], "MUCAPE", "plasma", cape_levels, "J/kg", timestamp_str))
+                if map_key == "cape":
+                    max_cape = np.max(map_data['cape']) if map_data['cape'] else 0
+                    if max_cape <= 500: cape_levels = np.arange(50, 501, 50)
+                    elif max_cape <= 1500: cape_levels = np.arange(100, 1501, 100)
+                    else: cape_levels = np.arange(250, np.ceil(max_cape / 500) * 500 + 1, 250)
+                    st.pyplot(crear_mapa_escalar(map_data['lons'], map_data['lats'], map_data['cape'], "CAPE", "plasma", cape_levels, "J/kg", timestamp_str))
                 elif map_key == "conv":
                     st.pyplot(crear_mapa_convergencia(map_data['lons'], map_data['lats'], map_data[variables_necessaries[0]], map_data[variables_necessaries[1]], nivell_sel, lat_sel, lon_sel, poble_sel, timestamp_str))
                 elif map_key == "500hpa":
@@ -335,7 +336,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel, utc_time_str)
 
 def ui_peu_de_pagina():
     st.divider()
-    st.caption("Dades del model AROME via [Open-Meteo](https://open-meteo.com/) | Imatges via [Meteociel](https://www.meteociel.fr/).")
+    st.caption("Dades del model AROME (Meteo-France HD) via [Open-Meteo](https://open-meteo.com/) | Imatges via [Meteociel](https://www.meteociel.fr/).")
 
 # --- 4. APLICACIÓ PRINCIPAL ---
 def main():
