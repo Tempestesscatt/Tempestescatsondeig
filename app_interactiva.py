@@ -47,7 +47,7 @@ CIUTATS_CATALUNYA = {
     'Tarragona': {'lat': 41.1189, 'lon': 1.2445},
 }
 MAP_EXTENT = [0, 3.5, 40.4, 43]
-PRESS_LEVELS = sorted([1000, 950, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
+PRESS_LEVELS = sorted([1000, 975, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 
 # --- 1. FUNCIONS D'OBTENCIÓ I PROCESSAMENT DE DADES ---
 
@@ -187,16 +187,18 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
     
-    # Llindars dinàmics
+    # Llindars dinàmics amb la nova secció per a 800 hPa
     if nivell >= 950:
         CONVERGENCE_THRESHOLD = -45; DEWPOINT_THRESHOLD_FOR_RISK = 14
     elif nivell >= 925:
         CONVERGENCE_THRESHOLD = -35; DEWPOINT_THRESHOLD_FOR_RISK = 12
     elif nivell >= 850:
         CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 7
+    elif nivell >= 800: # NOU: Llindars específics per a 800 hPa
+        CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 5
     elif nivell >= 700:
         CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 2
-    else:
+    else: # Per a nivells més alts (encara que no s'utilitzin al menú)
         CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = -5
 
     # Escala de colors per al vent
@@ -206,27 +208,16 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
         '#FFC0CB', '#D3D3D3', '#A9A9A9'
     ]
     speed_levels_final = np.arange(0, 171, 10)
-    
     custom_cmap = ListedColormap(colors_wind_final)
     norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
     
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2)
-    
-    # --- LÍNIA CORREGIDA ---
-    # L'error estava aquí. La funció correcta és fig.colorbar()
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels_final[::2])
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
-    
-    # Dibuixem les streamlines negres a sobre
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=5, arrowsize=0.6, zorder=4)
 
-    # Lògica de risc amb anàlisi "invisible" de punt de rosada
+    # Lògica de risc
     effective_risk_mask = (divergence.magnitude <= CONVERGENCE_THRESHOLD) & (grid_dewpoint >= DEWPOINT_THRESHOLD_FOR_RISK)
-    
-    # --- FONS VERMELL ELIMINAT ---
-    # La línia ax.contourf(...) ha estat eliminada per no mostrar l'àrea vermella.
-
-    # Només mostrem l'emoji d'alerta
     labels, num_features = label(effective_risk_mask)
     if num_features > 0:
         for i in range(1, num_features + 1):
@@ -238,6 +229,7 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
 
     ax.set_title(f"Forecast: Força del Vent + Focus de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
+    
     
 def crear_mapa_500hpa(map_data, timestamp_str):
     fig, ax = crear_mapa_base(); lons, lats = map_data['lons'], map_data['lats']
@@ -380,14 +372,14 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                 elif lfc_hpa >= 900:
                     st.success(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base superficial. **Recomanació: Buscar zones d'alerta ⚠️ a 1000-925 hPa.**")
                 elif lfc_hpa >= 750:
-                    st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base baixa. **Recomanació: Buscar zones d'alerta ⚠️ a 850 hPa.**")
-                else: # lfc_hpa < 750
-                    # CANVI: La recomanació ara s'atura a 700hPa
+                    # CANVI: Recomanació més precisa
+                    st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base baixa. **Recomanació: Buscar zones d'alerta ⚠️ a 850-800 hPa.**")
+                else: 
                     st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada. **Recomanació: Buscar zones d'alerta ⚠️ a 700 hPa.**")
 
-                # CANVI: Llista d'opcions limitada fins a 700 hPa
+                # CANVI: Llista d'opcions ara inclou 800 hPa
                 nivell_sel = st.selectbox("Nivell d'anàlisi:", 
-                                          options=[1000, 950, 925, 850, 700], 
+                                          options=[1000, 950, 925, 850, 800, 700], 
                                           format_func=lambda x: f"{x} hPa")
                 
                 if nivell_sel >= 950:
@@ -438,7 +430,6 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
         with col_map_2:
             st.subheader("Imatges en Temps Real"); view_choice = st.radio("Selecciona la vista:", ("Satèl·lit", "Radar"), horizontal=True, label_visibility="collapsed")
             mostrar_imatge_temps_real(view_choice)
-            
 
 def ui_explicacio_alertes():
     """
