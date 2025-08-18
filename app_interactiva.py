@@ -299,9 +299,10 @@ def crear_mapa_convergencia_animado(lons, lats, speed_data, dir_data, nivell, la
     """
     Genera un GIF animat del mapa de convergència de forma robusta i eficient.
     """
+    # Aquest és el nivell 1 d'indentació (dins de la funció principal)
     fig, ax = crear_mapa_base()
 
-    # --- CÀLCULS DE DADES (sense canvis) ---
+    # --- CÀLCULS DE DADES ---
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
     speeds_ms = np.array(speed_data) * units('km/h')
     dirs_deg = np.array(dir_data) * units.degrees
@@ -316,7 +317,7 @@ def crear_mapa_convergencia_animado(lons, lats, speed_data, dir_data, nivell, la
     divergence = mpcalc.divergence(u_grid * units('m/s'), v_grid * units('m/s'), dx=dx, dy=dy) * 1e5
     levels = np.arange(-200, 201, 20)
 
-    # --- DIBUIX DE CAPES ESTÀTIQUES (sense canvis) ---
+    # --- DIBUIX DE CAPES ESTÀTIQUES ---
     cf = ax.contourf(grid_lon, grid_lat, divergence, levels=levels, cmap='coolwarm_r', alpha=0.9, zorder=2, extend='both')
     cbar = fig.colorbar(cf, ax=ax, orientation='vertical', shrink=0.7)
     cbar.set_label('Convergència (vermell) / Divergència (blau) [x10⁻⁵ s⁻¹]')
@@ -328,81 +329,33 @@ def crear_mapa_convergencia_animado(lons, lats, speed_data, dir_data, nivell, la
     max_conv = np.nanmin(divergence)
     ax.set_title(f"Flux i Convergència a {nivell}hPa (Mín: {max_conv:.1f})\n{timestamp_str}", weight='bold', fontsize=16)
 
-    # --- LÒGICA D'ANIMACIÓ MILLORADA ---
-    # Aquesta llista contindrà els artistes (línies i fletxes) que es redibuixen a cada frame.
     artists_animats = []
-def update(frame):
+
+    # La funció 'update' està definida dins de la funció principal
+    def update(frame):
+        # Aquest és el nivell 2 d'indentació (dins de la funció 'update')
         nonlocal artists_animats
 
-        # 1. Esborra els artistes del frame anterior de manera neta i segura.
         for artist in artists_animats:
-            # L'objecte de línies és una col·lecció i no té .remove(),
-            # però els patches (fletxes) sí. El més segur és netejar la llista
-            # i deixar que Matplotlib gestioni el redibuixat amb blit=False.
-            # Una forma més explícita és eliminar-los un a un.
             if hasattr(artist, 'remove'):
                 artist.remove()
         
         artists_animats.clear()
 
-        # 2. Dibuixa el nou streamplot. La llavor aleatòria canvia a cada frame
-        #    per generar un patró de línies diferent i crear la sensació de moviment.
         stream_plot = ax.streamplot(grid_lon, grid_lat, u_grid, v_grid,
                                     color='black', linewidth=0.8, density=3.0,
                                     arrowsize=0.8, zorder=4, seed=frame)
 
-        # 3. Guarda una referència DIRECTA a les línies i fletxes
-        #    per poder esborrar-les al següent frame. Aquesta és la clau.
         artists_animats.append(stream_plot.lines)
-        # L'atribut .arrows conté totes les fletxes (requereix Matplotlib 3.3+)
         artists_animats.extend(stream_plot.arrows)
 
         return artists_animats
 
-    # Ja no es dibuixa un streamplot inicial, ja que el primer frame de l'animació ho farà.
+    # --- AQUEST BLOC HA D'ESTAR AL NIVELL 1, IGUAL QUE LA DEFINICIÓ 'def update' ---
+    # La definició de la funció 'update' ha acabat, tornem al nivell anterior.
     ani = FuncAnimation(fig, update, frames=range(20), interval=100, blit=False)
 
     gif_buffer = io.BytesIO()
-    # És una bona pràctica especificar el format en desar l'animació.
-    writer = PillowWriter(fps=10)
-    ani.save(gif_buffer, writer=writer, format='gif')
-
-    plt.close(fig)
-    return gif_buffer.getvalue()
-
-def update(frame):
-        nonlocal artists_animats
-
-        # 1. Esborra els artistes del frame anterior de manera neta i segura.
-        for artist in artists_animats:
-            # L'objecte de línies és una col·lecció i no té .remove(),
-            # però els patches (fletxes) sí. El més segur és netejar la llista
-            # i deixar que Matplotlib gestioni el redibuixat amb blit=False.
-            # Una forma més explícita és eliminar-los un a un.
-            if hasattr(artist, 'remove'):
-                artist.remove()
-        
-        artists_animats.clear()
-
-        # 2. Dibuixa el nou streamplot. La llavor aleatòria canvia a cada frame
-        #    per generar un patró de línies diferent i crear la sensació de moviment.
-        stream_plot = ax.streamplot(grid_lon, grid_lat, u_grid, v_grid,
-                                    color='black', linewidth=0.8, density=3.0,
-                                    arrowsize=0.8, zorder=4, seed=frame)
-
-        # 3. Guarda una referència DIRECTA a les línies i fletxes
-        #    per poder esborrar-les al següent frame. Aquesta és la clau.
-        artists_animats.append(stream_plot.lines)
-        # L'atribut .arrows conté totes les fletxes (requereix Matplotlib 3.3+)
-        artists_animats.extend(stream_plot.arrows)
-
-        return artists_animats
-
-    # Ja no es dibuixa un streamplot inicial, ja que el primer frame de l'animació ho farà.
-    ani = FuncAnimation(fig, update, frames=range(20), interval=100, blit=False)
-
-    gif_buffer = io.BytesIO()
-    # És una bona pràctica especificar el format en desar l'animació.
     writer = PillowWriter(fps=10)
     ani.save(gif_buffer, writer=writer, format='gif')
 
