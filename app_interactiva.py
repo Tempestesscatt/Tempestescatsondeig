@@ -371,16 +371,19 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                 cin_value = 0; lfc_hpa = np.nan
                 if data_tuple and data_tuple[1]:
                     cin_value = data_tuple[1].get('CIN', 0); lfc_hpa = data_tuple[1].get('LFC_hPa', np.nan)
+                
                 if cin_value < -25:
-                    st.warning(f"**AVÍS DE 'TAPA' (CIN = {cin_value:.0f} J/kg):** El sondeig de **{poble_sel}** mostra una forta inversió. Es necessita un forçament dinàmic potent.")
+                    st.warning(f"**AVÍS DE 'TAPA' (CIN = {cin_value:.0f} J/kg):** El sondeig de **{poble_sel}** mostra una forta inversió. Es necessita un forçament dinàmic potent per trencar-la.")
+                
+                # --- CANVI: Text de les recomanacions més intuïtiu ---
                 if np.isnan(lfc_hpa):
-                    st.error("**AVÍS DE LFC:** No s'ha trobat LFC. La convecció espontània és molt improbable.")
+                    st.error("**DIAGNÒSTIC LFC:** No s'ha trobat LFC. L'atmosfera és estable i la convecció espontània és molt improbable.")
                 elif lfc_hpa >= 900:
-                    st.success(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base superficial. **Recomanació: Analitzar convergència a 1000-925 hPa.**")
+                    st.success(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base superficial. **Recomanació: Buscar zones d'alerta ⚠️ a 1000-925 hPa.**")
                 elif lfc_hpa >= 750:
-                    st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base baixa. **Recomanació: Analitzar convergència a 850 hPa.**")
-                else:
-                    st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada. **Recomanació: Analitzar convergència a 700-600 hPa.**")
+                    st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base baixa. **Recomanació: Buscar zones d'alerta ⚠️ a 850 hPa.**")
+                else: # lfc_hpa < 750
+                    st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada. **Recomanació: Buscar zones d'alerta ⚠️ a 700-600 hPa.**")
 
                 nivell_sel = st.selectbox("Nivell d'anàlisi:", 
                                           options=[1000, 950, 925, 850, 700, 600, 500], 
@@ -394,7 +397,6 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                         speed_data = map_data[f"wind_speed_{nivell_sel}hPa"]
                         dir_data = map_data[f"wind_direction_{nivell_sel}hPa"]
                         st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str))
-                        # --- AFEGEIX AQUESTA LÍNIA ---
                         ui_explicacio_alertes()
                 
                 else:
@@ -407,7 +409,6 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                         speed_data = map_data[f"wind_speed_{nivell_sel}hPa"]
                         dir_data = map_data[f"wind_direction_{nivell_sel}hPa"]
                         st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str))
-                        # --- I AFEGEIX-LA TAMBÉ AQUÍ ---
                         ui_explicacio_alertes()
 
             elif map_key == "500hpa":
@@ -423,7 +424,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
 
             elif map_key == "vent_300":
                 nivell = 300
-                variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell_sel}hPa"]
+                variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
                 map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
                 if map_data: st.pyplot(crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str))
 
@@ -436,6 +437,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
         with col_map_2:
             st.subheader("Imatges en Temps Real"); view_choice = st.radio("Selecciona la vista:", ("Satèl·lit", "Radar"), horizontal=True, label_visibility="collapsed")
             mostrar_imatge_temps_real(view_choice)
+            
 
 def ui_explicacio_alertes():
     """
