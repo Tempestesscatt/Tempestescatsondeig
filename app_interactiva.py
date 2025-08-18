@@ -192,7 +192,7 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     ax.contourf(grid_lon, grid_lat, grid_dewpoint, levels=dewpoint_levels, cmap=custom_cmap, norm=norm_dewpoint, alpha=0.8, zorder=2, extend='both')
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_dewpoint, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label("Punt de Rosada en Superfície (°C)")
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=2.5, arrowsize=0.6, zorder=4)
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=4.5, arrowsize=0.6, zorder=4)
 
     # --- NOVA LÒGICA D'ALERTES ---
     
@@ -201,7 +201,7 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     ax.contour(grid_lon, grid_lat, divergence.magnitude, levels=convergence_levels, colors='black', linewidths=1.5, zorder=6)
 
     # 2. Identificar totes les zones de risc (convergència <= -30)
-    risk_mask = divergence.magnitude <= -30
+    risk_mask = divergence.magnitude <= -40
     labels, num_features = label(risk_mask) # Etiqueta cada zona separada amb un número diferent
     
     # 3. Col·locar un símbol d'alerta ⚠️ al centre de CADA zona de risc
