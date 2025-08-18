@@ -17,20 +17,21 @@ import cartopy.feature as cfeature
 from scipy.interpolate import griddata
 from datetime import datetime, timedelta
 import pytz
-import google.generativeai as genai
 from scipy.ndimage import label
+import openai # IMPORT IMPORTANT: HEM CANVIAT A OPENAI
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
 
+# AQUEST BLOC ÉS EL QUE CANVIA I SOLUCIONA L'ERROR
 try:
-    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    GEMINI_CONFIGURAT = True
+    # Ara busca la clau correcta als teus secrets
+    openai.api_key = st.secrets["OPENAI_API_KEY"]
+    OPENAI_CONFIGURAT = True
 except (KeyError, Exception):
-    GEMINI_CONFIGURAT = False
+    OPENAI_CONFIGURAT = False
 
-# ... (La resta de la configuració es manté igual) ...
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
@@ -45,8 +46,7 @@ MAP_EXTENT = [0, 3.5, 40.4, 43]
 PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 
 
-# --- 1. FUNCIONS D'OBTENCIÓ DE DADES ---
-# ... (Aquestes funcions no canvien) ...
+# --- 1. FUNCIONS D'OBTENCIÓ DE DADES (Sense canvis) ---
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     # ... (codi idèntic)
@@ -103,8 +103,7 @@ def carregar_dades_mapa(variables, hourly_index):
     except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
 
 
-# --- 2. FUNCIONS DE VISUALITZACIÓ (ESTABLES) ---
-# ... (Aquestes funcions no canvien) ...
+# --- 2. FUNCIONS DE VISUALITZACIÓ (Sense canvis) ---
 def crear_mapa_base():
     # ... (codi idèntic)
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
@@ -145,6 +144,7 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     ax.set_title(f"Anàlisi de Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
+# ... (La resta de funcions de visualització es mantenen iguals) ...
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     # ... (codi idèntic)
     fig, ax = crear_mapa_base()
@@ -193,65 +193,61 @@ def mostrar_imatge_temps_real(tipus):
         else: st.warning(f"No s'ha pogut carregar la imatge. (Codi: {response.status_code})")
     except Exception as e: st.error(f"Error de xarxa en carregar la imatge.")
 
-
-# --- 3. NOVESS FUNCIONS PER A L'ASSISTENT D'IA ---
+# --- 3. FUNCIONS PER A L'ASSISTENT D'IA (MODIFICADES PER A OPENAI) ---
 
 def preparar_resum_dades_per_ia(data_tuple, poble_sel, timestamp_str):
-    """Prepara un resum en text pla de les dades per injectar-lo al prompt de l'IA."""
+    # ... (codi idèntic)
     if not data_tuple:
-        return "No s'han pogut carregar les dades del sondeig. No es pot fer l'anàlisi."
+        return "No s'han pogut carregar les dades del sondeig."
 
     sounding_data, params_calculats = data_tuple
     p, T, Td, u, v = sounding_data
     
-    # Interpretar els paràmetres clau
     cape = params_calculats.get('CAPE', 0)
     cin = params_calculats.get('CIN', 0)
     lfc = params_calculats.get('LFC_hPa', float('nan'))
 
-    # Càlcul del cisallament (Shear)
     try:
         shear_0_6km = mpcalc.bulk_shear(p, u, v, height_agl=np.array([0, 6000]) * units.m)
-        shear_text = f"{shear_0_6km.to('knots').m:.1f} nusos. Aquest valor indica el canvi de vent amb l'altura, clau per a l'organització de tempestes."
+        shear_text = f"{shear_0_6km.to('knots').m:.1f} nusos."
     except:
-        shear_text = "No s'ha pogut calcular."
+        shear_text = "No calculat."
 
-    resum = f"""
-    CONTEXT DE L'ANÀLISI:
-    - Lloc: {poble_sel}
-    - Data i Hora: {timestamp_str}
-
-    DADES DEL SONDEIG VERTICAL:
-    - CAPE (Energia per a tempestes): {cape:.1f} J/kg. (Valors >1000 són alts, >2500 molt alts)
-    - CIN (Inhibidor de convecció): {cin:.1f} J/kg. (Valors més negatius que -50 J/kg indiquen una "tapa" forta)
-    - LFC (Nivell de convecció lliure): {'No trobat' if np.isnan(lfc) else f'{lfc:.1f} hPa'}. (Indica a quina altura l'aire comença a pujar sol)
-    - Cisallament 0-6km (Shear): {shear_text} (Valors >35 nusos afavoreixen supercèl·lules)
-    
-    INSTRUCCIONS PER A L'ASSISTENT:
-    Ets un meteoròleg expert en temps sever a Catalunya, anomenat MeteoIA.
-    La teva missió és respondre les preguntes de l'usuari basant-te ÚNICAMENT i ESTRICTAMENT en les dades numèriques proporcionades a dalt.
-    No facis servir coneixement extern. Si les dades no són suficients per respondre, indica-ho clarament.
-    Sigues concís, directe i utilitza un llenguatge entenedor. Comença sempre la teva primera resposta amb un resum general del potencial de temps sever.
+    resum_dades_text = f"""
+    Dades del sondeig vertical per a {poble_sel} a les {timestamp_str}:
+    - CAPE: {cape:.1f} J/kg.
+    - CIN: {cin:.1f} J/kg.
+    - LFC: {'No trobat' if np.isnan(lfc) else f'{lfc:.1f} hPa'}.
+    - Cisallament 0-6km (Shear): {shear_text}
     """
-    return resum
+    
+    instruccions_sistema = """
+    Ets un meteoròleg expert en temps sever a Catalunya, anomenat MeteoIA.
+    Respon les preguntes de l'usuari basant-te ÚNICAMENT en les dades numèriques que et proporcionaré.
+    No facis servir coneixement extern. Si les dades no són suficients per respondre, indica-ho.
+    Sigues concís, directe i utilitza un llenguatge entenedor. Comença la teva primera resposta amb un resum general del potencial de temps sever.
+    """
+    return resum_dades_text, instruccions_sistema
 
-def generar_resposta_ia(historial_conversa, resum_dades):
-    """Crida a l'API de Gemini amb l'historial i les dades."""
-    if not GEMINI_CONFIGURAT:
+def generar_resposta_ia(historial_conversa, resum_dades, instruccions_sistema):
+    # ... (codi idèntic)
+    if not OPENAI_CONFIGURAT:
         return "La funcionalitat d'IA no està configurada."
 
-    model = genai.GenerativeModel('gemini-pro')
-    
-    # El prompt final inclou el resum de dades i l'última pregunta de l'usuari.
-    # L'historial complet no l'enviem cada cop per simplicitat, però es podria fer per a converses més complexes.
-    prompt_final = resum_dades + f"\n\nHISTORIAL PREVI:\n{historial_conversa}\n\nPREGUNTA ACTUAL DE L'USUARI:\n'{historial_conversa[-1]['parts'][0]}'\n\nLA TEVA RESPOSTA:"
-
     try:
-        response = model.generate_content(prompt_final)
-        return response.text
-    except Exception as e:
-        return f"Hi ha hagut un error contactant amb l'IA: {e}"
+        missatges = [{"role": "system", "content": instruccions_sistema + "\n" + resum_dades}]
+        
+        for message in historial_conversa:
+            missatges.append({"role": message["role"], "content": message["content"]})
 
+        client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=missatges
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"Hi ha hagut un error contactant amb l'IA d'OpenAI: {e}"
 
 # --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
 
@@ -275,7 +271,7 @@ def ui_explicacio_alertes():
         st.info("**En resum:** Una ⚠️ indica una zona on un potent **disparador** està actuant sobre una massa d'aire amb abundant **combustible**. Per tant, són els punts als quals cal prestar més atenció.", icon="🎯")
 
 def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str, data_tuple):
-    # ... (codi idèntic a la versió estable) ...
+    # ... (codi idèntic)
     col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large")
     with col_map_1:
         map_options = {"Anàlisi de Vent i Convergència": "forecast_estatic", "Vent a 700hPa (Streamlines)": "vent_700", "Vent a 300hPa (Streamlines)": "vent_300"}
@@ -330,57 +326,46 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         with col2: st.pyplot(crear_hodograf(sounding_data[3], sounding_data[4]))
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 
-
-# --- NOVA PESTANYA D'IA CONVERSACIONAL ---
 def ui_pestanya_ia(data_tuple, poble_sel, timestamp_str):
-    st.subheader(f"💬 Assistent MeteoIA per a {poble_sel}")
-    st.markdown("Fes-me preguntes sobre el potencial de temps sever basant-me en les dades carregades. Per exemple: *'Quin és el risc de calamarsa?'* o *'Hi ha condicions per a tornados?'*")
+    st.subheader(f"💬 Assistent MeteoIA (amb OpenAI)")
+    st.markdown("Fes-me preguntes sobre el potencial de temps sever basant-me en les dades carregades.")
     
-    if not GEMINI_CONFIGURAT:
-        st.error("Funcionalitat no disponible. La clau API de Google no està configurada.")
+    if not OPENAI_CONFIGURAT:
+        st.error("Funcionalitat no disponible. La clau API d'OpenAI no està configurada correctament als secrets de Streamlit.")
         return
         
     if not data_tuple:
         st.warning("No hi ha dades de sondeig per analitzar. L'assistent no pot funcionar.")
         return
 
-    # Preparar el context de dades per a l'IA
-    resum_dades = preparar_resum_dades_per_ia(data_tuple, poble_sel, timestamp_str)
+    resum_dades, instruccions_sistema = preparar_resum_dades_per_ia(data_tuple, poble_sel, timestamp_str)
 
-    # Inicialitzar l'historial del xat
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Mostrar missatges anteriors
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # Input de l'usuari
     if prompt := st.chat_input("Escriu la teva pregunta..."):
-        # Afegir i mostrar el missatge de l'usuari
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Generar i mostrar la resposta de l'IA
         with st.chat_message("assistant"):
             with st.spinner("MeteoIA està pensant..."):
-                # Creem un historial simple per a la funció de l'IA
-                historial_per_ia = [{"role": m["role"], "parts": [m["content"]]} for m in st.session_state.messages]
-                response = generar_resposta_ia(historial_per_ia, resum_dades)
+                response = generar_resposta_ia(st.session_state.messages, resum_dades, instruccions_sistema)
                 st.markdown(response)
         
-        # Afegir la resposta de l'IA a l'historial
         st.session_state.messages.append({"role": "assistant", "content": response})
 
 def ui_peu_de_pagina():
-    st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades del model AROME via <a href='https://open-meteo.com/'>Open-Meteo</a> | Imatges via <a href='https://www.meteociel.fr/'>Meteociel</a> | Anàlisi IA per Google Gemini.</p>", unsafe_allow_html=True)
+    # Canviem el text per reflectir que fem servir OpenAI
+    st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades del model AROME via <a href='https://open-meteo.com/'>Open-Meteo</a> | Imatges via <a href='https://www.meteociel.fr/'>Meteociel</a> | Anàlisi IA per OpenAI.</p>", unsafe_allow_html=True)
 
 # --- 5. APLICACIÓ PRINCIPAL ---
 
 def main():
-    # Inicialització i gestió de canvis en els selectors
     if 'poble_selector' not in st.session_state:
         st.session_state.poble_selector = 'Barcelona'
         st.session_state.dia_selector = 'Avui'
@@ -389,10 +374,9 @@ def main():
 
     ui_capcalera_selectors()
     
-    # Comprovar si la selecció ha canviat per netejar el xat
     current_selection = f"{st.session_state.poble_selector}-{st.session_state.dia_selector}-{st.session_state.hora_selector}"
     if current_selection != st.session_state.last_selection:
-        st.session_state.messages = []  # Neteja l'historial del xat
+        st.session_state.messages = []
         st.session_state.last_selection = current_selection
 
     poble_sel = st.session_state.poble_selector
@@ -409,12 +393,10 @@ def main():
     lat_sel = CIUTATS_CATALUNYA[poble_sel]['lat']
     lon_sel = CIUTATS_CATALUNYA[poble_sel]['lon']
     
-    # Carregar les dades una sola vegada
     data_tuple, error_msg = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
     if error_msg: 
         st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
 
-    # Definició de les pestanyes
     tab_mapes, tab_vertical, tab_ia = st.tabs(["🗺️ Anàlisi de Mapes", "📊 Anàlisi Vertical", "🤖 Assistent MeteoIA"])
     
     with tab_mapes: 
