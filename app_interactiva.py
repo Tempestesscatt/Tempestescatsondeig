@@ -48,10 +48,16 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
         
         response = openmeteo.weather_api(API_URL, params=params)[0]
+        
+        # Extreure l'hora de generació del model
+        generation_time_utc = datetime.fromtimestamp(response.GenerationTimeSeconds(), tz=pytz.utc)
+        generation_time_local = generation_time_utc.astimezone(TIMEZONE)
+        generation_time_str = generation_time_local.strftime('%d/%m/%Y a les %H:%Mh')
+        
         hourly = response.Hourly()
         
         sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i, v in enumerate(h_base)}
-        if any(np.isnan(val) for val in sfc_data.values()): return None, "Dades de superfície invàlides."
+        if any(np.isnan(val) for val in sfc_data.values()): return None, "Dades de superfície invàlides.", None
 
         p_data = {}
         var_count = len(h_base)
@@ -72,7 +78,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                 v_profile.append(v.to('m/s').m)
                 h_profile.append(p_data["H"][i])
         
-        if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
+        if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt.", None
 
         p = np.array(p_profile) * units.hPa; T = np.array(T_profile) * units.degC; Td = np.array(Td_profile) * units.degC
         u = np.array(u_profile) * units('m/s'); v = np.array(v_profile) * units('m/s'); h = np.array(h_profile) * units.meter
@@ -89,18 +95,24 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         _, srh, _ = mpcalc.storm_relative_helicity(h, u, v, depth=3 * units.km)
         params_calc['SRH_0-3km'] = np.sum(srh).to('m^2/s^2').m
 
-        return ((p, T, Td, u, v, h), params_calc), None
+        return ((p, T, Td, u, v, h), params_calc), None, generation_time_str
     except Exception as e:
-        return None, f"Error en processar dades del sondeig: {e}"
+        return None, f"Error en processar dades del sondeig: {e}", None
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(variables, hourly_index):
     try:
-        # TORNEM A LA RESOLUCIÓ ESTABLE DE 12x12 PER GARANTIR EL FUNCIONAMENT
         lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
         params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
         responses = openmeteo.weather_api(API_URL, params=params)
+        
+        # Només necessitem l'hora de generació d'una de les respostes
+        response_sample = responses[0]
+        generation_time_utc = datetime.fromtimestamp(response_sample.GenerationTimeSeconds(), tz=pytz.utc)
+        generation_time_local = generation_time_utc.astimezone(TIMEZONE)
+        generation_time_str = generation_time_local.strftime('%d/%m/%Y a les %H:%Mh')
+
         output = {var: [] for var in ["lats", "lons"] + variables}
         for r in responses:
             vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
@@ -108,10 +120,10 @@ def carregar_dades_mapa(variables, hourly_index):
                 output["lats"].append(r.Latitude())
                 output["lons"].append(r.Longitude())
                 for i, var in enumerate(variables): output[var].append(vals[i])
-        if not output["lats"]: return None, f"No s'han rebut dades vàlides."
-        return output, None
+        if not output["lats"]: return None, "No s'han rebut dades vàlides.", None
+        return output, None, generation_time_str
     except Exception as e:
-        return None, f"Error en carregar dades del mapa: {e}"
+        return None, f"Error en carregar dades del mapa: {e}", None
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ (GRÀFICS I MAPES) ---
 
@@ -245,7 +257,6 @@ def mostrar_imatge_temps_real(tipus):
 
 def ui_capcalera_selectors():
     st.title("🌦️ Terminal Meteorològic de Catalunya")
-    st.caption("Dades del model AROME, anàlisi de mapes i paràmetres de temps sever.")
     
     with st.container(border=True):
         col1, col2, col3 = st.columns(3)
@@ -257,7 +268,10 @@ def ui_capcalera_selectors():
             hora = st.selectbox("Hora:", [f"{h:02d}:00h" for h in range(24)])
     return poble, dia, hora
 
-def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
+def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str, generation_time_str):
+    if generation_time_str:
+        st.info(f"**Actualització del model:** {generation_time_str} | **Previsió per a:** {timestamp_str}", icon="🕒")
+    
     with st.spinner("Actualitzant anàlisi de mapes..."):
         col_map_1, col_map_2 = st.columns([2.5, 1.5])
         with col_map_1:
@@ -265,31 +279,36 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             mapa_sel = st.selectbox("Selecciona la capa del mapa:", list(map_options.keys()))
             map_key = map_options[mapa_sel]
             
+            map_data, error_map, _ = carregar_dades_mapa([map_options[mapa_sel]], hourly_index_sel) if map_key not in ["conv", "500hpa", "wind_300", "wind_700"] else (None, None, None)
+            
             if map_key == "cape":
-                map_data, error_map = carregar_dades_mapa(["cape"], hourly_index_sel)
+                map_data, error_map, _ = carregar_dades_mapa(["cape"], hourly_index_sel)
                 if map_data:
                     max_cape = np.max(map_data['cape']) if map_data['cape'] else 0
                     if max_cape <= 500: cape_levels = np.arange(50, 501, 50)
                     elif max_cape <= 1500: cape_levels = np.arange(100, 1501, 100)
-                    elif max_cape <= 2500: cape_levels = np.arange(250, 2501, 250)
                     else: cape_levels = np.arange(250, np.ceil(max_cape / 500) * 500 + 1, 250)
                     st.pyplot(crear_mapa_escalar(map_data['lons'], map_data['lats'], map_data['cape'], "CAPE", "plasma", cape_levels, "J/kg", timestamp_str))
+
             elif map_key == "conv":
                 nivell_sel = st.selectbox("Nivell d'anàlisi:", options=[1000, 950, 925, 850], format_func=lambda x: f"{x} hPa")
                 variables = [f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
-                map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
+                map_data, error_map, _ = carregar_dades_mapa(variables, hourly_index_sel)
                 if map_data: st.pyplot(crear_mapa_convergencia(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell_sel, lat_sel, lon_sel, poble_sel, timestamp_str))
+
             elif map_key == "500hpa":
                 variables = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
-                map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
+                map_data, error_map, _ = carregar_dades_mapa(variables, hourly_index_sel)
                 if map_data: st.pyplot(crear_mapa_500hpa(map_data, timestamp_str))
+
             elif map_key in ["wind_300", "wind_700"]:
                 nivell_hpa = int(map_key.split('_')[1])
                 variables = [f"wind_speed_{nivell_hpa}hPa", f"wind_direction_{nivell_hpa}hPa"]
-                map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
+                map_data, error_map, _ = carregar_dades_mapa(variables, hourly_index_sel)
                 if map_data: st.pyplot(crear_mapa_vents_velocitat(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell_hpa, timestamp_str))
+
             elif map_key == "rh_700":
-                map_data, error_map = carregar_dades_mapa(["relative_humidity_700hPa"], hourly_index_sel)
+                map_data, error_map, _ = carregar_dades_mapa(["relative_humidity_700hPa"], hourly_index_sel)
                 if map_data: st.pyplot(crear_mapa_escalar(map_data['lons'], map_data['lats'], map_data['relative_humidity_700hPa'], "Humitat Relativa a 700hPa", "Greens", np.arange(50, 101, 5), "%", timestamp_str))
             
             if error_map: 
@@ -300,10 +319,13 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             view_choice = st.radio("Selecciona la vista:", ("Satèl·lit", "Radar"), horizontal=True, label_visibility="collapsed")
             mostrar_imatge_temps_real(view_choice)
 
-def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
+def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel, generation_time_str):
+    if generation_time_str:
+        st.info(f"**Actualització del model:** {generation_time_str} | **Previsió per a:** {dia_sel} a les {hora_sel}", icon="🕒")
+    
     if data_tuple:
         sounding_data, params_calculats = data_tuple
-        st.subheader(f"Anàlisi Vertical per a {poble_sel} | {dia_sel} {hora_sel}")
+        st.subheader(f"Anàlisi Vertical per a {poble_sel}")
         cols = st.columns(4)
         for i, (param, unit) in enumerate({'CAPE': 'J/kg', 'CIN': 'J/kg', 'Shear_0-6km': 'm/s', 'SRH_0-3km': 'm²/s²'}.items()):
             val = params_calculats.get(param)
@@ -330,7 +352,6 @@ def main():
     lat_sel = CIUTATS_CATALUNYA[poble_sel]['lat']
     lon_sel = CIUTATS_CATALUNYA[poble_sel]['lon']
     
-    # --- LÒGICA DE CÀLCUL DE DATA CORREGIDA I ROBUSTA ---
     hora_int = int(hora_sel.split(':')[0])
     
     now_local = datetime.now(TIMEZONE)
@@ -349,7 +370,7 @@ def main():
 
     timestamp_str = f"{dia_sel} a les {hora_sel}"
     
-    data_tuple, error_msg = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
+    data_tuple, error_msg, generation_time_str = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
     if error_msg: 
         st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
 
@@ -358,9 +379,9 @@ def main():
     )
     
     with tab_mapes:
-        ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
+        ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str, generation_time_str)
     with tab_vertical:
-        ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
+        ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel, generation_time_str)
     
     ui_peu_de_pagina()
 
