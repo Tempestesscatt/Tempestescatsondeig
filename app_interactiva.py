@@ -279,7 +279,7 @@ def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, lat_sel, l
 
     # 1. ALPHA AL MÀXIM: Augmentem l'alpha a 0.9. Això fa que els colors siguin molt més sòlids i intensos.
     #    El cmap 'coolwarm_r' s'assegura que el vermell sigui convergència (negatiu) i el blau divergència (positiu).
-    cf = ax.contourf(grid_lon, grid_lat, divergence, levels=levels, cmap='coolwarm_r', alpha=0.9, zorder=2, extend='both')
+    cf = ax.contourf(grid_lon, grid_lat, divergence, levels=levels, cmap='coolwarm_r', alpha= 1, zorder=2, extend='both')
     
     cbar = fig.colorbar(cf, ax=ax, orientation='vertical', shrink=0.7); cbar.set_label('Convergència (vermell) / Divergència (blau) [x10⁻⁵ s⁻¹]')
     
