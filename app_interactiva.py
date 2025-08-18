@@ -96,8 +96,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(variables, hourly_index):
     try:
-        # Resolució del mapa augmentada a 25x25 (625 punts) per a més precisió
-        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 25), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 25)
+        # Resolució del mapa ajustada a 18x18 (324 punts) per evitar errors de URL massa llarga
+        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 18), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 18)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
         params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
         responses = openmeteo.weather_api(API_URL, params=params)
@@ -291,7 +291,10 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             elif map_key == "rh_700":
                 map_data, error_map = carregar_dades_mapa(["relative_humidity_700hPa"], hourly_index_sel)
                 if map_data: st.pyplot(crear_mapa_escalar(map_data['lons'], map_data['lats'], map_data['relative_humidity_700hPa'], "Humitat Relativa a 700hPa", "Greens", np.arange(50, 101, 5), "%", timestamp_str))
-            if error_map: st.error(f"Error en carregar el mapa: {error_map}")
+            
+            if error_map: 
+                st.error(f"Error en carregar el mapa: {error_map}")
+
         with col_map_2:
             st.subheader("Imatges en Temps Real")
             view_choice = st.radio("Selecciona la vista:", ("Satèl·lit", "Radar"), horizontal=True, label_visibility="collapsed")
