@@ -6,7 +6,6 @@ from retry_requests import retry
 import requests
 import numpy as np
 import time
-import json
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as path_effects
 from matplotlib.colors import ListedColormap, BoundaryNorm
@@ -18,16 +17,9 @@ import cartopy.feature as cfeature
 from scipy.interpolate import griddata, Rbf
 from datetime import datetime, timedelta
 import pytz
-import google.generativeai as genai
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
-
-try:
-    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    GEMINI_CONFIGURAT = True
-except (KeyError, AttributeError):
-    GEMINI_CONFIGURAT = False
 
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
@@ -104,7 +96,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(variables, hourly_index):
     try:
-        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
+        # Resolució del mapa augmentada a 25x25 (625 punts) per a més precisió
+        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 25), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 25)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
         params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
         responses = openmeteo.weather_api(API_URL, params=params)
@@ -120,99 +113,7 @@ def carregar_dades_mapa(variables, hourly_index):
     except Exception as e:
         return None, f"Error en carregar dades del mapa: {e}"
 
-@st.cache_data(ttl=3600)
-def preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel):
-    dades_ia = {}
-    data_tuple, error_sondeig = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
-    if not data_tuple: return None, f"Falten dades del sondeig ({error_sondeig})"
-    dades_ia['sondeig'] = data_tuple[1]
-
-    variables_mapa = ["cape", "relative_humidity_700hPa", "wind_speed_925hPa", "wind_direction_925hPa"]
-    map_data, error_mapa = carregar_dades_mapa(variables_mapa, hourly_index_sel)
-    if not map_data: return None, f"Falten dades del mapa ({error_mapa})"
-
-    resum_mapa = {}
-    if 'cape' in map_data and map_data['cape']: resum_mapa['max_cape_catalunya'] = max(map_data['cape'])
-    if 'relative_humidity_700hPa' in map_data and map_data['relative_humidity_700hPa']: resum_mapa['max_rh700_catalunya'] = max(map_data['relative_humidity_700hPa'])
-    
-    if 'wind_speed_925hPa' in map_data and map_data['wind_speed_925hPa']:
-        try:
-            lons, lats = np.array(map_data['lons']), np.array(map_data['lats'])
-            speeds_kmh = np.array(map_data['wind_speed_925hPa']) * units('km/h')
-            dirs_deg = np.array(map_data['wind_direction_925hPa']) * units.degrees
-            u_comp, v_comp = mpcalc.wind_components(speeds_kmh, dirs_deg)
-            grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 50), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 50))
-            grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
-            grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
-            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-            divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
-            
-            resum_mapa['max_conv_925hpa'] = np.nanmin(divergence)
-            
-            idx_min = np.nanargmin(divergence)
-            idx_2d = np.unravel_index(idx_min, divergence.shape)
-            resum_mapa['lat_max_conv'] = grid_lat[idx_2d]
-            resum_mapa['lon_max_conv'] = grid_lon[idx_2d]
-        except Exception:
-            resum_mapa['max_conv_925hpa'] = 0
-            resum_mapa['lat_max_conv'] = 0
-            resum_mapa['lon_max_conv'] = 0
-    
-    dades_ia['mapa_resum'] = resum_mapa
-    return dades_ia, None
-
-# --- 2. FUNCIÓ D'ANÀLISI AMB IA ---
-
-def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str):
-    if not GEMINI_CONFIGURAT:
-        return json.dumps({"error": "La clau API de Google no està configurada."})
-
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    mapa = _dades_ia.get('mapa_resum', {})
-    sondeig = _dades_ia.get('sondeig', {})
-
-    prompt = f"""
-    Ets un meteoròleg expert del Servei Meteorològic de Catalunya (SMC). La teva missió és redactar un butlletí de previsió clar i concís per a TOT CATALUNYA, basat en les dades del model AROME per a la franja horària de '{_timestamp_str}'.
-
-    **INSTRUCCIÓ CLAU: INTEGRA LA TEMPORALITAT**
-    A la teva redacció, fes referència explícita a la franja horària de l'anàlisi (matí, tarda, vespre, matinada) per donar context. Per exemple, si són les 15:00h, parla de 'durant la tarda'. Si és 'Demà a les 02:00h', parla de 'durant la matinada de demà'.
-
-    DADES D'ANÀLISI:
-    - CAPE Màxim a Catalunya (Energia): {int(mapa.get('max_cape_catalunya', 0))} J/kg
-    - Focus de Convergència 925hPa (Disparador): {mapa.get('max_conv_925hpa', 0):.2f} (x10⁻⁵ s⁻¹), localitzat a lat {mapa.get('lat_max_conv', 0):.2f}, lon {mapa.get('lon_max_conv', 0):.2f}
-    - Dades del Sondeig de Referència (prop de {_poble_sel}):
-        - Cisallament 0-6km (Organització): {int(sondeig.get('Shear_0-6km', 0))} m/s
-        - SRH 0-3km (Rotació): {int(sondeig.get('SRH_0-3km', 0))} m²/s²
-
-    INSTRUCCIONS:
-    Retorna un objecte JSON amb la següent estructura EXACTA. NO AFEGEIXIS TEXT FORA DEL JSON.
-    {{
-      "nivell_risc": "String",
-      "titol": "String",
-      "resum_general": "String",
-      "zones_potencials": ["String", "String", ...],
-      "justificacio_tecnica": "String",
-      "fenomens_probables": ["String", "String", ...]
-    }}
-
-    DETALLS DELS CAMPS:
-    - "nivell_risc": Classifica el risc general a Catalunya (Baix, Moderat, Alt, Molt Alt).
-    - "titol": Un titular que resumeixi la situació a Catalunya (ex: "Tarda de tempestes intenses al Prepirineu i Catalunya Central").
-    - "resum_general": Descriu on s'iniciaran les tempestes i cap a on es mouran, **integrant el context temporal (tarda, vespre, etc.)**.
-    - "zones_potencials": Llista les comarques o àrees geogràfiques amb més probabilitat de veure's afectades.
-    - "justificacio_tecnica": Explica breument per què hi ha risc, basant-te en els paràmetres.
-    - "fenomens_probables": Llista els fenòmens meteorològics més probables a les zones de risc.
-    """
-    
-    try:
-        response = model.generate_content(prompt)
-        clean_response = response.text.strip().replace("```json", "").replace("```", "")
-        json.loads(clean_response)
-        return clean_response
-    except Exception as e:
-        return json.dumps({"error": f"Error de l'API o format JSON invàlid: {e}"})
-
-# --- 3. FUNCIONS DE VISUALITZACIÓ (GRÀFICS I MAPES) ---
+# --- 2. FUNCIONS DE VISUALITZACIÓ (GRÀFICS I MAPES) ---
 
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
@@ -340,7 +241,7 @@ def mostrar_imatge_temps_real(tipus):
         else: st.warning(f"No s'ha pogut carregar la imatge del {tipus.lower()}. (Codi: {response.status_code})")
     except Exception as e: st.error(f"Error de xarxa en carregar la imatge del {tipus.lower()}.")
 
-# --- 4. INTERFÍCIE D'USUARI (UI) ---
+# --- 3. INTERFÍCIE D'USUARI (UI) ---
 
 def ui_capcalera_selectors():
     st.title("🌦️ Terminal Meteorològic de Catalunya")
@@ -355,72 +256,6 @@ def ui_capcalera_selectors():
         with col3: 
             hora = st.selectbox("Hora:", [f"{h:02d}:00h" for h in range(24)])
     return poble, dia, hora
-
-def ui_pestanya_avisos_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
-    st.subheader(f"📢 Butlletí de Risc per a Catalunya | {timestamp_str}")
-    
-    if not GEMINI_CONFIGURAT:
-        st.warning("La funció d'anàlisi per IA no està disponible. Configura la clau API de Google Gemini a l'arxiu `secrets.toml`.")
-        return
-
-    with st.spinner("Generant butlletí per a Catalunya..."):
-        dades_ia, error_dades = preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel)
-        
-        if dades_ia:
-            resposta_json_str = generar_resum_ia(dades_ia, poble_sel, timestamp_str)
-            try:
-                data = json.loads(resposta_json_str)
-                if "error" in data:
-                    st.error(data["error"])
-                    return
-
-                risc_map = {
-                    "Baix": {"emoji": "✅", "color": "success"},
-                    "Moderat": {"emoji": "⚠️", "color": "info"},
-                    "Alt": {"emoji": "🔥", "color": "warning"},
-                    "Molt Alt": {"emoji": "🚨", "color": "error"}
-                }
-                risc_info = risc_map.get(data.get("nivell_risc", "Baix"), {"emoji": "❓", "color": "info"})
-
-                st.header(f'{risc_info["emoji"]} {data.get("titol", "Anàlisi no disponible")}')
-
-                alert_box = getattr(st, risc_info["color"])
-                alert_box(data.get("resum_general", ""), icon="📰")
-
-                st.subheader("📍 Zones amb Major Probabilitat d'Afectació")
-                zones = data.get("zones_potencials", [])
-                if zones:
-                    num_columnes = min(len(zones), 3)
-                    cols = st.columns(num_columnes)
-                    for i, zona in enumerate(zones):
-                        cols[i % num_columnes].info(zona, icon="🗺️")
-                else:
-                    st.info("No s'han identificat zones de risc específiques.")
-
-                with st.expander("Veure l'anàlisi tècnica i paràmetres clau"):
-                    st.subheader("Justificació Tècnica")
-                    st.markdown(data.get("justificacio_tecnica", ""))
-                    
-                    st.subheader("Fenòmens Més Probables")
-                    for fenomen in data.get("fenomens_probables", []):
-                        st.markdown(f"- {fenomen}")
-                    
-                    st.divider()
-                    st.subheader("Paràmetres de Referència (Sondeig)")
-                    sondeig = dades_ia.get('sondeig', {})
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("⚡ CAPE (Energia)", f"{int(sondeig.get('CAPE', 0))} J/kg")
-                    with col2:
-                        st.metric("🌪️ Cisallament (0-6km)", f"{int(sondeig.get('Shear_0-6km', 0))} m/s")
-                    with col3:
-                        st.metric("🔄 SRH (Rotació 0-3km)", f"{int(sondeig.get('SRH_0-3km', 0))} m²/s²")
-
-            except json.JSONDecodeError:
-                st.error("No s'ha pogut interpretar la resposta de la IA. Podria ser un error de format.")
-                st.text(resposta_json_str)
-        else:
-            st.error(f"No s'ha pogut generar el resum: {error_dades}")
 
 def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
     with st.spinner("Actualitzant anàlisi de mapes..."):
@@ -484,34 +319,30 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
 
 def ui_peu_de_pagina():
     st.divider()
-    st.caption("Dades del model AROME via [Open-Meteo](https://open-meteo.com/) | Imatges via [Meteociel](https://www.meteociel.fr/) | Anàlisi IA per Google Gemini.")
+    st.caption("Dades del model AROME via [Open-Meteo](https://open-meteo.com/) | Imatges via [Meteociel](https://www.meteociel.fr/).")
 
-# --- 5. APLICACIÓ PRINCIPAL ---
+# --- 4. APLICACIÓ PRINCIPAL ---
 def main():
     poble_sel, dia_sel, hora_sel = ui_capcalera_selectors()
     lat_sel = CIUTATS_CATALUNYA[poble_sel]['lat']
     lon_sel = CIUTATS_CATALUNYA[poble_sel]['lon']
     
-    # --- LÒGICA DE CÀLCUL DE DATA CORREGIDA ---
+    # --- LÒGICA DE CÀLCUL DE DATA CORREGIDA I ROBUSTA ---
     hora_int = int(hora_sel.split(':')[0])
     
-    # Punt de partida: 00:00 del dia actual a la zona horària de Catalunya
     now_local = datetime.now(TIMEZONE)
     start_of_forecast_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Determinem el dia objectiu a partir de la selecció de l'usuari
     target_date = start_of_forecast_local.date()
     if dia_sel == "Demà":
         target_date += timedelta(days=1)
     
-    # Creem el datetime objectiu complet (dia seleccionat + hora seleccionada)
     target_dt_local = datetime.combine(target_date, datetime.min.time()).replace(hour=hora_int)
     target_dt_local_aware = TIMEZONE.localize(target_dt_local)
 
-    # Calculem l'índex horari com la diferència en hores des de l'inici del pronòstic
     time_diff = target_dt_local_aware - start_of_forecast_local
     hourly_index_sel = int(time_diff.total_seconds() / 3600)
-    hourly_index_sel = max(0, hourly_index_sel) # Assegurem que no sigui negatiu
+    hourly_index_sel = max(0, hourly_index_sel)
 
     timestamp_str = f"{dia_sel} a les {hora_sel}"
     
@@ -519,12 +350,10 @@ def main():
     if error_msg: 
         st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
 
-    tab_avisos, tab_mapes, tab_vertical = st.tabs(
-        ["📢 Butlletí IA", "🗺️ Mapes Interactius", "📊 Anàlisi Vertical"]
+    tab_mapes, tab_vertical = st.tabs(
+        ["🗺️ Mapes Interactius", "📊 Anàlisi Vertical"]
     )
     
-    with tab_avisos:
-        ui_pestanya_avisos_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
     with tab_mapes:
         ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
     with tab_vertical:
