@@ -207,7 +207,7 @@ def generar_gif_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _ni
             warning_txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
     # --- CANVIS PER A DENSITAT I DURADA ---
-    NUM_PARTICLES = 200             # Més densitat
+    NUM_PARTICLES = 600             # Més densitat
     PARTICLE_SPEED_FACTOR = 0.0050
 
     px = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], NUM_PARTICLES)
@@ -216,7 +216,7 @@ def generar_gif_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _ni
     py_prev = py.copy()
 
     segments = [[(px_prev[i], py_prev[i]), (px[i], py[i])] for i in range(NUM_PARTICLES)]
-    line_collection = LineCollection(segments, color='black', linewidth=0.7, zorder=4)
+    line_collection = LineCollection(segments, color='black', linewidth=0.97, zorder=4)
     ax.add_collection(line_collection)
 
     def update(frame):
