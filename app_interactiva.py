@@ -163,12 +163,7 @@ def preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel):
 
 # --- 2. FUNCIÓ D'ANÀLISI AMB IA ---
 
-# S'ha eliminat @st.cache_data per garantir que la funció s'executa sempre.
 def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str):
-    """
-    Genera un resum meteorològic per a TOT CATALUNYA. Aquesta funció s'executa
-    sempre que es canvia l'hora per garantir que la informació és correcta.
-    """
     if not GEMINI_CONFIGURAT:
         return json.dumps({"error": "La clau API de Google no està configurada."})
 
@@ -497,18 +492,26 @@ def main():
     lat_sel = CIUTATS_CATALUNYA[poble_sel]['lat']
     lon_sel = CIUTATS_CATALUNYA[poble_sel]['lon']
     
+    # --- LÒGICA DE CÀLCUL DE DATA CORREGIDA ---
     hora_int = int(hora_sel.split(':')[0])
+    
+    # Punt de partida: 00:00 del dia actual a la zona horària de Catalunya
     now_local = datetime.now(TIMEZONE)
-    target_date = now_local.date()
-    if dia_sel == "Demà": 
+    start_of_forecast_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Determinem el dia objectiu a partir de la selecció de l'usuari
+    target_date = start_of_forecast_local.date()
+    if dia_sel == "Demà":
         target_date += timedelta(days=1)
     
-    local_dt = TIMEZONE.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_int))
-    utc_dt = local_dt.astimezone(pytz.utc)
-    
-    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    time_diff_hours = int((utc_dt - start_of_today_utc).total_seconds() / 3600)
-    hourly_index_sel = max(0, time_diff_hours)
+    # Creem el datetime objectiu complet (dia seleccionat + hora seleccionada)
+    target_dt_local = datetime.combine(target_date, datetime.min.time()).replace(hour=hora_int)
+    target_dt_local_aware = TIMEZONE.localize(target_dt_local)
+
+    # Calculem l'índex horari com la diferència en hores des de l'inici del pronòstic
+    time_diff = target_dt_local_aware - start_of_forecast_local
+    hourly_index_sel = int(time_diff.total_seconds() / 3600)
+    hourly_index_sel = max(0, hourly_index_sel) # Assegurem que no sigui negatiu
 
     timestamp_str = f"{dia_sel} a les {hora_sel}"
     
