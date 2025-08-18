@@ -236,6 +236,108 @@ def generar_gif_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _ni
     
     return gif_data
 
+@st.cache_data(ttl=3600)
+def obtenir_mapa_animat_cached(nivell, hourly_index, timestamp_str):
+    """
+    Funció 'gestora': S'encarrega de la memòria cau.
+    Rep arguments simples, carrega les dades i crida la funció que genera el GIF.
+    """
+    # 1. Carrega les dades necessàries basant-se en els arguments simples
+    if nivell >= 950:
+        variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+        map_data, _ = carregar_dades_mapa(variables, hourly_index)
+        if map_data:
+            dewpoint_for_calc = map_data['dew_point_2m']
+            speed_data = map_data[f"wind_speed_{nivell}hPa"]
+            dir_data = map_data[f"wind_direction_{nivell}hPa"]
+    else:
+        variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+        map_data, _ = carregar_dades_mapa(variables, hourly_index)
+        if map_data:
+            temp_data = np.array(map_data[f'temperature_{nivell}hPa']) * units.degC
+            rh_data = np.array(map_data[f'relative_humidity_{nivell}hPa']) * units.percent
+            dewpoint_for_calc = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
+            speed_data = map_data[f"wind_speed_{nivell}hPa"]
+            dir_data = map_data[f"wind_direction_{nivell}hPa"]
+    
+    if not map_data:
+        return None # Si no hi ha dades, no podem generar l'animació
+    
+    # 2. Crida la funció 'treballadora' (sense cache) per generar el GIF
+    gif_data = generar_gif_animat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell, timestamp_str)
+    
+    return gif_data
+
+
+def generar_gif_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _nivell, _timestamp_str):
+    """
+    Funció 'treballadora': Genera un GIF a partir de les dades que rep, sense memòria cau.
+    Aquesta versió està OPTIMITZADA per a un rendiment més ràpid amb Pillow.
+    """
+    fig, ax = crear_mapa_base()
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100))
+    
+    grid_speed = griddata((_lons, _lats), _speed_data, (grid_lon, grid_lat), method='linear')
+    grid_dewpoint = griddata((_lons, _lats), _dewpoint_data, (grid_lon, grid_lat), method='linear')
+    u_comp, v_comp = mpcalc.wind_components(np.array(_speed_data) * units('km/h'), np.array(_dir_data) * units.degrees)
+    grid_u = griddata((_lons, _lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='linear')
+    grid_v = griddata((_lons, _lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='linear')
+    
+    colors_wind_final = ['#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700', '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF', '#FFC0CB', '#D3D3D3', '#A9A9A9']
+    speed_levels_final = np.arange(0, 171, 10)
+    custom_cmap = ListedColormap(colors_wind_final); norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2)
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels_final[::2])
+    cbar.set_label(f"Velocitat del Vent a {_nivell}hPa (km/h)")
+    
+    if _nivell >= 950: CONVERGENCE_THRESHOLD = -45; DEWPOINT_THRESHOLD_FOR_RISK = 14
+    elif _nivell >= 925: CONVERGENCE_THRESHOLD = -35; DEWPOINT_THRESHOLD_FOR_RISK = 12
+    elif _nivell >= 850: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 7
+    elif _nivell >= 800: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 5
+    else: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 2
+    
+    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+    divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
+    effective_risk_mask = (divergence.magnitude <= CONVERGENCE_THRESHOLD) & (grid_dewpoint >= DEWPOINT_THRESHOLD_FOR_RISK)
+    labels, num_features = label(effective_risk_mask)
+    if num_features > 0:
+        for i in range(1, num_features + 1):
+            points = np.argwhere(labels == i); center_y, center_x = points.mean(axis=0)
+            center_lon, center_lat = grid_lon[0, int(center_x)], grid_lat[int(center_y), 0]
+            warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=15, ha='center', va='center', zorder=8)
+            warning_txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
+
+    NUM_PARTICLES = 250; PARTICLE_SPEED_FACTOR = 0.005
+    px = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], NUM_PARTICLES); py = np.random.uniform(MAP_EXTENT[2], MAP_EXTENT[3], NUM_PARTICLES)
+    particles, = ax.plot(px, py, '.', markersize=0.8, color='black', zorder=4)
+
+    def update(frame):
+        nonlocal px, py
+        u_vals = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_u.flatten(), (px, py), method='linear')
+        v_vals = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_v.flatten(), (px, py), method='linear')
+        px += u_vals * PARTICLE_SPEED_FACTOR; py += v_vals * PARTICLE_SPEED_FACTOR
+        out_of_bounds = (px < MAP_EXTENT[0]) | (px > MAP_EXTENT[1]) | (py < MAP_EXTENT[2]) | (py > MAP_EXTENT[3])
+        px[out_of_bounds] = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], out_of_bounds.sum())
+        py[out_of_bounds] = np.random.uniform(MAP_EXTENT[2], MAP_EXTENT[3], out_of_bounds.sum())
+        particles.set_data(px, py)
+        return particles,
+
+    ax.set_title(f"Forecast: Flux del Vent + Focus de Convergència a {_nivell}hPa\n{_timestamp_str}", weight='bold', fontsize=16)
+    ani = FuncAnimation(fig, update, frames=40, blit=False, interval=50)
+    
+    with tempfile.NamedTemporaryFile(suffix=".gif", delete=False) as tmpfile:
+        temp_filename = tmpfile.name
+        ani.save(temp_filename, writer='pillow', fps=20, dpi=96)
+    
+    plt.close(fig)
+    with open(temp_filename, "rb") as f: gif_data = f.read()
+    os.remove(temp_filename)
+    
+    return gif_data
+
+
+
+
 def mostrar_imatge_temps_real(tipus):
     # --- Aquesta funció gestiona les dues vistes de satèl·lit ---
     
