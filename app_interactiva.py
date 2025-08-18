@@ -211,8 +211,33 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
     
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2)
-    cbar = fig.colorbarplt.cm.ScalarM
-                        
+    
+    # --- LÍNIA CORREGIDA ---
+    # L'error estava aquí. La funció correcta és fig.colorbar()
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels_final[::2])
+    cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
+    
+    # Dibuixem les streamlines negres a sobre
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=5, arrowsize=0.6, zorder=4)
+
+    # Lògica de risc amb anàlisi "invisible" de punt de rosada
+    effective_risk_mask = (divergence.magnitude <= CONVERGENCE_THRESHOLD) & (grid_dewpoint >= DEWPOINT_THRESHOLD_FOR_RISK)
+    
+    # --- FONS VERMELL ELIMINAT ---
+    # La línia ax.contourf(...) ha estat eliminada per no mostrar l'àrea vermella.
+
+    # Només mostrem l'emoji d'alerta
+    labels, num_features = label(effective_risk_mask)
+    if num_features > 0:
+        for i in range(1, num_features + 1):
+            points = np.argwhere(labels == i)
+            center_y, center_x = points.mean(axis=0)
+            center_lon, center_lat = grid_lon[0, int(center_x)], grid_lat[int(center_y), 0]
+            warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=15, ha='center', va='center', zorder=8)
+            warning_txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
+
+    ax.set_title(f"Forecast: Força del Vent + Focus de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    return fig
     
 def crear_mapa_500hpa(map_data, timestamp_str):
     fig, ax = crear_mapa_base(); lons, lats = map_data['lons'], map_data['lats']
