@@ -243,27 +243,31 @@ def carregar_dades_mapa(variables, hourly_index):
         flat_lons = lon_grid.flatten()
 
         # >>> INICI DE LA CORRECCIÓ <<<
-        # Creem una LLISTA de diccionaris, un per cada punt de la graella.
-        # Això li diu a la llibreria que faci múltiples peticions petites en lloc d'una de gegant.
-        params_list = [
-            {
+        # Llista per guardar totes les respostes individuals de l'API
+        all_responses = []
+
+        # Iterem sobre cada coordenada i fem una petició individual a l'API.
+        # Això evita crear una URL massa llarga.
+        for lat, lon in zip(flat_lats, flat_lons):
+            params = {
                 "latitude": lat,
                 "longitude": lon,
                 "hourly": variables,
                 "models": "arome_seamless",
                 "forecast_days": FORECAST_DAYS
-            } for lat, lon in zip(flat_lats, flat_lons)
-        ]
+            }
+            # La petició per a un sol punt retorna una llista amb un únic element.
+            response = openmeteo.weather_api(API_URL, params=params)
+            if response:
+                # Afegim l'únic objecte de resposta a la nostra llista.
+                all_responses.append(response[0])
 
-        # Fem la petició a l'API amb la llista de paràmetres
-        responses = openmeteo.weather_api(API_URL, params=params_list)
-        # >>> FI DE LA CORRECCIÓ <<<
-
+        # A partir d'aquí, processem la llista `all_responses` que hem construït.
         output = {var: [] for var in ["lats", "lons"] + variables}
         
-        for r in responses:
+        for r in all_responses:
             hourly = r.Hourly()
-            # Assegurem que l'índex no està fora de rang
+            # Assegurem que l'objecte i l'índex són vàlids abans de processar
             if hourly and hourly.Variables(0) and len(hourly.Variables(0).ValuesAsNumpy()) > hourly_index:
                  vals = [hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
                  if not any(np.isnan(v) for v in vals):
@@ -271,11 +275,13 @@ def carregar_dades_mapa(variables, hourly_index):
                     output["lons"].append(r.Longitude())
                     for i, var in enumerate(variables): 
                         output[var].append(vals[i])
-            
+        # >>> FI DE LA CORRECCIÓ <<<
+                    
         if not output["lats"]: 
-            return None, "No s'han rebut dades vàlides."
+            return None, "No s'han rebut dades vàlides de l'API per als punts del mapa."
         return output, None
     except Exception as e:
+        # Proporcionem un missatge d'error més detallat
         return None, f"Error en carregar dades del mapa: {str(e)}"
 
 @st.cache_data(ttl=3600, show_spinner="Preparant anàlisi d'IA...")
