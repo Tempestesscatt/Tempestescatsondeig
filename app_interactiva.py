@@ -27,36 +27,104 @@ st.set_page_config(
     page_icon="🌪️"
 )
 
-# Configuració d'estils
+# Configuració d'estils per a mode fosc i clar
 st.markdown("""
     <style>
-    .stApp { background-color: #f0f2f6; }
-    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+    :root {
+        --primary: #4f46e5;
+        --background: #0e1117;
+        --secondary-background: #1e2229;
+        --text: #f0f2f6;
+        --border: #2a2f3b;
+        --metric-bg: #1e2229;
+    }
+    
+    [data-theme="light"] {
+        --primary: #4f46e5;
+        --background: #f0f2f6;
+        --secondary-background: #ffffff;
+        --text: #1e2229;
+        --border: #e0e7ff;
+        --metric-bg: #ffffff;
+    }
+    
+    .stApp {
+        background-color: var(--background);
+        color: var(--text);
+    }
+    
+    .stTabs [data-baseweb="tab-list"] { 
+        gap: 8px; 
+    }
+    
     .stTabs [data-baseweb="tab"] {
         border-radius: 8px 8px 0 0;
         padding: 10px 20px;
-        background-color: #e0e7ff;
+        background-color: var(--secondary-background);
         transition: all 0.3s;
+        color: var(--text);
+        border: 1px solid var(--border);
     }
+    
     .stTabs [aria-selected="true"] {
-        background-color: #4f46e5;
+        background-color: var(--primary);
         color: white;
     }
-    .metric-container { border-radius: 10px; }
+    
+    .metric-container {
+        border-radius: 10px;
+        background-color: var(--metric-bg);
+        padding: 15px;
+        border: 1px solid var(--border);
+    }
+    
     .stButton>button {
-        background-color: #4f46e5;
+        background-color: var(--primary);
         color: white;
         border-radius: 8px;
         padding: 10px 24px;
         font-weight: bold;
         transition: all 0.3s;
+        border: none;
     }
+    
     .stButton>button:hover {
         background-color: #4338ca;
         transform: scale(1.05);
     }
-    .stSelectbox, .stRadio { background-color: white; border-radius: 8px; }
-    .stAlert { border-radius: 10px; }
+    
+    .stSelectbox, .stRadio, .stTextInput {
+        background-color: var(--secondary-background);
+        border-radius: 8px;
+        border: 1px solid var(--border);
+    }
+    
+    .stAlert {
+        border-radius: 10px;
+        background-color: var(--secondary-background);
+    }
+    
+    .stExpander {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+    }
+    
+    .stContainer {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+    }
+    
+    h1, h2, h3, h4, h5, h6 {
+        color: var(--text) !important;
+    }
+    
+    p, div, span {
+        color: var(--text) !important;
+    }
+    
+    .stMarkdown {
+        color: var(--text);
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -234,8 +302,7 @@ def preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timesta
             divergence = mpcalc.divergence(
                 grid_u * units('m/s'), 
                 grid_v * units('m/s'), 
-                dx=dx, 
-                dy=dy
+                dx=dx, dy=dy
             ) * 1e5
             
             resum_mapa['max_conv_925hpa'] = np.nanmin(divergence)
@@ -303,14 +370,15 @@ def crear_mapa_base():
     fig, ax = plt.subplots(
         figsize=(10, 10), 
         dpi=200, 
-        subplot_kw={'projection': ccrs.PlateCarree()}
+        subplot_kw={'projection': ccrs.PlateCarree()},
+        facecolor='none'  # Fons transparent per adaptar-se al tema
     )
     ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree())
-    ax.add_feature(cfeature.LAND, facecolor="#F0F8FF", zorder=0)
-    ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
-    ax.add_feature(cfeature.COASTLINE, edgecolor='#4682B4', linewidth=1.2, zorder=5)
-    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='#4682B4', zorder=5)
-    ax.add_feature(cfeature.STATES, edgecolor='gray', linewidth=0.5, zorder=5)
+    ax.add_feature(cfeature.LAND, facecolor="#1e2229", zorder=0)
+    ax.add_feature(cfeature.OCEAN, facecolor='#0e1117', zorder=0)
+    ax.add_feature(cfeature.COASTLINE, edgecolor='#4f46e5', linewidth=1.2, zorder=5)
+    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='#4f46e5', zorder=5)
+    ax.add_feature(cfeature.STATES, edgecolor='#4f46e5', linewidth=0.5, zorder=5)
     return fig, ax
 
 def get_wind_colormap():
@@ -358,7 +426,7 @@ def crear_mapa_500hpa(map_data, timestamp_str):
     )
     
     ax.set_title(f"Anàlisi a 500 hPa (Temperatura i Vent)\n{timestamp_str}", 
-                weight='bold', fontsize=16)
+                weight='bold', fontsize=16, color='white')
     return fig
 
 def crear_mapa_vents_velocitat(lons, lats, speed_data, dir_data, nivell, timestamp_str):
@@ -393,7 +461,7 @@ def crear_mapa_vents_velocitat(lons, lats, speed_data, dir_data, nivell, timesta
     
     ax.streamplot(
         grid_lon, grid_lat, u_grid, v_grid, 
-        color='black', linewidth=0.6, 
+        color='white', linewidth=0.6, 
         density=2.5, arrowsize=0.6, zorder=5
     )
     
@@ -404,7 +472,7 @@ def crear_mapa_vents_velocitat(lons, lats, speed_data, dir_data, nivell, timesta
     )
     cbar.set_label("Velocitat del Vent (km/h)")
     ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", 
-                weight='bold', fontsize=16)
+                weight='bold', fontsize=16, color='white')
     return fig
 
 def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, lat_sel, lon_sel, nom_poble_sel, timestamp_str):
@@ -441,14 +509,14 @@ def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, lat_sel, l
     
     cs_conv = ax.contour(
         grid_lon, grid_lat, divergence, 
-        levels=levels, colors='black', 
-        linewidths=0.7, alpha=0.2, zorder=3
+        levels=levels, colors='white', 
+        linewidths=0.7, alpha=0.5, zorder=3
     )
     ax.clabel(cs_conv, inline=True, fontsize=8, fmt='%1.0f')
     
     ax.streamplot(
         grid_lon, grid_lat, u_grid, v_grid, 
-        color='black', linewidth=0.5, 
+        color='white', linewidth=0.5, 
         density=5.0, arrowsize=0.5, zorder=4
     )
     
@@ -463,13 +531,13 @@ def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, lat_sel, l
     txt = ax.text(
         lon_sel + 0.05, lat_sel, nom_poble_sel, 
         transform=ccrs.Geodetic(), zorder=7, 
-        fontsize=10, weight='bold'
+        fontsize=10, weight='bold', color='white'
     )
-    txt.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
+    txt.set_path_effects([path_effects.withStroke(linewidth=2, foreground='black')])
     
     max_conv = np.nanmin(divergence)
     ax.set_title(f"Flux i Convergència a {nivell}hPa (Mín: {max_conv:.1f})\n{timestamp_str}", 
-                weight='bold', fontsize=16)
+                weight='bold', fontsize=16, color='white')
     return fig
 
 def crear_mapa_escalar(lons, lats, data, titol, cmap, levels, unitat, timestamp_str, extend='max'):
@@ -489,7 +557,7 @@ def crear_mapa_escalar(lons, lats, data, titol, cmap, levels, unitat, timestamp_
     contorns = ax.contour(
         grid_lon, grid_lat, grid_data, 
         levels=levels[::(len(levels)//5)], 
-        colors='black', linewidths=0.7, 
+        colors='white', linewidths=0.7, 
         alpha=0.9, zorder=3
     )
     ax.clabel(contorns, inline=True, fontsize=8, fmt='%1.0f')
@@ -501,26 +569,27 @@ def crear_mapa_escalar(lons, lats, data, titol, cmap, levels, unitat, timestamp_
     )
     cbar.set_label(f"{titol} ({unitat})")
     ax.set_title(f"{titol}\n{timestamp_str}", 
-                weight='bold', fontsize=16)
+                weight='bold', fontsize=16, color='white')
     return fig
 
 def crear_skewt(p, T, Td, u, v, titol):
-    fig = plt.figure(figsize=(9, 9), dpi=150)
+    fig = plt.figure(figsize=(9, 9), dpi=150, facecolor='none')
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
-    skew.ax.grid(True, linestyle='-', alpha=0.5)
+    skew.ax.set_facecolor('#1e2229')
+    skew.ax.grid(True, linestyle='-', alpha=0.5, color='white')
     skew.plot(p, T, 'r', lw=2, label='Temperatura')
     skew.plot(p, Td, 'g', lw=2, label='Punt de Rosada')
     
     if np.any(u.magnitude != 0) or np.any(v.magnitude != 0):
         skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
     
-    skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
-    skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6)
-    skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
+    skew.plot_dry_adiabats(color='cyan', linestyle='--', alpha=0.6)
+    skew.plot_moist_adiabats(color='yellow', linestyle='--', alpha=0.6)
+    skew.plot_mixing_lines(color='lime', linestyle='--', alpha=0.6)
     
     try:
         prof = mpcalc.parcel_profile(p, T[0], Td[0])
-        skew.plot(p, prof, 'k', linewidth=2, label='Trajectòria Parcel·la')
+        skew.plot(p, prof, 'w', linewidth=2, label='Trajectòria Parcel·la')
         skew.shade_cape(p, T, prof, color='red', alpha=0.3)
         skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
     except Exception:
@@ -528,21 +597,26 @@ def crear_skewt(p, T, Td, u, v, titol):
     
     skew.ax.set_ylim(1000, 100)
     skew.ax.set_xlim(-40, 40)
-    skew.ax.set_title(titol, weight='bold', fontsize=14)
-    skew.ax.set_xlabel("Temperatura (°C)")
-    skew.ax.set_ylabel("Pressió (hPa)")
-    skew.ax.legend()
+    skew.ax.set_title(titol, weight='bold', fontsize=14, color='white')
+    skew.ax.set_xlabel("Temperatura (°C)", color='white')
+    skew.ax.set_ylabel("Pressió (hPa)", color='white')
+    skew.ax.tick_params(colors='white')
+    skew.ax.legend(facecolor='#1e2229', edgecolor='none', labelcolor='white')
     return fig
 
 def crear_hodograf(u, v):
-    fig, ax = plt.subplots(1, 1, figsize=(6, 6), dpi=150)
+    fig, ax = plt.subplots(1, 1, figsize=(6, 6), dpi=150, facecolor='none')
+    ax.set_facecolor('#1e2229')
     h = Hodograph(ax, component_range=60.)
-    h.add_grid(increment=20, color='gray')
+    h.add_grid(increment=20, color='white')
     
     if np.any(u.magnitude != 0) or np.any(v.magnitude != 0):
         h.plot(u.to('kt'), v.to('kt'), color='red', linewidth=2)
     
-    ax.set_title("Hodògraf", weight='bold')
+    ax.set_title("Hodògraf", weight='bold', color='white')
+    ax.tick_params(colors='white')
+    ax.xaxis.label.set_color('white')
+    ax.yaxis.label.set_color('white')
     return fig
     
 def mostrar_imatge_temps_real(tipus):
@@ -579,11 +653,11 @@ def ui_capcalera_selectors():
         unsafe_allow_html=True
     )
     st.markdown(
-        '<p style="text-align: center; font-size: 1.1rem; color: #555;">Eina per a la visualització de paràmetres clau per al pronòstic de convecció</p>', 
+        '<p style="text-align: center; font-size: 1.1rem; color: var(--text);">Eina per a la visualització de paràmetres clau per al pronòstic de convecció</p>', 
         unsafe_allow_html=True
     )
     
-    with st.container(border=True):
+    with st.container():
         col1, col2, col3 = st.columns(3)
         with col1: 
             st.selectbox(
@@ -796,15 +870,15 @@ def ui_pestanya_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
                 
             resum_text = generar_resum_ia(dades_ia, poble_sel)
             
-            with st.container(border=True):
+            with st.container():
                 st.markdown(resum_text)
 
 def ui_peu_de_pagina():
     st.divider()
     st.markdown("""
-        <p style='text-align: center; font-size: 0.9em; color: grey;'>
-            Dades del model AROME via <a href='https://open-meteo.com/'>Open-Meteo</a> | 
-            Imatges via <a href='https://www.meteociel.fr/'>Meteociel</a> | 
+        <p style='text-align: center; font-size: 0.9em; color: var(--text);'>
+            Dades del model AROME via <a href='https://open-meteo.com/' style='color: #4f46e5;'>Open-Meteo</a> | 
+            Imatges via <a href='https://www.meteociel.fr/' style='color: #4f46e5;'>Meteociel</a> | 
             Anàlisi IA per Google Gemini
         </p>
     """, unsafe_allow_html=True)
@@ -813,7 +887,7 @@ def ui_peu_de_pagina():
 
 def main():
     # Inicialització de l'estat de la sessió
-    default_hour = f"{datetime.now(TIMEZONE).hour:02d}:00h"
+    default_hour = f"{datetime.now().hour:02d}:00h"
     if 'poble_selector' not in st.session_state: 
         st.session_state.poble_selector = 'Barcelona'
     if 'dia_selector' not in st.session_state: 
@@ -828,19 +902,20 @@ def main():
     hora_sel = st.session_state.hora_selector
     
     hora_int = int(hora_sel.split(':')[0])
-    now_local = datetime.now(TIMEZONE)
+    now_local = datetime.now()
     target_date = now_local.date()
     if dia_sel == "Demà": 
         target_date += timedelta(days=1)
     
-    local_dt = TIMEZONE.localize
-    datetime.combine(target_date, datetime.min.time()).replace(hour=hora_int)
+    # CORRECCIÓ: Utilitzar pytz per a la conversió de zona horària
+    local_tz = pytz.timezone('Europe/Madrid')
+    local_dt = local_tz.localize(datetime(target_date.year, target_date.month, target_date.day, hora_int))
     utc_dt = local_dt.astimezone(pytz.utc)
     
-    start_of_today_utc = datetime.now(pytz.utc).replace(
-        hour=0, minute=0, second=0, microsecond=0)
-    time_diff_hours = int((utc_dt - start_of_today_utc).total_seconds() / 3600)
-    hourly_index_sel = max(0, time_diff_hours)
+    # Calcular l'índex horari
+    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    time_diff = utc_dt - start_of_today_utc
+    hourly_index_sel = int(time_diff.total_seconds() / 3600)
 
     timestamp_str = f"{dia_sel} a les {hora_sel} (Hora Local)"
     lat_sel = CIUTATS_CATALUNYA[poble_sel]['lat']
