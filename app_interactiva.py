@@ -375,7 +375,6 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                 if cin_value < -25:
                     st.warning(f"**AVÍS DE 'TAPA' (CIN = {cin_value:.0f} J/kg):** El sondeig de **{poble_sel}** mostra una forta inversió. Es necessita un forçament dinàmic potent per trencar-la.")
                 
-                # --- CANVI: Text de les recomanacions més intuïtiu ---
                 if np.isnan(lfc_hpa):
                     st.error("**DIAGNÒSTIC LFC:** No s'ha trobat LFC. L'atmosfera és estable i la convecció espontània és molt improbable.")
                 elif lfc_hpa >= 900:
@@ -383,10 +382,12 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                 elif lfc_hpa >= 750:
                     st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base baixa. **Recomanació: Buscar zones d'alerta ⚠️ a 850 hPa.**")
                 else: # lfc_hpa < 750
-                    st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada. **Recomanació: Buscar zones d'alerta ⚠️ a 700-600 hPa.**")
+                    # CANVI: La recomanació ara s'atura a 700hPa
+                    st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada. **Recomanació: Buscar zones d'alerta ⚠️ a 700 hPa.**")
 
+                # CANVI: Llista d'opcions limitada fins a 700 hPa
                 nivell_sel = st.selectbox("Nivell d'anàlisi:", 
-                                          options=[1000, 950, 925, 850, 700, 600, 500], 
+                                          options=[1000, 950, 925, 850, 700], 
                                           format_func=lambda x: f"{x} hPa")
                 
                 if nivell_sel >= 950:
