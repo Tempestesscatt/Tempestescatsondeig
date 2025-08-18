@@ -9,7 +9,7 @@ import time
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as path_effects
 from matplotlib.colors import ListedColormap, BoundaryNorm
-# --- MODIFICACIÓ 1: Afegim PillowWriter ---
+# --- AFEGIM PillowWriter PER SOLUCIONAR L'ERROR ---
 from matplotlib.animation import FuncAnimation, PillowWriter
 from metpy.plots import SkewT, Hodograph
 from metpy.units import units
@@ -344,7 +344,7 @@ def crear_mapa_convergencia_animado(lons, lats, speed_data, dir_data, nivell, la
     ani = FuncAnimation(fig, update, frames=range(20), interval=100, blit=False)
     
     gif_buffer = io.BytesIO()
-    # --- MODIFICACIÓ 2: Canviem la manera de guardar l'animació per evitar el TypeError ---
+    # --- LÍNIES CORREGIDES PER SOLUCIONAR L'ERROR ---
     writer = PillowWriter(fps=10)
     ani.save(gif_buffer, writer=writer)
     
