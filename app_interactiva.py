@@ -67,10 +67,10 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS]
         params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
-        
+
         response = openmeteo.weather_api(API_URL, params=params)[0]
         hourly = response.Hourly()
-        
+
         sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i, v in enumerate(h_base)}
         if any(np.isnan(val) for val in sfc_data.values()): return None, "Dades de superfície invàlides."
 
@@ -92,12 +92,12 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                 u_profile.append(u.to('m/s').m)
                 v_profile.append(v.to('m/s').m)
                 h_profile.append(p_data["H"][i])
-        
+
         if len(p_profile) < 5: return None, "Perfil atmosfèric massa curt per a càlculs fiables."
 
         p = np.array(p_profile) * units.hPa; T = np.array(T_profile) * units.degC; Td = np.array(Td_profile) * units.degC
         u = np.array(u_profile) * units('m/s'); v = np.array(v_profile) * units('m/s'); h = np.array(h_profile) * units.meter
-        
+
         params_calc = {}
         prof = mpcalc.parcel_profile(p, T[0], Td[0])
         cape, cin = mpcalc.cape_cin(p, T, Td, prof)
@@ -113,7 +113,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 
         s_u, s_v = mpcalc.bulk_shear(p, u, v, height=h, depth=6 * units.km)
         params_calc['Shear_0-6km'] = mpcalc.wind_speed(s_u, s_v).to('m/s').m
-        
+
         try: # Càlcul del moviment de la tempesta (Bunkers Right-Mover)
             rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, h)
             params_calc['storm_motion_u'], params_calc['storm_motion_v'] = rm[0].to('m/s').m, rm[1].to('m/s').m
@@ -121,13 +121,16 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         except Exception:
             params_calc.update({'storm_motion_u': np.nan, 'storm_motion_v': np.nan})
             storm_motion_vector = (np.nan*units('m/s'), np.nan*units('m/s'))
-        
-        _, srh, _ = mpcalc.storm_relative_helicity(h, u, v, depth=3 * units.km, storm_motion=storm_motion_vector)
+
+        # --- LÍNIA CORREGIDA ---
+        storm_u_comp, storm_v_comp = storm_motion_vector
+        _, srh, _ = mpcalc.storm_relative_helicity(h, u, v, depth=3 * units.km, storm_u=storm_u_comp, storm_v=storm_v_comp)
         params_calc['SRH_0-3km'] = np.sum(srh).to('m^2/s^2').m
 
         return ((p, T, Td, u, v, h), params_calc), None
     except Exception as e:
         return None, f"Error crític en processar dades del sondeig: {e}"
+
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(variables, hourly_index):
@@ -160,7 +163,7 @@ def preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel):
     if not map_data: return None, f"Falten dades del mapa ({error_mapa})"
 
     resum_mapa = {'max_cape_catalunya': max(map_data['cape']) if 'cape' in map_data and map_data['cape'] else 0}
-    
+
     if 'wind_speed_925hPa' in map_data and map_data['wind_speed_925hPa']:
         try:
             lons, lats = np.array(map_data['lons']), np.array(map_data['lats'])
@@ -172,24 +175,24 @@ def preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel):
             grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
             dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
             divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
-            
+
             resum_mapa['max_conv_925hpa'] = np.nanmin(divergence)
             idx_min = np.nanargmin(divergence)
             idx_2d = np.unravel_index(idx_min, divergence.shape)
             resum_mapa.update({'lat_max_conv': grid_lat[idx_2d], 'lon_max_conv': grid_lon[idx_2d]})
         except Exception:
             resum_mapa.update({'max_conv_925hpa': 0, 'lat_max_conv': 0, 'lon_max_conv': 0})
-    
+
     dades_ia['mapa_resum'] = resum_mapa
     return dades_ia, None
 
 @st.cache_data(ttl=3600)
 def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str):
     if not GEMINI_CONFIGURAT: return "Error: La clau API de Google no està configurada."
-        
+
     model = genai.GenerativeModel('gemini-1.5-flash')
     mapa, sondeig = _dades_ia.get('mapa_resum', {}), _dades_ia.get('sondeig', {})
-    
+
     direction_str, speed_ms = vector_to_direction(sondeig.get('storm_motion_u', 0), sondeig.get('storm_motion_v', 0))
     moviment_tempesta_str = f"{direction_str} a {int(speed_ms * 3.6)} km/h" if not np.isnan(speed_ms) else "No disponible"
 
@@ -218,7 +221,7 @@ def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str):
     **Poblacions Potencialment Afectades:** [Llista de 3-5 poblacions separades per comes, considerant origen i trajectòria]
     **Justificació Tècnica (Molt Breu):** [La teva única frase d'explicació aquí]
     """
-    
+
     try:
         response = model.generate_content(prompt)
         return response.text
@@ -280,7 +283,7 @@ def crear_skewt(p, T, Td, u, v, titol, params_calc):
     skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.5); skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.5); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.5)
     prof = mpcalc.parcel_profile(p, T[0], Td[0]); skew.plot(p, prof, 'k', linewidth=2, label='Trajectòria Parcel·la')
     skew.shade_cape(p, T, prof, color='red', alpha=0.3); skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
-    
+
     # Afegir nivells característics
     for level_name, color in [('LCL_p', 'orange'), ('LFC_p', 'darkred'), ('EL_p', 'purple')]:
         if level_name in params_calc and not np.isnan(params_calc[level_name]):
@@ -298,13 +301,13 @@ def crear_hodograf(u, v, params_calc):
     h = Hodograph(ax, component_range=80.)
     h.add_grid(increment=20, color='gray', linestyle='--')
     h.plot(u.to('kt'), v.to('kt'), color='red', linewidth=2)
-    
+
     # Dibuixar vector de moviment de la tempesta (Bunkers Right-Mover)
     if 'storm_motion_u' in params_calc and not np.isnan(params_calc['storm_motion_u']):
         sm_u_kt = params_calc['storm_motion_u'] * (units('m/s')).to('kt').m
         sm_v_kt = params_calc['storm_motion_v'] * (units('m/s')).to('kt').m
         ax.arrow(0, 0, sm_u_kt, sm_v_kt, head_width=2, head_length=2, fc='darkred', ec='black', zorder=10, lw=1.5, label='Moviment Tempesta (RM)')
-        
+
         direction_str, speed_ms = vector_to_direction(params_calc['storm_motion_u'], params_calc['storm_motion_v'])
         ax.text(0.03, 0.97, f"Mov. Tempesta:\n {direction_str} a {speed_ms*3.6:.0f} km/h", transform=ax.transAxes, fontsize=10,
                 verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7))
@@ -344,7 +347,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                 map_options = {"CAPE (Energia)": "cape", "Flux i Convergència (Disparador)": "conv", "Humitat a 700hPa": "rh_700"}
                 mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
                 map_key = map_options[mapa_sel]
-                
+
                 if map_key == "cape":
                     map_data, error = carregar_dades_mapa(["cape"], hourly_index_sel)
                     if map_data:
@@ -359,7 +362,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                     map_data, error = carregar_dades_mapa(variables, hourly_index_sel)
                     if map_data: st.pyplot(crear_mapa_convergencia(map_data, nivell_sel, lat_sel, lon_sel, poble_sel, timestamp_str))
                     elif error: st.error(f"Error en carregar el mapa: {error}")
-                
+
                 elif map_key == "rh_700":
                     map_data, error = carregar_dades_mapa(["relative_humidity_700hPa"], hourly_index_sel)
                     if map_data: st.pyplot(crear_mapa_escalar(map_data, "relative_humidity_700hPa", "Humitat Relativa a 700hPa", "Greens", np.arange(50, 101, 10), "%", timestamp_str))
@@ -413,13 +416,13 @@ def ui_peu_de_pagina():
 # --- 4. APLICACIÓ PRINCIPAL ---
 
 def main():
-    if 'hora_selector' not in st.session_state: 
+    if 'hora_selector' not in st.session_state:
         st.session_state.hora_selector = f"{datetime.now(TIMEZONE).hour:02d}:00h"
 
     ui_capcalera_selectors()
 
     poble_sel = st.session_state.poble_selector; dia_sel = st.session_state.dia_selector; hora_sel = st.session_state.hora_selector
-    
+
     hora_int = int(hora_sel.split(':')[0])
     now_local = datetime.now(TIMEZONE)
     target_date = now_local.date() + timedelta(days=(1 if dia_sel == "Demà" else 0))
@@ -430,15 +433,18 @@ def main():
     timestamp_str = f"{dia_sel} a les {hora_sel} (Hora Local)"
     lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
 
-    data_tuple, error_msg = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
-    if error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+    # Mostra un missatge d'espera mentre es carreguen les dades inicials
+    with st.spinner('Carregant dades del sondeig inicial...'):
+        data_tuple, error_msg = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
+        if error_msg: 
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
 
     tab_mapes, tab_vertical, tab_ia = st.tabs(["🗺️ Anàlisi de Mapes", "📊 Anàlisi Vertical", "🤖 Resum IA"])
 
     with tab_mapes: ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
     with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
     with tab_ia: ui_pestanya_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
-        
+
     ui_peu_de_pagina()
 
 if __name__ == "__main__":
