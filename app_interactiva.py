@@ -240,7 +240,7 @@ def generar_gif_animat_optimitzat(_lons, _lats, _speed_data, _dir_data, _dewpoin
         v = interpn(points_to_interp, grid_v, (lat, lon), method='linear', bounds_error=False, fill_value=0)
         return u, v
 
-     def update(frame_num):
+def update(frame_num):
         nonlocal px, py, particle_age
         
         # Lògica per al bucle perfecte: fade-in i fade-out
