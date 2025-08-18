@@ -104,8 +104,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 @st.cache_data(ttl=3600)
 def crear_mapa_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _nivell, _timestamp_str):
     """
-    Crea un GIF animat de partícules seguint el flux del vent.
-    Aquesta versió utilitza un arxiu temporal per garantir la compatibilitat.
+    Crea un GIF animat. Aquesta versió està EXTREMADAMENT OPTIMITZADA 
+    per funcionar amb el 'writer' Pillow en entorns amb recursos limitats.
     """
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100))
@@ -117,7 +117,7 @@ def crear_mapa_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _niv
     grid_u = griddata((_lons, _lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='linear')
     grid_v = griddata((_lons, _lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='linear')
     
-    # Dibuixar el fons de color i les alertes (codi idèntic a l'anterior)
+    # Dibuixar fons de color i alertes
     colors_wind_final = ['#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700', '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF', '#FFC0CB', '#D3D3D3', '#A9A9A9']
     speed_levels_final = np.arange(0, 171, 10)
     custom_cmap = ListedColormap(colors_wind_final)
@@ -143,8 +143,10 @@ def crear_mapa_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _niv
             warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=15, ha='center', va='center', zorder=8)
             warning_txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
-    # Lògica de l'animació
-    NUM_PARTICLES = 500; PARTICLE_SPEED_FACTOR = 0.005
+    # --- OPTIMITZACIÓ EXTREMA PER A PILLOW ---
+    NUM_PARTICLES = 250             # Reduït dràsticament
+    PARTICLE_SPEED_FACTOR = 0.005
+    
     px = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], NUM_PARTICLES)
     py = np.random.uniform(MAP_EXTENT[2], MAP_EXTENT[3], NUM_PARTICLES)
     particles, = ax.plot(px, py, '.', markersize=0.8, color='black', zorder=4)
@@ -161,25 +163,23 @@ def crear_mapa_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _niv
         return particles,
 
     ax.set_title(f"Forecast: Flux del Vent + Focus de Convergència a {_nivell}hPa\n{_timestamp_str}", weight='bold', fontsize=16)
-    ani = FuncAnimation(fig, update, frames=100, blit=True, interval=50)
     
-    # --- SOLUCIÓ DEFINITIVA: Guardar a un arxiu temporal i després llegir-lo ---
+    # Creem l'animació amb menys frames i blit=False
+    ani = FuncAnimation(fig, update, frames=40, blit=False, interval=50)
+    
     with tempfile.NamedTemporaryFile(suffix=".gif", delete=False) as tmpfile:
         temp_filename = tmpfile.name
-        # Donem a ani.save() el NOM del fitxer, que és el que necessita
-        ani.save(temp_filename, writer='imagemagick', fps=20, dpi=150)
+        # Guardem el GIF amb menys resolució (DPI)
+        ani.save(temp_filename, writer='pillow', fps=20, dpi=96)
     
-    plt.close(fig) # Tanquem la figura per alliberar memòria
+    plt.close(fig)
     
-    # Llegim les dades del fitxer temporal que acabem de crear
     with open(temp_filename, "rb") as f:
         gif_data = f.read()
     
-    # Esborrem el fitxer temporal del disc
     os.remove(temp_filename)
     
     return gif_data
-    
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(variables, hourly_index):
