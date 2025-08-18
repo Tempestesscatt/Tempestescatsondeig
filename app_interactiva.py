@@ -96,8 +96,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(variables, hourly_index):
     try:
-        # Resolució del mapa ajustada a 18x18 (324 punts) per evitar errors de URL massa llarga
-        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 18), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 18)
+        # TORNEM A LA RESOLUCIÓ ESTABLE DE 12x12 PER GARANTIR EL FUNCIONAMENT
+        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
         params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
         responses = openmeteo.weather_api(API_URL, params=params)
