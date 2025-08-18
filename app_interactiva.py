@@ -114,9 +114,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 
             try:
                 lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); params_calc['LCL_p'] = lcl_p.to('hPa').m
-                
-                # --- LÍNIES CORREGIDES ---
-                # Deixem que les funcions facin el seu càlcul intern del perfil, que és més robust
                 lfc_p, _ = mpcalc.lfc(p, T, Td, which='most_cape'); params_calc['LFC_p'] = lfc_p.to('hPa').m
                 el_p, _ = mpcalc.el(p, T, Td); params_calc['EL_p'] = el_p.to('hPa').m
             except Exception:
@@ -538,11 +535,13 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                 - **LFC, EL:** Nivells clau del sondeig que indiquen la base del núvol (LCL), on comença l'ascens lliure (LFC) i el cim de la tempesta (EL).
                 """)
             st.divider()
-            col1, col2 = st.columns([1.5, 1])
-            with col1:
+            
+            # --- DISPOSICIÓ MODIFICADA ---
+            col_graf_1, col_graf_2 = st.columns([1.8, 1])
+            with col_graf_1:
                 p, T, Td, u, v, _ = sounding_data
                 st.pyplot(crear_skewt(p, T, Td, u, v, f"Sondeig Vertical - {poble_sel}", params))
-            with col2:
+            with col_graf_2:
                 _, _, _, u, v, _ = sounding_data
                 st.pyplot(crear_hodograf(u, v, params))
                 st.pyplot(crear_grafic_perfil_tempesta(sounding_data, params))
