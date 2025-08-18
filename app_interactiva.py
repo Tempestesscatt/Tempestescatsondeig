@@ -164,39 +164,48 @@ def preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel):
     dades_ia['mapa_resum'] = resum_mapa
     return dades_ia, None
 
-@st.cache_data(ttl=3600)
+# IMPORTANT: Assegura't d'ELIMINAR la línia "@st.cache_data(ttl=3600)" de sobre d'aquesta funció.
 def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str):
-    """Genera un resum directe i identifica poblacions afectades."""
-    if not GEMINI_CONFIGURAT: return "Error: La clau API de Google no està configurada."
+    """
+    Genera un resum meteorològic detallat.
+    Aquesta funció JA NO FA SERVIR CACHE per garantir que sempre s'actualitzi amb l'hora seleccionada.
+    """
+    if not GEMINI_CONFIGURAT:
+        return "Error: La clau API de Google no està configurada."
         
     model = genai.GenerativeModel('gemini-1.5-flash')
     
     mapa = _dades_ia.get('mapa_resum', {})
     sondeig = _dades_ia.get('sondeig', {})
 
+    # NOU PROMPT MOLT MÉS AVANÇAT
     prompt = f"""
-    Ets un assistent de meteorologia directe i concís. La teva única tasca és analitzar les dades del model AROME per a Catalunya i generar un avís curt i clar.
+    Ets un meteoròleg expert especialitzat en temps sever a Catalunya. La teva missió és analitzar les dades del model AROME i redactar un butlletí de risc clar, detallat i útil per a un usuari interessat en la meteorologia.
 
-    **DADES:**
-    - Hora de l'anàlisi: {_timestamp_str}
-    - CAPE màxim (energia): {int(mapa.get('max_cape_catalunya', 0))} J/kg
-    - Convergència màxima a 925hPa ("chispa"): {mapa.get('max_conv_925hpa', 0):.2f} (x10⁻⁵ s⁻¹)
-    - Latitud del focus de convergència: {mapa.get('lat_max_conv', 0):.2f}
-    - Longitud del focus de convergència: {mapa.get('lon_max_conv', 0):.2f}
-    - Cisallament 0-6km (organització): {int(sondeig.get('Shear_0-6km', 0))} m/s
-    - SRH 0-3km (rotació): {int(sondeig.get('SRH_0-3km', 0))} m²/s²
+    **DADES METEOROLÒGIQUES PER A L'ANÀLISI:**
+    - **Data i Hora de l'Anàlisi:** {_timestamp_str}
+    - **Poble d'interès principal:** {_poble_sel}
+    - **Paràmetres Generals a Catalunya:**
+        - CAPE Màxim (Energia): {int(mapa.get('max_cape_catalunya', 0))} J/kg
+        - Focus de Convergència a 925hPa (Disparador): {mapa.get('max_conv_925hpa', 0):.2f} (x10⁻⁵ s⁻¹), localitzat a lat {mapa.get('lat_max_conv', 0):.2f}, lon {mapa.get('lon_max_conv', 0):.2f}
+    - **Paràmetres Específics del Sondeig (verticals, prop de {_poble_sel}):**
+        - Cisallament 0-6km (Organització de tempestes): {int(sondeig.get('Shear_0-6km', 0))} m/s
+        - SRH 0-3km (Potencial de rotació/tornados): {int(sondeig.get('SRH_0-3km', 0))} m²/s²
 
-    **INSTRUCCIONS (MOLT IMPORTANT):**
-    Vés directament al gra. Prohibides les frases llargues o explicacions tècniques complexes.
+    **INSTRUCCIONS PER A LA REDACCIÓ DEL BUTLLETÍ:**
+    Redacta l'informe seguint estrictament aquesta estructura i utilitzant Markdown. Utilitza un llenguatge entenedor però amb rigor tècnic.
 
-    1.  **Resumeix el Risc:** Comença amb una única frase que defineixi el nivell de risc (Baix, Moderat, Alt, Molt Alt) de tempestes.
-    2.  **Anomena les Poblacions Clau:** La teva tasca més important. Utilitzant el teu coneixement geogràfic de Catalunya, identifica 3-5 ciutats o pobles importants a prop de les coordenades del "focus de convergència" que t'he proporcionat. Aquestes són les zones de màxima probabilitat de tempestes.
-    3.  **Justificació Breu:** Explica en una frase per què hi ha risc, connectant la "chispa" (convergència) amb el "combustible" (CAPE).
+    1.  **Títol:** Comença amb un títol clar en negreta que resumeixi el risc. (Ex: "**Risc Alt de Tempestes Organitzades al Prepirineu**").
+    2.  **Resum General per a Catalunya:** En un paràgraf, descriu la situació general. On es troba el "combustible" (CAPE)? On és el "disparador" principal (convergència)?
+    3.  **Focus Específic (Zona de {_poble_sel}):** Analitza la situació més local. El poble seleccionat està a prop de la zona de màxim risc? Què pot esperar la gent d'aquesta àrea concreta?
+    4.  **Factors Clau i Justificació Tècnica:** Explica el "perquè" del pronòstic en 2-3 punts.
+        - Comenta la quantitat de CAPE: És baixa, moderada, alta?
+        - Avalua el cisallament (Shear): És suficient per a tempestes desorganitzades, multicèl·lules o supercèl·lules (>18-20 m/s)?
+        - Interpreta l'SRH: Indica potencial de rotació significatiu (>150 m²/s²)?
+    5.  **Fenòmens Més Probables:** Fes una llista dels possibles fenòmens adversos (calamarsa/pedra, ratxes fortes de vent, pluja intensa, tornados).
+    6.  **Recomanacions:** Proporciona un o dos consells pràctics (p. ex., "Vigilar zones inundables", "Assegurar objectes a l'exterior").
 
-    **FORMAT DE SORTIDA OBLIGATORI (utilitza Markdown):**
-    **Resum del Risc:** [La teva frase de resum aquí]
-    **Poblacions Potencialment Afectades:** [Llista de 3-5 poblacions separades per comes]
-    **Justificació Tècnica (Molt Breu):** [La teva única frase d'explicació aquí]
+    Sigues professional, clar i evita el llenguatge alarmista si no està justificat per dades extremes.
     """
     
     try:
@@ -204,8 +213,6 @@ def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str):
         return response.text
     except Exception as e:
         return f"S'ha produït un error en contactar amb l'assistent d'IA: {e}"
-
-# --- 2. FUNCIONS DE VISUALITZACIÓ (GRÀFICS I MAPES) ---
 
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
