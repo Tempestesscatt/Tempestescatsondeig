@@ -46,6 +46,7 @@ PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 2
 
 # --- 1. FUNCIONS D'OBTENCIÓ I PROCESSAMENT DE DADES ---
 # SUBSTITUEIX LA TEVA VERSIÓ D'AQUESTA FUNCIÓ PER AQUESTA
+# SUBSTITUEIX LA TEVA FUNCIÓ ANTIGA PER AQUESTA VERSIÓ FINAL
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
@@ -66,13 +67,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
 
-        # Iniciem els perfils amb les dades de superfície
-        p_profile = [sfc_data["surface_pressure"]]
-        T_profile = [sfc_data["temperature_2m"]]
-        Td_profile = [sfc_data["dew_point_2m"]]
-        u_profile = [sfc_u.to('m/s').m]
-        v_profile = [sfc_v.to('m/s').m]
-        # Important: l'altura geopotencial a la superfície és pràcticament 0.
+        p_profile, T_profile, Td_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]]
+        u_profile, v_profile = [sfc_u.to('m/s').m], [sfc_v.to('m/s').m]
         h_profile = [0.0] 
         
         for i, p_val in enumerate(PRESS_LEVELS):
@@ -83,19 +79,23 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                 u, v = mpcalc.wind_components(p_data["WS"][i] * units('km/h'), p_data["WD"][i] * units.degrees)
                 u_profile.append(u.to('m/s').m)
                 v_profile.append(v.to('m/s').m)
-                # Afegim l'altura geopotencial de cada nivell
                 h_profile.append(p_data["H"][i])
                 
         if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
         
-        p = np.array(p_profile) * units.hPa
-        T = np.array(T_profile) * units.degC
-        Td = np.array(Td_profile) * units.degC
-        u = np.array(u_profile) * units('m/s')
-        v = np.array(v_profile) * units('m/s')
-        # CORRECCIÓ: Creem el vector d'altures amb les dades reals de l'API
-        heights = np.array(h_profile) * units.meter
+        # Combinem i ordenem les dades per pressió descendent (altitud creixent)
+        combined_data = sorted(zip(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile), key=lambda x: x[0], reverse=True)
+        p_sorted, T_sorted, Td_sorted, u_sorted, v_sorted, h_sorted = [np.array(col) for col in zip(*combined_data)]
         
+        # Creem els arrays amb unitats
+        p = p_sorted * units.hPa
+        T = T_sorted * units.degC
+        Td = Td_sorted * units.degC
+        u = u_sorted * units('m/s')
+        v = v_sorted * units('m/s')
+        heights = h_sorted * units.meter
+        
+        # Ara els càlculs es fan amb les dades ordenades
         prof = mpcalc.parcel_profile(p, T[0], Td[0])
         params_calc = {}
         cape, cin = mpcalc.cape_cin(p, T, Td, prof)
@@ -107,23 +107,35 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             params_calc['LFC_hPa'] = p_lfc.m if not np.isnan(p_lfc.m) else np.nan
         except Exception: params_calc['LFC_hPa'] = np.nan
         
-        # CORRECCIÓ: Calculem el cisallament utilitzant el vector d'altures correcte
+        # NOU MÈTODE DE CÀLCUL DE CISALLAMENT (MÉS ROBUST)
+        params_calc['Shear 0-1km'] = np.nan
+        params_calc['Shear 0-6km'] = np.nan
+        
         try:
-            # Calculem el shear utilitzant la profunditat des de la superfície
-            shear_0_1km_u, shear_0_1km_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=1000 * units.m)
-            shear_0_1km_total = mpcalc.wind_speed(shear_0_1km_u, shear_0_1km_v)
-            params_calc['Shear 0-1km'] = shear_0_1km_total.to('knots').m
-        except ValueError:
-            params_calc['Shear 0-1km'] = np.nan
-            
-        try:
-            shear_0_6km_u, shear_0_6km_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=6000 * units.m)
-            shear_0_6km_total = mpcalc.wind_speed(shear_0_6km_u, shear_0_6km_v)
-            params_calc['Shear 0-6km'] = shear_0_6km_total.to('knots').m
-        except ValueError:
-            params_calc['Shear 0-6km'] = np.nan
+            # Seleccionem la capa de 0 a 1 km sobre el terra
+            layer_1km = mpcalc.get_layer_agl(p, heights, depth=1000 * units.m)
+            shear_1km_u, shear_1km_v = mpcalc.wind_shear(p[layer_1km], u[layer_1km], v[layer_1km])
+            params_calc['Shear 0-1km'] = mpcalc.wind_speed(shear_1km_u, shear_1km_v).to('knots').m
+        except (ValueError, IndexError):
+            # Aquest error pot passar si el sondeig és massa curt
+            pass
 
-        return ((p, T, Td, u, v), params_calc), None
+        try:
+            # Seleccionem la capa de 0 a 6 km sobre el terra
+            layer_6km = mpcalc.get_layer_agl(p, heights, depth=6000 * units.m)
+            shear_6km_u, shear_6km_v = mpcalc.wind_shear(p[layer_6km], u[layer_6km], v[layer_6km])
+            params_calc['Shear 0-6km'] = mpcalc.wind_speed(shear_6km_u, shear_6km_v).to('knots').m
+        except (ValueError, IndexError):
+            pass
+            
+        # Retornem les dades originals (sense ordenar) per als gràfics Skew-T, que ho gestionen internament
+        p_orig = np.array(p_profile) * units.hPa
+        T_orig = np.array(T_profile) * units.degC
+        Td_orig = np.array(Td_profile) * units.degC
+        u_orig = np.array(u_profile) * units('m/s')
+        v_orig = np.array(v_profile) * units('m/s')
+        
+        return ((p_orig, T_orig, Td_orig, u_orig, v_orig), params_calc), None
         
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
         
