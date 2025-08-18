@@ -50,7 +50,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         response = openmeteo.weather_api(API_URL, params=params)[0]
         hourly = response.Hourly()
         
-        # CÀLCUL PRECÍS DE L'HORA UTC DE LES DADES
         start_time_utc = datetime.fromtimestamp(hourly.Time(), tz=pytz.utc)
         target_time_utc = start_time_utc + timedelta(hours=hourly_index)
         utc_time_str = target_time_utc.strftime('%H:%Mh UTC')
@@ -267,13 +266,13 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
     with st.spinner("Actualitzant anàlisi de mapes..."):
         col_map_1, col_map_2 = st.columns([2.5, 1.5])
         with col_map_1:
-            map_options = {"CAPE (Energia Convectiva)": "cape", "Flux i Convergència": "conv", "Anàlisi a 500hPa": "500hpa", "Vent a 300hPa": "wind_300", "Vent a 700hPa": "wind_700", "Humitat a 700hPa": "rh_700"}
+            map_options = {"MUCAPE (Energia Màxima)": "mucape", "Flux i Convergència": "conv", "Anàlisi a 500hPa": "500hpa", "Vent a 300hPa": "wind_300", "Vent a 700hPa": "wind_700", "Humitat a 700hPa": "rh_700"}
             mapa_sel = st.selectbox("Selecciona la capa del mapa:", list(map_options.keys()))
             map_key = map_options[mapa_sel]
             
             variables_necessaries = []
-            if map_key == "cape":
-                variables_necessaries = ["cape"]
+            if map_key == "mucape":
+                variables_necessaries = ["mucape"]
             elif map_key == "conv":
                 nivell_sel = st.selectbox("Nivell d'anàlisi:", options=[1000, 950, 925, 850], format_func=lambda x: f"{x} hPa")
                 variables_necessaries = [f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
@@ -288,12 +287,12 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             map_data, error_map = carregar_dades_mapa(variables_necessaries, hourly_index_sel)
 
             if map_data:
-                if map_key == "cape":
-                    max_cape = np.max(map_data['cape']) if map_data['cape'] else 0
-                    if max_cape <= 500: cape_levels = np.arange(50, 501, 50)
-                    elif max_cape <= 1500: cape_levels = np.arange(100, 1501, 100)
-                    else: cape_levels = np.arange(250, np.ceil(max_cape / 500) * 500 + 1, 250)
-                    st.pyplot(crear_mapa_escalar(map_data['lons'], map_data['lats'], map_data['cape'], "CAPE", "plasma", cape_levels, "J/kg", timestamp_str))
+                if map_key == "mucape":
+                    max_mucape = np.max(map_data['mucape']) if map_data['mucape'] else 0
+                    if max_mucape <= 500: cape_levels = np.arange(50, 501, 50)
+                    elif max_mucape <= 1500: cape_levels = np.arange(100, 1501, 100)
+                    else: cape_levels = np.arange(250, np.ceil(max_mucape / 500) * 500 + 1, 250)
+                    st.pyplot(crear_mapa_escalar(map_data['lons'], map_data['lats'], map_data['mucape'], "MUCAPE", "plasma", cape_levels, "J/kg", timestamp_str))
                 elif map_key == "conv":
                     st.pyplot(crear_mapa_convergencia(map_data['lons'], map_data['lats'], map_data[variables_necessaries[0]], map_data[variables_necessaries[1]], nivell_sel, lat_sel, lon_sel, poble_sel, timestamp_str))
                 elif map_key == "500hpa":
