@@ -299,7 +299,6 @@ def crear_mapa_convergencia_animado(lons, lats, speed_data, dir_data, nivell, la
     """
     Genera un GIF animat del mapa de convergència de forma robusta i eficient.
     """
-    # Aquest és el nivell 1 d'indentació (dins de la funció principal)
     fig, ax = crear_mapa_base()
 
     # --- CÀLCULS DE DADES ---
@@ -331,9 +330,7 @@ def crear_mapa_convergencia_animado(lons, lats, speed_data, dir_data, nivell, la
 
     artists_animats = []
 
-    # La funció 'update' està definida dins de la funció principal
     def update(frame):
-        # Aquest és el nivell 2 d'indentació (dins de la funció 'update')
         nonlocal artists_animats
 
         for artist in artists_animats:
@@ -351,13 +348,14 @@ def crear_mapa_convergencia_animado(lons, lats, speed_data, dir_data, nivell, la
 
         return artists_animats
 
-    # --- AQUEST BLOC HA D'ESTAR AL NIVELL 1, IGUAL QUE LA DEFINICIÓ 'def update' ---
-    # La definició de la funció 'update' ha acabat, tornem al nivell anterior.
     ani = FuncAnimation(fig, update, frames=range(20), interval=100, blit=False)
 
     gif_buffer = io.BytesIO()
     writer = PillowWriter(fps=10)
-    ani.save(gif_buffer, writer=writer, format='gif')
+    
+    # --- LÍNIA CORREGIDA ---
+    # Hem eliminat l'argument 'format' que causava l'error.
+    ani.save(gif_buffer, writer=writer)
 
     plt.close(fig)
     return gif_buffer.getvalue()
