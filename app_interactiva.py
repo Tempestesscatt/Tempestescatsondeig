@@ -168,23 +168,50 @@ def crear_mapa_base():
 def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
+    
+    # Interpolar dades a una graella regular
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), method='cubic')
     speeds_ms = np.array(speed_data) * units('km/h'); dirs_deg = np.array(dir_data) * units.degrees
     u_comp, v_comp = mpcalc.wind_components(speeds_ms, dirs_deg)
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
+    
+    # Càlcul de la convergència
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
-    dewpoint_levels = np.arange(10, 16, 1)
-    cmap_dewpoint = plt.get_cmap('BuPu')
-    norm_dewpoint = BoundaryNorm(dewpoint_levels, ncolors=cmap_dewpoint.N, clip=True)
-    cf = ax.contourf(grid_lon, grid_lat, grid_dewpoint, levels=dewpoint_levels, cmap=cmap_dewpoint, norm=norm_dewpoint, alpha=0.75, zorder=2, extend='both')
-    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_dewpoint, cmap=cmap_dewpoint), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
+    
+    # --- CANVI #1: Nova escala de colors per al punt de rosada ---
+    # Definim els colors basats en la imatge de referència
+    colors_meteo = [
+        '#00008b', '#0000cd', '#0000ff', '#1e90ff', '#00bfff', '#87ceeb', 
+        '#afeeee', '#adff2f', '#ffff00', '#ffd700', '#ffa500', '#ff8c00', 
+        '#ff4500', '#ff0000', '#dc143c', '#b22222', '#8b0000'
+    ]
+    # Definim els nivells corresponents a l'escala
+    dewpoint_levels = np.arange(-4, 31, 2)
+    custom_cmap = ListedColormap(colors_meteo)
+    norm_dewpoint = BoundaryNorm(dewpoint_levels, ncolors=custom_cmap.N, clip=True)
+    
+    # Dibuixar el punt de rosada amb la nova escala
+    cf = ax.contourf(grid_lon, grid_lat, grid_dewpoint, levels=dewpoint_levels, cmap=custom_cmap, norm=norm_dewpoint, alpha=0.8, zorder=2, extend='both')
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_dewpoint, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label("Punt de Rosada en Superfície (°C)")
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=1.5, arrowsize=0.7, zorder=4)
+    
+    # --- CANVI #2 i #3: Més densitat de línies i fletxes més petites ---
+    ax.streamplot(
+        grid_lon, grid_lat, grid_u, grid_v, 
+        color='black', 
+        linewidth=0.6,      # Una mica més primes per compensar la densitat
+        density=2.5,        # Augmentem la densitat (valor anterior: 1.5)
+        arrowsize=0.6,      # Reduïm la mida de la fletxa (valor anterior: 0.7)
+        zorder=4
+    )
+
+    # Línies de convergència forta (es mantenen igual)
     convergence_levels = [-60, -50, -40, -30]
     cs_conv = ax.contour(grid_lon, grid_lat, divergence.magnitude, levels=convergence_levels, colors='red', linewidths=1.5, linestyles='solid', zorder=6)
     ax.clabel(cs_conv, inline=True, fontsize=10, fmt='%1.0f', colors='red')
+
     ax.set_title(f"Forecast: P. Rosada + Línies de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
