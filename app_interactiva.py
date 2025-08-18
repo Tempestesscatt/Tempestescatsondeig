@@ -180,7 +180,7 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
     
-    # 1. CANVI: Nivells i mapa de colors pel punt de rosada (10-15°C)
+    # --- CANVI CLAU #1: Nivells i mapa de colors pel punt de rosada (10-15°C) ---
     dewpoint_levels = np.arange(10, 16, 1) # Valors de 10 a 15
     cmap_dewpoint = plt.get_cmap('BuPu') # Mapa de colors per a la humitat
     norm_dewpoint = BoundaryNorm(dewpoint_levels, ncolors=cmap_dewpoint.N, clip=True)
@@ -193,12 +193,12 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     # Dibuixar línies de vent (streamplot)
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=1.5, arrowsize=0.7, zorder=4)
 
-    # 2. CANVI: Afegir isòbares de convergència forta (a partir de -30)
+    # --- CANVI CLAU #2: Afegir isòbares de convergència forta (a partir de -30) ---
     convergence_levels = [-60, -50, -40, -30] # Nivells per a la convergència forta
     cs_conv = ax.contour(grid_lon, grid_lat, divergence.magnitude, levels=convergence_levels, colors='red', linewidths=1.5, linestyles='solid', zorder=6)
     ax.clabel(cs_conv, inline=True, fontsize=10, fmt='%1.0f', colors='red')
 
-    ax.set_title(f"Forecast: P. Rosada + Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    ax.set_title(f"Forecast: P. Rosada + Línies de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
 def crear_mapa_500hpa(map_data, timestamp_str):
@@ -265,17 +265,22 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
     with st.spinner("Actualitzant anàlisi de mapes..."):
         col_map_1, col_map_2 = st.columns([2.5, 1.5])
         with col_map_1:
-            # CANVI: S'ha reemplaçat "CAPE" per "Punt de Rosada"
-            map_options = {"Forecast: P. Rosada + Convergència": "forecast_combinat", "Punt de Rosada (Superfície)": "dew_point", "Anàlisi a 500hPa": "500hpa", "Humitat a 700hPa": "rh_700"}
+            # --- CANVI CLAU #3: S'ha reemplaçat "CAPE" per "Punt de Rosada" ---
+            map_options = {
+                "Forecast: P. Rosada + Convergència": "forecast_combinat", 
+                "Punt de Rosada (Superfície)": "dew_point", 
+                "Anàlisi a 500hPa": "500hpa", 
+                "Humitat a 700hPa": "rh_700"
+            }
             mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
             map_key, error_map = map_options[mapa_sel], None
+
             if map_key == "forecast_combinat":
                 nivell_sel = st.selectbox("Nivell d'anàlisi de convergència:", options=[1000, 950, 925, 850, 700, 600, 500], format_func=lambda x: f"{x} hPa")
                 variables = ["dew_point_2m", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
                 map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
                 if map_data: st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], map_data['dew_point_2m'], map_data[variables[1]], map_data[variables[2]], nivell_sel, timestamp_str))
             
-            # CANVI: Lògica per dibuixar el mapa de punt de rosada en lloc del de CAPE
             elif map_key == "dew_point":
                 map_data, error_map = carregar_dades_mapa(["dew_point_2m"], hourly_index_sel)
                 if map_data: st.pyplot(crear_mapa_escalar(map_data['lons'], map_data['lats'], map_data['dew_point_2m'], "Punt de Rosada", "BuPu", np.arange(8, 21, 1), "°C", timestamp_str, extend='both'))
@@ -284,10 +289,13 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                 variables = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
                 map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
                 if map_data: st.pyplot(crear_mapa_500hpa(map_data, timestamp_str))
+
             elif map_key == "rh_700":
                 map_data, error_map = carregar_dades_mapa(["relative_humidity_700hPa"], hourly_index_sel)
                 if map_data: st.pyplot(crear_mapa_escalar(map_data['lons'], map_data['lats'], map_data['relative_humidity_700hPa'], "Humitat Relativa a 700hPa", "Greens", np.arange(50, 101, 5), "%", timestamp_str))
+            
             if error_map: st.error(f"Error en carregar el mapa: {error_map}")
+
         with col_map_2:
             st.subheader("Imatges en Temps Real"); view_choice = st.radio("Selecciona la vista:", ("Satèl·lit", "Radar"), horizontal=True, label_visibility="collapsed")
             mostrar_imatge_temps_real(view_choice)
