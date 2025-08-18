@@ -261,7 +261,7 @@ def crear_mapa_vents_velocitat(lons, lats, speed_data, dir_data, nivell, timesta
     cbar.set_label("Velocitat del Vent (km/h)")
     ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
-
+ 
 def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, lat_sel, lon_sel, nom_poble_sel, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
@@ -275,22 +275,21 @@ def crear_mapa_convergencia(lons, lats, speed_data, dir_data, nivell, lat_sel, l
     
     levels = np.arange(-200, 201, 20)
     
-    # --- MODIFICACIONES PARA MAYOR IMPACTO VISUAL ---
-    
-    # 1. Alpha aumentado para colores más sólidos y cambio de cmap para mayor contraste.
-    cf = ax.contourf(grid_lon, grid_lat, divergence, levels=levels, cmap='RdBu_r', alpha=0.85, zorder=2, extend='both') # <-- MODIFICADO
+    # --- MODIFICACIONS CLAU PER A MÀXIMA VISIBILITAT ---
+
+    # 1. ALPHA AL MÀXIM: Augmentem l'alpha a 0.9. Això fa que els colors siguin molt més sòlids i intensos.
+    #    El cmap 'coolwarm_r' s'assegura que el vermell sigui convergència (negatiu) i el blau divergència (positiu).
+    cf = ax.contourf(grid_lon, grid_lat, divergence, levels=levels, cmap='coolwarm_r', alpha=0.9, zorder=2, extend='both')
     
     cbar = fig.colorbar(cf, ax=ax, orientation='vertical', shrink=0.7); cbar.set_label('Convergència (vermell) / Divergència (blau) [x10⁻⁵ s⁻¹]')
     
-    # 2. Contornos más visibles para delimitar mejor las zonas.
-    cs_conv = ax.contour(grid_lon, grid_lat, divergence, levels=levels, colors='black', linewidths=0.8, alpha=0.5, zorder=3) # <-- MODIFICADO
-    
+    cs_conv = ax.contour(grid_lon, grid_lat, divergence, levels=levels, colors='black', linewidths=0.7, alpha=0.4, zorder=3)
     ax.clabel(cs_conv, inline=True, fontsize=8, fmt='%1.0f')
     
-    # 3. Líneas de flujo en gris para no interferir con los colores principales.
-    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='grey', linewidth=0.7, density=4.0, arrowsize=0.7, zorder=4) # <-- MODIFICADO
-    
-    # --- FIN DE LAS MODIFICACIONES ---
+    # 2. LÍNIES DE FLUX RESTAURADES: Les tornem a posar en negre i amb un gruix notable per a que siguin ben visibles.
+    ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', linewidth=0.8, density=3.0, arrowsize=0.8, zorder=4)
+
+    # --- FI DE LES MODIFICACIONS ---
 
     ax.plot(lon_sel, lat_sel, 'o', markerfacecolor='yellow', markeredgecolor='black', markersize=8, transform=ccrs.Geodetic(), zorder=6)
     txt = ax.text(lon_sel + 0.05, lat_sel, nom_poble_sel, transform=ccrs.Geodetic(), zorder=7, fontsize=10, weight='bold')
