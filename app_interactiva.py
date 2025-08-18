@@ -25,7 +25,7 @@ cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
 
-FORECAST_DAYS = 2
+FORECAST_DAYS = 4
 API_URL = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE = pytz.timezone('Europe/Madrid')
 
@@ -50,8 +50,13 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         response = openmeteo.weather_api(API_URL, params=params)[0]
         hourly = response.Hourly()
         
+        # CÀLCUL PRECÍS DE L'HORA UTC DE LES DADES
+        start_time_utc = datetime.fromtimestamp(hourly.Time(), tz=pytz.utc)
+        target_time_utc = start_time_utc + timedelta(hours=hourly_index)
+        utc_time_str = target_time_utc.strftime('%H:%Mh UTC')
+
         sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i, v in enumerate(h_base)}
-        if any(np.isnan(val) for val in sfc_data.values()): return None, "Dades de superfície invàlides."
+        if any(np.isnan(val) for val in sfc_data.values()): return None, "Dades de superfície invàlides.", None
 
         p_data = {}
         var_count = len(h_base)
@@ -72,7 +77,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                 v_profile.append(v.to('m/s').m)
                 h_profile.append(p_data["H"][i])
         
-        if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
+        if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt.", None
 
         p = np.array(p_profile) * units.hPa; T = np.array(T_profile) * units.degC; Td = np.array(Td_profile) * units.degC
         u = np.array(u_profile) * units('m/s'); v = np.array(v_profile) * units('m/s'); h = np.array(h_profile) * units.meter
@@ -89,9 +94,9 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         _, srh, _ = mpcalc.storm_relative_helicity(h, u, v, depth=3 * units.km)
         params_calc['SRH_0-3km'] = np.sum(srh).to('m^2/s^2').m
 
-        return ((p, T, Td, u, v, h), params_calc), None
+        return ((p, T, Td, u, v, h), params_calc), None, utc_time_str
     except Exception as e:
-        return None, f"Error en processar dades del sondeig: {e}"
+        return None, f"Error en processar dades del sondeig: {e}", None
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(variables, hourly_index):
@@ -244,7 +249,6 @@ def mostrar_imatge_temps_real(tipus):
 
 def ui_capcalera_selectors():
     st.title("🌦️ Terminal Meteorològic de Catalunya")
-    st.caption("Dades del model AROME, anàlisi de mapes i paràmetres de temps sever.")
     
     with st.container(border=True):
         col1, col2, col3 = st.columns(3)
@@ -256,7 +260,10 @@ def ui_capcalera_selectors():
             hora = st.selectbox("Hora:", [f"{h:02d}:00h" for h in range(24)])
     return poble, dia, hora
 
-def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
+def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str, utc_time_str):
+    if utc_time_str:
+        st.info(f"**Previsió per a:** {timestamp_str} (Hora Local) / **Correspon a:** {utc_time_str}", icon="🕒")
+    
     with st.spinner("Actualitzant anàlisi de mapes..."):
         col_map_1, col_map_2 = st.columns([2.5, 1.5])
         with col_map_1:
@@ -264,7 +271,6 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             mapa_sel = st.selectbox("Selecciona la capa del mapa:", list(map_options.keys()))
             map_key = map_options[mapa_sel]
             
-            # Unifiquem la càrrega de dades aquí per evitar repeticions
             variables_necessaries = []
             if map_key == "cape":
                 variables_necessaries = ["cape"]
@@ -305,10 +311,13 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             view_choice = st.radio("Selecciona la vista:", ("Satèl·lit", "Radar"), horizontal=True, label_visibility="collapsed")
             mostrar_imatge_temps_real(view_choice)
 
-def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
+def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel, utc_time_str):
+    if utc_time_str:
+        st.info(f"**Previsió per a:** {dia_sel} a les {hora_sel} (Hora Local) / **Correspon a:** {utc_time_str}", icon="🕒")
+    
     if data_tuple:
         sounding_data, params_calculats = data_tuple
-        st.subheader(f"Anàlisi Vertical per a {poble_sel} | {dia_sel} {hora_sel}")
+        st.subheader(f"Anàlisi Vertical per a {poble_sel}")
         cols = st.columns(4)
         for i, (param, unit) in enumerate({'CAPE': 'J/kg', 'CIN': 'J/kg', 'Shear_0-6km': 'm/s', 'SRH_0-3km': 'm²/s²'}.items()):
             val = params_calculats.get(param)
@@ -353,7 +362,7 @@ def main():
 
     timestamp_str = f"{dia_sel} a les {hora_sel}"
     
-    data_tuple, error_msg = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
+    data_tuple, error_msg, utc_time_str = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
     if error_msg: 
         st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
 
@@ -362,9 +371,9 @@ def main():
     )
     
     with tab_mapes:
-        ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
+        ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str, utc_time_str)
     with tab_vertical:
-        ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
+        ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel, utc_time_str)
     
     ui_peu_de_pagina()
 
