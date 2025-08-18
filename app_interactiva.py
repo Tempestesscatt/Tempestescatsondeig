@@ -67,7 +67,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         var_count = len(h_base)
         for i, var in enumerate(["T", "RH", "WS", "WD", "H"]):
             p_data[var] = [hourly.Variables(var_count + i * len(PRESS_LEVELS) + j).ValuesAsNumpy()[hourly_index] for j in range(len(PRESS_LEVELS))]
-        sfc_h = mpcalc.pressure_to_height_std(sfc_data["surface_pressure"] * units.hPa).to('meter').m
         p_profile, T_profile, Td_profile, u_profile, v_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [0.0], [0.0]
         for i, p_val in enumerate(PRESS_LEVELS):
             if p_val < sfc_data["surface_pressure"] and all(not np.isnan(p_data[v][i]) for v in ["T", "RH", "WS", "WD"]):
@@ -110,33 +109,32 @@ def carregar_dades_mapa(variables, hourly_index):
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
 
 def crear_mapa_base():
-    fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
+    fig, ax = plt.subplots(figsize=(10, 10), dpi=150, subplot_kw={'projection': ccrs.PlateCarree()}) # DPI reduït a 150
     ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0); ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5); return fig, ax
 
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
-    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
-    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
-    grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), method='cubic')
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 150), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 150)) # Resolució de graella reduïda
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='linear') # Mètode linear, més ràpid
+    grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), method='linear')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
-    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
-    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='linear')
+    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='linear')
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
     if nivell >= 950: CONVERGENCE_THRESHOLD = -45; DEWPOINT_THRESHOLD_FOR_RISK = 14
     elif nivell >= 925: CONVERGENCE_THRESHOLD = -35; DEWPOINT_THRESHOLD_FOR_RISK = 12
     elif nivell >= 850: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 7
-    elif nivell >= 800: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 5
-    else: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 2
+    else: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 5
     colors_wind_final = ['#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700', '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF', '#FFC0CB', '#D3D3D3', '#A9A9A9']
     speed_levels_final = np.arange(0, 171, 10)
     custom_cmap = ListedColormap(colors_wind_final); norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels_final[::2])
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=5, arrowsize=0.6, zorder=4, transform=ccrs.PlateCarree())
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=3, arrowsize=0.6, zorder=4, transform=ccrs.PlateCarree())
     effective_risk_mask = (divergence.magnitude <= CONVERGENCE_THRESHOLD) & (grid_dewpoint >= DEWPOINT_THRESHOLD_FOR_RISK)
     labels, num_features = label(effective_risk_mask)
     if num_features > 0:
@@ -163,35 +161,39 @@ def obtenir_mapa_animat_cached(nivell, hourly_index, timestamp_str):
             dewpoint_for_calc = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
             speed_data = map_data[f"wind_speed_{nivell}hPa"]; dir_data = map_data[f"wind_direction_{nivell}hPa"]
     if not map_data: return None
-    # Crida a la funció optimitzada
-    gif_data = generar_gif_animat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell, timestamp_str)
+    gif_data = generar_gif_animat_rapid(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell, timestamp_str)
     return gif_data
 
-def generar_gif_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _nivell, _timestamp_str):
+# #############################################################################
+# ############# FUNCIÓ DE GIF ULTRA OPTIMITZADA ###############################
+# #############################################################################
+def generar_gif_animat_rapid(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _nivell, _timestamp_str):
     """
-    Funció 'treballadora' optimitzada: Genera un GIF animat amb línies de flux
-    amb efecte de traçat, bucle perfecte i millor rendiment.
+    Versió optimitzada per a la velocitat. Genera un GIF més curt i amb menys
+    complexitat per a una resposta ràpida a l'aplicació Streamlit.
     """
     fig, ax = crear_mapa_base()
 
-    # --- 1. Preparació de Dades i Interpolació ---
-    grid_lon_vals = np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 150)
-    grid_lat_vals = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 150)
+    # --- 1. Preparació de Dades (Més lleugera) ---
+    grid_lon_vals = np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100) # Graella menys densa
+    grid_lat_vals = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100)
     grid_lon, grid_lat = np.meshgrid(grid_lon_vals, grid_lat_vals)
     points = (_lons, _lats)
-    grid_speed = griddata(points, _speed_data, (grid_lon, grid_lat), method='cubic')
-    grid_dewpoint = griddata(points, _dewpoint_data, (grid_lon, grid_lat), method='cubic')
+    # Usem interpolació 'linear' que és molt més ràpida que 'cubic'
+    grid_speed = griddata(points, _speed_data, (grid_lon, grid_lat), method='linear')
+    grid_dewpoint = griddata(points, _dewpoint_data, (grid_lon, grid_lat), method='linear')
     u_comp, v_comp = mpcalc.wind_components(np.array(_speed_data) * units('km/h'), np.array(_dir_data) * units.degrees)
-    grid_u = griddata(points, u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic', fill_value=0)
-    grid_v = griddata(points, v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic', fill_value=0)
+    grid_u = griddata(points, u_comp.to('m/s').m, (grid_lon, grid_lat), method='linear', fill_value=0)
+    grid_v = griddata(points, v_comp.to('m/s').m, (grid_lon, grid_lat), method='linear', fill_value=0)
 
-    # --- 2. Dibuix del Fons (Mapa de colors i Alertes) ---
+    # --- 2. Dibuix del Fons (Igual que abans) ---
     colors_wind_final = ['#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700', '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF', '#FFC0CB', '#D3D3D3', '#A9A9A9']
     speed_levels_final = np.arange(0, 171, 10)
     custom_cmap = ListedColormap(colors_wind_final); norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree(), alpha=0.8)
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels_final[::2])
     cbar.set_label(f"Velocitat del Vent a {_nivell}hPa (km/h)")
+    # (El codi d'alertes es podria ometre per a més velocitat, però el mantenim de moment)
     if _nivell >= 950: CONVERGENCE_THRESHOLD = -45; DEWPOINT_THRESHOLD_FOR_RISK = 14
     elif _nivell >= 925: CONVERGENCE_THRESHOLD = -35; DEWPOINT_THRESHOLD_FOR_RISK = 12
     elif _nivell >= 850: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 7
@@ -207,13 +209,18 @@ def generar_gif_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _ni
             warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=15, ha='center', va='center', zorder=8, transform=ccrs.PlateCarree())
             warning_txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
-    # --- 3. Configuració de l'Animació ---
-    GIF_DURATION_S = 10; FPS = 25; NUM_FRAMES = GIF_DURATION_S * FPS
-    NUM_PARTICLES = 700; PARTICLE_LIFESPAN = 50; PARTICLE_SPEED_FACTOR = 0.0008
+    # --- 3. Configuració de l'Animació (PARÀMETRES CLAU PER A LA VELOCITAT) ---
+    GIF_DURATION_S = 4      # Durada reduïda
+    FPS = 15                # FPS reduïts
+    NUM_FRAMES = GIF_DURATION_S * FPS  # Total: 60 fotogrames (vs. 250 abans)
+    NUM_PARTICLES = 400     # Menys partícules
+    PARTICLE_LIFESPAN = 30
+    PARTICLE_SPEED_FACTOR = 0.0009
+    
     px = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], NUM_PARTICLES)
     py = np.random.uniform(MAP_EXTENT[2], MAP_EXTENT[3], NUM_PARTICLES)
     particle_age = np.random.randint(0, PARTICLE_LIFESPAN, NUM_PARTICLES)
-    line_collection = LineCollection([], color='black', linewidth=0.9, zorder=4, transform=ccrs.PlateCarree())
+    line_collection = LineCollection([], color='black', linewidth=0.8, zorder=4, transform=ccrs.PlateCarree())
     ax.add_collection(line_collection)
     points_to_interp = (grid_lat_vals, grid_lon_vals)
     def get_velocity_at_points(lon, lat):
@@ -221,18 +228,15 @@ def generar_gif_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _ni
         v = interpn(points_to_interp, grid_v, (lat, lon), method='linear', bounds_error=False, fill_value=0)
         return u, v
 
-    # --- 4. Funció d'Actualització per a cada Fotograma ---
+    # --- 4. Funció d'Actualització ---
     def update(frame_num):
         nonlocal px, py, particle_age
-        progress = frame_num / NUM_FRAMES
-        alpha = np.sin(progress * np.pi) ** 0.8
+        progress = frame_num / NUM_FRAMES; alpha = np.sin(progress * np.pi) ** 0.8
         px_prev, py_prev = px.copy(), py.copy()
         u, v = get_velocity_at_points(px, py)
         px += u * PARTICLE_SPEED_FACTOR; py += v * PARTICLE_SPEED_FACTOR
         particle_age += 1
-        reset_mask = (px < MAP_EXTENT[0]) | (px > MAP_EXTENT[1]) | \
-                     (py < MAP_EXTENT[2]) | (py > MAP_EXTENT[3]) | \
-                     (particle_age > PARTICLE_LIFESPAN)
+        reset_mask = (px < MAP_EXTENT[0]) | (px > MAP_EXTENT[1]) | (py < MAP_EXTENT[2]) | (py > MAP_EXTENT[3]) | (particle_age > PARTICLE_LIFESPAN)
         num_to_reset = np.sum(reset_mask)
         if num_to_reset > 0:
             px[reset_mask] = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], num_to_reset)
@@ -246,23 +250,29 @@ def generar_gif_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _ni
 
     ax.set_title(f"Forecast: Flux del Vent + Focus de Convergència a {_nivell}hPa\n{_timestamp_str}", weight='bold', fontsize=16)
 
-    # --- 5. Creació, desat i retorn de l'Animació ---
+    # --- 5. Creació i desat de l'Animació ---
     ani = FuncAnimation(fig, update, frames=NUM_FRAMES, blit=True, interval=1000/FPS)
     with tempfile.NamedTemporaryFile(suffix=".gif", delete=False) as tmpfile:
         temp_filename = tmpfile.name
-        ani.save(temp_filename, writer='pillow', fps=FPS, dpi=150)
+        # Guardem amb un DPI més baix, crucial per a la velocitat
+        ani.save(temp_filename, writer='pillow', fps=FPS, dpi=96)
     plt.close(fig)
     with open(temp_filename, "rb") as f:
         gif_data = f.read()
     os.remove(temp_filename)
     return gif_data
 
+# #############################################################################
+# ############# FI DE LA FUNCIÓ OPTIMITZADA ###################################
+# #############################################################################
+
+
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
-    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 150), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 150))
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
-    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic'); grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
-    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='linear'); grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='linear')
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='linear')
     colors_wind_final = ['#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700', '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF', '#FFC0CB', '#D3D3D3', '#A9A9A9']
     speed_levels_final = np.arange(0, 171, 10)
     custom_cmap = ListedColormap(colors_wind_final); norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
@@ -336,12 +346,13 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             else: st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada. **Recomanació: Buscar zones d'alerta ⚠️ a 700 hPa.**")
             nivell_sel = st.selectbox("Nivell d'anàlisi:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa")
             if map_key == "forecast_animat":
-                with st.spinner("Generant animació del flux de vent... Aquesta operació pot trigar uns segons la primera vegada."):
+                # Missatge més informatiu a l'spinner
+                with st.spinner("Generant animació... La primera vegada per a una hora/nivell pot trigar uns 10-15 segons. Després serà instantani."):
                     gif_data = obtenir_mapa_animat_cached(nivell=nivell_sel, hourly_index=hourly_index_sel, timestamp_str=timestamp_str)
                     if gif_data: st.image(gif_data)
                     else: st.error("No s'han pogut obtenir les dades per generar l'animació.")
                 ui_explicacio_alertes()
-            else:
+            else: # forecast_estatic
                 with st.spinner("Carregant dades del model..."):
                     if nivell_sel >= 950:
                         variables = ["dew_point_2m", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
@@ -383,12 +394,7 @@ def ui_pestanya_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str)
     st.subheader(f"Assistent d'Anàlisi per IA per a {timestamp_str}")
     if not GEMINI_CONFIGURAT: st.error("Funcionalitat no disponible. La clau API de Google no està configurada correctament."); return
     if st.button("🤖 Generar Anàlisi d'IA", use_container_width=True):
-        # Aquesta funció requeriria la seva pròpia implementació
         st.info("La generació d'anàlisi per IA no està implementada en aquest exemple.")
-        # with st.spinner("L'assistent d'IA està analitzant les dades..."):
-        #     dades_ia, error = preparar_dades_per_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel)
-        #     if error: st.error(f"No s'ha pogut generar l'anàlisi: {error}"); return
-        #     st.markdown(generar_resum_ia(dades_ia, poble_sel, timestamp_str))
 
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades del model AROME via <a href='https://open-meteo.com/'>Open-Meteo</a> | Imatges via <a href='https://www.meteociel.fr/'>Meteociel</a> | Anàlisi IA per Google Gemini.</p>", unsafe_allow_html=True)
