@@ -386,7 +386,6 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                                           options=[1000, 950, 925, 850, 700, 600, 500], 
                                           format_func=lambda x: f"{x} hPa")
                 
-                # S'ha de recollir les dades de vent (per pintar) i les dades d'humitat (per analitzar)
                 if nivell_sel >= 950:
                     variables = ["dew_point_2m", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
                     map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
@@ -395,6 +394,8 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                         speed_data = map_data[f"wind_speed_{nivell_sel}hPa"]
                         dir_data = map_data[f"wind_direction_{nivell_sel}hPa"]
                         st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str))
+                        # --- AFEGEIX AQUESTA LÍNIA ---
+                        ui_explicacio_alertes()
                 
                 else:
                     variables = [f"temperature_{nivell_sel}hPa", f"relative_humidity_{nivell_sel}hPa", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
@@ -406,6 +407,8 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                         speed_data = map_data[f"wind_speed_{nivell_sel}hPa"]
                         dir_data = map_data[f"wind_direction_{nivell_sel}hPa"]
                         st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str))
+                        # --- I AFEGEIX-LA TAMBÉ AQUÍ ---
+                        ui_explicacio_alertes()
 
             elif map_key == "500hpa":
                 variables = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
@@ -420,7 +423,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
 
             elif map_key == "vent_300":
                 nivell = 300
-                variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+                variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell_sel}hPa"]
                 map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
                 if map_data: st.pyplot(crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str))
 
@@ -433,6 +436,33 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
         with col_map_2:
             st.subheader("Imatges en Temps Real"); view_choice = st.radio("Selecciona la vista:", ("Satèl·lit", "Radar"), horizontal=True, label_visibility="collapsed")
             mostrar_imatge_temps_real(view_choice)
+
+def ui_explicacio_alertes():
+    """
+    Crea un desplegable informatiu que explica el significat de les alertes de risc.
+    """
+    with st.expander("📖 Què signifiquen les alertes ⚠️ que veig al mapa?"):
+        st.markdown("""
+        Cada símbol d'alerta **⚠️** assenyala un **focus de risc convectiu**. No és una predicció de tempesta garantida, sinó la detecció d'una zona on es compleix la **"recepta perfecta"** per iniciar-ne una.
+
+        El nostre sistema analitza les dades del model i només marca les àrees on es donen **dues condicions clau simultàniament**:
+        """)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("""
+            #### **1. El Disparador: Convergència ↗️**
+            L'aire a nivells baixos està sent forçat a ascendir amb molta intensitat. És el mecanisme que "dispara" el moviment vertical necessari per crear un núvol de tempesta (cumulonimbus).
+            """)
+
+        with col2:
+            st.markdown("""
+            #### **2. El Combustible: Humitat 💧**
+            Aquest aire que puja no és sec; està carregat de vapor d'aigua (punt de rosada elevat). Aquesta humitat és el "combustible" que, en condensar-se, allibera energia i permet que el núvol creixi verticalment.
+            """)
+        
+        st.info("**En resum:** Una ⚠️ indica una zona on un potent **disparador** està actuant sobre una massa d'aire amb abundant **combustible**. Per tant, són els punts als quals cal prestar més atenció.", icon="🎯")
             
 
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
