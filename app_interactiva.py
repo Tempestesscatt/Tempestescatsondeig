@@ -193,7 +193,7 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     norm_dewpoint = BoundaryNorm(dewpoint_levels, ncolors=custom_cmap.N, clip=True)
     
     # Dibuixar el punt de rosada amb la nova escala
-    cf = ax.contourf(grid_lon, grid_lat, grid_dewpoint, levels=dewpoint_levels, cmap=custom_cmap, norm=norm_dewpoint, alpha=0.8, zorder=2, extend='both')
+    cf = ax.contourf(grid_lon, grid_lat, grid_dewpoint, levels=dewpoint_levels, cmap=custom_cmap, norm=norm_dewpoint, alpha=0.6, zorder=2, extend='both')
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_dewpoint, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label("Punt de Rosada en Superfície (°C)")
     
@@ -201,9 +201,9 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     ax.streamplot(
         grid_lon, grid_lat, grid_u, grid_v, 
         color='black', 
-        linewidth=0.6,      # Una mica més primes per compensar la densitat
-        density=2.5,        # Augmentem la densitat (valor anterior: 1.5)
-        arrowsize=0.6,      # Reduïm la mida de la fletxa (valor anterior: 0.7)
+        linewidth=0.3,      # Una mica més primes per compensar la densitat
+        density=5.9,        # Augmentem la densitat (valor anterior: 1.5)
+        arrowsize=0.3,      # Reduïm la mida de la fletxa (valor anterior: 0.7)
         zorder=4
     )
 
