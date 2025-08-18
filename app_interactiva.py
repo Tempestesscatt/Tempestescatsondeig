@@ -199,33 +199,33 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_dewpoint, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label(title_dewpoint) 
     
-    # CANVI: Densitat de les streamlines augmentada a 5
+    # Densitat de les streamlines augmentada a 5
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=5, arrowsize=0.6, zorder=4)
 
-    # --- LÒGICA DE CLIPPING CORREGIDA I ROBUSTA ---
+    # --- LÒGICA DEFINITIVA AMB EMMASCARAMENT DE DADES ---
 
-    # 1. Creem la màscara de risc efectiu
+    # 1. Creem la màscara de risc efectiu (on es compleixen les dues condicions)
     effective_risk_mask = (divergence.magnitude <= CONVERGENCE_THRESHOLD) & (grid_dewpoint >= DEWPOINT_THRESHOLD_FOR_RISK)
 
-    # 2. Dibuixem les línies de convergència per tot el mapa i les guardem
-    convergence_levels = [-80, -70, -60, -50, -40, -35, -30, -25, -20]
-    convergence_contour = ax.contour(grid_lon, grid_lat, divergence.magnitude,
-                                     levels=convergence_levels,
-                                     colors='black', linewidths=0.8, linestyles='--')
+    # 2. Creem una versió emmascarada de les dades de convergència.
+    # El '~' inverteix la màscara, amagant tot el que està FORA de la zona de risc.
+    masked_divergence = np.ma.masked_where(~effective_risk_mask, divergence.magnitude)
 
-    # 3. Trobem NOMÉS la frontera de l'àrea de risc per crear la nostra plantilla de retallada
-    risk_boundary_contour = ax.contour(grid_lon, grid_lat, effective_risk_mask, levels=[0.5], linewidths=0)
+    # 3. Dibuixem les línies de convergència sobre les dades emmascarades.
+    # Matplotlib només dibuixarà les línies on les dades són visibles.
+    convergence_levels = np.arange(-80, 0, 5) # Nivells més densos per a més detall
+    ax.contour(grid_lon, grid_lat, masked_divergence,
+               levels=convergence_levels,
+               colors='black',
+               linewidths=0.8,
+               linestyles='--',
+               zorder=6)
 
-    # 4. Iterem per cada zona de risc separada que haguem trobat
-    for i, collection in enumerate(risk_boundary_contour.collections):
-        # Per a cada zona, creem un "pegat" (PathPatch) amb la seva forma
-        for path in collection.get_paths():
-            patch = PathPatch(path, facecolor='#FF4500A0', zorder=5)
-            # Afegeix el pegat vermell al mapa
-            ax.add_patch(patch)
-            # Utilitza aquest mateix pegat per retallar les línies de convergència
-            for conv_collection in convergence_contour.collections:
-                conv_collection.set_clip_path(patch)
+    # 4. Dibuixem l'àrea vermella de fons per ressaltar la zona.
+    ax.contourf(grid_lon, grid_lat, effective_risk_mask, 
+                levels=[0.5, 1.5], 
+                colors=['#FF4500A0'],
+                zorder=5)
 
     # 5. Afegim l'emoji d'alerta dins de cada zona de risc
     labels, num_features = label(effective_risk_mask)
@@ -239,7 +239,6 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
 
     ax.set_title(f"Forecast: Focus de Convergència Efectiva a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
-    
     
 def crear_mapa_500hpa(map_data, timestamp_str):
     fig, ax = crear_mapa_base(); lons, lats = map_data['lons'], map_data['lats']
