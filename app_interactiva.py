@@ -237,7 +237,8 @@ def generar_resposta_ia(historial_conversa_text, resum_dades, prompt_usuari):
     if not GEMINI_CONFIGURAT:
         return "La funcionalitat d'IA no està configurada."
 
-    model = genai.GenerativeModel('gemini-pro')
+    # AQUESTA ÉS LA LÍNIA QUE HEM CANVIAT
+    model = genai.GenerativeModel('gemini-1.0-pro') 
     
     prompt_final = resum_dades + f"\n\nHISTORIAL DE LA CONVERSA:\n{historial_conversa_text}\n\nPREGUNTA ACTUAL DE L'USUARI:\n'{prompt_usuari}'\n\nLA TEVA RESPOSTA COM A METEOIA:"
 
@@ -246,9 +247,6 @@ def generar_resposta_ia(historial_conversa_text, resum_dades, prompt_usuari):
         return response.text
     except Exception as e:
         return f"Hi ha hagut un error contactant amb l'IA de Google: {e}"
-
-
-# --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
 
 def ui_capcalera_selectors():
     # ... (codi idèntic)
