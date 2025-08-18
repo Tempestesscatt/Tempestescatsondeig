@@ -56,6 +56,7 @@ PROVINCIES_GDF = carregar_mapa_provincies()
 
 
 # --- 1. FUNCIONS D'OBTENCIÓ DE DADES (Sense canvis) ---
+# ... (Totes les funcions de carregar_dades_... es mantenen iguals a la versió anterior) ...
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
@@ -171,7 +172,6 @@ def carregar_dades_mapa(nivell, hourly_index):
         }
         return output_data, None
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
-
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
 def crear_mapa_base():
@@ -368,6 +368,9 @@ def ui_explicacio_alertes():
 - **Què són?** Àrees on el vent força l'aire humit a ajuntar-se i ascendir.
 - **Com interpretar-les?** El número sobre la línia indica la seva intensitat (més alt = més fort). Valors > 20 són significatius. Les tempestes tendeixen a formar-se sobre o a prop d'aquestes línies.""")
 
+# MODIFICACIÓ: Un lloc central per a la barra de progrés
+progress_placeholder = st.empty()
+
 def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
     col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large")
     with col_map_1:
@@ -384,19 +387,20 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
                 else: st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada. Recomanació: Anàlisi a 700 hPa.")
             nivell_sel = st.selectbox("Nivell d'anàlisi:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa")
             
-            # Canviem a la barra de progrés per a operacions llargues
-            progress_bar = st.progress(0, text="Carregant dades del model...")
-            map_data, error_map = carregar_dades_mapa(nivell_sel, hourly_index_sel)
-            progress_bar.progress(50, text="Generant visualització del mapa...")
+            with progress_placeholder.container():
+                progress_bar = st.progress(0, text="Carregant dades del model...")
+                map_data, error_map = carregar_dades_mapa(nivell_sel, hourly_index_sel)
+                if not error_map:
+                    progress_bar.progress(50, text="Generant visualització del mapa...")
             
             if error_map: 
                 st.error(f"Error en carregar el mapa: {error_map}")
-                progress_bar.empty()
             elif map_data:
                 st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str))
-                progress_bar.progress(100, text="Completat!")
-                time.sleep(1) # Esperem un segon perquè es vegi el "Completat!"
-                progress_bar.empty() # Esborrem la barra
+                with progress_placeholder.container():
+                    progress_bar.progress(100, text="Completat!")
+                    time.sleep(1)
+                    progress_bar.empty()
                 ui_explicacio_alertes()
                 
         elif map_key in ["vent_700", "vent_300"]:
@@ -462,22 +466,14 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"): st.markdown(prompt)
         with st.chat_message("assistant"):
-            # Canviem a la barra de progrés per a l'IA
-            progress_bar_ia = st.progress(0, text="Tempestes.IACAT està analitzant les dades...")
-            historial_text = "\n".join([f'{m["role"]}: {m["content"]}' for m in st.session_state.messages])
-            
-            # Simulem una mica de temps per a la barra de progrés
-            time.sleep(0.5)
-            progress_bar_ia.progress(50, text="Consultant el model d'intel·ligència artificial...")
-            
-            response = generar_resposta_ia(historial_text, resum_dades, prompt)
-            
-            progress_bar_ia.progress(100, text="Generant resposta...")
-            time.sleep(0.5)
-            progress_bar_ia.empty()
-            
+            with progress_placeholder.container():
+                progress_bar_ia = st.progress(0, text="Tempestes.IACAT està analitzant les dades...")
+                historial_text = "\n".join([f'{m["role"]}: {m["content"]}' for m in st.session_state.messages])
+                time.sleep(0.5); progress_bar_ia.progress(50, text="Consultant el model d'intel·ligència artificial...")
+                response = generar_resposta_ia(historial_text, resum_dades, prompt)
+                progress_bar_ia.progress(100, text="Generant resposta...")
+                time.sleep(0.5); progress_bar_ia.empty()
             st.markdown(response)
-            
         st.session_state.messages.append({"role": "assistant", "content": response})
 
 def ui_peu_de_pagina():
@@ -485,15 +481,11 @@ def ui_peu_de_pagina():
 
 # --- 5. APLICACIÓ PRINCIPAL ---
 def main():
-    # INICIALITZACIÓ DE L'ESTAT (INCLOENT LA PESTANYA ACTIVA)
-    if 'active_tab' not in st.session_state:
-        st.session_state.active_tab = "🗺️ Anàlisi de Mapes"
     if 'poble_selector' not in st.session_state:
         st.session_state.poble_selector = 'Barcelona'
         st.session_state.dia_selector = 'Avui'
         st.session_state.hora_selector = f"{datetime.now(TIMEZONE).hour:02d}:00h"
         st.session_state.last_selection = ""
-        
     ui_capcalera_selectors()
     current_selection = f"{st.session_state.poble_selector}-{st.session_state.dia_selector}-{st.session_state.hora_selector}"
     if current_selection != st.session_state.last_selection:
@@ -509,20 +501,25 @@ def main():
     timestamp_str = f"{dia_sel} a les {hora_sel} (Hora Local)"
     lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
     
-    # Única crida a les dades al principi
     data_tuple, error_msg = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
     if error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
     
-    # GESTIÓ DE PESTANYES PER EVITAR EL "SALT"
-    tab_titles = ["🗺️ Anàlisi de Mapes", "📊 Anàlisi Vertical", "🤖 Assistent MeteoIA"]
-    tab1, tab2, tab3 = st.tabs(tab_titles)
-
-    with tab1:
-        ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
-    with tab2:
-        ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
-    with tab3:
+    # MODIFICACIÓ FINAL: Reordenem les pestanyes i la barra de progrés
+    st.markdown("---") # Una línia separadora
+    global progress_placeholder
+    progress_placeholder = st.empty()
+    
+    # Reordenem per posar la pestanya interactiva (IA) primer i evitar el "salt"
+    tab_ia, tab_mapes, tab_vertical = st.tabs(["🤖 **Assistent MeteoIA**", "🗺️ Anàlisi de Mapes", "📊 Anàlisi Vertical"])
+    
+    with tab_ia:
         ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
+    with tab_mapes: 
+        ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
+    with tab_vertical: 
+        ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
+        
+    ui_peu_de_pagina()
 
 if __name__ == "__main__":
     main()
