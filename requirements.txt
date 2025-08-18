@@ -10,4 +10,4 @@ cartopy
 scipy
 pytz
 google-generativeai
-
+metpy>=1.6 
