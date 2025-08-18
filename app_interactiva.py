@@ -330,11 +330,9 @@ def crear_mapa_escalar(map_data, var, titol, cmap, levels, unitat, timestamp_str
     ax.set_title(f"{titol}\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
-# --- FUNCIÓ MODIFICADA ---
 def crear_skewt(p, T, Td, u, v, titol, params_calc):
-    # Ajust de la mida per a una millor adaptació a la columna
     fig = plt.figure(figsize=(7, 9), dpi=150)
-    skew = SkewT(fig, rotation=45) # Deixem que SkewT gestioni la mida interna
+    skew = SkewT(fig, rotation=45)
     
     skew.ax.grid(True, linestyle='-', alpha=0.5)
     skew.plot(p, T, 'r', lw=2, label='Temperatura'); skew.plot(p, Td, 'g', lw=2, label='Punt de Rosada')
@@ -347,12 +345,10 @@ def crear_skewt(p, T, Td, u, v, titol, params_calc):
     skew.plot(p, prof, 'k', linewidth=2, label='Trajectòria Parcel·la')
     skew.shade_cape(p, T, prof, color='red', alpha=0.3); skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
 
-    # Ajust de la posició i alineació de les etiquetes
     for level_name, color in [('LCL_p', 'orange'), ('LFC_p', 'darkred'), ('EL_p', 'purple')]:
         if level_name in params_calc and not np.isnan(params_calc[level_name]):
             p_level = params_calc[level_name]
             skew.ax.axhline(p_level, color=color, linestyle='--', lw=2)
-            # Canvi clau: Alineació a la dreta (ha='right') i una petita separació de la vora
             skew.ax.text(skew.ax.get_xlim()[1] - 1, p_level, f"{level_name.split('_')[0]} ", color=color, ha='right', va='center', weight='bold', fontsize=10)
 
     skew.ax.set_ylim(1000, 150); skew.ax.set_xlim(-30, 40)
@@ -470,32 +466,32 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                     if map_data:
                         max_cape = np.max(map_data['cape']) if map_data['cape'] else 0
                         cape_levels = np.arange(100, max(1001, np.ceil(max_cape/250+1)*250), 250)
-                        st.pyplot(crear_mapa_escalar(map_data, "cape", "CAPE", "plasma", cape_levels, "J/kg", timestamp_str))
+                        st.pyplot(crear_mapa_escalar(map_data, "cape", "CAPE", "plasma", cape_levels, "J/kg", timestamp_str), use_container_width=True)
                     elif error: st.error(f"Error en carregar el mapa: {error}")
 
                 elif map_key == "conv":
                     nivell_sel = st.selectbox("Nivell d'anàlisi:", options=[950, 925, 850], format_func=lambda x: f"{x} hPa")
                     variables = [f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
                     map_data, error = carregar_dades_mapa(variables, hourly_index_sel)
-                    if map_data: st.pyplot(crear_mapa_convergencia(map_data, nivell_sel, lat_sel, lon_sel, poble_sel, timestamp_str))
+                    if map_data: st.pyplot(crear_mapa_convergencia(map_data, nivell_sel, lat_sel, lon_sel, poble_sel, timestamp_str), use_container_width=True)
                     elif error: st.error(f"Error en carregar el mapa: {error}")
 
                 elif map_key == "500hpa":
                     variables = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
                     map_data, error = carregar_dades_mapa(variables, hourly_index_sel)
-                    if map_data: st.pyplot(crear_mapa_500hpa(map_data, timestamp_str))
+                    if map_data: st.pyplot(crear_mapa_500hpa(map_data, timestamp_str), use_container_width=True)
                     elif error: st.error(f"Error en carregar el mapa: {error}")
 
                 elif map_key in ["wind_300", "wind_700"]:
                     nivell_hpa = int(map_key.split('_')[1])
                     variables = [f"wind_speed_{nivell_hpa}hPa", f"wind_direction_{nivell_hpa}hPa"]
                     map_data, error = carregar_dades_mapa(variables, hourly_index_sel)
-                    if map_data: st.pyplot(crear_mapa_vents_velocitat(map_data, nivell_hpa, timestamp_str))
+                    if map_data: st.pyplot(crear_mapa_vents_velocitat(map_data, nivell_hpa, timestamp_str), use_container_width=True)
                     elif error: st.error(f"Error en carregar el mapa: {error}")
 
                 elif map_key == "rh_700":
                     map_data, error = carregar_dades_mapa(["relative_humidity_700hPa"], hourly_index_sel)
-                    if map_data: st.pyplot(crear_mapa_escalar(map_data, "relative_humidity_700hPa", "Humitat Relativa a 700hPa", "Greens", np.arange(50, 101, 10), "%", timestamp_str))
+                    if map_data: st.pyplot(crear_mapa_escalar(map_data, "relative_humidity_700hPa", "Humitat Relativa a 700hPa", "Greens", np.arange(50, 101, 10), "%", timestamp_str), use_container_width=True)
                     elif error: st.error(f"Error en carregar el mapa: {error}")
 
         with col_map_2:
@@ -503,6 +499,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
             view_choice = st.radio("Selecciona la vista:", ("Satèl·lit", "Radar"), horizontal=True, label_visibility="collapsed")
             mostrar_imatge_temps_real(view_choice)
 
+# --- FUNCIÓ UI MODIFICADA ---
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     with st.container(border=True):
         if data_tuple:
@@ -537,20 +534,21 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                 - **CIN:** "Tapa" que impedeix la convecció. Valors negatius petits afavoreixen l'inici.
                 - **Shear 0-6km:** Cisallament (diferència de vent amb l'altura). >15-20 m/s afavoreix l'organització (supercèl·lules).
                 - **SRH 0-3km:** Helicitat (potencial de rotació). >150 m²/s² afavoreix supercèl·lules i tornados.
-                - **LFC, EL:** Nivells clau del sondeig que indiquen la base del núvol (LCL), on comença l'ascens lliure (LFC) i el cim de la tempesta (EL).
+                - **LCL, LFC, EL:** Nivells clau del sondeig que indiquen la base del núvol (LCL), on comença l'ascens lliure (LFC) i el cim de la tempesta (EL).
                 """)
             st.divider()
 
             col_graf_1, col_graf_2 = st.columns([1.8, 1])
             with col_graf_1:
                 p, T, Td, u, v, _ = sounding_data
-                st.pyplot(crear_skewt(p, T, Td, u, v, f"Sondeig Vertical - {poble_sel}", params))
+                st.pyplot(crear_skewt(p, T, Td, u, v, f"Sondeig Vertical - {poble_sel}", params), use_container_width=True)
             with col_graf_2:
                 _, _, _, u, v, _ = sounding_data
-                st.pyplot(crear_hodograf(u, v, params))
-                st.pyplot(crear_grafic_perfil_tempesta(sounding_data, params))
+                st.pyplot(crear_hodograf(u, v, params), use_container_width=True)
+                st.pyplot(crear_grafic_perfil_tempesta(sounding_data, params), use_container_width=True)
         else:
             st.warning("No hi ha dades de sondeig disponibles per a la selecció actual. Pot ser degut a dades invàlides del model.")
+
 
 def ui_pestanya_ia(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_str):
     with st.container(border=True):
