@@ -21,6 +21,7 @@ import google.generativeai as genai
 import io
 from scipy.ndimage import label
 from matplotlib.patches import PathPatch
+import streamlit.components.v1 as components
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 
@@ -322,18 +323,33 @@ def crear_hodograf(u, v):
     ax.set_title("Hodògraf", weight='bold'); return fig
     
 def mostrar_imatge_temps_real(tipus):
-    if tipus == "Radar": url, caption = "https://www.meteociel.fr/cartes_obs/radar/lastradar_sp_ne.gif", "Radar de precipitació. Font: Meteociel"
+    # --- CANVI PRINCIPAL: Lògica per al radar de Meteocat ---
+    if tipus == "Radar":
+        # Aquesta és la URL del widget que vols incrustar
+        radar_url = "https://static-m.meteo.cat/ginys/mapaRadar?language=ca&color=2c3e50&target=_blank"
+        caption = "Radar de precipitació. Font: Meteocat"
+        try:
+            # Utilitzem st.components.v1.iframe per incrustar la pàgina web
+            components.iframe(radar_url, width=396, height=412, scrolling=False)
+            st.caption(caption)
+        except Exception as e:
+            st.error(f"Error en carregar el widget del radar: {e}")
+    
+    # La lògica per al satèl·lit es manté igual, ja que són imatges directes
     else:
         now_local = datetime.now(TIMEZONE)
-        if now_local.hour >= 22 or now_local.hour < 7: url, caption = "https://modeles20.meteociel.fr/satellite/animsatircolmtgsp.gif", "Satèl·lit infraroig. Font: Meteociel"
-        else: url, caption = "https://modeles20.meteociel.fr/satellite/latestsatviscolmtgsp.png", "Satèl·lit visible. Font: Meteociel"
-    try:
-        response = requests.get(f"{url}?ver={int(time.time())}", headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-        if response.status_code == 200: st.image(response.content, caption=caption, use_container_width=True)
-        else: st.warning(f"No s'ha pogut carregar la imatge del {tipus.lower()}. (Codi: {response.status_code})")
-    except Exception as e: st.error(f"Error de xarxa en carregar la imatge del {tipus.lower()}.")
-
-# --- 3. LÒGICA DE LA INTERFÍCIE D'USUARI ---
+        if now_local.hour >= 22 or now_local.hour < 7: 
+            url, caption = "https://modeles20.meteociel.fr/satellite/animsatircolmtgsp.gif", "Satèl·lit infraroig. Font: Meteociel"
+        else: 
+            url, caption = "https://modeles20.meteociel.fr/satellite/latestsatviscolmtgsp.png", "Satèl·lit visible. Font: Meteociel"
+        try:
+            response = requests.get(f"{url}?ver={int(time.time())}", headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+            if response.status_code == 200: 
+                st.image(response.content, caption=caption, use_container_width=True)
+            else: 
+                st.warning(f"No s'ha pogut carregar la imatge del {tipus.lower()}. (Codi: {response.status_code})")
+        except Exception as e: 
+            st.error(f"Error de xarxa en carregar la imatge del {tipus.lower()}.")
 
 def ui_capcalera_selectors():
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">🌪️ Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
