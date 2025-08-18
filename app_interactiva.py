@@ -201,7 +201,7 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     ax.streamplot(
         grid_lon, grid_lat, grid_u, grid_v, 
         color='black', 
-        linewidth=0.8,      # Una mica més primes per compensar la densitat
+        linewidth=0.5,      # Una mica més primes per compensar la densitat
         density=5.0,        # Augmentem la densitat (valor anterior: 1.5)
         arrowsize=0.3,      # Reduïm la mida de la fletxa (valor anterior: 0.7)
         zorder=4
