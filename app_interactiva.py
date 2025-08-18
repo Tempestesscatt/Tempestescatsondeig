@@ -178,33 +178,30 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
     
-    # --- LLINDARS PER A LA CONVERGÈNCIA EFECTIVA ---
-    CONVERGENCE_THRESHOLD = -30
-    DEWPOINT_THRESHOLD_FOR_RISK = 14 # Llindar de punt de rosada en °C. Ajusta'l si cal.
+    # --- CANVI #1: LLINDARS MOLT MÉS ESTRICTES ---
+    CONVERGENCE_THRESHOLD = -35  # Més exigent que abans (-30)
+    DEWPOINT_THRESHOLD_FOR_RISK = 16 # Més exigent que abans (14)
 
     # Escala de colors per al punt de rosada
     custom_cmap = plt.get_cmap('jet')
     dewpoint_levels = np.arange(-4, 32, 4)
     norm_dewpoint = BoundaryNorm(dewpoint_levels, ncolors=custom_cmap.N, clip=True)
     
-    # Dibuixar el mapa base
-    ax.contourf(grid_lon, grid_lat, grid_dewpoint, levels=dewpoint_levels, cmap=custom_cmap, norm=norm_dewpoint, alpha=0.8, zorder=2, extend='both')
+    # --- CANVI #2: VISUALITZACIÓ DE DADES EN BRUT AMB PCOLORMESH ---
+    # Això crea l'efecte de blocs de color sòlids, sense suavitzat
+    ax.pcolormesh(grid_lon, grid_lat, grid_dewpoint, cmap=custom_cmap, norm=norm_dewpoint, zorder=2)
+    
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_dewpoint, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label(title_dewpoint) 
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=2.5, arrowsize=0.6, zorder=4)
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=4.5, arrowsize=0.6, zorder=4)
 
-    # --- NOVA LÒGICA DE VISUALITZACIÓ DE RISC ---
-
-    # 1. Creem una "màscara" que només és certa on es compleixen les DUES condicions
+    # Lògica de visualització de risc
     effective_risk_mask = (divergence.magnitude <= CONVERGENCE_THRESHOLD) & (grid_dewpoint >= DEWPOINT_THRESHOLD_FOR_RISK)
-
-    # 2. Ombregem en vermell semitransparent NOMÉS aquestes àrees de risc efectiu
     ax.contourf(grid_lon, grid_lat, effective_risk_mask, 
-                levels=[0.5, 1.5], # Això fa que només pinti on la màscara és True (valor 1)
-                colors=['#FF000080'], # Vermell amb 50% de transparència
+                levels=[0.5, 1.5], 
+                colors=['#FF4500A0'], # Taronja-vermellós amb transparència
                 zorder=5)
 
-    # 3. Identifiquem les zones separades dins de la màscara per posar l'emoji
     labels, num_features = label(effective_risk_mask)
     if num_features > 0:
         for i in range(1, num_features + 1):
@@ -214,14 +211,9 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
             warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=15, ha='center', va='center', zorder=8)
             warning_txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
-    # 4. Mantenim l'etiqueta numèrica al punt de màxima convergència (si compleix el llindar inicial)
-    min_conv_val = np.nanmin(divergence.magnitude)
-    if min_conv_val < CONVERGENCE_THRESHOLD:
-        idx_min = np.nanargmin(divergence.magnitude)
-        idx_2d = np.unravel_index(idx_min, divergence.shape)
-        lon_min, lat_min = grid_lon[idx_2d], grid_lat[idx_2d]
-        txt = ax.text(lon_min, lat_min, f'{min_conv_val:.0f}', color='black', fontsize=10, weight='bold', ha='center', va='center', zorder=7)
-        txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='white')])
+    # --- CANVI #3: ELIMINACIÓ DE L'ETIQUETA NUMÈRICA ---
+    # S'ha eliminat el codi que buscava i dibuixava el valor màxim de convergència.
+    # El mapa ara és purament visual: si hi ha una zona vermella, és un focus de risc.
 
     ax.set_title(f"Forecast: Focus de Convergència Efectiva a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
