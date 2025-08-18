@@ -292,7 +292,7 @@ def update(frame_num):
     
     return gif_data
 
-    def update(frame):
+def update(frame):
         nonlocal px, py, px_prev, py_prev
         # La posició actual es converteix en la cua de la línia
         px_prev = px.copy()
