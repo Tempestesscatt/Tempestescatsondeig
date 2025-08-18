@@ -187,11 +187,11 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     ax.contourf(grid_lon, grid_lat, grid_dewpoint, levels=dewpoint_levels, cmap=custom_cmap, norm=norm_dewpoint, alpha=0.8, zorder=2, extend='both')
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_dewpoint, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label(title_dewpoint) 
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=2.5, arrowsize=0.6, zorder=4)
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=4.5, arrowsize=0.3, zorder=4)
 
     # Lògica d'alertes i convergència
     convergence_levels = [-60, -50, -40, -30]
-    ax.contour(grid_lon, grid_lat, divergence.magnitude, levels=convergence_levels, colors='black', linewidths=1.5, linestyles='--', zorder=6)
+    ax.contour(grid_lon, grid_lat, divergence.magnitude, levels=convergence_levels, colors='black', linewidths=0.65, linestyles='--', zorder=6)
     
     risk_mask = divergence.magnitude <= -30
     labels, num_features = label(risk_mask)
@@ -202,7 +202,7 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
             center_lon, center_lat = grid_lon[0, int(center_x)], grid_lat[int(center_y), 0]
             
             # --- CANVI: Mida de l'emoji reduïda a 15 ---
-            warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=15, ha='center', va='center', zorder=8)
+            warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=10, ha='center', va='center', zorder=8)
             warning_txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
     min_conv_val = np.nanmin(divergence.magnitude)
