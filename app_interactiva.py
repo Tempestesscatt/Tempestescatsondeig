@@ -176,7 +176,7 @@ def crear_mapa_base():
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0); ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5); return fig, ax
 
-# SUBSTITUEIX LA TEVA FUNCIÓ ANTIGA PER AQUESTA VERSIÓ FINAL
+# SUBSTITUEIX LA TEVA VERSIÓ D'AQUESTA FUNCIÓ PER AQUESTA VERSIÓ FINAL
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     
@@ -197,33 +197,45 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=4, arrowsize=0.7, zorder=4, transform=ccrs.PlateCarree())
     
-    # --- ISÒLINES DE CONVERGÈNCIA (VERSIÓ FINAL I ROBUSTA) ---
+    # --- ISÒLINES DE CONVERGÈNCIA (VERSIÓ POLIDA: NOMÉS NUCLIS FORTS) ---
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
     convergence_scaled = divergence.magnitude * -1e5
     
-    CONVERGENCE_THRESHOLD_FOR_DRAWING = 15
-    max_convergence = np.nanmax(convergence_scaled)
+    # Llindar mínim per considerar la convergència
+    CONVERGENCE_THRESHOLD_FOR_DRAWING = 20 # Augmentem una mica el llindar per a més claredat
     
+    # Filtrem primer per humitat per trobar el màxim real en zones rellevants
+    if nivell >= 950: DEWPOINT_THRESHOLD = 14
+    elif nivell >= 925: DEWPOINT_THRESHOLD = 12
+    else: DEWPOINT_THRESHOLD = 7
+    humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
+    convergence_in_humid_areas = np.where(humid_mask, convergence_scaled, 0)
+    
+    max_convergence = np.nanmax(convergence_in_humid_areas)
+    
+    # Comprovem si el nucli més fort supera el nostre llindar
     if max_convergence >= CONVERGENCE_THRESHOLD_FOR_DRAWING:
-        contour_levels = np.arange(CONVERGENCE_THRESHOLD_FOR_DRAWING, max_convergence + 1, 5)
         
-        if nivell >= 950: DEWPOINT_THRESHOLD = 14
-        elif nivell >= 925: DEWPOINT_THRESHOLD = 12
-        else: DEWPOINT_THRESHOLD = 7
+        # LÒGICA MILLORADA: Creem nivells relatius al màxim per destacar els nuclis
+        # Dibuixem una línia al 60% i una altra al 80% del valor màxim trobat.
+        # Això crea un efecte de "focus" en les zones més fortes.
+        level1 = max_convergence * 0.60
+        level2 = max_convergence * 0.80
         
-        humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
-        convergence_in_humid_areas = np.where(humid_mask, convergence_scaled, 0)
+        # Ens assegurem que els nivells que dibuixem encara siguin superiors al nostre llindar mínim
+        contour_levels = [lvl for lvl in [level1, level2] if lvl >= CONVERGENCE_THRESHOLD_FOR_DRAWING]
         
-        if np.nanmax(convergence_in_humid_areas) >= CONVERGENCE_THRESHOLD_FOR_DRAWING:
+        # Només dibuixem si tenim almenys un nivell vàlid
+        if contour_levels:
             contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=contour_levels,
                                   colors='darkred', linestyles='--', linewidths=1.5, zorder=6,
                                   transform=ccrs.PlateCarree())
-            # CORRECCIÓ: Cridem clabel directament
             ax.clabel(contours, inline=True, fontsize=10, fmt='%1.0f')
             
-    ax.set_title(f"Anàlisi de Vent i Isòlines de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    ax.set_title(f"Anàlisi de Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
+
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
