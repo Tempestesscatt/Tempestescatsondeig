@@ -168,36 +168,23 @@ def crear_mapa_base():
 def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
-    
-    # Interpolar dades a una graella regular
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), method='cubic')
     speeds_ms = np.array(speed_data) * units('km/h'); dirs_deg = np.array(dir_data) * units.degrees
     u_comp, v_comp = mpcalc.wind_components(speeds_ms, dirs_deg)
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
-    
-    # Càlcul de la convergència
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
-    
-    # --- CANVI CLAU #1: Nivells i mapa de colors pel punt de rosada (10-15°C) ---
-    dewpoint_levels = np.arange(10, 16, 1) # Valors de 10 a 15
-    cmap_dewpoint = plt.get_cmap('BuPu') # Mapa de colors per a la humitat
+    dewpoint_levels = np.arange(10, 16, 1)
+    cmap_dewpoint = plt.get_cmap('BuPu')
     norm_dewpoint = BoundaryNorm(dewpoint_levels, ncolors=cmap_dewpoint.N, clip=True)
-    
-    # Dibuixar el punt de rosada amb contourf
     cf = ax.contourf(grid_lon, grid_lat, grid_dewpoint, levels=dewpoint_levels, cmap=cmap_dewpoint, norm=norm_dewpoint, alpha=0.75, zorder=2, extend='both')
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_dewpoint, cmap=cmap_dewpoint), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label("Punt de Rosada en Superfície (°C)")
-    
-    # Dibuixar línies de vent (streamplot)
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=1.5, arrowsize=0.7, zorder=4)
-
-    # --- CANVI CLAU #2: Afegir isòbares de convergència forta (a partir de -30) ---
-    convergence_levels = [-60, -50, -40, -30] # Nivells per a la convergència forta
+    convergence_levels = [-60, -50, -40, -30]
     cs_conv = ax.contour(grid_lon, grid_lat, divergence.magnitude, levels=convergence_levels, colors='red', linewidths=1.5, linestyles='solid', zorder=6)
     ax.clabel(cs_conv, inline=True, fontsize=10, fmt='%1.0f', colors='red')
-
     ax.set_title(f"Forecast: P. Rosada + Línies de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
@@ -213,6 +200,24 @@ def crear_mapa_500hpa(map_data, timestamp_str):
     u, v = mpcalc.wind_components(np.array(map_data['wind_speed_500hPa']) * units('km/h'), np.array(map_data['wind_direction_500hPa']) * units.degrees)
     ax.barbs(lons[::5], lats[::5], u.to('kt').m[::5], v.to('kt').m[::5], length=5, zorder=6, transform=ccrs.PlateCarree())
     ax.set_title(f"Anàlisi a 500 hPa (Temperatura i Vent)\n{timestamp_str}", weight='bold', fontsize=16); return fig
+
+# NOU: Funció genèrica per crear mapes de vent a diferents nivells
+def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
+    fig, ax = crear_mapa_base()
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
+    speed_levels = np.arange(20, 161, 10)
+    cmap = 'plasma'
+    norm = BoundaryNorm(speed_levels, ncolors=plt.get_cmap(cmap).N, clip=True)
+    cf = ax.contourf(grid_lon, grid_lat, grid_speed, levels=speed_levels, cmap=cmap, norm=norm, alpha=0.7, zorder=2, extend='max')
+    contorns = ax.contour(grid_lon, grid_lat, grid_speed, levels=speed_levels[::2], colors='white', linewidths=0.8, alpha=0.9, zorder=3)
+    ax.clabel(contorns, inline=True, fontsize=8, fmt='%1.0f')
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, orientation='vertical', shrink=0.7)
+    cbar.set_label("Velocitat del Vent (km/h)")
+    u, v = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+    ax.barbs(lons[::4], lats[::4], u.to('kt').m[::4], v.to('kt').m[::4], length=5, zorder=6, transform=ccrs.PlateCarree())
+    ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    return fig
 
 def crear_mapa_escalar(lons, lats, data, titol, cmap, levels, unitat, timestamp_str, extend='max'):
     fig, ax = crear_mapa_base()
@@ -265,11 +270,13 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
     with st.spinner("Actualitzant anàlisi de mapes..."):
         col_map_1, col_map_2 = st.columns([2.5, 1.5])
         with col_map_1:
-            # --- CANVI CLAU #3: S'ha reemplaçat "CAPE" per "Punt de Rosada" ---
+            # ACTUALITZAT: S'afegeixen els mapes de vent i es restaura el de 500hPa
             map_options = {
-                "Forecast: P. Rosada + Convergència": "forecast_combinat", 
-                "Punt de Rosada (Superfície)": "dew_point", 
-                "Anàlisi a 500hPa": "500hpa", 
+                "Forecast: P. Rosada + Convergència": "forecast_combinat",
+                "Punt de Rosada (Superfície)": "dew_point",
+                "Temperatura i Vent a 500hPa": "500hpa",
+                "Vent a 700hPa": "vent_700",
+                "Vent a 300hPa": "vent_300",
                 "Humitat a 700hPa": "rh_700"
             }
             mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
@@ -289,6 +296,18 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                 variables = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
                 map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
                 if map_data: st.pyplot(crear_mapa_500hpa(map_data, timestamp_str))
+
+            elif map_key == "vent_700":
+                nivell = 700
+                variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+                map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
+                if map_data: st.pyplot(crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str))
+
+            elif map_key == "vent_300":
+                nivell = 300
+                variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+                map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
+                if map_data: st.pyplot(crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str))
 
             elif map_key == "rh_700":
                 map_data, error_map = carregar_dades_mapa(["relative_humidity_700hPa"], hourly_index_sel)
