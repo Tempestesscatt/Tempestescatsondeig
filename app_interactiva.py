@@ -232,20 +232,32 @@ def preparar_resum_dades_per_ia(data_tuple, poble_sel, timestamp_str):
     """
     return resum
 
+# AQUESTA ÉS L'ÚNICA FUNCIÓ QUE HAS DE SUBSTITUIR
+
 def generar_resposta_ia(historial_conversa_text, resum_dades, prompt_usuari):
-    """Crida a l'API de Gemini amb l'historial i les dades."""
+    """
+    Crida a l'API de Gemini utilitzant el mètode de xat, adaptat al teu codi.
+    """
     if not GEMINI_CONFIGURAT:
         return "La funcionalitat d'IA no està configurada."
 
-    # AQUESTA ÉS LA LÍNIA QUE TORNEM A CANVIAR
-    model = genai.GenerativeModel('gemini-pro-vision') 
+    # Utilitzem el nom de model més actual i estable per a text.
+    model = genai.GenerativeModel('gemini-1.5-flash')
     
-    prompt_final = resum_dades + f"\n\nHISTORIAL DE LA CONVERSA:\n{historial_conversa_text}\n\nPREGUNTA ACTUAL DE L'USUARI:\n'{prompt_usuari}'\n\nLA TEVA RESPOSTA COM A METEOIA:"
+    # Com que la teva estructura passa l'historial com un sol bloc de text,
+    # el millor és enviar-ho tot junt en una única petició, no en un xat.
+    # Això evita els problemes de 'penjament'.
+    
+    prompt_final = resum_dades + f"\n\nHISTORIAL DE LA CONVERSA PREVI (si n'hi ha):\n{historial_conversa_text}\n\nPREGUNTA ACTUAL DE L'USUARI:\n'{prompt_usuari}'\n\nLA TEVA RESPOSTA COM A METEOIA:"
 
     try:
+        # Utilitzem el mètode simple 'generate_content' que és més directe
+        # per a peticions que no depenen d'una sessió de xat complexa.
         response = model.generate_content(prompt_final)
         return response.text
     except Exception as e:
+        # Imprimim l'error per a depuració (molt útil a Streamlit Cloud Logs)
+        print(f"ERROR DETALLAT DE L'API DE GOOGLE: {e}")
         return f"Hi ha hagut un error contactant amb l'IA de Google: {e}"
 
 def ui_capcalera_selectors():
