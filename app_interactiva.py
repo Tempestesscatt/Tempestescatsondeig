@@ -177,42 +177,71 @@ def crear_mapa_forecast_combinat(lons, lats, dewpoint_data, speed_data, dir_data
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     
     # Càlcul de la convergència
-    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
     
-    # --- CANVI #1: Nova escala de colors per al punt de rosada ---
-    # Definim els colors basats en la imatge de referència
+    # Escala de colors personalitzada per al punt de rosada
     colors_meteo = [
         '#00008b', '#0000cd', '#0000ff', '#1e90ff', '#00bfff', '#87ceeb', 
         '#afeeee', '#adff2f', '#ffff00', '#ffd700', '#ffa500', '#ff8c00', 
         '#ff4500', '#ff0000', '#dc143c', '#b22222', '#8b0000'
     ]
-    # Definim els nivells corresponents a l'escala
     dewpoint_levels = np.arange(-4, 31, 2)
     custom_cmap = ListedColormap(colors_meteo)
     norm_dewpoint = BoundaryNorm(dewpoint_levels, ncolors=custom_cmap.N, clip=True)
     
-    # Dibuixar el punt de rosada amb la nova escala
-    cf = ax.contourf(grid_lon, grid_lat, grid_dewpoint, levels=dewpoint_levels, cmap=custom_cmap, norm=norm_dewpoint, alpha=0.6, zorder=2, extend='both')
+    # Dibuixar el punt de rosada
+    cf = ax.contourf(grid_lon, grid_lat, grid_dewpoint, levels=dewpoint_levels, cmap=custom_cmap, norm=norm_dewpoint, alpha=0.8, zorder=2, extend='both')
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_dewpoint, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label("Punt de Rosada en Superfície (°C)")
     
-    # --- CANVI #2 i #3: Més densitat de línies i fletxes més petites ---
+    # Línies de vent (streamlines) amb alta densitat i fletxes petites
     ax.streamplot(
         grid_lon, grid_lat, grid_u, grid_v, 
         color='black', 
-        linewidth=0.5,      # Una mica més primes per compensar la densitat
-        density=4.0,        # Augmentem la densitat (valor anterior: 1.5)
-        arrowsize=0.3,      # Reduïm la mida de la fletxa (valor anterior: 0.7)
+        linewidth=0.6,
+        density=2.5,
+        arrowsize=0.6,
         zorder=4
     )
 
-    # Línies de convergència forta (es mantenen igual)
+    # --- CANVI FINAL: Dibuixar ISO NEGRA i etiquetar NOMÉS EL VALOR MÉS ALT ---
     convergence_levels = [-60, -50, -40, -30]
-    cs_conv = ax.contour(grid_lon, grid_lat, divergence.magnitude, levels=convergence_levels, colors='red', linewidths=1.5, linestyles='solid', zorder=6)
-    ax.clabel(cs_conv, inline=True, fontsize=10, fmt='%1.0f', colors='red')
+    
+    # 1. Dibuixem les isolínies en negre i sense cap etiqueta
+    ax.contour(
+        grid_lon, grid_lat, divergence.magnitude,
+        levels=convergence_levels,
+        colors='black',
+        linewidths=1.5,
+        zorder=6
+    )
 
-    ax.set_title(f"Forecast: P. Rosada + Línies de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    # 2. Busquem el punt de màxima convergència per posar una única etiqueta
+    min_conv_val = np.nanmin(divergence.magnitude)
+    
+    # Només posem l'etiqueta si la convergència és prou forta (més enllà del nostre llindar més baix)
+    if min_conv_val < -30:
+        # Trobem la posició (índex) del valor mínim
+        idx_min = np.nanargmin(divergence.magnitude)
+        # Convertim l'índex 1D a un índex 2D per a la nostra graella
+        idx_2d = np.unravel_index(idx_min, divergence.shape)
+        # Obtenim les coordenades geogràfiques d'aquest punt
+        lon_min, lat_min = grid_lon[idx_2d], grid_lat[idx_2d]
+        
+        # 3. Creem l'etiqueta de text en aquell punt exacte
+        txt = ax.text(
+            lon_min, lat_min, f'{min_conv_val:.0f}',
+            color='black',
+            fontsize=10,
+            weight='bold',
+            ha='center',
+            va='center',
+            zorder=7
+        )
+        # Afegim un contorn blanc al text per a una llegibilitat perfecta
+        txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='white')])
+
+    ax.set_title(f"Forecast: P. Rosada + Focus de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
 def crear_mapa_500hpa(map_data, timestamp_str):
