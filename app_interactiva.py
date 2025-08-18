@@ -24,7 +24,7 @@ from threading import Lock
 
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
 
-# *** NOU: Lock per a garantir l'execució en sèrie de MetPy ***
+# Lock per a garantir l'execució en sèrie de MetPy
 METPY_LOCK = Lock()
 
 # Configuració de l'API de Gemini (si està disponible)
@@ -103,15 +103,14 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         u = np.array(u_profile) * units('m/s'); v = np.array(v_profile) * units('m/s'); h = np.array(h_profile) * units.meter
 
         params_calc = {}
-        
-        # *** MODIFICAT: S'afegeix un Lock per evitar errors de concurrència a MetPy ***
+
         with METPY_LOCK:
             prof = mpcalc.parcel_profile(p, T[0], Td[0])
             cape, cin = mpcalc.cape_cin(p, T, Td, prof)
             params_calc['CAPE'] = cape.to('J/kg').m if cape.magnitude > 0 else 0
             params_calc['CIN'] = cin.to('J/kg').m
 
-            try: 
+            try:
                 lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); params_calc['LCL_p'] = lcl_p.to('hPa').m
                 lfc_p, _ = mpcalc.lfc(p, T, Td, which='most_cape', parcel_prof=prof); params_calc['LFC_p'] = lfc_p.to('hPa').m
                 el_p, _ = mpcalc.el(p, T, Td, parcel_prof=prof); params_calc['EL_p'] = el_p.to('hPa').m
@@ -121,13 +120,22 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             s_u, s_v = mpcalc.bulk_shear(p, u, v, height=h, depth=6 * units.km)
             params_calc['Shear_0-6km'] = mpcalc.wind_speed(s_u, s_v).to('m/s').m
 
-            try: 
-                rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, h)
-                params_calc['storm_motion_u'], params_calc['storm_motion_v'] = rm[0].to('m/s').m, rm[1].to('m/s').m
-                storm_motion_vector = rm
+            # --- NOU CÀLCUL DEL MOVIMENT DE LA TEMPESTA ---
+            try:
+                h_agl = h - h[0]
+                mid_level_mask = (h_agl >= 3000 * units.meter) & (h_agl <= 6000 * units.meter)
+                if np.any(mid_level_mask):
+                    mean_u_mid = np.mean(u[mid_level_mask])
+                    mean_v_mid = np.mean(v[mid_level_mask])
+                    params_calc['storm_motion_u'] = mean_u_mid.to('m/s').m
+                    params_calc['storm_motion_v'] = mean_v_mid.to('m/s').m
+                    storm_motion_vector = (mean_u_mid, mean_v_mid)
+                else:
+                    raise ValueError("No data in 3-6km layer")
             except Exception:
                 params_calc.update({'storm_motion_u': np.nan, 'storm_motion_v': np.nan})
                 storm_motion_vector = (np.nan*units('m/s'), np.nan*units('m/s'))
+            # --- FI DEL NOU CÀLCUL ---
 
             storm_u_comp, storm_v_comp = storm_motion_vector
             _, srh, _ = mpcalc.storm_relative_helicity(h, u, v, depth=3 * units.km, storm_u=storm_u_comp, storm_v=storm_v_comp)
@@ -212,7 +220,7 @@ def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str):
     - Longitud del focus de convergència: {mapa.get('lon_max_conv', 0):.2f}
     - Cisallament 0-6km (organització): {int(sondeig.get('Shear_0-6km', 0))} m/s
     - SRH 0-3km (rotació): {int(sondeig.get('SRH_0-3km', 0))} m²/s²
-    - Moviment previst de la tempesta (Bunkers RM): {moviment_tempesta_str}
+    - Moviment previst de la tempesta (Mitjana vent 3-6km AGL): {moviment_tempesta_str}
 
     **INSTRUCCIONS (MOLT IMPORTANT):**
     Vés directament al gra. Prohibides les frases llargues o explicacions tècniques complexes.
@@ -329,10 +337,13 @@ def crear_skewt(p, T, Td, u, v, titol, params_calc):
     skew.plot(p, T, 'r', lw=2, label='Temperatura'); skew.plot(p, Td, 'g', lw=2, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03, length=6)
     skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.5); skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.5); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.5)
-    prof = mpcalc.parcel_profile(p, T[0], Td[0]); skew.plot(p, prof, 'k', linewidth=2, label='Trajectòria Parcel·la')
+    
+    with METPY_LOCK: # Protegim també la creació del perfil aquí per seguretat
+        prof = mpcalc.parcel_profile(p, T[0], Td[0])
+
+    skew.plot(p, prof, 'k', linewidth=2, label='Trajectòria Parcel·la')
     skew.shade_cape(p, T, prof, color='red', alpha=0.3); skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
 
-    # Afegir nivells característics
     for level_name, color in [('LCL_p', 'orange'), ('LFC_p', 'darkred'), ('EL_p', 'purple')]:
         if level_name in params_calc and not np.isnan(params_calc[level_name]):
             p_level = params_calc[level_name]
@@ -350,11 +361,10 @@ def crear_hodograf(u, v, params_calc):
     h.add_grid(increment=20, color='gray', linestyle='--')
     h.plot(u.to('kt'), v.to('kt'), color='red', linewidth=2)
 
-    # Dibuixar vector de moviment de la tempesta (Bunkers Right-Mover)
     if 'storm_motion_u' in params_calc and not np.isnan(params_calc['storm_motion_u']):
         sm_u_kt = params_calc['storm_motion_u'] * (units('m/s')).to('kt').m
         sm_v_kt = params_calc['storm_motion_v'] * (units('m/s')).to('kt').m
-        ax.arrow(0, 0, sm_u_kt, sm_v_kt, head_width=2, head_length=2, fc='darkred', ec='black', zorder=10, lw=1.5, label='Moviment Tempesta (RM)')
+        ax.arrow(0, 0, sm_u_kt, sm_v_kt, head_width=2, head_length=2, fc='darkred', ec='black', zorder=10, lw=1.5, label='Mov. Tempesta (Mitjana 3-6km)')
 
         direction_str, speed_ms = vector_to_direction(params_calc['storm_motion_u'], params_calc['storm_motion_v'])
         ax.text(0.03, 0.97, f"Mov. Tempesta:\n {direction_str} a {speed_ms*3.6:.0f} km/h", transform=ax.transAxes, fontsize=10,
