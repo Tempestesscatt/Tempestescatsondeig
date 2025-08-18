@@ -22,6 +22,7 @@ import io
 from scipy.ndimage import label
 from matplotlib.patches import PathPatch
 import streamlit.components.v1 as components
+from matplotlib.animation import FuncAnimation
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 
@@ -97,6 +98,94 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         params_calc['SRH_0-3km'] = np.sum(srh).to('m^2/s^2').m
         return ((p, T, Td, u, v, h), params_calc), None
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
+
+
+@st.cache_data(ttl=3600)
+def crear_mapa_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _nivell, _timestamp_str):
+    """
+    Crea un GIF animat de partícules seguint el flux del vent.
+    Aquesta funció està dissenyada per ser emmagatzemada a la memòria cau.
+    """
+    fig, ax = crear_mapa_base()
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100))
+    
+    # Interpolar dades
+    grid_speed = griddata((_lons, _lats), _speed_data, (grid_lon, grid_lat), method='linear')
+    grid_dewpoint = griddata((_lons, _lats), _dewpoint_data, (grid_lon, grid_lat), method='linear')
+    u_comp, v_comp = mpcalc.wind_components(np.array(_speed_data) * units('km/h'), np.array(_dir_data) * units.degrees)
+    grid_u = griddata((_lons, _lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='linear')
+    grid_v = griddata((_lons, _lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='linear')
+    
+    # Dibuixar el fons de color (velocitat del vent)
+    colors_wind_final = ['#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700', '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF', '#FFC0CB', '#D3D3D3', '#A9A9A9']
+    speed_levels_final = np.arange(0, 171, 10)
+    custom_cmap = ListedColormap(colors_wind_final)
+    norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2)
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels_final[::2])
+    cbar.set_label(f"Velocitat del Vent a {_nivell}hPa (km/h)")
+
+    # Dibuixar les alertes de convergència efectiva (es mantenen estàtiques)
+    # (Codi de la lògica de risc que ja teníem)
+    if _nivell >= 950: CONVERGENCE_THRESHOLD = -45; DEWPOINT_THRESHOLD_FOR_RISK = 14
+    elif _nivell >= 925: CONVERGENCE_THRESHOLD = -35; DEWPOINT_THRESHOLD_FOR_RISK = 12
+    elif _nivell >= 850: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 7
+    elif _nivell >= 800: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 5
+    else: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 2
+    
+    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+    divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
+    effective_risk_mask = (divergence.magnitude <= CONVERGENCE_THRESHOLD) & (grid_dewpoint >= DEWPOINT_THRESHOLD_FOR_RISK)
+    labels, num_features = label(effective_risk_mask)
+    if num_features > 0:
+        for i in range(1, num_features + 1):
+            points = np.argwhere(labels == i)
+            center_y, center_x = points.mean(axis=0)
+            center_lon, center_lat = grid_lon[0, int(center_x)], grid_lat[int(center_y), 0]
+            warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=15, ha='center', va='center', zorder=8)
+            warning_txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
+
+    # --- LÒGICA DE L'ANIMACIÓ ---
+    NUM_PARTICLES = 500
+    PARTICLE_SPEED_FACTOR = 0.005 # Ajusta per a més o menys velocitat
+    
+    # Posició inicial aleatòria de les partícules
+    px = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], NUM_PARTICLES)
+    py = np.random.uniform(MAP_EXTENT[2], MAP_EXTENT[3], NUM_PARTICLES)
+    
+    # Creem els punts que s'animaran
+    particles, = ax.plot(px, py, '.', markersize=0.8, color='black', zorder=4)
+
+    def update(frame):
+        nonlocal px, py
+        # Interpolem el vent a la posició actual de cada partícula
+        u_vals = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_u.flatten(), (px, py), method='linear')
+        v_vals = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_v.flatten(), (px, py), method='linear')
+        
+        # Movem les partícules
+        px += u_vals * PARTICLE_SPEED_FACTOR
+        py += v_vals * PARTICLE_SPEED_FACTOR
+        
+        # Resetejem les partícules que surten del mapa
+        out_of_bounds = (px < MAP_EXTENT[0]) | (px > MAP_EXTENT[1]) | (py < MAP_EXTENT[2]) | (py > MAP_EXTENT[3])
+        px[out_of_bounds] = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], out_of_bounds.sum())
+        py[out_of_bounds] = np.random.uniform(MAP_EXTENT[2], MAP_EXTENT[3], out_of_bounds.sum())
+
+        particles.set_data(px, py)
+        return particles,
+
+    ax.set_title(f"Forecast: Flux del Vent + Focus de Convergència a {_nivell}hPa\n{_timestamp_str}", weight='bold', fontsize=16)
+    
+    # Creem l'animació
+    ani = FuncAnimation(fig, update, frames=100, blit=True, interval=50)
+    
+    # Guardem l'animació en un buffer de memòria com a GIF
+    buf = io.BytesIO()
+    ani.save(buf, writer='imagemagick', fps=20, dpi=150)
+    plt.close(fig) # Tanquem la figura per alliberar memòria
+    
+    return buf.getvalue()
+    
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(variables, hourly_index):
@@ -326,59 +415,62 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
     col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large")
     
     with col_map_1:
+        # AFEGIM LA NOVA OPCIÓ AL MENÚ
         map_options = {
-            "Forecast: Vent + Convergència Efectiva": "forecast_combinat",
+            "Forecast: Vent ANIMAT + Convergència": "forecast_animat",
+            "Forecast: Vent Estàtic + Convergència": "forecast_estatic",
             "Temperatura i Vent a 500hPa": "500hpa",
             "Vent a 700hPa (Streamlines)": "vent_700",
             "Vent a 300hPa (Streamlines)": "vent_300",
             "Humitat a 700hPa": "rh_700"
         }
+        # Canviem el nom de l'opció per defecte per ser més clar
         mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
         map_key, error_map = map_options[mapa_sel], None
 
-        if map_key == "forecast_combinat":
+        # Gestionem les dues opcions de forecast (animat i estàtic)
+        if map_key in ["forecast_animat", "forecast_estatic"]:
             
             cin_value = 0; lfc_hpa = np.nan
             if data_tuple and data_tuple[1]:
                 cin_value = data_tuple[1].get('CIN', 0); lfc_hpa = data_tuple[1].get('LFC_hPa', np.nan)
             
-            if cin_value < -25:
-                st.warning(f"**AVÍS DE 'TAPA' (CIN = {cin_value:.0f} J/kg):** El sondeig de **{poble_sel}** mostra una forta inversió. Es necessita un forçament dinàmic potent per trencar-la.")
-            
-            if np.isnan(lfc_hpa):
-                st.error("**DIAGNÒSTIC LFC:** No s'ha trobat LFC. L'atmosfera és estable i la convecció espontània és molt improbable.")
-            elif lfc_hpa >= 900:
-                st.success(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base superficial. **Recomanació: Buscar zones d'alerta ⚠️ a 1000-925 hPa.**")
-            elif lfc_hpa >= 750:
-                st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base baixa. **Recomanació: Buscar zones d'alerta ⚠️ a 850-800 hPa.**")
-            else:
-                st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada. **Recomanació: Buscar zones d'alerta ⚠️ a 700 hPa.**")
+            if cin_value < -25: st.warning(f"**AVÍS DE 'TAPA' (CIN = {cin_value:.0f} J/kg):** El sondeig de **{poble_sel}** mostra una forta inversió. Es necessita un forçament dinàmic potent per trencar-la.")
+            if np.isnan(lfc_hpa): st.error("**DIAGNÒSTIC LFC:** No s'ha trobat LFC. L'atmosfera és estable i la convecció espontània és molt improbable.")
+            elif lfc_hpa >= 900: st.success(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base superficial. **Recomanació: Buscar zones d'alerta ⚠️ a 1000-925 hPa.**")
+            elif lfc_hpa >= 750: st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció de base baixa. **Recomanació: Buscar zones d'alerta ⚠️ a 850-800 hPa.**")
+            else: st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada. **Recomanació: Buscar zones d'alerta ⚠️ a 700 hPa.**")
 
-            nivell_sel = st.selectbox("Nivell d'anàlisi:", 
-                                      options=[1000, 950, 925, 850, 800, 700], 
-                                      format_func=lambda x: f"{x} hPa")
+            nivell_sel = st.selectbox("Nivell d'anàlisi:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa")
             
-            if nivell_sel >= 950:
-                variables = ["dew_point_2m", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
-                map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
-                if map_data:
-                    dewpoint_for_calc = map_data['dew_point_2m']
-                    speed_data = map_data[f"wind_speed_{nivell_sel}hPa"]
-                    dir_data = map_data[f"wind_direction_{nivell_sel}hPa"]
-                    st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str))
-                    ui_explicacio_alertes()
+            # Recollim les dades necessàries (és el mateix per a les dues vistes)
+            with st.spinner("Carregant dades del model..."):
+                if nivell_sel >= 950:
+                    variables = ["dew_point_2m", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
+                    map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
+                    if map_data:
+                        dewpoint_for_calc = map_data['dew_point_2m']
+                        speed_data = map_data[f"wind_speed_{nivell_sel}hPa"]
+                        dir_data = map_data[f"wind_direction_{nivell_sel}hPa"]
+                else:
+                    variables = [f"temperature_{nivell_sel}hPa", f"relative_humidity_{nivell_sel}hPa", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
+                    map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
+                    if map_data:
+                        temp_data = np.array(map_data[f'temperature_{nivell_sel}hPa']) * units.degC
+                        rh_data = np.array(map_data[f'relative_humidity_{nivell_sel}hPa']) * units.percent
+                        dewpoint_for_calc = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
+                        speed_data = map_data[f"wind_speed_{nivell_sel}hPa"]
+                        dir_data = map_data[f"wind_direction_{nivell_sel}hPa"]
             
-            else:
-                variables = [f"temperature_{nivell_sel}hPa", f"relative_humidity_{nivell_sel}hPa", f"wind_speed_{nivell_sel}hPa", f"wind_direction_{nivell_sel}hPa"]
-                map_data, error_map = carregar_dades_mapa(variables, hourly_index_sel)
-                if map_data:
-                    temp_data = np.array(map_data[f'temperature_{nivell_sel}hPa']) * units.degC
-                    rh_data = np.array(map_data[f'relative_humidity_{nivell_sel}hPa']) * units.percent
-                    dewpoint_for_calc = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
-                    speed_data = map_data[f"wind_speed_{nivell_sel}hPa"]
-                    dir_data = map_data[f"wind_direction_{nivell_sel}hPa"]
+            if map_data:
+                if map_key == "forecast_animat":
+                    with st.spinner("Generant animació del flux de vent... Aquesta operació pot trigar uns segons la primera vegada."):
+                        gif_data = crear_mapa_animat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str)
+                        st.image(gif_data)
+                else: # forecast_estatic
                     st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell_sel, timestamp_str))
-                    ui_explicacio_alertes()
+                
+                ui_explicacio_alertes()
 
         elif map_key == "500hpa":
             variables = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
@@ -405,82 +497,11 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
 
     with col_map_2:
         st.subheader("Imatges en Temps Real")
-        # --- CANVI: Les pestanyes ara reflecteixen les dues vistes de satèl·lit ---
         tab_europa, tab_ne = st.tabs(["🇪🇺 Satèl·lit (Europa)", "🛰️ Satèl·lit (NE Península)"])
-
         with tab_europa:
             mostrar_imatge_temps_real("Satèl·lit (Europa)")
-        
         with tab_ne:
             mostrar_imatge_temps_real("Satèl·lit (NE Península)")
-
-def ui_capcalera_selectors():
-    st.markdown('<h1 style="text-align: center; color: #FF4B4B;">🌪️ Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align: center;">Eina per al pronòstic de convecció mitjançant paràmetres clau.</p>', unsafe_allow_html=True)
-    with st.container(border=True):
-        col1, col2, col3 = st.columns(3)
-        with col1: st.selectbox("Capital de referència:", sorted(CIUTATS_CATALUNYA.keys()), key="poble_selector")
-        with col2: st.selectbox("Dia del pronòstic:", ("Avui", "Demà"), key="dia_selector")
-        with col3: st.selectbox("Hora del pronòstic (Hora Local):", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
-
-def mostrar_imatge_temps_real(tipus):
-    # --- CANVI: Ara gestionem dues vistes de satèl·lit ---
-    
-    if tipus == "Satèl·lit (Europa)":
-        # Aquesta és la nova URL del satèl·lit europeu que has triat
-        url = "https://modeles20.meteociel.fr/satellite/animsatsandvisirmtgeu.gif"
-        caption = "Satèl·lit Sandvitx (Visible + Infraroig). Font: Meteociel"
-        
-    elif tipus == "Satèl·lit (NE Península)":
-        now_local = datetime.now(TIMEZONE)
-        if 7 <= now_local.hour < 21:
-            url = "https://modeles20.meteociel.fr/satellite/animsatviscolmtgsp.gif"
-            caption = "Satèl·lit Visible (Nord-est). Font: Meteociel"
-        else:
-            url = "https://www.meteociel.fr/modeles/satanim_ir_espagne-ne.gif"
-            caption = "Satèl·lit Infraroig (Nord-est). Font: Meteociel"
-    
-    else:
-        st.error("Tipus d'imatge no reconegut.")
-        return
-
-    # Lògica comuna per carregar i mostrar la imatge
-    try:
-        response = requests.get(f"{url}?ver={int(time.time())}", headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-        if response.status_code == 200: 
-            st.image(response.content, caption=caption, use_container_width=True)
-        else: 
-            st.warning(f"No s'ha pogut carregar la imatge. (Codi: {response.status_code})")
-    except Exception as e: 
-        st.error(f"Error de xarxa en carregar la imatge.")
-
-def ui_explicacio_alertes():
-    """
-    Crea un desplegable informatiu que explica el significat de les alertes de risc.
-    """
-    with st.expander("📖 Què signifiquen les alertes ⚠️ que veig al mapa?"):
-        st.markdown("""
-        Cada símbol d'alerta **⚠️** assenyala un **focus de risc convectiu**. No és una predicció de tempesta garantida, sinó la detecció d'una zona on es compleix la **"recepta perfecta"** per iniciar-ne una.
-
-        El nostre sistema analitza les dades del model i només marca les àrees on es donen **dues condicions clau simultàniament**:
-        """)
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("""
-            #### **1. El Disparador: Convergència ↗️**
-            L'aire a nivells baixos està sent forçat a ascendir amb molta intensitat. És el mecanisme que "dispara" el moviment vertical necessari per crear un núvol de tempesta (cumulonimbus).
-            """)
-
-        with col2:
-            st.markdown("""
-            #### **2. El Combustible: Humitat 💧**
-            Aquest aire que puja no és sec; està carregat de vapor d'aigua (punt de rosada elevat). Aquesta humitat és el "combustible" que, en condensar-se, allibera energia i permet que el núvol creixi verticalment.
-            """)
-        
-        st.info("**En resum:** Una ⚠️ indica una zona on un potent **disparador** està actuant sobre una massa d'aire amb abundant **combustible**. Per tant, són els punts als quals cal prestar més atenció.", icon="🎯")
-            
 
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
