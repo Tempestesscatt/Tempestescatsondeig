@@ -166,34 +166,43 @@ def obtenir_mapa_animat_cached(nivell, hourly_index, timestamp_str):
     gif_data = generar_gif_animat(map_data['lons'], map_data['lats'], speed_data, dir_data, dewpoint_for_calc, nivell, timestamp_str)
     return gif_data
 
-def generar_gif_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _nivell, _timestamp_str):
+def generar_gif_animat_optimitzat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _nivell, _timestamp_str):
     """
-    Funció 'treballadora': Genera un GIF animat amb LÍNIES DE FLUX (traços).
-    Aquesta versió té més densitat i durada, optimitzada per al rendiment.
+    Funció 'treballadora' optimitzada: Genera un GIF animat amb línies de flux
+    amb efecte de traçat, bucle perfecte i millor rendiment.
     """
+    # Utilitzem la teva funció per crear el mapa base amb Cartopy
     fig, ax = crear_mapa_base()
-    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100))
+
+    # --- 1. Preparació de Dades i Interpolació ---
+    # Augmentem una mica la resolució per a una interpolació més suau
+    grid_lon_vals = np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 150)
+    grid_lat_vals = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 150)
+    grid_lon, grid_lat = np.meshgrid(grid_lon_vals, grid_lat_vals)
     
-    # Interpolar dades
-    grid_speed = griddata((_lons, _lats), _speed_data, (grid_lon, grid_lat), method='linear')
-    grid_dewpoint = griddata((_lons, _lats), _dewpoint_data, (grid_lon, grid_lat), method='linear')
+    points = (_lons, _lats) # Dades originals disperses
+    
+    # Interpolació a una graella densa amb mètode 'cubic' per a més suavitat
+    grid_speed = griddata(points, _speed_data, (grid_lon, grid_lat), method='cubic')
+    grid_dewpoint = griddata(points, _dewpoint_data, (grid_lon, grid_lat), method='cubic')
     u_comp, v_comp = mpcalc.wind_components(np.array(_speed_data) * units('km/h'), np.array(_dir_data) * units.degrees)
-    grid_u = griddata((_lons, _lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='linear', fill_value=0)
-    grid_v = griddata((_lons, _lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='linear', fill_value=0)
-    
-    # Dibuixar fons i alertes
+    grid_u = griddata(points, u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic', fill_value=0)
+    grid_v = griddata(points, v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic', fill_value=0)
+
+    # --- 2. Dibuix del Fons (Mapa de colors i Alertes) ---
+    # Aquesta part es manté gairebé idèntica a la teva
     colors_wind_final = ['#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700', '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF', '#FFC0CB', '#D3D3D3', '#A9A9A9']
     speed_levels_final = np.arange(0, 171, 10)
     custom_cmap = ListedColormap(colors_wind_final); norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
-    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2)
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree(), alpha=0.8)
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels_final[::2])
     cbar.set_label(f"Velocitat del Vent a {_nivell}hPa (km/h)")
     
+    # Lògica de les alertes de convergència
     if _nivell >= 950: CONVERGENCE_THRESHOLD = -45; DEWPOINT_THRESHOLD_FOR_RISK = 14
     elif _nivell >= 925: CONVERGENCE_THRESHOLD = -35; DEWPOINT_THRESHOLD_FOR_RISK = 12
     elif _nivell >= 850: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 7
-    elif _nivell >= 800: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 5
-    else: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 2
+    else: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 5
     
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
@@ -203,52 +212,81 @@ def generar_gif_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _ni
         for i in range(1, num_features + 1):
             points = np.argwhere(labels == i); center_y, center_x = points.mean(axis=0)
             center_lon, center_lat = grid_lon[0, int(center_x)], grid_lat[int(center_y), 0]
-            warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=15, ha='center', va='center', zorder=8)
+            warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=15, ha='center', va='center', zorder=8, transform=ccrs.PlateCarree())
             warning_txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
-    # --- CANVIS PER A DENSITAT I DURADA ---
-    NUM_PARTICLES = 600             # Més densitat
-    PARTICLE_SPEED_FACTOR = 0.0050
-
+    # --- 3. Configuració de l'Animació (El nucli de la millora) ---
+    GIF_DURATION_S = 10
+    FPS = 25
+    NUM_FRAMES = GIF_DURATION_S * FPS
+    
+    NUM_PARTICLES = 700
+    PARTICLE_LIFESPAN = 50  # Fotogrames que una partícula 'viu' abans de reiniciar-se
+    PARTICLE_SPEED_FACTOR = 0.0008 # Ajustat per a la projecció PlateCarree
+    
+    # Inicialització de partícules
     px = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], NUM_PARTICLES)
     py = np.random.uniform(MAP_EXTENT[2], MAP_EXTENT[3], NUM_PARTICLES)
-    px_prev = px.copy()
-    py_prev = py.copy()
-
-    segments = [[(px_prev[i], py_prev[i]), (px[i], py[i])] for i in range(NUM_PARTICLES)]
-    line_collection = LineCollection(segments, color='black', linewidth=0.97, zorder=4)
+    particle_age = np.random.randint(0, PARTICLE_LIFESPAN, NUM_PARTICLES)
+    
+    line_collection = LineCollection([], color='black', linewidth=0.9, zorder=4, transform=ccrs.PlateCarree())
     ax.add_collection(line_collection)
 
-    def update(frame):
-        nonlocal px, py, px_prev, py_prev
-        px_prev = px.copy()
-        py_prev = py.copy()
-        u_vals = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_u.flatten(), (px, py), method='linear', fill_value=0)
-        v_vals = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_v.flatten(), (px, py), method='linear', fill_value=0)
-        px += u_vals * PARTICLE_SPEED_FACTOR
-        py += v_vals * PARTICLE_SPEED_FACTOR
-        
-        out_of_bounds = (px < MAP_EXTENT[0]) | (px > MAP_EXTENT[1]) | (py < MAP_EXTENT[2]) | (py > MAP_EXTENT[3])
-        px[out_of_bounds] = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], out_of_bounds.sum())
-        py[out_of_bounds] = np.random.uniform(MAP_EXTENT[2], MAP_EXTENT[3], out_of_bounds.sum())
-        px_prev[out_of_bounds] = px[out_of_bounds]
-        py_prev[out_of_bounds] = py[out_of_bounds]
+    # Funció d'interpolació ràpida per obtenir la velocitat en un punt qualsevol
+    points_to_interp = (grid_lat_vals, grid_lon_vals)
+    def get_velocity_at_points(lon, lat):
+        u = interpn(points_to_interp, grid_u, (lat, lon), method='linear', bounds_error=False, fill_value=0)
+        v = interpn(points_to_interp, grid_v, (lat, lon), method='linear', bounds_error=False, fill_value=0)
+        return u, v
 
-        new_segments = [[(px_prev[i], py_prev[i]), (px[i], py[i])] for i in range(NUM_PARTICLES)]
-        line_collection.set_segments(new_segments)
-        return line_collection,
+     def update(frame_num):
+        nonlocal px, py, particle_age
+        
+        # Lògica per al bucle perfecte: fade-in i fade-out
+        progress = frame_num / NUM_FRAMES
+        alpha = np.sin(progress * np.pi) ** 0.8 # L'exponent suavitza la transició
+        
+        # Moure les partícules
+        px_prev, py_prev = px.copy(), py.copy()
+        u, v = get_velocity_at_points(px, py)
+        px += u * PARTICLE_SPEED_FACTOR
+        py += v * PARTICLE_SPEED_FACTOR
+        
+        # Gestionar 'vida' i reinici de partícules
+        particle_age += 1
+        reset_mask = (px < MAP_EXTENT[0]) | (px > MAP_EXTENT[1]) | \
+                     (py < MAP_EXTENT[2]) | (py > MAP_EXTENT[3]) | \
+                     (particle_age > PARTICLE_LIFESPAN)
+        
+        num_to_reset = np.sum(reset_mask)
+        if num_to_reset > 0:
+            px[reset_mask] = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], num_to_reset)
+            py[reset_mask] = np.random.uniform(MAP_EXTENT[2], MAP_EXTENT[3], num_to_reset)
+            particle_age[reset_mask] = 0
+            px_prev[reset_mask], py_prev[reset_mask] = px[reset_mask], py[reset_mask]
+
+        # Actualitzar els segments de línia i la seva transparència
+        segments = np.array(list(zip(zip(px_prev, py_prev), zip(px, py))))
+        line_collection.set_segments(segments)
+        line_collection.set_color((0, 0, 0, alpha)) # Negre amb l'alfa variable
+        
+        return [line_collection]
 
     ax.set_title(f"Forecast: Flux del Vent + Focus de Convergència a {_nivell}hPa\n{_timestamp_str}", weight='bold', fontsize=16)
     
-    # Més durada (més frames)
-    ani = FuncAnimation(fig, update, frames=120, blit=False, interval=50)
+    # --- 5. Creació, desat i retorn de l'Animació ---
+    # Usem blit=True per a un rendiment òptim
+    ani = FuncAnimation(fig, update, frames=NUM_FRAMES, blit=True, interval=1000/FPS)
     
+    # Adaptat al teu sistema de fitxer temporal per funcionar amb st.cache_data
     with tempfile.NamedTemporaryFile(suffix=".gif", delete=False) as tmpfile:
         temp_filename = tmpfile.name
-        ani.save(temp_filename, writer='pillow', fps=20, dpi=96)
+        ani.save(temp_filename, writer='pillow', fps=FPS, dpi=150) # Augmentem una mica la qualitat (dpi)
     
-    plt.close(fig)
-    with open(temp_filename, "rb") as f: gif_data = f.read()
+    plt.close(fig) # Molt important per alliberar memòria a Streamlit
+    
+    with open(temp_filename, "rb") as f:
+        gif_data = f.read()
     os.remove(temp_filename)
     
     return gif_data
