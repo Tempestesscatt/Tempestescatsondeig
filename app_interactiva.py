@@ -18,10 +18,14 @@ from scipy.interpolate import griddata, Rbf
 from datetime import datetime, timedelta
 import pytz
 import google.generativeai as genai
+from threading import Lock
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
+
+# *** NOU: Lock per a garantir l'execució en sèrie de MetPy ***
+METPY_LOCK = Lock()
 
 # Configuració de l'API de Gemini (si està disponible)
 try:
@@ -99,32 +103,35 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         u = np.array(u_profile) * units('m/s'); v = np.array(v_profile) * units('m/s'); h = np.array(h_profile) * units.meter
 
         params_calc = {}
-        prof = mpcalc.parcel_profile(p, T[0], Td[0])
-        cape, cin = mpcalc.cape_cin(p, T, Td, prof)
-        params_calc['CAPE'] = cape.to('J/kg').m if cape.magnitude > 0 else 0
-        params_calc['CIN'] = cin.to('J/kg').m
+        
+        # *** MODIFICAT: S'afegeix un Lock per evitar errors de concurrència a MetPy ***
+        with METPY_LOCK:
+            prof = mpcalc.parcel_profile(p, T[0], Td[0])
+            cape, cin = mpcalc.cape_cin(p, T, Td, prof)
+            params_calc['CAPE'] = cape.to('J/kg').m if cape.magnitude > 0 else 0
+            params_calc['CIN'] = cin.to('J/kg').m
 
-        try: # Càlcul de nivells característics
-            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); params_calc['LCL_p'] = lcl_p.to('hPa').m
-            lfc_p, _ = mpcalc.lfc(p, T, Td, which='most_cape'); params_calc['LFC_p'] = lfc_p.to('hPa').m
-            el_p, _ = mpcalc.el(p, T, Td); params_calc['EL_p'] = el_p.to('hPa').m
-        except Exception:
-             params_calc.update({'LCL_p': np.nan, 'LFC_p': np.nan, 'EL_p': np.nan})
+            try: 
+                lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); params_calc['LCL_p'] = lcl_p.to('hPa').m
+                lfc_p, _ = mpcalc.lfc(p, T, Td, which='most_cape', parcel_prof=prof); params_calc['LFC_p'] = lfc_p.to('hPa').m
+                el_p, _ = mpcalc.el(p, T, Td, parcel_prof=prof); params_calc['EL_p'] = el_p.to('hPa').m
+            except Exception:
+                 params_calc.update({'LCL_p': np.nan, 'LFC_p': np.nan, 'EL_p': np.nan})
 
-        s_u, s_v = mpcalc.bulk_shear(p, u, v, height=h, depth=6 * units.km)
-        params_calc['Shear_0-6km'] = mpcalc.wind_speed(s_u, s_v).to('m/s').m
+            s_u, s_v = mpcalc.bulk_shear(p, u, v, height=h, depth=6 * units.km)
+            params_calc['Shear_0-6km'] = mpcalc.wind_speed(s_u, s_v).to('m/s').m
 
-        try: # Càlcul del moviment de la tempesta (Bunkers Right-Mover)
-            rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, h)
-            params_calc['storm_motion_u'], params_calc['storm_motion_v'] = rm[0].to('m/s').m, rm[1].to('m/s').m
-            storm_motion_vector = rm
-        except Exception:
-            params_calc.update({'storm_motion_u': np.nan, 'storm_motion_v': np.nan})
-            storm_motion_vector = (np.nan*units('m/s'), np.nan*units('m/s'))
+            try: 
+                rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, h)
+                params_calc['storm_motion_u'], params_calc['storm_motion_v'] = rm[0].to('m/s').m, rm[1].to('m/s').m
+                storm_motion_vector = rm
+            except Exception:
+                params_calc.update({'storm_motion_u': np.nan, 'storm_motion_v': np.nan})
+                storm_motion_vector = (np.nan*units('m/s'), np.nan*units('m/s'))
 
-        storm_u_comp, storm_v_comp = storm_motion_vector
-        _, srh, _ = mpcalc.storm_relative_helicity(h, u, v, depth=3 * units.km, storm_u=storm_u_comp, storm_v=storm_v_comp)
-        params_calc['SRH_0-3km'] = np.sum(srh).to('m^2/s^2').m
+            storm_u_comp, storm_v_comp = storm_motion_vector
+            _, srh, _ = mpcalc.storm_relative_helicity(h, u, v, depth=3 * units.km, storm_u=storm_u_comp, storm_v=storm_v_comp)
+            params_calc['SRH_0-3km'] = np.sum(srh).to('m^2/s^2').m
 
         return ((p, T, Td, u, v, h), params_calc), None
     except Exception as e:
@@ -231,7 +238,7 @@ def generar_resum_ia(_dades_ia, _poble_sel, _timestamp_str):
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree())
-    ax.add_feature(cfeature.LAND, facecolor="#E0EE00", zorder=0)
+    ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
     ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
@@ -257,24 +264,24 @@ def crear_mapa_vents_velocitat(map_data, nivell, timestamp_str):
     speed_data = map_data[f'wind_speed_{nivell}hPa']
     dir_data = map_data[f'wind_direction_{nivell}hPa']
     lons, lats = map_data['lons'], map_data['lats']
-    
+
     levels = list(range(20, 100, 10)) + list(range(100, 211, 20))
     cmap = plt.get_cmap('viridis')
     norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
-    
+
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
-    
+
     ax.contourf(grid_lon, grid_lat, grid_speed, levels=levels, cmap=cmap, norm=norm, alpha=0.8, zorder=2, extend='max')
-    
+
     speeds_ms = np.array(speed_data) * units('km/h'); dirs_deg = np.array(dir_data) * units.degrees
     u_comp, v_comp = mpcalc.wind_components(speeds_ms, dirs_deg)
-    
+
     u_grid = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
     v_grid = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
 
     ax.streamplot(grid_lon, grid_lat, u_grid, v_grid, color='black', linewidth=0.6, density=2.5, arrowsize=0.6, zorder=5)
-    
+
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=levels[::2])
     cbar.set_label("Velocitat del Vent (km/h)")
     ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16)
@@ -386,8 +393,8 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
         with col_map_1:
             with st.spinner("Actualitzant anàlisi de mapes..."):
                 map_options = {
-                    "CAPE (Energia)": "cape", 
-                    "Flux i Convergència (Disparador)": "conv", 
+                    "CAPE (Energia)": "cape",
+                    "Flux i Convergència (Disparador)": "conv",
                     "Anàlisi a 500hPa": "500hpa",
                     "Vent a 300hPa (Jet Stream)": "wind_300",
                     "Vent a 700hPa": "wind_700",
@@ -395,7 +402,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                 }
                 mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
                 map_key = map_options[mapa_sel]
-                
+
                 if map_key == "cape":
                     map_data, error = carregar_dades_mapa(["cape"], hourly_index_sel)
                     if map_data:
@@ -410,7 +417,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                     map_data, error = carregar_dades_mapa(variables, hourly_index_sel)
                     if map_data: st.pyplot(crear_mapa_convergencia(map_data, nivell_sel, lat_sel, lon_sel, poble_sel, timestamp_str))
                     elif error: st.error(f"Error en carregar el mapa: {error}")
-                
+
                 elif map_key == "500hpa":
                     variables = ["temperature_500hPa", "wind_speed_500hPa", "wind_direction_500hPa"]
                     map_data, error = carregar_dades_mapa(variables, hourly_index_sel)
@@ -423,7 +430,7 @@ def ui_pestanya_mapes(poble_sel, lat_sel, lon_sel, hourly_index_sel, timestamp_s
                     map_data, error = carregar_dades_mapa(variables, hourly_index_sel)
                     if map_data: st.pyplot(crear_mapa_vents_velocitat(map_data, nivell_hpa, timestamp_str))
                     elif error: st.error(f"Error en carregar el mapa: {error}")
-                
+
                 elif map_key == "rh_700":
                     map_data, error = carregar_dades_mapa(["relative_humidity_700hPa"], hourly_index_sel)
                     if map_data: st.pyplot(crear_mapa_escalar(map_data, "relative_humidity_700hPa", "Humitat Relativa a 700hPa", "Greens", np.arange(50, 101, 10), "%", timestamp_str))
@@ -454,8 +461,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             st.divider()
             col1, col2 = st.columns([1.5, 1])
             with col1:
-                # --- CRIDA CORREGIDA ---
-                p, T, Td, u, v, h = sounding_data
+                p, T, Td, u, v, _ = sounding_data
                 st.pyplot(crear_skewt(p, T, Td, u, v, f"Sondeig Vertical - {poble_sel}", params))
             with col2:
                 _, _, _, u, v, _ = sounding_data
@@ -500,7 +506,6 @@ def main():
     timestamp_str = f"{dia_sel} a les {hora_sel} (Hora Local)"
     lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
 
-    # Mostra un missatge d'espera mentre es carreguen les dades inicials
     with st.spinner('Carregant dades del sondeig inicial...'):
         data_tuple, error_msg = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
         if error_msg:
