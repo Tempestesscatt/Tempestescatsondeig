@@ -369,18 +369,72 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
         with tab_europa: mostrar_imatge_temps_real("Satèl·lit (Europa)")
         with tab_ne: mostrar_imatge_temps_real("Satèl·lit (NE Península)")
 
+# AFEGEIX AQUESTA NOVA FUNCIÓ A LA SECCIÓ 3 (FUNCIONS PER A L'ASSISTENT D'IA)
+def get_color_for_param(param_name, value):
+    """Retorna un color CSS basat en el valor i el paràmetre meteorològic."""
+    if value is None or np.isnan(value):
+        return "#808080"  # Gris
+
+    if param_name == 'CAPE':
+        if value < 100: return "#808080"  # Gris
+        if value < 1000: return "#39FF14" # Verd
+        if value < 2500: return "#FF3131" # Vermell
+        return "#BC13FE"             # Lila
+    
+    elif param_name == 'CIN':
+        if value > -25: return "#39FF14"  # Verd
+        if value > -75: return "#FF3131"  # Vermell
+        return "#BC13FE"              # Lila
+        
+    elif param_name == 'LFC_hPa':
+        if value > 900: return "#39FF14"  # Verd
+        if value > 800: return "#FF3131"  # Vermell
+        return "#BC13FE"              # Lila
+        
+    elif param_name == 'Shear 0-1km':
+        if value < 5: return "#808080"   # Gris
+        if value < 15: return "#39FF14"  # Verd
+        if value < 25: return "#FF3131"  # Vermell
+        return "#BC13FE"              # Lila
+        
+    elif param_name == 'Shear 0-6km':
+        if value < 20: return "#808080"  # Gris
+        if value < 35: return "#39FF14"  # Verd
+        if value < 50: return "#FF3131"  # Vermell
+        return "#BC13FE"              # Lila
+        
+    return "#FFFFFF" # Color per defecte (blanc)
+
+# SUBSTITUEIX LA TEVA FUNCIÓ ui_pestanya_vertical ACTUAL PER AQUESTA
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
         sounding_data, params_calculats = data_tuple
         st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
-        # MODIFICACIÓ: Afegim més mètriques
+        
         cols = st.columns(5)
         metric_params = {'CAPE': 'J/kg', 'CIN': 'J/kg', 'LFC_hPa': 'hPa', 'Shear 0-1km': 'nusos', 'Shear 0-6km': 'nusos'}
-        for i, (param, unit) in enumerate(metric_params.items()):
-            val = params_calculats.get(param)
-            cols[i].metric(label=param, value=f"{f'{val:.0f}' if val is not None and not np.isnan(val) else '---'} {unit}")
         
-        # MODIFICACIÓ: Actualitzem l'explicació
+        for i, (param, unit) in enumerate(metric_params.items()):
+            with cols[i]:
+                val = params_calculats.get(param)
+                color = get_color_for_param(param, val)
+                
+                # Formatem el valor per a la visualització
+                if val is not None and not np.isnan(val):
+                    value_str = f"{val:.0f}"
+                else:
+                    value_str = "---"
+                
+                # Creem la mètrica personalitzada amb Markdown i CSS
+                st.markdown(f"""
+                <div style="text-align: left;">
+                    <span style="font-size: 0.8em; color: #A0A0A0;">{param}</span>
+                    <br>
+                    <strong style="font-size: 1.8em; color: {color};">{value_str}</strong> 
+                    <span style="font-size: 1.1em; color: #A0A0A0;">{unit}</span>
+                </div>
+                """, unsafe_allow_html=True)
+
         with st.expander("ℹ️ Què signifiquen aquests paràmetres?"):
             st.markdown("""
             - **CAPE:** Energia disponible per a les tempestes. >1000 J/kg és significatiu.
@@ -395,6 +449,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         with col1: st.pyplot(crear_skewt(sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4], f"Sondeig Vertical - {poble_sel}"))
         with col2: st.pyplot(crear_hodograf(sounding_data[3], sounding_data[4]))
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
+        
 
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("💬 Assistent MeteoIA (amb Google Gemini)")
