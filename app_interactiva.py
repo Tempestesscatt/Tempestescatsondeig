@@ -169,6 +169,7 @@ def obtenir_mapa_animat_cached(nivell, hourly_index, timestamp_str):
 def generar_gif_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _nivell, _timestamp_str):
     """
     Funció 'treballadora': Genera un GIF animat amb LÍNIES DE FLUX (traços).
+    Aquesta versió té més densitat i durada, optimitzada per al rendiment.
     """
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100))
@@ -180,7 +181,7 @@ def generar_gif_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _ni
     grid_u = griddata((_lons, _lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='linear', fill_value=0)
     grid_v = griddata((_lons, _lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='linear', fill_value=0)
     
-    # Dibuixar fons i alertes (codi idèntic a l'anterior)
+    # Dibuixar fons i alertes
     colors_wind_final = ['#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700', '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF', '#FFC0CB', '#D3D3D3', '#A9A9A9']
     speed_levels_final = np.arange(0, 171, 10)
     custom_cmap = ListedColormap(colors_wind_final); norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
@@ -205,21 +206,52 @@ def generar_gif_animat(_lons, _lats, _speed_data, _dir_data, _dewpoint_data, _ni
             warning_txt = ax.text(center_lon, center_lat, '⚠️', color='yellow', fontsize=15, ha='center', va='center', zorder=8)
             warning_txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
-    # --- NOVA LÒGICA D'ANIMACIÓ AMB LÍNIES ---
-    NUM_PARTICLES = 350
-    PARTICLE_SPEED_FACTOR = 0.012 # Ajustat per a una longitud de traç adequada
+    # --- CANVIS PER A DENSITAT I DURADA ---
+    NUM_PARTICLES = 600             # Més densitat
+    PARTICLE_SPEED_FACTOR = 0.012
 
-    # Posició actual (cap de la línia)
     px = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], NUM_PARTICLES)
     py = np.random.uniform(MAP_EXTENT[2], MAP_EXTENT[3], NUM_PARTICLES)
-    # Posició anterior (cua de la línia)
     px_prev = px.copy()
     py_prev = py.copy()
 
-    # Creem els segments i la LineCollection
     segments = [[(px_prev[i], py_prev[i]), (px[i], py[i])] for i in range(NUM_PARTICLES)]
     line_collection = LineCollection(segments, color='black', linewidth=0.7, zorder=4)
     ax.add_collection(line_collection)
+
+    def update(frame):
+        nonlocal px, py, px_prev, py_prev
+        px_prev = px.copy()
+        py_prev = py.copy()
+        u_vals = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_u.flatten(), (px, py), method='linear', fill_value=0)
+        v_vals = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_v.flatten(), (px, py), method='linear', fill_value=0)
+        px += u_vals * PARTICLE_SPEED_FACTOR
+        py += v_vals * PARTICLE_SPEED_FACTOR
+        
+        out_of_bounds = (px < MAP_EXTENT[0]) | (px > MAP_EXTENT[1]) | (py < MAP_EXTENT[2]) | (py > MAP_EXTENT[3])
+        px[out_of_bounds] = np.random.uniform(MAP_EXTENT[0], MAP_EXTENT[1], out_of_bounds.sum())
+        py[out_of_bounds] = np.random.uniform(MAP_EXTENT[2], MAP_EXTENT[3], out_of_bounds.sum())
+        px_prev[out_of_bounds] = px[out_of_bounds]
+        py_prev[out_of_bounds] = py[out_of_bounds]
+
+        new_segments = [[(px_prev[i], py_prev[i]), (px[i], py[i])] for i in range(NUM_PARTICLES)]
+        line_collection.set_segments(new_segments)
+        return line_collection,
+
+    ax.set_title(f"Forecast: Flux del Vent + Focus de Convergència a {_nivell}hPa\n{_timestamp_str}", weight='bold', fontsize=16)
+    
+    # Més durada (més frames)
+    ani = FuncAnimation(fig, update, frames=120, blit=False, interval=50)
+    
+    with tempfile.NamedTemporaryFile(suffix=".gif", delete=False) as tmpfile:
+        temp_filename = tmpfile.name
+        ani.save(temp_filename, writer='pillow', fps=20, dpi=96)
+    
+    plt.close(fig)
+    with open(temp_filename, "rb") as f: gif_data = f.read()
+    os.remove(temp_filename)
+    
+    return gif_data
 
     def update(frame):
         nonlocal px, py, px_prev, py_prev
