@@ -19,6 +19,8 @@ from datetime import datetime, timedelta
 import pytz
 from scipy.ndimage import label
 import google.generativeai as genai
+import geopandas as gpd # NOVA LLIBRERIA
+from shapely.geometry import Point # NOVA LLIBRERIA
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 
@@ -43,8 +45,22 @@ CIUTATS_CATALUNYA = {
 MAP_EXTENT = [0, 3.5, 40.4, 43]
 PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 
+# --- NOU: CÀRREGA DE DADES GEOESPACIALS ---
+@st.cache_data(ttl=86400) # Cache per un dia
+def carregar_mapa_provincies():
+    # URL a un GeoJSON de les províncies d'Espanya
+    url = "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/spain-provinces.geojson"
+    gdf = gpd.read_file(url)
+    # Filtrem només per a les províncies de Catalunya
+    provincies_cat = gdf[gdf['name'].isin(['Barcelona', 'Tarragona', 'Lleida', 'Girona'])]
+    return provincies_cat
+
+# Carreguem les dades una sola vegada al principi
+PROVINCIES_GDF = carregar_mapa_provincies()
+
 
 # --- 1. FUNCIONS D'OBTENCIÓ I PROCESSAMENT DE DADES ---
+# ... (la funció carregar_dades_sondeig i carregar_dades_mapa_base es queden iguals) ...
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
@@ -71,36 +87,23 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         
         for i, p_val in enumerate(PRESS_LEVELS):
             if p_val < sfc_data["surface_pressure"] and all(not np.isnan(p_data[v][i]) for v in ["T", "RH", "WS", "WD", "H"]):
-                p_profile.append(p_val)
-                T_profile.append(p_data["T"][i])
-                Td_profile.append(mpcalc.dewpoint_from_relative_humidity(p_data["T"][i] * units.degC, p_data["RH"][i] * units.percent).m)
+                p_profile.append(p_val); T_profile.append(p_data["T"][i]); Td_profile.append(mpcalc.dewpoint_from_relative_humidity(p_data["T"][i] * units.degC, p_data["RH"][i] * units.percent).m)
                 u, v = mpcalc.wind_components(p_data["WS"][i] * units('km/h'), p_data["WD"][i] * units.degrees)
-                u_profile.append(u.to('m/s').m)
-                v_profile.append(v.to('m/s').m)
-                h_profile.append(p_data["H"][i])
+                u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m); h_profile.append(p_data["H"][i])
                 
         if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
         
-        p = np.array(p_profile) * units.hPa
-        T = np.array(T_profile) * units.degC
-        Td = np.array(Td_profile) * units.degC
-        u = np.array(u_profile) * units('m/s')
-        v = np.array(v_profile) * units('m/s')
-        heights = np.array(h_profile) * units.meter
+        p, T, Td = np.array(p_profile) * units.hPa, np.array(T_profile) * units.degC, np.array(Td_profile) * units.degC
+        u, v, heights = np.array(u_profile) * units('m/s'), np.array(v_profile) * units('m/s'), np.array(h_profile) * units.meter
 
         prof = mpcalc.parcel_profile(p, T[0], Td[0])
-        params_calc = {}
-        cape, cin = mpcalc.cape_cin(p, T, Td, prof)
-        params_calc['CAPE'] = cape.to('J/kg').m if cape.magnitude > 0 else 0
-        params_calc['CIN'] = cin.to('J/kg').m
+        params_calc = {}; cape, cin = mpcalc.cape_cin(p, T, Td, prof)
+        params_calc['CAPE'], params_calc['CIN'] = (cape.to('J/kg').m if cape.magnitude > 0 else 0), cin.to('J/kg').m
         
-        try:
-            p_lfc, _ = mpcalc.lfc(p, T, Td)
-            params_calc['LFC_hPa'] = p_lfc.m if not np.isnan(p_lfc.m) else np.nan
+        try: p_lfc, _ = mpcalc.lfc(p, T, Td); params_calc['LFC_hPa'] = p_lfc.m if not np.isnan(p_lfc.m) else np.nan
         except Exception: params_calc['LFC_hPa'] = np.nan
         
-        params_calc['Shear 0-1km'] = np.nan
-        params_calc['Shear 0-6km'] = np.nan
+        params_calc['Shear 0-1km'], params_calc['Shear 0-6km'] = np.nan, np.nan
         try:
             shear_0_1km_u, shear_0_1km_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=1000 * units.m)
             params_calc['Shear 0-1km'] = mpcalc.wind_speed(shear_0_1km_u, shear_0_1km_v).to('knots').m
@@ -130,6 +133,7 @@ def carregar_dades_mapa_base(variables, hourly_index):
         return output, None
     except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
 
+# MODIFICACIÓ: Aquesta funció ara també retornarà la ubicació de les alertes
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
     try:
@@ -137,56 +141,69 @@ def carregar_dades_mapa(nivell, hourly_index):
             variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
             map_data_raw, error = carregar_dades_mapa_base(variables, hourly_index)
             if error: return None, error
-            lons, lats = map_data_raw['lons'], map_data_raw['lats']
-            speed_data, dir_data = map_data_raw[f"wind_speed_{nivell}hPa"], map_data_raw[f"wind_direction_{nivell}hPa"]
-            dewpoint_data = map_data_raw['dew_point_2m']
+            lons, lats, speed_data, dir_data, dewpoint_data = map_data_raw['lons'], map_data_raw['lats'], map_data_raw[f"wind_speed_{nivell}hPa"], map_data_raw[f"wind_direction_{nivell}hPa"], map_data_raw['dew_point_2m']
         else:
             variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
             map_data_raw, error = carregar_dades_mapa_base(variables, hourly_index)
             if error: return None, error
-            lons, lats = map_data_raw['lons'], map_data_raw['lats']
-            speed_data, dir_data = map_data_raw[f"wind_speed_{nivell}hPa"], map_data_raw[f"wind_direction_{nivell}hPa"]
-            temp_data = np.array(map_data_raw[f'temperature_{nivell}hPa']) * units.degC
-            rh_data = np.array(map_data_raw[f'relative_humidity_{nivell}hPa']) * units.percent
+            lons, lats, speed_data, dir_data = map_data_raw['lons'], map_data_raw['lats'], map_data_raw[f"wind_speed_{nivell}hPa"], map_data_raw[f"wind_direction_{nivell}hPa"]
+            temp_data, rh_data = np.array(map_data_raw[f'temperature_{nivell}hPa']) * units.degC, np.array(map_data_raw[f'relative_humidity_{nivell}hPa']) * units.percent
             dewpoint_data = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
+
         grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100))
         u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
-        grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='linear')
-        grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='linear')
-        grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), method='linear')
+        grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+        grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'linear')
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-        divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy) * 1e5
-        if nivell >= 950: CONVERGENCE_THRESHOLD = -45; DEWPOINT_THRESHOLD_FOR_RISK = 14
-        elif nivell >= 925: CONVERGENCE_THRESHOLD = -35; DEWPOINT_THRESHOLD_FOR_RISK = 12
-        elif nivell >= 850: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 7
-        else: CONVERGENCE_THRESHOLD = -25; DEWPOINT_THRESHOLD_FOR_RISK = 5
-        effective_risk_mask = (divergence.magnitude <= CONVERGENCE_THRESHOLD) & (grid_dewpoint >= DEWPOINT_THRESHOLD_FOR_RISK)
+        divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
+        convergence_scaled = divergence.magnitude * -1e5
+        
+        # Llindars per definir una "alerta"
+        CONV_THRESHOLD, DEW_THRESHOLD = (20, 14) if nivell >= 950 else (15, 7)
+        effective_risk_mask = (convergence_scaled >= CONV_THRESHOLD) & (grid_dewpoint >= DEW_THRESHOLD)
+        
         labels, num_features = label(effective_risk_mask)
+        locations = []
+        if num_features > 0:
+            for i in range(1, num_features + 1):
+                points = np.argwhere(labels == i)
+                center_y, center_x = points.mean(axis=0)
+                center_lon, center_lat = grid_lon[0, int(center_x)], grid_lat[int(center_y), 0]
+                
+                # Comprovem a quina província pertany el punt
+                p = Point(center_lon, center_lat)
+                for _, prov in PROVINCIES_GDF.iterrows():
+                    if prov.geometry.contains(p):
+                        locations.append(prov['name'])
+                        break
+        
         output_data = {
             'lons': lons, 'lats': lats, 'speed_data': speed_data, 'dir_data': dir_data,
-            'dewpoint_data': dewpoint_data, 'num_alertes': num_features
+            'dewpoint_data': dewpoint_data, 'alert_locations': locations
         }
         return output_data, None
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
 
+
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
-    ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
-    ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0); ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
-    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5); return fig, ax
-
-# SUBSTITUEIX LA TEVA VERSIÓ D'AQUESTA FUNCIÓ PER AQUESTA VERSIÓ FINAL
+    ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree())
+    ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
+    ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
+    ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
+    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
+    # NOU: Afegim les províncies de manera invisible
+    PROVINCIES_GDF.plot(ax=ax, edgecolor='black', facecolor='none', alpha=0, transform=ccrs.PlateCarree())
+    return fig, ax
+    
+# ... (la resta de funcions de visualització es queden iguals, excepte la de les isòlines) ...
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
-    
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
-    
-    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
-    grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), method='cubic')
+    grid_speed, grid_dewpoint = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
-    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
-    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
+    grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
     
     colors_wind_final = ['#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700', '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF', '#FFC0CB', '#D3D3D3', '#A9A9A9']
     speed_levels_final = np.arange(0, 171, 10)
@@ -194,54 +211,37 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels_final[::2])
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
-    
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=4, arrowsize=0.7, zorder=4, transform=ccrs.PlateCarree())
     
-    # --- ISÒLINES DE CONVERGÈNCIA (VERSIÓ POLIDA: NOMÉS NUCLIS FORTS) ---
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
     convergence_scaled = divergence.magnitude * -1e5
     
-    # Llindar mínim per considerar la convergència
-    CONVERGENCE_THRESHOLD_FOR_DRAWING = 20 # Augmentem una mica el llindar per a més claredat
-    
-    # Filtrem primer per humitat per trobar el màxim real en zones rellevants
+    CONVERGENCE_THRESHOLD = 20
     if nivell >= 950: DEWPOINT_THRESHOLD = 14
     elif nivell >= 925: DEWPOINT_THRESHOLD = 12
     else: DEWPOINT_THRESHOLD = 7
-    humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
-    convergence_in_humid_areas = np.where(humid_mask, convergence_scaled, 0)
     
+    convergence_in_humid_areas = np.where(grid_dewpoint >= DEWPOINT_THRESHOLD, convergence_scaled, 0)
     max_convergence = np.nanmax(convergence_in_humid_areas)
     
-    # Comprovem si el nucli més fort supera el nostre llindar
-    if max_convergence >= CONVERGENCE_THRESHOLD_FOR_DRAWING:
-        
-        # LÒGICA MILLORADA: Creem nivells relatius al màxim per destacar els nuclis
-        # Dibuixem una línia al 60% i una altra al 80% del valor màxim trobat.
-        # Això crea un efecte de "focus" en les zones més fortes.
-        level1 = max_convergence * 0.60
-        level2 = max_convergence * 0.80
-        
-        # Ens assegurem que els nivells que dibuixem encara siguin superiors al nostre llindar mínim
-        contour_levels = [lvl for lvl in [level1, level2] if lvl >= CONVERGENCE_THRESHOLD_FOR_DRAWING]
-        
-        # Només dibuixem si tenim almenys un nivell vàlid
+    if max_convergence >= CONVERGENCE_THRESHOLD:
+        level1, level2 = max_convergence * 0.60, max_convergence * 0.80
+        contour_levels = [lvl for lvl in [level1, level2] if lvl >= CONVERGENCE_THRESHOLD]
         if contour_levels:
-            contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=contour_levels,
-                                  colors='darkred', linestyles='--', linewidths=1.5, zorder=6,
-                                  transform=ccrs.PlateCarree())
+            contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=contour_levels, colors='darkred', linestyles='--', linewidths=1.5, zorder=6, transform=ccrs.PlateCarree())
             ax.clabel(contours, inline=True, fontsize=10, fmt='%1.0f')
             
     ax.set_title(f"Anàlisi de Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
+# ... (les altres funcions de visualització es queden igual) ...
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
-    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic'); grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), method='cubic')
-    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), method='cubic')
+    grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic')
     colors_wind_final = ['#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700', '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF', '#FFC0CB', '#D3D3D3', '#A9A9A9']
     speed_levels_final = np.arange(0, 171, 10)
     custom_cmap = ListedColormap(colors_wind_final); norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
@@ -308,55 +308,40 @@ def get_color_for_param(param_name, value):
         return "#BC13FE"
     return "#FFFFFF"
 
-# SUBSTITUEIX LA TEVA FUNCIÓ ANTIGA PER AQUESTA VERSIÓ
+# MODIFICACIÓ: Aquesta funció ara és geo-conscient
 def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, timestamp_str):
-    """
-    Prepara un resum que inclou dades del sondeig i la informació del mapa,
-    amb instruccions més precises per a l'IA.
-    """
-    resum_sondeig = "No s'han pogut carregar les dades del sondeig vertical."
+    resum_sondeig = "No s'han pogut carregar les dades del sondeig."
     if data_tuple:
-        sounding_data, params_calculats = data_tuple
-        cape = params_calculats.get('CAPE', 0)
-        cin = params_calculats.get('CIN', 0)
-        lfc = params_calculats.get('LFC_hPa', float('nan'))
-        shear_1km = params_calculats.get('Shear 0-1km', np.nan)
-        shear_6km = params_calculats.get('Shear 0-6km', np.nan)
-        
+        _, params_calculats = data_tuple
+        cape, cin = params_calculats.get('CAPE', 0), params_calculats.get('CIN', 0)
+        lfc, shear_1km, shear_6km = params_calculats.get('LFC_hPa', np.nan), params_calculats.get('Shear 0-1km', np.nan), params_calculats.get('Shear 0-6km', np.nan)
         resum_sondeig = f"""
-    - CAPE (Energia atmosfèrica): {cape:.0f} J/kg.
-    - CIN (Inhibidor / 'Tapa'): {cin:.0f} J/kg.
-    - LFC (Nivell d'inici de la convecció): {'No trobat' if np.isnan(lfc) else f'{lfc:.0f} hPa'}.
-    - Cisallament 0-1km (Potencial de tornados): {'No calculat' if np.isnan(shear_1km) else f'{shear_1km:.0f} nusos'}.
-    - Cisallament 0-6km (Potencial de supercèl·lules): {'No calculat' if np.isnan(shear_6km) else f'{shear_6km:.0f} nusos'}."""
+    - CAPE (Energia): {cape:.0f} J/kg.
+    - CIN (Inhibidor): {cin:.0f} J/kg.
+    - LFC (Nivell d'inici): {'No trobat' if np.isnan(lfc) else f'{lfc:.0f} hPa'}.
+    - Cisallament 0-1km (Tornados): {'No calculat' if np.isnan(shear_1km) else f'{shear_1km:.0f} nusos'}.
+    - Cisallament 0-6km (Supercèl·lules): {'No calculat' if np.isnan(shear_6km) else f'{shear_6km:.0f} nusos'}."""
 
-    resum_mapa = "No s'han pogut carregar les dades del mapa general."
-    if map_data:
-        num_alertes = map_data.get('num_alertes', 0)
-        if num_alertes > 0:
-            resum_mapa = f"S'han detectat {num_alertes} focus de convergència amb humitat a {nivell_mapa}hPa repartits per Catalunya. Aquests focus actuen com a 'disparadors' per a les tempestes."
+    resum_mapa = "No s'han pogut carregar les dades del mapa."
+    if map_data and map_data.get('alert_locations') is not None:
+        locations = map_data['alert_locations']
+        if locations:
+            from collections import Counter
+            location_counts = Counter(locations)
+            location_summary = ", ".join([f"{count} a {loc}" for loc, count in location_counts.items()])
+            resum_mapa = f"S'han detectat focus de convergència amb humitat a {nivell_mapa}hPa, principalment a: {location_summary}."
         else:
             resum_mapa = f"No es detecten focus significatius de convergència amb humitat a {nivell_mapa}hPa a tot Catalunya."
-
-    resum_final = f"""
-    CONTEXT DE L'ANÀLISI METEOROLÒGICA:
-    - Punt d'Anàlisi Vertical (Sondeig): Estrictament per a la ciutat de {poble_sel}.
-    - Cobertura de l'Anàlisi Horitzontal (Mapa): Tot el territori de Catalunya.
-    - Data i Hora: {timestamp_str}
-
-    DADES DEL SONDEIG VERTICAL (només per a {poble_sel}):
-    {resum_sondeig}
-
-    DADES DEL MAPA GENERAL (per a tot Catalunya a {nivell_mapa}hPa):
-    - {resum_mapa}
     
-    INSTRUCCIONS PER A L'ASSISTENT:
-    Ets un meteoròleg molt expert i et dius Tempestes.catIA. La teva tasca és interpretar les dades proporcionades i intentar entendre que podria passar.
-    1.  Basa la part de la teva anàlisi  en les dades numèriques anteriors. No inventis informació que pugui ser delirant.
-    2.  És crucial que diferenciïs entre les dades del sondeig (que són per a un punt específic, {poble_sel}) i les dades del mapa (que són per a tot Catalunya).
-    3.  Quan parlis dels focus de convergència, has de intentar saber on s'esta donant del poblr aproximadament de Catalunya, i opona sobre la evolució de la zona i els núvols que podran apareixer.
-    4.  Combina les dues fonts d'informació però si la convergencia no es troba per Barcelonès, només sobre la de la convergencia. Per exemple: "L'entorn a {poble_sel} és molt inestable (CAPE alt), i a més, hi ha mecanismes de disparador (convergència) presents a Catalunya que podrien activar tempestes en aquesta zona si coincideixen."
-    5.  Sigues clar, concís i  sempre ha de ser un resum de la situació general de Catalunya per la hora prevista.
+    resum_final = f"""
+    CONTEXT DE L'ANÀLISI:
+    - Punt d'Anàlisi Vertical: Estrictament per a {poble_sel}.
+    - Cobertura del Mapa: Tot Catalunya.
+    - Data i Hora: {timestamp_str}
+    DADES DEL SONDEIG VERTICAL ({poble_sel}):{resum_sondeig}
+    DADES DEL MAPA ({nivell_mapa}hPa):
+    - {resum_mapa}
+    INSTRUCCIONS: Ets MeteoIA, un meteoròleg expert. Respon basant-te ÚNICAMENT en les dades. Diferencia clarament entre les dades del sondeig (per a {poble_sel}) i les del mapa (per a tot Catalunya).
     """
     return resum_final
 
@@ -385,7 +370,7 @@ def ui_explicacio_alertes():
     with st.expander("📖 Què signifiquen les isòlines de convergència?"):
         st.markdown("""Les línies vermelles discontínues (`---`) marquen zones de **convergència d'humitat**. Són els **disparadors** potencials de tempestes.
 - **Què són?** Àrees on el vent força l'aire humit a ajuntar-se i ascendir.
-- **Com interpretar-les?** El número sobre la línia indica la seva intensitat (més alt = més fort). Valors > 15-20 són significatius. Les tempestes tendeixen a formar-se sobre o a prop d'aquestes línies.""")
+- **Com interpretar-les?** El número sobre la línia indica la seva intensitat (més alt = més fort). Valors > 20 són significatius. Les tempestes tendeixen a formar-se sobre o a prop d'aquestes línies.""")
 
 def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
     col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large")
