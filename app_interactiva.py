@@ -137,7 +137,6 @@ def carregar_dades_mapa_base(variables, hourly_index):
         return output, None
     except Exception as e:
         return None, f"Error en carregar dades del mapa: {e}"
-
 # SUBSTITUEIX LA TEVA FUNCIÓ "carregar_dades_mapa" PER AQUESTA
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
@@ -159,32 +158,40 @@ def carregar_dades_mapa(nivell, hourly_index):
         u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
         grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-        divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
-        convergence_scaled = divergence.magnitude * -1e5
         
-        # === CANVI CLAU: Ara només filtrem per convergència per a l'anàlisi de l'IA ===
-        CONV_THRESHOLD = 20  # Mantenim un llindar de convergència raonable
-        effective_risk_mask = (convergence_scaled >= CONV_THRESHOLD)
-        # La línia antiga era: effective_risk_mask = (convergence_scaled >= CONV_THRESHOLD) & (grid_dewpoint >= DEW_THRESHOLD)
+        # Valor real de la divergència en s⁻¹
+        divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).magnitude
+        # La convergència és la divergència negativa
+        convergence = -divergence
+
+        CONV_THRESHOLD_SCIENTIFIC = 20e-5  # Llindar en notació científica (20 * 10^-5)
+        effective_risk_mask = (convergence >= CONV_THRESHOLD_SCIENTIFIC)
         
         labels, num_features = label(effective_risk_mask)
         locations = []
         
         if MUNICIPIS_GDF is not None and num_features > 0:
             for i in range(1, num_features + 1):
-                points = np.argwhere(labels == i)
+                mask_i = (labels == i)
+                # Calculem la intensitat màxima d'aquest focus en unitats científiques
+                max_conv_value = np.max(convergence[mask_i])
+                
+                points = np.argwhere(mask_i)
                 center_y, center_x = points.mean(axis=0)
                 center_lon, center_lat = grid_lon[0, int(center_x)], grid_lat[int(center_y), 0]
                 p = Point(center_lon, center_lat)
+                
                 for _, municipi in MUNICIPIS_GDF.iterrows():
                     if municipi.geometry.contains(p):
-                        locations.append(municipi['NOM'])
+                        # Guardem el nom i la seva intensitat CIENTÍFICA
+                        locations.append({'municipi': municipi['NOM'], 'intensitat': max_conv_value})
                         break
         
-        # Retornem les dades originals (incloent dewpoint) per a la visualització, però les localitzacions per a l'IA
         output_data = {'lons': lons, 'lats': lats, 'speed_data': speed_data, 'dir_data': dir_data, 'dewpoint_data': dewpoint_data, 'alert_locations': locations}
         return output_data, None
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
+        
+        
         
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
@@ -305,10 +312,11 @@ def get_color_for_param(param_name, value):
         if value < 50: return "#FF3131"
         return "#BC13FE"
     return "#FFFFFF"
-
+# SUBSTITUEIX LA TEVA FUNCIÓ "preparar_resum_dades_per_ia" PER AQUESTA
 def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, timestamp_str):
     resum_sondeig = "No hi ha dades de sondeig vertical disponibles per a aquest punt de referència."
     if data_tuple:
+        # ... (aquesta part no canvia, es queda igual) ...
         _, params_calculats = data_tuple
         cape, cin = params_calculats.get('CAPE', 0), params_calculats.get('CIN', 0)
         lcl, lfc, el = params_calculats.get('LCL_hPa', np.nan), params_calculats.get('LFC_hPa', np.nan), params_calculats.get('EL_hPa', np.nan)
@@ -324,16 +332,17 @@ def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, ti
     - Cisallament 0-6km (Supercèl·lules): {'No determinat' if np.isnan(shear_6km) else f'{shear_6km:.0f} nusos'}.
     - Helicitat 0-3km (SRH - Rotació): {'No determinat' if np.isnan(srh_3km) else f'{srh_3km:.0f} m²/s²'}."""
 
+    # === AQUEST BLOC ARA GENERA EL TEXT EXACTE QUE EL PROMPT ESPERA ===
     resum_mapa = "No es detecten focus de convergència significatius a la zona."
     if map_data and map_data.get('alert_locations'):
         locations = map_data['alert_locations']
-        unique_locations = sorted(list(set(locations)))
-
-        if unique_locations:
-            location_summary = ", ".join(unique_locations)
-            resum_mapa = f"S'han detectat focus de convergència d'humitat a {nivell_mapa}hPa a prop dels següents municipis: {location_summary}."
-        else:
-            resum_mapa = f"No es detecten mecanismes de 'disparador' (focus de convergència) significatius a {nivell_mapa}hPa a tot Catalunya."
+        if locations:
+            location_strings = [
+                # Formatem el valor científic al format que el prompt entén
+                f"{loc['municipi']} (conv: {loc['intensitat'] * 1e5:.0f}·10⁻⁵ s⁻¹)" for loc in locations
+            ]
+            location_summary = ", ".join(location_strings)
+            resum_mapa = f"S'han detectat focus de convergència amb els següents valors i municipis més propers: {location_summary}."
 
     resum_final = f"""
 # DADES METEOROLÒGIQUES
@@ -344,7 +353,7 @@ def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, ti
   - {resum_mapa}
 
 # INSTRUCCIONS
-# INSTRUCCIONS
+{ # INSTRUCCIONS
 Presentat UNA VEGADA DIENT QUE ETS TEMPESTES.CATIA :D ,MAI MÉS.
 Ets un assistent expert en meteorologia operativa i convectiva. Les teves respostes han de ser estrictes, clares, concises i basades en dades físiques.
 El teu to ha de ser amigable i proper, estil col·lega, mai distant ni massa acadèmic.
@@ -353,7 +362,7 @@ Quan et pregunten per un poble o zona, uses el sondeig més proper i les dades d
 
 📋 Format fix de cada resposta
 Has de respondre a la pegunta naturalment.
-IMPORTANT: HAS DE VEURE ON ES TORBEN LES CONVERGENCIES SERÀN LINEAS EN EL MAPA DE COLOR NEGRA AMB UN NUMERET, POSARÁ -20 QUE ES EL VALOR MINIM PERO INTERESSAANT PER ACTIVAR ALGÚN NÚVOL I COM MES NEGATIU DNCS CLAR MÉS FORT -50 JA ES MOLT FORTA I -100 CAP AMUNT ES EZPLOSIVA , I POSAR AL ANALISIS,I AIXI PODRÁS DIR QUINA PART  EN EL MAPA ES ON POT CREIXER UN CUMULUNIMBUS O CONGESTUS PER SI L'USUARI PREGUNTA, HAURAS DE INTERPRETAR ON DIU DEL MAPA DE CATALUNYA QUE TENS I DIR ELS POBLES AFECTATS PER LA CONVERGENCIA,
+IMPORTANT: HA DE VEURE ON ES TORBEN LES CONVERGENCIES EN EL MAPA PER DIR ON POT PCREIXER UN CUMULUNIMBUS O CONGESTUS PER SI L'USUARI PREGUNTA, HAURAS DE INTERPRETAR ON DIU DEL MAPA DE CATALUNYA QUE TENS I DIR ELS POBLES AFECTATS PER LA CONVERGENCIA,
 EN CAS DE NO HAVER UNA CONVEGRGENCIA ALS VOLTANTS ESA DIR A UNS 15KM D'ON DIEM COM A MAXIM, ANULEM UNA MICA O MOLT LES PERPECTIVES .
 IMPORTANT: INTERPERTAR ELS VENTS QUE HI HAN, PER SI ET PREGUNTA PER TIPUS DE VENTS O REBUFS O ETC...
 IMPORTANT: RAONAR MOLT SOBRE EL QUE DIU.
@@ -660,6 +669,7 @@ Exemples ultraresumits
 “Cb — base 920 hPa, cim 300 hPa. CAPE 1600, CIN 40, C₉₂₅ 15·10⁻⁵, shear 24. LFC baix, tope < −40 °C.”
 """
     return resum_final
+    
 
 def generar_resposta_ia_stream(historial_conversa, resum_dades, prompt_usuari):
     model = genai.GenerativeModel('gemini-1.5-flash')
