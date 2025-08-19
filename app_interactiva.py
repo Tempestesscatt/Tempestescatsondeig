@@ -266,7 +266,6 @@ def get_color_for_param(param_name, value):
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
 
-    # La part de l'autenticació es manté igual
     try:
         GOOGLE_CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
         GOOGLE_CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
@@ -275,10 +274,27 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         st.error("Les credencials de Google no estan configurades a st.secrets.")
         return
 
-    oauth2 = OAuth2Component(...) # Mantén el teu codi d'autenticació aquí
+    # CORRECCIÓ: Instanciem el component OAuth2 amb tots els paràmetres
+    oauth2 = OAuth2Component(
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        authorize_endpoint="https://accounts.google.com/o/oauth2/v2/auth",
+        token_endpoint="https://oauth2.googleapis.com/token",
+        refresh_token_endpoint=None,
+        revoke_token_endpoint="https://oauth2.googleapis.com/revoke",
+    )
 
     if 'token' not in st.session_state:
-        result = oauth2.authorize_button(...) # Mantén el teu botó de login aquí
+        # CORRECCIÓ: Cridem al botó amb tots els paràmetres necessaris
+        result = oauth2.authorize_button(
+            name="Inicia sessió amb Google",
+            icon="https://www.google.com.tw/favicon.ico",
+            redirect_uri="https://tempestescat.streamlit.app/",
+            scope="openid email profile",
+            key="google",
+            use_container_width=True,
+            pkce='S256',
+        )
         if result:
             st.session_state.token = result.get('token')
             st.rerun()
@@ -290,8 +306,8 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
 
         try:
             genai.configure(api_key=GEMINI_API_KEY)
-        except Exception:
-            st.error("Error en configurar l'API de Gemini.")
+        except Exception as e:
+            st.error(f"Error en configurar l'API de Gemini.")
             return
 
         st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i la imatge del mapa.")
@@ -306,7 +322,6 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
         
         buf = io.BytesIO()
-        # LÍNIA CORREGIDA: Canviem 'png' per 'jpeg'
         fig_mapa.savefig(buf, format='jpeg', quality=85, bbox_inches='tight')
         buf.seek(0)
         img_mapa = Image.open(buf)
@@ -361,21 +376,8 @@ Combina l'anàlisi: si veus un "disparador" (zona vermella) en una àrea on el s
                     stream = model.generate_content(
                         [prompt_multimodal, img_mapa, prompt_usuari],
                         stream=True
-                    )
-                    for chunk in stream:
-                        full_response += chunk.text
-                        response_container.markdown(full_response + "▌")
-                    response_container.markdown(full_response)
-                except Exception as e:
-                    full_response = f"Hi ha hagut un error: {e}"
-                    response_container.error(full_response)
-            
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
-        
-        if st.button("Tanca la sessió"):
-            del st.session_state.token
-            st.rerun()
-            
+
+                        
 
 # --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
 def ui_capcalera_selectors():
