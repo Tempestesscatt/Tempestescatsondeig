@@ -15,6 +15,7 @@ openmeteo-requests
 requests-cache
 retry-requests
 requests
+urllib3<2.0
 google-generativeai
 streamlit-oauth
 Pillow
