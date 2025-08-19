@@ -54,28 +54,14 @@ def carregar_mapa_provincies():
     gdf = gpd.read_file(url)
     return gdf[gdf['name'].isin(['Barcelona', 'Tarragona', 'Lleida', 'Girona'])]
 PROVINCIES_GDF = carregar_mapa_provincies()
-
-# --- GESTIÓ DE LA BASE DE DADES ---
 DB_FILE = "users.db"
 
+# --- GESTIÓ DE LA BASE DE DADES ---
 def setup_database():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            username TEXT PRIMARY KEY,
-            name TEXT,
-            password TEXT
-        )
-    ''')
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            message TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+    c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, name TEXT, password TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, message TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)')
     conn.commit()
     conn.close()
 
@@ -325,30 +311,26 @@ def get_color_for_param(param_name, value):
 
 def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, timestamp_str):
     # [ ... EL TEU PROMPT MESTRE VA AQUÍ ... ]
-    # Per a que funcioni, enganxa aquí la teva última versió de la funció `preparar_resum_dades_per_ia`
-    # O utilitza aquesta versió de seguretat:
+    # Enganxa aquí la teva última versió de la funció `preparar_resum_dades_per_ia`
+    # Per seguretat, poso una versió bàsica que no fallarà
     resum_sondeig = "No hi ha dades de sondeig."
     if data_tuple:
         _, params_calculats = data_tuple
-        resum_sondeig = "\n".join([f"- {key}: {value:.0f}" for key, value in params_calculats.items() if value is not None])
+        resum_sondeig = "\n".join([f"- {key}: {value:.0f}" for key, value in params_calculats.items() if value is not None and not np.isnan(value)])
     
     return f"DADES:\nSondeig per a {poble_sel}:\n{resum_sondeig}\nINSTRUCCIONS:\nRespon a l'usuari."
-
 
 def generar_resposta_ia_stream(historial_conversa, resum_dades, prompt_usuari):
     if not GEMINI_CONFIGURAT:
         yield "La funcionalitat d'IA no està configurada."
         return
-
     model = genai.GenerativeModel('gemini-1.5-flash')
     historial_formatat = []
     for missatge in historial_conversa:
         role = 'user' if missatge['role'] == 'user' else 'model'
         historial_formatat.append({'role': role, 'parts': [missatge['content']]})
-
     chat = model.start_chat(history=historial_formatat)
     prompt_final = resum_dades + f"\n\nPREGUNTA ACTUAL DE L'USUARI:\n'{prompt_usuari}'"
-    
     try:
         response = chat.send_message(prompt_final, stream=True)
         for chunk in response:
@@ -376,7 +358,7 @@ def ui_explicacio_alertes():
         ]
         full_text = "\n".join(text_lines)
         st.markdown(full_text)
-        
+
 def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
     col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large")
     with col_map_1:
@@ -392,13 +374,11 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
                 elif lfc_hpa >= 750: st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció baixa. Recomanació: Anàlisi a 850-800 hPa.")
                 else: st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada. Recomanació: Anàlisi a 700 hPa.")
             nivell_sel = st.selectbox("Nivell d'anàlisi:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa")
-            
             with progress_placeholder.container():
                 progress_bar = st.progress(0, text="Carregant dades del model...")
                 map_data, error_map = carregar_dades_mapa(nivell_sel, hourly_index_sel)
                 if not error_map:
                     progress_bar.progress(50, text="Generant visualització del mapa...")
-            
             if error_map: 
                 st.error(f"Error en carregar el mapa: {error_map}"); progress_placeholder.empty()
             elif map_data:
@@ -407,7 +387,6 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
                     progress_bar.progress(100, text="Completat!")
                     time.sleep(1); progress_bar.empty()
                 ui_explicacio_alertes()
-                
         elif map_key in ["vent_700", "vent_300"]:
             nivell = 700 if map_key == "vent_700" else 300
             variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
@@ -457,12 +436,14 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     
     if "messages" not in st.session_state: st.session_state.messages = []
     
+    # Dibuixa l'historial de missatges
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             
     if prompt := st.chat_input("Escriu la teva pregunta..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
+        
         with st.chat_message("user"):
             st.markdown(prompt)
         
@@ -473,12 +454,33 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
             
         st.session_state.messages.append({"role": "assistant", "content": full_response})
         st.rerun()
+
+def ui_pestanya_chat():
+    st.subheader("Xat de la Comunitat (Missatges de l'última hora)")
+    st_autorefresh(interval=15 * 1000, key="chat_refresher")
+    messages = get_messages_from_db()
+    chat_container = st.container(height=500, border=True)
+    with chat_container:
+        for username, message, timestamp in messages:
+            ts_local = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc).astimezone(TIMEZONE)
+            with st.chat_message(name=username):
+                st.markdown(f"**{username}** <span style='font-size: 0.8em; color: grey;'>- {ts_local.strftime('%H:%M:%S')}</span>", unsafe_allow_html=True)
+                st.markdown(message)
+    if prompt := st.chat_input("Escriu el teu missatge..."):
+        add_message_to_db(st.session_state["name"], prompt)
+        st.rerun()
         
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades del model AROME via <a href='https://open-meteo.com/'>Open-Meteo</a> | Imatges via <a href='https://www.meteociel.fr/'>Meteociel</a> | Anàlisi IA per Google Gemini.</p>", unsafe_allow_html=True)
 
 # --- APLICACIÓ PRINCIPAL ---
-def app_principal(username, name):
+def app_principal():
+    col1, col2 = st.columns([0.85, 0.15])
+    with col1:
+        st.markdown(f"Benvingut, **{st.session_state['name']}**!")
+    with col2:
+        st.session_state.authenticator.logout('Tancar Sessió', 'main', key='logout')
+    
     ui_capcalera_selectors()
     current_selection = f"{st.session_state.poble_selector}-{st.session_state.dia_selector}-{st.session_state.hora_selector}"
     if current_selection != st.session_state.get('last_selection', ''):
@@ -517,54 +519,45 @@ def app_principal(username, name):
 def main():
     setup_database()
 
-    # --- Configuració de l'Autenticador ---
     credentials = get_users_from_db()
-    authenticator = stauth.Authenticate(credentials, "TempestesCatCookie", "abcdef", cookie_expiry_days=30)
+    authenticator = stauth.Authenticate(credentials, "TempestesCatCookie", "abcdefg", cookie_expiry_days=30)
+    st.session_state.authenticator = authenticator
 
-    # --- Pantalla de Login / Registre ---
     if 'authentication_status' not in st.session_state:
         st.session_state.authentication_status = None
 
-    # Utilitzem columnes per a centrar el formulari de login
-    col1, col2, col3 = st.columns([1,2,1])
-    with col2:
-        st.image("https://i.imgur.com/your_logo.png", width=200) # Pots posar un logo aquí
-        st.title("Benvingut a Tempestes.cat")
-        name, authentication_status, username = authenticator.login('main')
-        
-        if authentication_status == False:
-            st.error('Nom d\'usuari o contrasenya incorrecta')
-        elif authentication_status == None:
-            st.warning('Si us plau, inicia sessió o registra\'t.')
-
-        try:
-            if authenticator.register_user('Registra\'t', preauthorization=False):
-                new_username = authenticator.credentials['usernames']
-                last_user = list(new_username.keys())[-1]
-                last_user_data = new_username[last_user]
-                
-                conn = sqlite3.connect(DB_FILE)
-                c = conn.cursor()
-                hashed_password = stauth.Hasher([last_user_data['password']]).generate()[0]
-                c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)", 
-                          (last_user, last_user_data['name'], hashed_password))
-                conn.commit()
-                conn.close()
-                st.success('Usuari registrat correctament! Ara pots iniciar sessió.')
-        except Exception as e:
-            st.error(e)
-
-    # --- Si l'Usuari ha Iniciat Sessió, Mostrem l'App ---
-    if authentication_status:
-        # ---- BARRA SUPERIOR AMB NOM D'USUARI I LOGOUT ----
-        col1, col2 = st.columns([0.85, 0.15])
-        with col1:
-            st.markdown(f"Hola, **{name}**!")
+    if not st.session_state["authentication_status"]:
+        col1, col2, col3 = st.columns([1,2,1])
         with col2:
-            authenticator.logout('Tancar Sessió', 'main')
-        
-        # Cridem a la funció principal de l'aplicació
-        app_principal(username, name)
+            st.title("Benvingut a Tempestes.cat")
+            
+            choice = st.selectbox("Acció:", ["Iniciar Sessió", "Registrar-se"])
+
+            if choice == "Iniciar Sessió":
+                name, authentication_status, username = authenticator.login('main')
+                if authentication_status == False: st.error('Nom d\'usuari o contrasenya incorrecta')
+                elif authentication_status == None: st.warning('Si us plau, introdueix el teu usuari i contrasenya')
+                
+            elif choice == "Registrar-se":
+                try:
+                    if authenticator.register_user('Formulari de Registre', preauthorization=False):
+                        new_username_data = authenticator.credentials['usernames']
+                        last_user = list(new_username_data.keys())[-1]
+                        last_user_data = new_username_data[last_user]
+                        
+                        conn = sqlite3.connect(DB_FILE)
+                        c = conn.cursor()
+                        hashed_password = stauth.Hasher([last_user_data['password']]).generate()[0]
+                        c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)", 
+                                  (last_user, last_user_data['name'], hashed_password))
+                        conn.commit()
+                        conn.close()
+                        st.success('Usuari registrat correctament! Ara pots anar a "Iniciar Sessió".')
+                except Exception as e:
+                    st.error(e)
+    
+    if st.session_state["authentication_status"]:
+        app_principal()
 
 if __name__ == "__main__":
     main()
