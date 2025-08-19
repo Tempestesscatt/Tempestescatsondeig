@@ -545,10 +545,8 @@ def main():
 
         # PESTANYA D'INICI DE SESSIÓ
         with login_tab:
-            # CORRECCIÓ: Apliquem el 'or' per evitar el TypeError en la càrrega inicial
             name, authentication_status, username = authenticator.login('main') or (None, None, None)
             
-            # Comprovem l'estat DESPRÉS de l'intent de login
             if st.session_state.get("authentication_status") == False:
                 st.error('Nom d\'usuari o contrasenya incorrecta')
             elif st.session_state.get("authentication_status") is None:
@@ -557,14 +555,12 @@ def main():
         # PESTANYA DE REGISTRE
         with register_tab:
             try:
-                # La funció register_user mostra el formulari
-                if authenticator.register_user('Formulari de Registre', preauthorization=False):
-                    # Obtenir les dades del nou usuari
+                # CORRECCIÓ: S'ha eliminat l'argument 'preauthorization=False'
+                if authenticator.register_user('Formulari de Registre', location='main'):
                     new_username_data = authenticator.credentials['usernames']
                     last_user = list(new_username_data.keys())[-1]
                     last_user_data = new_username_data[last_user]
                     
-                    # Guardar el nou usuari a la base de dades SQLite
                     conn = sqlite3.connect(DB_FILE)
                     c = conn.cursor()
                     c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)", 
