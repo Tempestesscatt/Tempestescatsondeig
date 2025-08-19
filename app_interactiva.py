@@ -373,7 +373,7 @@ Combina l'anàlisi: si veus un "disparador" (zona vermella) en una àrea on el s
                 full_response = ""
                 
                 try:
-                    stream = model.generate_content(
+                    stream = model.generate_content
                         [prompt_multimodal, img_mapa, prompt_usuari],
                         stream=True
 
