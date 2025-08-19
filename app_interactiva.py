@@ -18,7 +18,7 @@ from scipy.interpolate import griddata
 from datetime import datetime, timedelta
 import pytz
 import google.generativeai as genai
-from collections import Counter 
+from collections import Counter
 import asyncio
 from streamlit_oauth import OAuth2Component
 import io
@@ -136,6 +136,7 @@ def carregar_dades_mapa(nivell, hourly_index):
         return map_data_raw, None
     except Exception as e:
         return None, f"Error en processar dades del mapa: {e}"
+
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
 def crear_mapa_base():
@@ -261,7 +262,6 @@ def get_color_for_param(param_name, value):
         return "#BC13FE"
     return "#FFFFFF"
 
-# SUBSTITUEIX LA TEVA FUNCIÓ "ui_pestanya_ia" PER AQUESTA VERSIÓ FINAL
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
 
@@ -307,43 +307,14 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
             st.error(f"Error en configurar l'API de Gemini.")
             return
             
-        # === CANVI 1: INICIALITZEM EL COMPTADOR DE PETICIONS ===
         if 'api_calls' not in st.session_state:
             st.session_state.api_calls = 0
         
-        # Limitem a un número raonable per sessió per evitar arribar al límit diari ràpidament
         LIMIT_PER_SESSIO = 15
 
-        st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i la imatge del mapa.")
-        nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat")
-
-        map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
-        
-        if error_map_ia:
-            st.error(f"No s'han pogut carregar les dades del mapa: {error_map_ia}")
-            return
-            
-        fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
-        
-        buf = io.BytesIO()
-        fig_mapa.savefig(buf, format='jpeg', bbox_inches='tight')
-        buf.seek(0)
-        img_mapa = Image.open(buf)
-        
-        st.pyplot(fig_mapa)
-        plt.close(fig_mapa)
-
-        resum_sondeig = "No hi ha dades de sondeig disponibles."
-        if data_tuple:
-            _, params_calculats = data_tuple
-            resum_sondeig = f"""
-- Inestabilitat (CAPE): {params_calculats.get('CAPE', 0):.0f} J/kg.
-- Inhibició (CIN): {params_calculats.get('CIN', 0):.0f} J/kg.
-- Cisallament 0-6km: {params_calculats.get('Shear 0-6km', np.nan):.0f} nusos.
-- Helicitat 0-3km (SRH): {params_calculats.get('SRH 0-3km', np.nan):.0f} m²/s²."""
-        
-        # El teu prompt multimodal es manté igual
-        prompt_multimodal = "" # Aquí aniria el teu prompt
+        st.markdown("Fes-me preguntes sobre el potencial de temps sever a Catalunya.")
+        st.markdown(f"**Anàlisi per:** `{poble_sel.upper()}` | **Dia:** `{timestamp_str}`")
+        nivell_mapa_ia = st.selectbox("Canvia el nivell d'anàlisi del mapa (només per a l'IA):", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat")
 
         if "messages" not in st.session_state:
             st.session_state.messages = []
@@ -352,7 +323,6 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-        # === CANVI 2: COMPROVEM EL LÍMIT ABANS DE MOSTRAR LA CAIXA D'ENTRADA ===
         if st.session_state.api_calls >= LIMIT_PER_SESSIO:
             st.warning(f"Has arribat al límit de {LIMIT_PER_SESSIO} preguntes per aquesta sessió. Torna a intentar-ho més tard.")
         else:
@@ -362,21 +332,72 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
                     st.markdown(prompt_usuari)
 
                 with st.chat_message("assistant"):
-                    with st.spinner("Analitzant les dades i consultant l'IA..."):
+                    with st.spinner("Generant mapa i consultant l'IA..."):
+                        map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
+                        
+                        if error_map_ia:
+                            st.error(f"No s'han pogut carregar les dades del mapa: {error_map_ia}")
+                            return
+
+                        fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
+                        buf = io.BytesIO()
+                        fig_mapa.savefig(buf, format='jpeg', bbox_inches='tight')
+                        buf.seek(0)
+                        img_mapa = Image.open(buf)
+                        plt.close(fig_mapa)
+
+                        resum_sondeig = "No hi ha dades de sondeig disponibles."
+                        if data_tuple:
+                            _, params_calculats = data_tuple
+                            resum_sondeig = f"""- Inestabilitat (CAPE): {params_calculats.get('CAPE', 0):.0f} J/kg.
+- Inhibició (CIN): {params_calculats.get('CIN', 0):.0f} J/kg.
+- Cisallament 0-6km: {params_calculats.get('Shear 0-6km', np.nan):.0f} nusos.
+- Helicitat 0-3km (SRH): {params_calculats.get('SRH 0-3km', np.nan):.0f} m²/s²."""
+                        
+                        prompt_multimodal = f"""
+# MISSIÓ I PERSONALITAT
+Ets un expert meteoròleg operatiu, Tempestes.CAT-IA. La teva personalitat és la d'un col·lega apassionat del temps. Ets clar, concís i vas directe al gra.
+**IMPORTANT:** Et presentes només una vegada ("Hola! Sóc Tempestes.CAT-IA...") al principi de tota la conversa. Després, mai més.
+
+---
+## COM INTERPRETAR LA IMATGE ADJUNTA (REGLA D'OR)
+La teva anàlisi visual ha de seguir aquestes regles estrictes:
+
+1.  **IGNORA COMPLETAMENT la llegenda de colors de la dreta.** No és rellevant per a la teva anàlisi de disparadors.
+2.  **IGNORA els colors de fons del mapa (blaus, verds, grocs).** Només indiquen la velocitat del vent, no són els disparadors.
+3.  **LA TEVA ÚNICA MISSIÓ VISUAL ÉS BUSCAR NÚMEROS DINS DEL MAPA.** Concretament, busca si hi ha una o més **línies de contorn negres i gruixudes** que tanquen una petita àrea vermella. A sobre d'aquesta línia negra hi haurà un **NÚMERO** (per exemple, 25, 40, 81). **AQUEST NÚMERO ÉS L'ÚNIC QUE IDENTIFICA UN "DISPARADOR"**.
+
+---
+## EL TEU PROCÉS DE RAONAMENT (ORDRE ESTRICTE)
+
+**PAS 1: Busca al mapa si existeix alguna línia de contorn negra amb un número a sobre.**
+
+**PAS 2: SI NO TROBES CAP NÚMERO DINS DEL MAPA, el risc és BAIX**, independentment de com de bo sigui el sondeig. La teva anàlisi s'acaba aquí. Pots dir: "Ep! Malgrat que hi ha molta energia a l'atmosfera, no veig cap disparador clar (cap línia de convergència amb número) al mapa per a aquesta hora. Per tant, el risc que es formin tempestes és baix."
+
+**PAS 3: SI TROBES UN O MÉS NÚMEROS, combina la informació:**
+    a. **Informa del que has trobat:** "He detectat un disparador amb una intensitat de [NÚMERO] sobre la zona de [localització geogràfica]."
+    b. **Localitza'l:** Fent servir les formes de les províncies i el teu coneixement intern, digues sobre quina àrea es troba (p. ex., "Prepirineu de Lleida", "costa de Girona", "prop del massís del Montseny").
+    c. **Valora el Sondeig:** Ara mira les dades de CAPE, CIN, etc. que et dono.
+    d. **Connecta les idees:** Conclou combinant les dues anàlisis. Per exemple: "Com que el sondeig mostra un CAPE molt alt i poca 'tapa', i a sobre tenim aquest disparador de [NÚMERO] sobre el Prepirineu, aquesta zona té un risc elevat de desenvolupar tempestes fortes."
+
+---
+## DADES DEL SONDEIG VERTICAL ({poble_sel})
+{resum_sondeig}
+
+---
+## LA TEVA TASCA ARA
+Respon a la pregunta de l'usuari seguint estrictament el procés de raonament que t'he explicat.
+"""
+                        
                         try:
-                            # Incrementem el comptador just abans de fer la trucada
                             st.session_state.api_calls += 1
-                            
                             model = genai.GenerativeModel('gemini-1.5-flash')
-                            
                             resposta_completa = model.generate_content(
                                 [prompt_multimodal, img_mapa, prompt_usuari]
                             )
                             full_response = resposta_completa.text
                             st.markdown(full_response)
-
                         except Exception as e:
-                            # === CANVI 3: GESTIÓ D'ERRORS MILLORADA ===
                             error_text = str(e)
                             if "429" in error_text and "quota" in error_text:
                                 full_response = "**Has superat el límit diari gratuït de consultes.** Si us plau, torna a intentar-ho demà."
@@ -388,14 +409,11 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
                 st.session_state.messages.append({"role": "assistant", "content": full_response})
         
         if st.button("Tanca la sessió"):
-            # Resetejem el comptador en tancar sessió
             st.session_state.api_calls = 0
             del st.session_state.token
             st.rerun()
 
-
-            
-            
+# --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
 def ui_capcalera_selectors():
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center;">Eina per al pronòstic de convecció mitjançant paràmetres clau.</p>', unsafe_allow_html=True)
