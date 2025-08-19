@@ -312,21 +312,18 @@ def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, ti
     - Cisallament 0-6km (Supercèl·lules): {'No determinat' if np.isnan(shear_6km) else f'{shear_6km:.0f} nusos'}.
     - Helicitat 0-3km (SRH - Rotació): {'No determinat' if np.isnan(srh_3km) else f'{srh_3km:.0f} m²/s²'}."""
 
-    # === AQUEST BLOC ARA GENERA UN RESUM AMB NOMS DE POBLES ===
+    # El bloc del resum del mapa no canvia
     resum_mapa = "No es detecten focus de convergència significatius a la zona."
     if map_data and map_data.get('alert_locations'):
         locations = map_data['alert_locations']
-        # Obtenim els noms únics i els ordenem alfabèticament
         unique_locations = sorted(list(set(locations)))
-        
         if unique_locations:
-            # Creem una cadena de text natural i fàcil d'interpretar per l'IA
             location_summary = ", ".join(unique_locations)
             resum_mapa = f"S'han detectat focus de convergència d'humitat a {nivell_mapa}hPa a prop dels següents municipis: {location_summary}."
         else:
             resum_mapa = f"No es detecten mecanismes de 'disparador' (focus de convergència) significatius a {nivell_mapa}hPa a tot Catalunya."
     
-    # El prompt amb les dades actualitzades
+    # El prompt amb les dades actualitzades i la sintaxi corregida
     resum_final = f"""
 # DADES METEOROLÒGIQUES
 - Data: {timestamp_str}
@@ -336,7 +333,6 @@ def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, ti
   - {resum_mapa}
 
 # INSTRUCCIONS
-{ # INSTRUCCIONS
 Presentat UNA VEGADA DIENT QUE ETS TEMPESTES.CATIA :D ,MAI MÉS.
 Ets un assistent expert en meteorologia operativa i convectiva. Les teves respostes han de ser estrictes, clares, concises i basades en dades físiques.
 El teu to ha de ser amigable i proper, estil col·lega, mai distant ni massa acadèmic.
@@ -391,7 +387,7 @@ Shear 0–6 km:
 
 10–20 m/s → multicel·les.
 
-20 m/s → possibilitat de supercèl·lules.
+>20 m/s → possibilitat de supercèl·lules.
 
 SRH 0–3 km:
 
@@ -399,7 +395,7 @@ SRH 0–3 km:
 
 100–250 → risc moderat de rotació.
 
-250 → entorn favorable a supercèl·lules tornàdiques.
+>250 → entorn favorable a supercèl·lules tornàdiques.
 
 Altres factors a considerar:
 
@@ -649,7 +645,7 @@ Exemples ultraresumits
 
 “St — base 940 hPa, cim 880 hPa (0.6 km). CAPE=0, inversió a 850 hPa, C₉₂₅ nul·la. Estrat baix persistent.”
 
-“Cb — base 920 hPa, cim 300 hPa. CAPE 1600, CIN 40, C₉₂₅ 15·10⁻⁵, shear 24. LFC baix, tope < −40 °C.” La resta del teu prompt detallat es manté exactament igual ... # }
+“Cb — base 920 hPa, cim 300 hPa. CAPE 1600, CIN 40, C₉₂₅ 15·10⁻⁵, shear 24. LFC baix, tope < −40 °C.”
 """
     return resum_final
 
