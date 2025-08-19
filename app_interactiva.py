@@ -43,22 +43,6 @@ PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 2
 
 # --- 1. FUNCIONS D'OBTENCIÓ DE DADES ---
 
-@st.cache_data(ttl=86400)
-def carregar_mapa_comarques():
-    """Carrega un mapa amb els polígons de les comarques de Catalunya i estandarditza el nom de la columna."""
-    url = "https://raw.githubusercontent.com/gloriamacia/comarques-catalunya/master/amb-capital/data/catalunya_comarques.geojson"
-    try:
-        gdf = gpd.read_file(url)
-        # CORRECCIÓ DEFINITIVA: Renombrem la columna 'nomcomarca' a 'NOM_ZONA' per a ús intern.
-        if 'nomcomarca' in gdf.columns:
-            gdf = gdf.rename(columns={'nomcomarca': 'NOM_ZONA'})
-        return gdf.to_crs(epsg=4326)
-    except Exception as e:
-        st.error(f"ERROR CRÍTIC: No s'ha pogut carregar el mapa de comarques. La localització no funcionarà. Detall: {e}")
-        return None
-
-COMARQUES_GDF = carregar_mapa_comarques()
-
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
@@ -131,58 +115,7 @@ def carregar_dades_mapa_base(variables, hourly_index):
     except Exception as e:
         return None, f"Error en carregar dades del mapa: {e}"
 
-@st.cache_data(ttl=3600)
-def carregar_dades_mapa(nivell, hourly_index):
-    try:
-        if nivell >= 950:
-            variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-            map_data_raw, error = carregar_dades_mapa_base(variables, hourly_index)
-            if error: return None, error
-            lons, lats, speed_data, dir_data, dewpoint_data = map_data_raw['lons'], map_data_raw['lats'], map_data_raw[f"wind_speed_{nivell}hPa"], map_data_raw[f"wind_direction_{nivell}hPa"], map_data_raw['dew_point_2m']
-        else:
-            variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-            map_data_raw, error = carregar_dades_mapa_base(variables, hourly_index)
-            if error: return None, error
-            lons, lats, speed_data, dir_data = map_data_raw['lons'], map_data_raw['lats'], map_data_raw[f"wind_speed_{nivell}hPa"], map_data_raw[f"wind_direction_{nivell}hPa"]
-            temp_data, rh_data = np.array(map_data_raw[f'temperature_{nivell}hPa']) * units.degC, np.array(map_data_raw[f'relative_humidity_{nivell}hPa']) * units.percent
-            dewpoint_data = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
-
-        grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100))
-        u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
-        grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-        dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-
-        dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1)
-        dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
-        divergence = (dudx + dvdy).to('1/s')
-        convergence = -divergence
-
-        CONV_THRESHOLD_SCIENTIFIC = 3e-5
-        effective_risk_mask = (convergence.magnitude >= CONV_THRESHOLD_SCIENTIFIC)
-
-        labels, num_features = label(effective_risk_mask)
-        locations = []
-
-        if COMARQUES_GDF is not None and num_features > 0:
-            for i in range(1, num_features + 1):
-                mask_i = (labels == i)
-                max_conv_value = np.max(convergence[mask_i].magnitude)
-                points = np.argwhere(mask_i)
-                center_y, center_x = points.mean(axis=0)
-                center_lon, center_lat = grid_lon[0, int(center_x)], grid_lat[int(center_y), 0]
-                p = Point(center_lon, center_lat)
-                for _, comarca in COMARQUES_GDF.iterrows():
-                    if comarca.geometry.contains(p):
-                        # LÍNIA CORREGIDA DEFINITIVAMENT: Utilitzem el nom de columna estandarditzat 'NOM_ZONA'
-                        locations.append({'zona': comarca['NOM_ZONA'], 'intensitat': max_conv_value})
-                        break
-
-        output_data = {'lons': lons, 'lats': lats, 'speed_data': speed_data, 'dir_data': dir_data, 'dewpoint_data': dewpoint_data, 'alert_locations': locations}
-        return output_data, None
-    except Exception as e: return None, f"Error en processar dades del mapa: {e}"
-
-# --- La resta del codi (visualització, IA, interfície) es manté exactament igual ---
-# ... (enganxa aquí la resta del teu codi, des de crear_mapa_base fins al final)
+# ... (La resta del teu codi, des de crear_mapa_base fins al final, es manté exactament igual) ...
         
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
