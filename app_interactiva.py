@@ -261,6 +261,7 @@ def get_color_for_param(param_name, value):
         if value < 50: return "#FF3131"
         return "#BC13FE"
     return "#FFFFFF"
+
 # SUBSTITUEIX LA TEVA FUNCIÓ "ui_pestanya_ia" PER AQUESTA VERSIÓ FINAL
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
@@ -305,7 +306,8 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
         
         buf = io.BytesIO()
-        fig_mapa.savefig(buf, format='jpeg', quality=85, bbox_inches='tight') # Canvi a JPEG per més compressió
+        # LÍNIA CORREGIDA: Canviem 'png' per 'jpeg'
+        fig_mapa.savefig(buf, format='jpeg', quality=85, bbox_inches='tight')
         buf.seek(0)
         img_mapa = Image.open(buf)
         
@@ -352,7 +354,6 @@ Combina l'anàlisi: si veus un "disparador" (zona vermella) en una àrea on el s
 
             with st.chat_message("assistant"):
                 model = genai.GenerativeModel('gemini-1.5-flash')
-                # OPTIMITZACIÓ: Gestionem el streaming de manera més neta
                 response_container = st.empty()
                 full_response = ""
                 
@@ -370,7 +371,6 @@ Combina l'anàlisi: si veus un "disparador" (zona vermella) en una àrea on el s
                     response_container.error(full_response)
             
             st.session_state.messages.append({"role": "assistant", "content": full_response})
-            # Eliminem el rerun() final per evitar recàrregues innecessàries que alenteixen
         
         if st.button("Tanca la sessió"):
             del st.session_state.token
