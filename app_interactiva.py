@@ -41,27 +41,25 @@ CIUTATS_CATALUNYA = {
 MAP_EXTENT = [0, 3.5, 40.4, 43]
 PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 
+# --- 1. FUNCIONS D'OBTENCIÓ DE DADES ---
 
-
-# AFEGEIX LA LÍNIA AQUÍ A sobre
-st.cache_data.clear()
 @st.cache_data(ttl=86400)
 def carregar_mapa_municipis():
     """Carrega un mapa amb els polígons de tots els municipis de Catalunya."""
-    # URL actualitzada a un repositori més estable
+    # URL actualitzada a un repositori estable que funciona
     url = "https://raw.githubusercontent.com/project-open-data/catalonia-geodata/master/municipis.geojson"
     try:
         gdf = gpd.read_file(url)
-        # Assegurem que el sistema de coordenades sigui el correcte per a la nostra anàlisi
         return gdf.to_crs(epsg=4326)
     except Exception as e:
-        st.warning(f"No s'ha pogut carregar el mapa de municipis. La localització de les convergències serà menys precisa. Detall: {e}")
+        st.error(f"ERROR CRÍTIC: No s'ha pogut carregar el mapa base de municipis des d'internet. La localització de les convergències no funcionarà. Detall: {e}")
         return None
-        
+
 MUNICIPIS_GDF = carregar_mapa_municipis()
 
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
+    # ... (el codi d'aquesta funció no canvia, es queda com estava) ...
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS]
@@ -83,21 +81,17 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                 u, v = mpcalc.wind_components(p_data["WS"][i] * units('km/h'), p_data["WD"][i] * units.degrees)
                 u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m); h_profile.append(p_data["H"][i])
         if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
-
         p, T, Td = np.array(p_profile) * units.hPa, np.array(T_profile) * units.degC, np.array(Td_profile) * units.degC
         u, v, heights = np.array(u_profile) * units('m/s'), np.array(v_profile) * units('m/s'), np.array(h_profile) * units.meter
-
         prof = mpcalc.parcel_profile(p, T[0], Td[0])
         params_calc = {}; cape, cin = mpcalc.cape_cin(p, T, Td, prof)
         params_calc['CAPE'], params_calc['CIN'] = (cape.to('J/kg').m if cape.magnitude > 0 else 0), cin.to('J/kg').m
-
         try: p_lcl, t_lcl = mpcalc.lcl(p[0], T[0], Td[0]); params_calc['LCL_hPa'] = p_lcl.m
         except Exception: params_calc['LCL_hPa'] = np.nan
         try: p_lfc, _ = mpcalc.lfc(p, T, Td); params_calc['LFC_hPa'] = p_lfc.m if not np.isnan(p_lfc.m) else np.nan
         except Exception: params_calc['LFC_hPa'] = np.nan
         try: p_el, _ = mpcalc.el(p, T, Td, prof); params_calc['EL_hPa'] = p_el.m if not np.isnan(p_el.m) else np.nan
         except Exception: params_calc['EL_hPa'] = np.nan
-
         params_calc['Shear 0-1km'], params_calc['Shear 0-6km'] = np.nan, np.nan
         try:
             shear_0_1km_u, shear_0_1km_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=1000 * units.m)
@@ -107,18 +101,17 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             shear_0_6km_u, shear_0_6km_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=6000 * units.m)
             params_calc['Shear 0-6km'] = mpcalc.wind_speed(shear_0_6km_u, shear_0_6km_v).to('knots').m
         except (ValueError, IndexError): pass
-
         try:
             srh_3km = mpcalc.storm_relative_helicity(heights, u, v, depth=3000 * units.meter)
             params_calc['SRH 0-3km'] = srh_3km[0].to('meter**2 / second**2').m
         except:
             params_calc['SRH 0-3km'] = np.nan
-
         return ((p, T, Td, u, v), params_calc), None
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base(variables, hourly_index):
+    # ... (el codi d'aquesta funció no canvia, es queda com estava) ...
     try:
         lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
@@ -138,9 +131,9 @@ def carregar_dades_mapa_base(variables, hourly_index):
     except Exception as e:
         return None, f"Error en carregar dades del mapa: {e}"
 
-
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
+    # ... (el codi d'aquesta funció conté la correcció del càlcul de convergència) ...
     try:
         if nivell >= 950:
             variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
@@ -160,15 +153,13 @@ def carregar_dades_mapa(nivell, hourly_index):
         grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
 
-        # === CÀLCUL DE CONVERGÈNCIA CORREGIT ===
         dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1)
         dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
         divergence = (dudx + dvdy).to('1/s')
-        # CORRECCIÓ CLAU: La convergència és simplement la divergència negativa. NO fem servir .magnitude
-        convergence = -divergence.magnitude
+        convergence = -divergence
 
         CONV_THRESHOLD_SCIENTIFIC = 3e-5
-        effective_risk_mask = (convergence >= CONV_THRESHOLD_SCIENTIFIC)
+        effective_risk_mask = (convergence.magnitude >= CONV_THRESHOLD_SCIENTIFIC)
 
         labels, num_features = label(effective_risk_mask)
         locations = []
@@ -176,13 +167,11 @@ def carregar_dades_mapa(nivell, hourly_index):
         if MUNICIPIS_GDF is not None and num_features > 0:
             for i in range(1, num_features + 1):
                 mask_i = (labels == i)
-                max_conv_value = np.max(convergence[mask_i])
-                
+                max_conv_value = np.max(convergence[mask_i].magnitude)
                 points = np.argwhere(mask_i)
                 center_y, center_x = points.mean(axis=0)
                 center_lon, center_lat = grid_lon[0, int(center_x)], grid_lat[int(center_y), 0]
                 p = Point(center_lon, center_lat)
-                
                 for _, municipi in MUNICIPIS_GDF.iterrows():
                     if municipi.geometry.contains(p):
                         locations.append({'municipi': municipi['NOM'], 'intensitat': max_conv_value})
@@ -191,7 +180,6 @@ def carregar_dades_mapa(nivell, hourly_index):
         output_data = {'lons': lons, 'lats': lats, 'speed_data': speed_data, 'dir_data': dir_data, 'dewpoint_data': dewpoint_data, 'alert_locations': locations}
         return output_data, None
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
-
         
         
 def crear_mapa_base():
