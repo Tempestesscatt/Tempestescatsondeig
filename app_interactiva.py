@@ -22,7 +22,6 @@ import google.generativeai as genai
 import geopandas as gpd
 from shapely.geometry import Point
 from collections import Counter
-import streamlit_authenticator as stauth
 import sqlite3
 from streamlit_autorefresh import st_autorefresh
 import asyncio
@@ -475,11 +474,8 @@ def ui_peu_de_pagina():
 
 # --- APLICACIÓ PRINCIPAL ---
 def app_principal():
-    col1, col2 = st.columns([0.85, 0.15])
-    with col1:
-        st.markdown(f"Benvingut, **{st.session_state['name']}**!")
-    with col2:
-        st.session_state.authenticator.logout('Tancar Sessió', 'main', key='logout')
+    # CODI NOU I CORRECTE
+    st.markdown(f"Benvingut, **{st.session_state['name']}**!")
     
     ui_capcalera_selectors()
     current_selection = f"{st.session_state.poble_selector}-{st.session_state.dia_selector}-{st.session_state.hora_selector}"
