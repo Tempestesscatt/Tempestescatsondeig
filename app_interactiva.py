@@ -435,7 +435,7 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
         with tab_europa: mostrar_imatge_temps_real("Satèl·lit (Europa)")
         with tab_ne: mostrar_imatge_temps_real("Satèl·lit (NE Península)")
 
-# SUBSTITUEIX LA TEVA VERSIÓ D'AQUESTA FUNCIÓ PER AQUESTA VERSIÓ CORREGIDA
+# SUBSTITUEIX LA TEVA FUNCIÓ ANTIGA PER AQUESTA VERSIÓ FINAL I A PROVA D'ERRORS
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
         sounding_data, params_calculats = data_tuple
@@ -449,9 +449,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                 color = get_color_for_param(param, val)
                 value_str = f"{val:.0f}" if val is not None and not np.isnan(val) else "---"
                 
-                # CORRECCIÓ D'INDENTACIÓ:
-                # Construïm el text HTML/CSS sense espais inicials problemàtics.
-                # Aquesta estructura és a prova d'errors d'indentació.
+                # Aquesta part ja estava corregida i hauria de funcionar bé
                 html_code = f"""
 <div style="text-align: left;">
     <span style="font-size: 0.8em; color: #A0A0A0;">{param}</span><br>
@@ -462,21 +460,22 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                 st.markdown(html_code, unsafe_allow_html=True)
 
         with st.expander("ℹ️ Què signifiquen aquests paràmetres?"):
-            # Apliquem la mateixa correcció aquí per seguretat
-            explanation_text = """
-            - **CAPE:** Energia disponible per a les tempestes. >1000 J/kg és significatiu.
-            - **CIN:** "Tapa" que impedeix la convecció. Valors molt negatius (> -50) són una tapa forta.
-            - **LFC:** Nivell on comença la convecció lliure. Com més baix, més fàcil és iniciar tempestes.
-            - **Shear 0-1km:** Cisallament a nivells baixos. >15-20 nusos afavoreix la rotació i el risc de **tornados**.
-            - **Shear 0-6km:** Cisallament profund. >35-40 nusos és clau per a **supercèl·lules**.
-            """
+            # CORRECCIÓ FINAL: Creem el text com una llista de línies
+            # per evitar qualsevol error de sintaxi.
+            explanation_lines = [
+                "- **CAPE:** Energia disponible per a les tempestes. >1000 J/kg és significatiu.",
+                "- **CIN:** \"Tapa\" que impedeix la convecció. Valors molt negatius (> -50) són una tapa forta.",
+                "- **LFC:** Nivell on comença la convecció lliure. Com més baix, més fàcil és iniciar tempestes.",
+                "- **Shear 0-1km:** Cisallament a nivells baixos. >15-20 nusos afavoreix la rotació i el risc de **tornados**.",
+                "- **Shear 0-6km:** Cisallament profund. >35-40 nusos és clau per a **supercèl·lules**."
+            ]
+            explanation_text = "\n".join(explanation_lines)
             st.markdown(explanation_text)
             
         st.divider()
         col1, col2 = st.columns(2)
-        with col1: st.pyplot(crear_skewt(sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4], f"Sondeig Vertical - {poble_sel}"))
-        with col2: st.pyplot(crear_hodograf(sounding_data[3], sounding_data[4]))
-    else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
+        with col1:
+            
         
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("💬 Assistent MeteoIA (amb Google Gemini)")
