@@ -116,6 +116,28 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 
         return ((p, T, Td, u, v), params_calc), None
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
+
+# ENGANXA AQUESTA FUNCIÓ AL TEU CODI
+@st.cache_data(ttl=3600)
+def carregar_dades_mapa_base(variables, hourly_index):
+    try:
+        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
+        lon_grid, lat_grid = np.meshgrid(lons, lats)
+        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
+        responses = openmeteo.weather_api(API_URL, params=params)
+        output = {var: [] for var in ["lats", "lons"] + variables}
+        for r in responses:
+            vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
+            if not any(np.isnan(v) for v in vals):
+                output["lats"].append(r.Latitude())
+                output["lons"].append(r.Longitude())
+                for i, var in enumerate(variables): 
+                    output[var].append(vals[i])
+        if not output["lats"]: 
+            return None, "No s'han rebut dades vàlides."
+        return output, None
+    except Exception as e: 
+        return None, f"Error en carregar dades del mapa: {e}"
         
 
 # SUBSTITUEIX LA TEVA FUNCIÓ "carregar_dades_mapa" PER AQUESTA
