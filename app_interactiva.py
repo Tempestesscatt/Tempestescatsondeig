@@ -528,7 +528,7 @@ def main():
     st.session_state.authenticator = authenticator
 
     # Pantalla de Login / Registre
-    name, authentication_status, username = authenticator.login('main')
+    name, authentication_status, username = authenticator.login('main') or (None, None, None)
 
     if st.session_state["authentication_status"] == False:
         st.error('Nom d\'usuari o contrasenya incorrecta')
