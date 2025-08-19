@@ -16,3 +16,4 @@ requests-cache
 retry-requests
 requests
 google-generativeai
+streamlit-oauth
