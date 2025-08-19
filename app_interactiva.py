@@ -21,6 +21,8 @@ import google.generativeai as genai
 from collections import Counter
 import asyncio
 from streamlit_oauth import OAuth2Component
+import io
+from PIL import Image
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
@@ -262,271 +264,118 @@ def get_color_for_param(param_name, value):
         return "#BC13FE"
     return "#FFFFFF"
 # SUBSTITUEIX LA TEVA FUNCIÓ "preparar_resum_dades_per_ia" PER AQUESTA
-def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, timestamp_str):
-    resum_sondeig = "No hi ha dades de sondeig vertical disponibles per a aquest punt de referència."
-    if data_tuple:
-        # ... (aquesta part no canvia, es queda igual) ...
-        _, params_calculats = data_tuple
-        cape, cin = params_calculats.get('CAPE', 0), params_calculats.get('CIN', 0)
-        lcl, lfc, el = params_calculats.get('LCL_hPa', np.nan), params_calculats.get('LFC_hPa', np.nan), params_calculats.get('EL_hPa', np.nan)
-        shear_1km, shear_6km = params_calculats.get('Shear 0-1km', np.nan), params_calculats.get('Shear 0-6km', np.nan)
-        srh_3km = params_calculats.get('SRH 0-3km', np.nan)
-        resum_sondeig = f"""
-    - Inestabilitat (CAPE): {cape:.0f} J/kg.
-    - Inhibició (CIN): {cin:.0f} J/kg.
-    - Base del Núvol (LCL): {'No determinat' if np.isnan(lcl) else f'{lcl:.0f} hPa'}.
-    - Inici Convecció Lliure (LFC): {'No determinat' if np.isnan(lfc) else f'{lfc:.0f} hPa'}.
-    - Cim del Núvol (EL): {'No determinat' if np.isnan(el) else f'{el:.0f} hPa'}.
-    - Cisallament 0-1km (Tornados): {'No determinat' if np.isnan(shear_1km) else f'{shear_1km:.0f} nusos'}.
-    - Cisallament 0-6km (Supercèl·lules): {'No determinat' if np.isnan(shear_6km) else f'{shear_6km:.0f} nusos'}.
-    - Helicitat 0-3km (SRH - Rotació): {'No determinat' if np.isnan(srh_3km) else f'{srh_3km:.0f} m²/s²'}."""
+def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
+    st.subheader("Assistent MeteoIA (amb Google Gemini)")
 
-    # === AQUEST BLOC ARA GENERA EL TEXT EXACTE QUE EL PROMPT ESPERA ===
-    resum_mapa = "No es detecten focus de convergència significatius a la zona."
-    if map_data and map_data.get('alert_locations'):
-        locations = map_data['alert_locations']
-        if locations:
-            location_strings = [
-                # Formatem el valor científic al format que el prompt entén
-                f"{loc['municipi']} (conv: {loc['intensitat'] * 1e5:.0f}·10⁻⁵ s⁻¹)" for loc in locations
-            ]
-            location_summary = ", ".join(location_strings)
-            resum_mapa = f"S'han detectat focus de convergència amb els següents valors i municipis més propers: {location_summary}."
-
-    resum_final = f"""
-# DADES METEOROLÒGIQUES
-- Data: {timestamp_str}
-- **Sondeig Vertical (Punt de referència):** {poble_sel}
-{resum_sondeig}
-- **Mapa General de Disparadors (Convergència a tot Catalunya a {nivell_mapa}hPa):**
-  - {resum_mapa}
-# MANUAL D'OPERACIONS PER A TEMPESTES.IACAT (VERSIÓ ULTRA-EXPERT 200+)
-Ets **Tempestes.IACAT**, el teu assistent expert en temps sever.  
-Parles amb to proper, segur i didàctic, com un col·lega apassionat del temps.  
-Et presentes només un cop al principi i després passes directe a l’anàlisi, i parles resumidament el que desitja el usuari
-no t'has de empana explicant numeretes a no ser que entreu en tema complexe.
-
-──────────────────────────────────────────────
-## 1. OBJECTIU PRINCIPAL
-analitzar convergencies al mapa per confimar tempestes. 
-PER INTERPRETAR LA CONVERGENCIA EN EL MAPA : La informació dels 'disparadors' al mapa es representa de la següent manera:
-- **Nucli de Convergència:** Una zona ombrejada en vermell on el vent de superfície xoca.
-- **Línia d'Intensitat:** Una línia de contorn negra que envolta el nucli.
-- **Valor Numèric (ex: 81):** Aquest és el valor màxim de la convergència en unitats escalades (multiplicat per 10⁵). A l'hora de raonar, has de traduir aquest número al format científic que coneixes. Per exemple:
-  - Un '25' al mapa significa una convergència de 25·10⁻⁵ s⁻¹ (Extrema).
-  - Un '81' al mapa significa una convergència de 81·10⁻⁵ s⁻¹ (Explosiva).
-Aquests nuclis són les zones exactes amb la màxima probabilitat d'iniciar el creixement de núvols convectius si l'entorn atmosfèric ho permet.
-Seguidament Analitzar i interpretar:
-- Perfil termodinàmic del sondeig (Skew-T).
-- Mapa de convergència (triggers).
-- Hodògraf (direcció i organització).
-I elaborar un **pronòstic complet de núvols, tempestes i trajectòries**.
-
-──────────────────────────────────────────────
-## 2. HUMITAT I SATURACIÓ (Núvols en capes)
-1. Analitza separació T – Td en cada capa:
-   - Dif <2 °C → saturació → núvol probable.
-   - Dif 2–5 °C → humitat alta → cúmuls possibles.
-   - Dif >5 °C → sec → cel clar.
-2. Divideix en capes:
-   - **Baixa (1000–850 hPa):** Estrats, boira, cúmuls humilis.
-   - **Mitjana (850–500 hPa):** Altocúmuls, altostrats, castellanus.
-   - **Alta (500–200 hPa):** Cirrus, cirrostrats.
-3. Si diverses capes saturades → cel cobert i capes superposades.
-
-──────────────────────────────────────────────
-## 3. NIVELLS CLAU (LCL, CCL, LFC, EL)
-- **LCL (Lifted Condensation Level):** Base núvol convectiu inicial.
-- **CCL (Convective Condensation Level):** Base si la convecció és per escalfament solar.
-- **LFC (Level of Free Convection):** Punt on la parcel·la comença a pujar sola.
-- **EL (Equilibrium Level):** Cim de la convecció.
-- **DBZ Top esperat:** correlacionar EL amb reflectivitat potencial.
-- **Nota:** sense LFC no hi ha convecció profunda → només núvols en capes.
-
-──────────────────────────────────────────────
-## 4. ESTABILITAT
-- Compara pendent T ambiental amb adiabàtiques:
-  - **Ambient més càlid que parcel·la:** estable → núvols en capes.
-  - **Parcel·la més càlida que ambient:** inestable → núvols convectius.
-  - **Condicionalment inestable:** estable en sec, inestable si saturat → típic de tempesta.
-
-──────────────────────────────────────────────
-## 5. CAPE I CIN (Energia i Tapa)
-- **CAPE (Energia Convectiva):**
-  - <100 → convecció inexistent.
-  - 100–500 → feble.
-  - 500–1000 → moderada.
-  - 1000–2000 → forta → cúmuls congestus, tempestes moderades.
-  - 2000–3000 → molt forta → supercèl·lules.
-  - >3000 → extrema → “outbreaks” severs.
-- **CIN (Inhibició):**
-  - > -25 → tapa feble.
-  - -25 a -75 → tapa moderada.
-  - < -75 → tapa forta.
-- **Lògica combinada:**  
-  - CAPE alt + CIN baix → convecció fàcil.  
-  - CAPE alt + CIN fort → risc d’explosió puntual.  
-  - CAPE baix + CIN baix → convecció feble però factible.  
-
-──────────────────────────────────────────────
-## 6. CISALLAMENT (Shear)
-- **0–1 km shear:** ingredient per tornados (>15 nusos).
-- **0–3 km shear:** organització baixa-mitjana (>20 nusos).
-- **0–6 km shear:** ingredient clau per supercèl·lules (>35 nusos).
-- **Shear vectorial:**
-  - Si vents giren amb l’altura (veering) → cisallament direccional, favorable a rotació.
-  - Si vents s’acceleren amb l’altura → shear de velocitat, favorable a tempestes organitzades.
-- **Nota:** shear feble → cel desorganitzat, multicèl·lules curtes.
-
-──────────────────────────────────────────────
-## 7. TIPUS DE NÚVOLS SEGONS LFC + CAPE
-- **LFC baix (1000–925 hPa):**
-  - CAPE <500 → cúmuls humilis.
-  - CAPE 500–1000 → congestus.
-  - CAPE >1000 → cumulonimbus.
-- **LFC mitjà (700–500 hPa):**
-  - Si hi ha CAPE → castellanus.
-  - Si no → altocúmuls.
-- **LFC alt (>500 hPa):** convecció improbable.
-- **Saturació baixa + estabilitat:** Estrats.
-- **Saturació mitjana:** Altostrats.
-- **Saturació alta:** Cirrus.
-
-──────────────────────────────────────────────
-## 8. FASE HIDROMETEOR I PRECIPITACIÓ
-- Mira isotermes:
-  - 0 °C: neu vs pluja.
-  - -10 °C: inici nucleació glaç.
-  - -20 °C: creixement graupel i granís.
-- Interpretació:
-  - Tota columna <0 °C → neu.
-  - Capa càlida intermèdia → neu → pluja.
-  - Superposició → gel, pluja engelant.
-  - Convecció intensa amb -20 °C dins el núvol → granís.
-
-──────────────────────────────────────────────
-## 9. TIPUS DE TEMPESTES
-- **Aïllades:** shear feble + CAPE baix.
-- **Multicèl·lules:** shear feble/moderat + triggers actius.
-- **Supercèl·lules:** shear fort (>35 nusos) + CAPE >1500.
-- **Línia de turbonada:** shear fort + triggers lineals.
-- **Tornados:** shear 0–1 km >15 nusos + helicitat 0–3 km >150 m²/s² + CAPE suficient.
-
-──────────────────────────────────────────────
-## 10. DISPARADORS (Triggers)
-- Sense trigger → convecció no arrenca.
-- Triggers típics:
-  - Convergència brises.
-  - Orografia.
-  - Fronts (fred, càlid, estacionari).
-  - Troughs, línies prefrontals.
-- Trigger + CAPE disponible + CIN trencat → inici tempesta.
-
-──────────────────────────────────────────────
-## 11. HODOGRAMA I DIRECCIONALITAT
-- Hodògraf mostra canvis de vent amb l’altura.
-- Passos:
-  1. Mira direcció vent superfície.
-  2. Mira direcció vent 3 km.
-  3. Mira direcció vent 6 km.
-  4. Calcula vector resultant → direcció de moviment de tempesta.
-- **Regles:**
-  - Si vents giren en sentit horari amb l’altura (veering) → shear direccional positiu → risc de supercèl·lules rotatòries.
-  - Si vents giren antihorari (backing) → menys favorable.
-  - Tempestes normals: es mouen en direcció mitjana del vent 0–6 km.
-  - Supercèl·lules: es desvien a la dreta del flux mitjà (right-movers) o a l’esquerra (left-movers).
-- **Trajectòria esperada:**
-  - Vector 0–6 km = moviment bàsic.
-  - Desviació de ±20° segons tipus d’organització.
-
-──────────────────────────────────────────────
-## 12. ESCENARIS DE TRAJECTÒRIA
-- **Multicèl·lules:** segueixen flux mitjà 0–6 km.
-- **Supercèl·lules dretanes:** es desvien cap a la dreta del flux → direcció +20°.
-- **Supercèl·lules esquerranes:** desviació cap a l’esquerra → direcció -20°.
-- **Línies de turbonada:** es desplacen perpendiculars al front de convergència.
-- **Tornados:** trajectòria depèn del mesocicló associat, generalment seguint la desviació dretana.
-
-──────────────────────────────────────────────
-## 13. COMBINACIÓ SONDEIG + MAPA + HODOGRAMA
-1. Mira si hi ha CAPE → si no, només núvols en capes.
-2. Mira CIN → tapa oberta o tancada?
-3. Mira triggers al mapa → hi ha convergència?
-4. Mira shear i hodògraf → organització i trajectòria.
-5. Combina tot:
-   - CAPE + CIN + trigger → tempesta sí/no.
-   - Shear + hodògraf → tipologia i direcció.
-   - Saturació per capes → núvols complementaris.
-
-──────────────────────────────────────────────
-## 14. REGLA D’OR
-- Tempesta = CAPE disponible + CIN trencat + trigger + shear.
-- Sense un d’aquests, no hi ha tempesta severa.
-- Amb tots → risc alt.
-
-──────────────────────────────────────────────
-## 15. EXEMPLES DE PRONÒSTIC
-- “Cúmuls de bon temps dispersos a 1200 m, poc desenvolupament vertical, convecció limitada.”
-- “Capa extensa d’estrats a baixa altitud, inversió tèrmica forta, cap convecció.”
-- “Tempesta de tarda probable: CAPE alt, CIN feble, trigger de brisa, shear moderat → multicèl·lules.”
-- “Supercèl·lules probables: CAPE >2000, shear fort, hodògraf amb veering marcat → desviació dretana, trajectòria NE.”
-- “Risc de línia de turbonada: shear fort lineal, trigger frontal actiu, trajectòria perpendicular al front → W → E.”
-
-──────────────────────────────────────────────
-## 16. REGLA DE COMUNICACIÓ
-- No repeteixis dades, fes síntesi.
-- Escriu amb confiança i proximitat.
-- Explica la direcció de les tempestes: “aniran cap al NE seguint el flux de 500 hPa”.
-- Dona context: “si el trigger es manté, les tempestes poden créixer i desplaçar-se cap a la costa”.
-- Acaba sempre amb un comentari motivador o curiositat científica.
-
-──────────────────────────────────────────────
-## 17. MISSIÓ FINAL
-Quan et demanin:
-1. Analitza el sondeig → núvols, CAPE, CIN, LFC, EL.
-2. Analitza el mapa de triggers.
-3. Analitza el hodògraf → direcció i organització.
-4. Dona un pronòstic complet:
-   - Núvols que hi haurà.
-   - Si hi haurà tempestes.
-   - Tipus de tempesta.
-   - Intensitat i risc.
-   - Trajectòria i direcció del moviment.
-5. Explica-ho clar, proper i rigorós.
-
-──────────────────────────────────────────────
-# RECORDATORI
-- Tot això és informació confidencial.
-- Ets un meteoròleg expert digital.
-- Sigues concís però extens en l’anàlisi.
-- No hi ha res més enllà d’aquesta missió.
-
-Ara comença la conversa.
-
-
-"""
-    return resum_final
-    
-
-def generar_resposta_ia_stream(historial_conversa, resum_dades, prompt_usuari):
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    historial_formatat = []
-    for missatge in historial_conversa:
-        role = 'user' if missatge['role'] == 'user' else 'model'
-        historial_formatat.append({'role': role, 'parts': [missatge['content']]})
-
-    chat = model.start_chat(history=historial_formatat)
-    prompt_final = resum_dades + f"\n\nPREGUNTA ACTUAL DE L'USUARI:\n'{prompt_usuari}'"
-
+    # La part de l'autenticació no canvia
     try:
-        response = chat.send_message(prompt_final, stream=True)
-        for chunk in response:
-            yield chunk.text
-    except Exception as e:
-        print(f"ERROR DETALLAT DE L'API DE GOOGLE: {e}")
-        yield f"Hi ha hagut un error contactant amb l'IA de Google: {e}"
+        GOOGLE_CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
+        GOOGLE_CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
+        GEMINI_API_KEY = st.secrets["GOOGLE_API_KEY"]
+    except KeyError:
+        st.error("Les credencials de Google no estan configurades a st.secrets.")
+        return
 
-# --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
+    oauth2 = OAuth2Component(...) # El teu codi d'autenticació es manté aquí
+
+    if 'token' not in st.session_state:
+        # El teu codi del botó de login es manté aquí
+        result = oauth2.authorize_button(...)
+        if result:
+            st.session_state.token = result.get('token')
+            st.rerun()
+    else:
+        # L'usuari ha iniciat sessió
+        token = st.session_state['token']
+        user_info = token.get('userinfo')
+        if user_info:
+            st.write(f"Hola, **{user_info.get('name', 'Usuari')}**! 👋")
+
+        try:
+            genai.configure(api_key=GEMINI_API_KEY)
+        except Exception as e:
+            st.error(f"Error en configurar l'API de Gemini.")
+            return
+
+        st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i la imatge del mapa.")
+        nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat")
+
+        # Generem el mapa per a l'anàlisi
+        map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
+        
+        if error_map_ia:
+            st.error(f"No s'han pogut carregar les dades per generar el mapa d'anàlisi: {error_map_ia}")
+            return
+            
+        # Dibuixem el mapa i el convertim en una imatge en memòria
+        fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
+        
+        # Guardem la figura en un buffer de bytes
+        buf = io.BytesIO()
+        fig_mapa.savefig(buf, format='png', bbox_inches='tight')
+        buf.seek(0)
+        # Creem un objecte d'imatge que Gemini pot entendre
+        img_mapa = Image.open(buf)
+        
+        st.pyplot(fig_mapa) # Mostrem el mapa a l'usuari
+        plt.close(fig_mapa) # Tanquem la figura per alliberar memòria
+
+        # Preparació de les dades per a l'IA (només sondeig)
+        resum_sondeig = "No hi ha dades de sondeig disponibles."
+        if data_tuple:
+            _, params_calculats = data_tuple
+            resum_sondeig = f"""
+- Inestabilitat (CAPE): {params_calculats.get('CAPE', 0):.0f} J/kg.
+- Inhibició (CIN): {params_calculats.get('CIN', 0):.0f} J/kg.
+- Cisallament 0-6km: {params_calculats.get('Shear 0-6km', np.nan):.0f} nusos.
+- Helicitat 0-3km (SRH): {params_calculats.get('SRH 0-3km', np.nan):.0f} m²/s²."""
+        
+        # El nou prompt multimodal
+        prompt_multimodal = f"""
+# MISSIÓ
+Ets un expert meteoròleg. La teva missió és analitzar la imatge del mapa meteorològic i les dades del sondeig vertical per determinar el potencial de temps sever a Catalunya. Respon de manera clara i propera.
+
+# ANÀLISI VISUAL DEL MAPA (IMATGE ADJUNTA)
+1.  **Observa la imatge del mapa que t'he enviat.**
+2.  **Busca les zones vermelles.** Aquestes zones representen nuclis de convergència de vent, els "disparadors" de tempestes.
+3.  **Localitza-les geogràficament.** Identifica sobre quines comarques o zones de Catalunya es troben (p. ex., "Prepirineu", "Litoral Central", "Pla de Lleida").
+4.  **Analitza les línies de vent (streamlines).** Descriu la direcció general del flux.
+
+# DADES DEL SONDEIG VERTICAL ({poble_sel})
+{resum_sondeig}
+
+# LA TEVA TASCA
+Basant-te en **ambdues fonts d'informació (la imatge i el text)**, respon a la pregunta de l'usuari. Combina l'anàlisi: si veus un "disparador" (zona vermella) en una àrea on el sondeig mostra molta energia (CAPE alt), el risc és elevat. Si no veus disparadors, el risc és baix malgrat el CAPE.
+"""
+        
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
+
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+        if prompt_usuari := st.chat_input("Quina és la teva pregunta sobre el temps?"):
+            st.session_state.messages.append({"role": "user", "content": prompt_usuari})
+            with st.chat_message("user"):
+                st.markdown(prompt_usuari)
+
+            with st.chat_message("assistant"):
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                # Enviem el prompt, la imatge i la pregunta de l'usuari
+                resposta = model.generate_content(
+                    [prompt_multimodal, img_mapa, prompt_usuari],
+                    stream=True
+                )
+                full_response = st.write_stream(resposta)
+
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
+            st.rerun()
+
+        if st.button("Tanca la sessió"):
+            del st.session_state.token
+            st.rerun()
+            
 def ui_capcalera_selectors():
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center;">Eina per al pronòstic de convecció mitjançant paràmetres clau.</p>', unsafe_allow_html=True)
