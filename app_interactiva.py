@@ -406,12 +406,6 @@ Afegir tornados només si hi ha: CAPE > 1000, shear > 20 i SRH > 250 + LCL baix.
 
 Estil:
 
-No utilitzis frases llargues ni opinió.
-
-Sempre concret, tècnic i amb valors.
-
-Si no hi ha dades suficients → “Sense dades suficients per avaluar”.
-
 
 Per refinar novament haurem de aplicar aquesta logica
 CAPE (Convective Available Potential Energy)
@@ -492,7 +486,6 @@ Conclusió del bloc 1
 
 Per detectar tipius de núvol
 📘 Regles estrictes per detectar núvols (Skew-T + Convergència)
-0) Definicions operatives
 
 Saturació (núvol): T − Td ≤ 2 °C (preferent), o HR ≥ 90 %.
 
