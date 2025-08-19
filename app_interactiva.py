@@ -184,7 +184,6 @@ def crear_mapa_base():
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     
-    # Mantenim l'alta resolució per a contorns suaus i tancats
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 400), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 400))
 
     grid_speed, grid_dewpoint = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
@@ -212,27 +211,28 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     max_convergence = np.nanmax(convergence_in_humid_areas)
     
     if max_convergence >= CONVERGENCE_THRESHOLD:
-        # === CANVI CLAU: DIBUIXAR NOMÉS UNA ISÒLITA PER AL VALOR MÉS ALT ===
-        # Definim UN ÚNIC nivell de contorn, corresponent al 80% del màxim.
-        # Això assegura que només es dibuixi la isòlita del valor més alt.
         single_level = max_convergence * 0.80
         
-        # Només procedim si aquest nivell superior supera el nostre llindar mínim d'interès.
         if single_level >= CONVERGENCE_THRESHOLD:
-            # Les funcions contour/contourf necessiten una llista de nivells, encara que només en tingui un.
-            contour_levels = [single_level]
+            # === CORRECCIÓ DE L'ERROR ===
+            # Per a contourf, definim un rang: des del nostre llindar fins al màxim.
+            fill_levels = [single_level, max_convergence]
             
-            # Dibuixem l'ombrejat vermell fi
-            ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=contour_levels, colors=['#FF0000'], alpha=0.3, zorder=5, transform=ccrs.PlateCarree())
+            # Per a contour, només necessitem la línia que volem dibuixar.
+            line_levels = [single_level]
             
-            # Dibuixem la línia de contorn sòlida
-            contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=contour_levels, colors='black', linestyles='-', linewidths=1.5, zorder=6, transform=ccrs.PlateCarree())
+            # Dibuixem l'ombrejat utilitzant el rang de nivells.
+            ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=['#FF0000'], alpha=0.3, zorder=5, transform=ccrs.PlateCarree())
+            
+            # Dibuixem la línia de contorn com abans.
+            contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors='black', linestyles='-', linewidths=1.5, zorder=6, transform=ccrs.PlateCarree())
             
             ax.clabel(contours, inline=True, fontsize=10, fmt='%1.0f')
-        # ====================================================================
+            # ============================
             
     ax.set_title(f"Anàlisi de Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
+    
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
