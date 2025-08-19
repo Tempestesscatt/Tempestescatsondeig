@@ -383,7 +383,34 @@ Nomès si ho pregunten, respondrás tecicament.
 
 AQUESTA SERÀ LA TEVA CHULETA PER SABER RESPONDRE BÉ
 
-Convergència baixa (925 hPa):
+
+Norma per visualitzar Convergències
+
+ criteri per convergència  
+
+< 3·10⁻⁵ s⁻¹ → sense convergència (efecte nul).
+
+3–7·10⁻⁵ s⁻¹ → convergència feble (només útil si CAPE > 1000 i CIN baix).
+
+7–12·10⁻⁵ s⁻¹ → convergència moderada (pot superar CIN moderat, activa si CAPE > 500).
+
+12–20·10⁻⁵ s⁻¹ → convergència forta (trenca inversions febles, actua amb CAPE > 200).
+
+> 20·10⁻⁵ s⁻¹ → convergència extrema (pot disparar convecció encara amb CIN alt, si CAPE > 100).
+
+🔑 Canvi clau al flux lògic
+
+Primer mira convergència.
+
+Si < 3·10⁻⁵ → ja marques risc baix directament.
+
+Si n’hi ha → passes a CAPE.
+
+Després avaluar CIN segons la força de la convergència.
+
+Finalment shear i SRH per organització.
+
+👉 Així evites falsos positius en dies sense convergència, i no menystens casos potents quan realment hi ha més de 10–15·10⁻⁵ s⁻¹.
 
 Sense convergència significativa → risc automàticament Baix.
 
