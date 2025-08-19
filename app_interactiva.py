@@ -436,14 +436,12 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     
     if "messages" not in st.session_state: st.session_state.messages = []
     
-    # Dibuixa l'historial de missatges
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             
     if prompt := st.chat_input("Escriu la teva pregunta..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
-        
         with st.chat_message("user"):
             st.markdown(prompt)
         
@@ -516,7 +514,7 @@ def app_principal():
         
     ui_peu_de_pagina()
 
-# AQUESTA ÉS LA VERSIÓ FINAL I DEFINITIVA DE LA FUNCIÓ MAIN
+# AQUESTA ÉS LA VERSIÓ FINAL I MÉS SIMPLE DE LA LÒGICA DE LOGIN
 def main():
     setup_database()
     credentials = get_users_from_db()
