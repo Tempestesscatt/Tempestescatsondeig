@@ -22,6 +22,8 @@ import google.generativeai as genai
 import geopandas as gpd
 from shapely.geometry import Point
 from collections import Counter
+import asyncio
+from streamlit_oauth import OAuth2Component
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
@@ -435,90 +437,95 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         with col2: st.pyplot(crear_hodograf(sounding_data[3], sounding_data[4]))
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 
+# VERSIÓ FINAL AMB INICI DE SESSIÓ DE GOOGLE
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
 
-    # --- LÒGICA D'AUTENTICACIÓ MILLORADA ---
-    # Primer, intentem configurar l'IA si encara no s'ha fet en aquesta sessió.
-    # Aquesta variable de sessió és la nostra única font de veritat.
-    if 'gemini_configured' not in st.session_state:
-        # Per defecte, no està configurat
-        st.session_state.gemini_configured = False
+    # 1. Carregar credencials des de st.secrets
+    try:
+        GOOGLE_CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
+        GOOGLE_CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
+        GEMINI_API_KEY = st.secrets["GOOGLE_API_KEY"]
+    except KeyError:
+        st.error("Les credencials de Google (OAuth o Gemini) no estan configurades a st.secrets. L'assistent no pot funcionar.")
+        return
+
+    # 2. Crear el component d'autenticació
+    oauth2 = OAuth2Component(
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        authorize_endpoint="https://accounts.google.com/o/oauth2/v2/auth",
+        token_endpoint="https://oauth2.googleapis.com/token",
+        refresh_token_endpoint=None,
+        revoke_token_endpoint="https://oauth2.googleapis.com/revoke",
+    )
+
+    # 3. Comprovar si ja hi ha un token a la sessió (usuari ja logat)
+    if 'token' not in st.session_state:
+        # Si no hi ha token, mostrem el botó per iniciar sessió
+        result = oauth2.authorize_button(
+            name="Inicia sessió amb Google",
+            icon="https://www.google.com.tw/favicon.ico",
+            redirect_uri="http://localhost:8501", # IMPORTANT: Canvia a la teva URL de producció quan despleguis
+            scope="openid email profile",
+            key="google",
+            use_container_width=True,
+            pkce='S256',
+        )
+        if result:
+            st.session_state.token = result.get('token')
+            st.rerun() # Recarreguem la pàgina un cop tenim el token
+    else:
+        # Si l'usuari ja ha iniciat sessió
+        token = st.session_state['token']
+        
+        # Obtenim la informació de l'usuari (opcional, per personalitzar)
+        user_info = token.get('userinfo')
+        if user_info:
+            st.write(f"Hola, **{user_info.get('name', 'Usuari')}**! 👋")
+        
+        # Ara que l'usuari està autenticat, configurem Gemini amb la NOSTRA clau
         try:
-            # Opció A: Intentem configurar amb st.secrets (ideal per desplegaments)
-            genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-            st.session_state.gemini_configured = True
-        except (KeyError, Exception):
-            # Si st.secrets falla, no fem res i deixem que l'usuari posi la clau manualment.
-            pass
+            genai.configure(api_key=GEMINI_API_KEY)
+        except Exception as e:
+            st.error(f"Error en configurar l'API de Gemini. Assegura't que la teva GOOGLE_API_KEY a st.secrets és correcta.")
+            return
 
-    # Ara, comprovem l'estat final. Si després de tot no està configurat, mostrem el formulari.
-    if not st.session_state.gemini_configured:
+        # ----- AQUÍ COMENÇA LA LÒGICA DEL XAT (la mateixa que ja tenies) -----
         st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i del mapa.")
-        nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_login")
+        nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat")
         
-        with st.container(border=True):
-            st.subheader("☁️ Activa l'Assistent MeteoIA")
-            st.markdown(
-                "Per utilitzar aquesta funcionalitat, necessites la teva pròpia clau API de Google AI Studio. "
-                "És gratuïta i la pots obtenir a l'enllaç següent."
-            )
-            st.markdown("[Obtén la teva clau API aquí](https://aistudio.google.com/app/apikey)", unsafe_allow_html=True)
+        map_data_ia, _ = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
+        if not data_tuple and not map_data_ia:
+            st.warning("No hi ha dades disponibles per analitzar en aquest moment i ubicació.")
+            return
             
-            api_key_input = st.text_input(
-                "Introdueix la teva clau API de Google Gemini:", 
-                type="password", 
-                key="api_key_input"
-            )
-
-            if st.button("Guardar i Activar ✨"):
-                if not api_key_input:
-                    st.warning("Si us plau, introdueix una clau API.")
-                else:
-                    try:
-                        genai.configure(api_key=api_key_input)
-                        # Si la configuració funciona, ho guardem a la sessió
-                        st.session_state.gemini_configured = True
-                        st.success("API Key guardada correctament! L'assistent s'ha activat.")
-                        time.sleep(1)
-                        # Forcem la recàrrega de la pàgina per mostrar el xat
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"La clau API no sembla vàlida. Error: {e}")
-        # Aturem l'execució de la funció aquí per no mostrar el xat
-        return
-
-    # --- SI EL CODI ARRIBA AQUÍ, L'IA ESTÀ CONFIGURADA I MOSTREM EL XAT ---
-    st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i del mapa.")
-    nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat")
-    
-    map_data_ia, _ = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
-    if not data_tuple and not map_data_ia:
-        st.warning("No hi ha dades disponibles per analitzar en aquest moment i ubicació.")
-        return
+        resum_dades = preparar_resum_dades_per_ia(data_tuple, map_data_ia, nivell_mapa_ia, poble_sel, timestamp_str)
         
-    resum_dades = preparar_resum_dades_per_ia(data_tuple, map_data_ia, nivell_mapa_ia, poble_sel, timestamp_str)
-    
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
 
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+                
+        if prompt := st.chat_input("Quina és la teva pregunta sobre el temps?"):
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
             
-    if prompt := st.chat_input("Quina és la teva pregunta sobre el temps?"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        
-        with st.chat_message("assistant"):
-            historial_anterior = st.session_state.messages[:-1]
-            response_generator = generar_resposta_ia_stream(historial_anterior, resum_dades, prompt)
-            full_response = st.write_stream(response_generator)
+            with st.chat_message("assistant"):
+                historial_anterior = st.session_state.messages[:-1]
+                response_generator = generar_resposta_ia_stream(historial_anterior, resum_dades, prompt)
+                full_response = st.write_stream(response_generator)
+                
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
+            st.rerun()
             
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
-        st.rerun()
-        
+        # Botó per tancar sessió
+        if st.button("Tanca la sessió"):
+            del st.session_state.token
+            st.rerun()
         
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades del model AROME via <a href='https://open-meteo.com/'>Open-Meteo</a> | Imatges via <a href='https://www.meteociel.fr/'>Meteociel</a> | Anàlisi IA per Google Gemini.</p>", unsafe_allow_html=True)
