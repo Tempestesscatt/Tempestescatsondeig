@@ -12,3 +12,5 @@ pytz
 google-generativeai
 geopandas
 shapely
+streamlit-authenticator
+streamlit-autorefresh
