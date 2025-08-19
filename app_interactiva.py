@@ -45,13 +45,21 @@ MAP_EXTENT = [0, 3.5, 40.4, 43]
 PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 
 @st.cache_data(ttl=86400)
-def carregar_mapa_provincies():
-    url = "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/spain-provinces.geojson"
-    gdf = gpd.read_file(url)
-    return gdf[gdf['name'].isin(['Barcelona', 'Tarragona', 'Lleida', 'Girona'])]
-PROVINCIES_GDF = carregar_mapa_provincies()
+def carregar_mapa_municipis():
+    """Carrega un mapa amb els polígons de tots els municipis de Catalunya."""
+    url = "https://raw.githubusercontent.com/martgnz/bcn-geodata/master/catalunya/municipis/municipis.geojson"
+    try:
+        gdf = gpd.read_file(url)
+        # Assegurem que el sistema de coordenades sigui el correcte per a la nostra anàlisi
+        return gdf.to_crs(epsg=4326)
+    except Exception as e:
+        print(f"ERROR: No s'ha pogut carregar el mapa de municipis. {e}")
+        st.warning("No s'ha pogut carregar el mapa de municipis. La localització de les convergències serà menys precisa.")
+        return None
 
-# --- 1. FUNCIONS D'OBTENCIÓ DE DADES ---
+# Carreguem les dades dels municipis en iniciar l'app
+MUNICIPIS_GDF = carregar_mapa_municipis()
+
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
@@ -110,23 +118,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
         
 
-@st.cache_data(ttl=3600)
-def carregar_dades_mapa_base(variables, hourly_index):
-    try:
-        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
-        lon_grid, lat_grid = np.meshgrid(lons, lats)
-        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
-        responses = openmeteo.weather_api(API_URL, params=params)
-        output = {var: [] for var in ["lats", "lons"] + variables}
-        for r in responses:
-            vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
-            if not any(np.isnan(v) for v in vals):
-                output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
-                for i, var in enumerate(variables): output[var].append(vals[i])
-        if not output["lats"]: return None, "No s'han rebut dades vàlides."
-        return output, None
-    except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
-
+# SUBSTITUEIX LA TEVA FUNCIÓ "carregar_dades_mapa" PER AQUESTA
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
     try:
@@ -156,24 +148,40 @@ def carregar_dades_mapa(nivell, hourly_index):
         
         labels, num_features = label(effective_risk_mask)
         locations = []
-        if num_features > 0:
+        
+        # === AQUEST BLOC ARA BUSCA MUNICIPIS EXACTES ===
+        if MUNICIPIS_GDF is not None and num_features > 0:
             for i in range(1, num_features + 1):
-                points = np.argwhere(labels == i); center_y, center_x = points.mean(axis=0)
+                points = np.argwhere(labels == i)
+                center_y, center_x = points.mean(axis=0)
                 center_lon, center_lat = grid_lon[0, int(center_x)], grid_lat[int(center_y), 0]
+                
                 p = Point(center_lon, center_lat)
-                for _, prov in PROVINCIES_GDF.iterrows():
-                    if prov.geometry.contains(p): locations.append(prov['name']); break
+                
+                for _, municipi in MUNICIPIS_GDF.iterrows():
+                    if municipi.geometry.contains(p):
+                        locations.append(municipi['NOM_MUNI'])
+                        break # Parem de buscar un cop l'hem trobat
         
         output_data = {'lons': lons, 'lats': lats, 'speed_data': speed_data, 'dir_data': dir_data, 'dewpoint_data': dewpoint_data, 'alert_locations': locations}
         return output_data, None
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
+        
+
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
-    ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
-    ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0); ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
-    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5); PROVINCIES_GDF.plot(ax=ax, edgecolor='black', facecolor='none', alpha=0, transform=ccrs.PlateCarree())
+    ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree())
+    ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
+    ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
+    ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
+    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
+    
+    # Dibuixem els municipis en lloc de les províncies
+    if MUNICIPIS_GDF is not None:
+        MUNICIPIS_GDF.plot(ax=ax, edgecolor='gray', facecolor='none', alpha=0.5, linewidth=0.4, transform=ccrs.PlateCarree(), zorder=1)
+        
     return fig, ax
 
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
@@ -286,6 +294,7 @@ def get_color_for_param(param_name, value):
     return "#FFFFFF"
 
 def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, timestamp_str):
+    # La part del resum del sondeig no canvia
     resum_sondeig = "No hi ha dades de sondeig vertical disponibles per a aquest punt de referència."
     if data_tuple:
         _, params_calculats = data_tuple
@@ -303,19 +312,21 @@ def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, ti
     - Cisallament 0-6km (Supercèl·lules): {'No determinat' if np.isnan(shear_6km) else f'{shear_6km:.0f} nusos'}.
     - Helicitat 0-3km (SRH - Rotació): {'No determinat' if np.isnan(srh_3km) else f'{srh_3km:.0f} m²/s²'}."""
 
-    resum_mapa = "No hi ha dades del mapa general disponibles."
-    if map_data and map_data.get('alert_locations') is not None:
+    # === AQUEST BLOC ARA GENERA UN RESUM AMB NOMS DE POBLES ===
+    resum_mapa = "No es detecten focus de convergència significatius a la zona."
+    if map_data and map_data.get('alert_locations'):
         locations = map_data['alert_locations']
-        if locations:
-            location_counts = Counter(locations)
-            location_summary = ", ".join([f"{count} a la província de {loc}" for loc, count in location_counts.items()])
-            resum_mapa = f"Hi ha mecanismes de 'disparador' actius. S'han detectat {len(locations)} focus de convergència d'humitat a {nivell_mapa}hPa, localitzats a: {location_summary}."
+        # Obtenim els noms únics i els ordenem alfabèticament
+        unique_locations = sorted(list(set(locations)))
+        
+        if unique_locations:
+            # Creem una cadena de text natural i fàcil d'interpretar per l'IA
+            location_summary = ", ".join(unique_locations)
+            resum_mapa = f"S'han detectat focus de convergència d'humitat a {nivell_mapa}hPa a prop dels següents municipis: {location_summary}."
         else:
-            resum_mapa = f"No es detecten mecanismes de 'disparador' (focus de convergència) a {nivell_mapa}hPa a tot Catalunya."
+            resum_mapa = f"No es detecten mecanismes de 'disparador' (focus de convergència) significatius a {nivell_mapa}hPa a tot Catalunya."
     
-    # --- NOTA: TAL COM HAS DEMANAT, HE ELIMINAT EL PROMPT LLARG D'AQUÍ ---
-    # En una versió final, el detallat "MANUAL D'OPERACIONS" aniria aquí dins
-    # per donar a l'IA la seva personalitat i coneixements tècnics.
+    # El prompt amb les dades actualitzades
     resum_final = f"""
 # DADES METEOROLÒGIQUES
 - Data: {timestamp_str}
@@ -325,6 +336,7 @@ def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, ti
   - {resum_mapa}
 
 # INSTRUCCIONS
+{ # INSTRUCCIONS
 Presentat UNA VEGADA DIENT QUE ETS TEMPESTES.CATIA :D ,MAI MÉS.
 Ets un assistent expert en meteorologia operativa i convectiva. Les teves respostes han de ser estrictes, clares, concises i basades en dades físiques.
 El teu to ha de ser amigable i proper, estil col·lega, mai distant ni massa acadèmic.
@@ -637,9 +649,7 @@ Exemples ultraresumits
 
 “St — base 940 hPa, cim 880 hPa (0.6 km). CAPE=0, inversió a 850 hPa, C₉₂₅ nul·la. Estrat baix persistent.”
 
-“Cb — base 920 hPa, cim 300 hPa. CAPE 1600, CIN 40, C₉₂₅ 15·10⁻⁵, shear 24. LFC baix, tope < −40 °C.”
-
-
+“Cb — base 920 hPa, cim 300 hPa. CAPE 1600, CIN 40, C₉₂₅ 15·10⁻⁵, shear 24. LFC baix, tope < −40 °C.” La resta del teu prompt detallat es manté exactament igual ... # }
 """
     return resum_final
 
