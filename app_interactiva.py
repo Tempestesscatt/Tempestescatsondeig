@@ -372,14 +372,22 @@ def ui_capcalera_selectors():
         with col3: st.selectbox("Hora del pronòstic (Hora Local):", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
 
 
+# AQUESTA ÉS L'ÚNICA FUNCIÓ QUE HAS DE CANVIAR
 def ui_explicacio_alertes():
     with st.expander("📖 Què signifiquen les isòlines de convergència?"):
-        # CORRECCIÓ: El text comença just després de les tres cometes
-        # i les línies següents estan alineades a l'esquerra.
-        st.markdown("""Les línies vermelles discontínues (`---`) marquen zones de **convergència d'humitat**. Són els **disparadors** potencials de tempestes.
-- **Què són?** Àrees on el vent força l'aire humit a ajuntar-se i ascendir.
-- **Com interpretar-les?** El número sobre la línia indica la seva intensitat (més alt = més fort). Valors > 20 són significatius. Les tempestes tendeixen a formar-se sobre o a prop d'aquestes línies.
-""")
+        
+        # Pas 1: Guardem tot el text en una variable separada.
+        # Això evita qualsevol conflicte de sintaxi dins de la funció de Streamlit.
+        text_explicatiu = """
+        Les línies vermelles discontínues (`---`) marquen zones de **convergència d'humitat**. Són els **disparadors** potencials de tempestes.
+        
+        - **Què són?** Àrees on el vent força l'aire humit a ajuntar-se i ascendir.
+        
+        - **Com interpretar-les?** El número sobre la línia indica la seva intensitat (més alt = més fort). Valors > 20 són significatius. Les tempestes tendeixen a formar-se sobre o a prop d'aquestes línies.
+        """
+        
+        # Pas 2: Passem la variable a st.markdown.
+        st.markdown(text_explicatiu)
         
 def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
     col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large")
