@@ -139,8 +139,6 @@ def carregar_dades_mapa_base(variables, hourly_index):
         return None, f"Error en carregar dades del mapa: {e}"
 
 
-
-# SUBSTITUEIX LA TEVA FUNCIÓ "carregar_dades_mapa" PER AQUESTA
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
     try:
@@ -162,14 +160,13 @@ def carregar_dades_mapa(nivell, hourly_index):
         grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
 
-        # === CÀLCUL DE CONVERGÈNCIA CORREGIT I ROBUST ===
-        # Calculem les derivades per separat per evitar errors de la funció principal de MetPy
+        # === CÀLCUL DE CONVERGÈNCIA CORREGIT ===
         dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1)
         dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
         divergence = (dudx + dvdy).to('1/s')
-        convergence = -divergence.magnitude # Ara el càlcul és correcte
+        # CORRECCIÓ CLAU: La convergència és simplement la divergència negativa. NO fem servir .magnitude
+        convergence = -divergence.magnitude
 
-        # Llindar baix per capturar fins i tot les convergències febles
         CONV_THRESHOLD_SCIENTIFIC = 3e-5
         effective_risk_mask = (convergence >= CONV_THRESHOLD_SCIENTIFIC)
 
@@ -194,7 +191,7 @@ def carregar_dades_mapa(nivell, hourly_index):
         output_data = {'lons': lons, 'lats': lats, 'speed_data': speed_data, 'dir_data': dir_data, 'dewpoint_data': dewpoint_data, 'alert_locations': locations}
         return output_data, None
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
-        
+
         
         
 def crear_mapa_base():
@@ -225,12 +222,13 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density= 4, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
     
-    # === CÀLCUL DE CONVERGÈNCIA CORREGIT I ROBUST (PER A LA VISUALITZACIÓ) ===
+    # === CÀLCUL DE CONVERGÈNCIA CORREGIT (PER A LA VISUALITZACIÓ) ===
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1)
     dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
     divergence = (dudx + dvdy).to('1/s')
-    convergence_scaled = -divergence.magnitude * 1e5 # El valor escalat que es mostra al mapa
+    # CORRECCIÓ CLAU: No fem servir .magnitude per no perdre el signe
+    convergence_scaled = -divergence.magnitude * 1e5
 
     CONVERGENCE_THRESHOLD = 20
     if nivell >= 950: DEWPOINT_THRESHOLD = 14
