@@ -1,9 +1,3 @@
-# -*- coding: utf-8 -*-
-import streamlit as st
-import openmeteo_requests
-import requests_cache
-from retry_requests import retry
-import requests
 import numpy as np
 import time
 import matplotlib.pyplot as plt
@@ -332,7 +326,8 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
         
         buf = io.BytesIO()
-        fig_mapa.savefig(buf, format='jpeg', quality=85, bbox_inches='tight')
+        # LÍNIA CORREGIDA: Eliminem el paràmetre 'quality'
+        fig_mapa.savefig(buf, format='jpeg', bbox_inches='tight')
         buf.seek(0)
         img_mapa = Image.open(buf)
         
