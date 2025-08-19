@@ -43,16 +43,18 @@ PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 2
 
 # --- 1. FUNCIONS D'OBTENCIÓ DE DADES ---
 
+# SUBSTITUEIX LA TEVA FUNCIÓ PER AQUESTA
 @st.cache_data(ttl=86400)
-def carregar_mapa_municipis():
-    """Carrega un mapa amb els polígons de tots els municipis de Catalunya."""
+def carregar_mapa_comarques():
+    """Carrega un mapa amb els polígons de les comarques de Catalunya."""
     url = "https://raw.githubusercontent.com/gloriamacia/comarques-catalunya/master/amb-capital/data/catalunya_comarques.geojson"
     try:
         gdf = gpd.read_file(url)
         return gdf.to_crs(epsg=4326)
     except Exception as e:
-        st.error(f"ERROR CRÍTIC: No s'ha pogut carregar el mapa base de municipis. La localització no funcionarà. Detall: {e}")
+        st.error(f"ERROR CRÍTIC: No s'ha pogut carregar el mapa de comarques. La localització no funcionarà. Detall: {e}")
         return None
+
 
 MUNICIPIS_GDF = carregar_mapa_municipis()
 
@@ -128,6 +130,7 @@ def carregar_dades_mapa_base(variables, hourly_index):
     except Exception as e:
         return None, f"Error en carregar dades del mapa: {e}"
 
+# SUBSTITUEIX LA TEVA FUNCIÓ "carregar_dades_mapa" PER AQUESTA
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
     try:
@@ -160,7 +163,7 @@ def carregar_dades_mapa(nivell, hourly_index):
         labels, num_features = label(effective_risk_mask)
         locations = []
 
-        if MUNICIPIS_GDF is not None and num_features > 0:
+        if COMARQUES_GDF is not None and num_features > 0:
             for i in range(1, num_features + 1):
                 mask_i = (labels == i)
                 max_conv_value = np.max(convergence[mask_i].magnitude)
@@ -168,9 +171,11 @@ def carregar_dades_mapa(nivell, hourly_index):
                 center_y, center_x = points.mean(axis=0)
                 center_lon, center_lat = grid_lon[0, int(center_x)], grid_lat[int(center_y), 0]
                 p = Point(center_lon, center_lat)
-                for _, municipi in MUNICIPIS_GDF.iterrows():
-                    if municipi.geometry.contains(p):
-                        locations.append({'municipi': municipi['NOM'], 'intensitat': max_conv_value})
+                for _, comarca in COMARQUES_GDF.iterrows():
+                    if comarca.geometry.contains(p):
+                        # === LÍNIA CORREGIDA ===
+                        # Utilitzem la columna correcta 'NOMCOMARCA'
+                        locations.append({'municipi': comarca['NOMCOMARCA'], 'intensitat': max_conv_value})
                         break
 
         output_data = {'lons': lons, 'lats': lats, 'speed_data': speed_data, 'dir_data': dir_data, 'dewpoint_data': dewpoint_data, 'alert_locations': locations}
