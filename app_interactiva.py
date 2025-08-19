@@ -578,5 +578,3 @@ if __name__ == "__main__":
     main()
 
 
-
-el problema es que a la hora de desplegar la app, me sale este error, en cambio, si lo hago desde mi pc, no... porque puede ser?
