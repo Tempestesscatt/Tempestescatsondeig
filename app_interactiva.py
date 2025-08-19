@@ -46,7 +46,7 @@ PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 2
 @st.cache_data(ttl=86400)
 def carregar_mapa_municipis():
     """Carrega un mapa amb els polígons de tots els municipis de Catalunya."""
-    url = "https://github.com/gloriamacia/comarques-catalunya/blob/479c7bc033edc101323a468a89dac4575378a2f3/amb-capital/data/catalunya_comarques.geojson"
+    url = "https://raw.githubusercontent.com/gloriamacia/comarques-catalunya/master/amb-capital/data/catalunya_comarques.geojson"
     try:
         gdf = gpd.read_file(url)
         return gdf.to_crs(epsg=4326)
