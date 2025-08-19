@@ -17,7 +17,6 @@ import cartopy.feature as cfeature
 from scipy.interpolate import griddata
 from datetime import datetime, timedelta
 import pytz
-from scipy.ndimage import label
 import google.generativeai as genai
 from collections import Counter
 import asyncio
@@ -113,7 +112,6 @@ def carregar_dades_mapa_base(variables, hourly_index):
     except Exception as e:
         return None, f"Error en carregar dades del mapa: {e}"
 
-# FUNCIÓ RESTAURADA QUE FALTAVA
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
     try:
@@ -137,9 +135,7 @@ def carregar_dades_mapa(nivell, hourly_index):
     except Exception as e:
         return None, f"Error en processar dades del mapa: {e}"
 
-# --- La resta del teu codi (visualització, IA, interfície) es manté exactament igual ---
-# ... (enganxa aquí la resta del teu codi, des de crear_mapa_base fins al final)
-        
+# --- 2. FUNCIONS DE VISUALITZACIÓ ---
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree())
@@ -147,11 +143,9 @@ def crear_mapa_base():
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
     ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
-    if MUNICIPIS_GDF is not None:
-        MUNICIPIS_GDF.plot(ax=ax, edgecolor='gray', facecolor='none', alpha=0.5, linewidth=0.4, transform=ccrs.PlateCarree(), zorder=1)
+    # Línia problemàtica eliminada
     return fig, ax
 
-# SUBSTITUEIX LA TEVA FUNCIÓ "crear_mapa_forecast_combinat" PER AQUESTA
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 400), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 400))
@@ -168,12 +162,10 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density= 4, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
     
-    # === CÀLCUL DE CONVERGÈNCIA CORREGIT (PER A LA VISUALITZACIÓ) ===
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1)
     dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
     divergence = (dudx + dvdy).to('1/s')
-    # CORRECCIÓ CLAU: No fem servir .magnitude per no perdre el signe
     convergence_scaled = -divergence.magnitude * 1e5
 
     CONVERGENCE_THRESHOLD = 20
@@ -194,6 +186,8 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     ax.set_title(f"Anàlisi de Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
     
+# ... (la resta de funcions es mantenen igual) ...
+
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
