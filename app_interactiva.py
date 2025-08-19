@@ -440,48 +440,47 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         with col2: st.pyplot(crear_hodograf(sounding_data[3], sounding_data[4]))
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 
+# SUBSTITUEIX LA TEVA FUNCIÓ ANTIGA PER AQUESTA VERSIÓ FINAL
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
     st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i del mapa.")
     nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector")
+    
     if not GEMINI_CONFIGURAT:
         st.error("Funcionalitat no disponible.")
         return
+        
     map_data_ia, _ = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
     if not data_tuple and not map_data_ia:
         st.warning("No hi ha dades disponibles per analitzar.")
         return
+        
     resum_dades = preparar_resum_dades_per_ia(data_tuple, map_data_ia, nivell_mapa_ia, poble_sel, timestamp_str)
     
-    # CANVI: Contenidor per al xat amb scroll
-    st.markdown("""<style> .chat-container { height: 500px; overflow-y: auto; display: flex; flex-direction: column-reverse; } </style>""", unsafe_allow_html=True)
-    chat_container = st.container(height=500, border=False)
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
-    if "messages" not in st.session_state: st.session_state.messages = []
-    
-    with chat_container:
-        for message in reversed(st.session_state.messages):
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-        
+    # Mostrem tots els missatges de la sessió actual
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            
+    # La caixa per escriure apareix al final
     if prompt := st.chat_input("Escriu la teva pregunta..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
         
-        # Utilitzem st.rerun per a redibuixar el xat immediatament
-        st.rerun()
-
-    # Si l'últim missatge és de l'usuari, generem la resposta
-    if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
-        with chat_container:
-             with st.chat_message("user"):
-                st.markdown(st.session_state.messages[-1]["content"])
-             with st.chat_message("assistant"):
-                historial_anterior = st.session_state.messages[:-1]
-                response_generator = generar_resposta_ia_stream(historial_anterior, resum_dades, st.session_state.messages[-1]["content"])
-                full_response = st.write_stream(response_generator)
+        with st.chat_message("assistant"):
+            # L'animació "typing" funciona perfectament aquí
+            historial_anterior = st.session_state.messages[:-1]
+            response_generator = generar_resposta_ia_stream(historial_anterior, resum_dades, prompt)
+            full_response = st.write_stream(response_generator)
+            
         st.session_state.messages.append({"role": "assistant", "content": full_response})
+        # Forcem un re-dibuix per a assegurar que tot es mostra correctament
         st.rerun()
-
+        
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades del model AROME via <a href='https://open-meteo.com/'>Open-Meteo</a> | Imatges via <a href='https://www.meteociel.fr/'>Meteociel</a> | Anàlisi IA per Google Gemini.</p>", unsafe_allow_html=True)
 
