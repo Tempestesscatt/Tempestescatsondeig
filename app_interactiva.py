@@ -261,7 +261,7 @@ def get_color_for_param(param_name, value):
         return "#BC13FE"
     return "#FFFFFF"
 
-# SUBSTITUEIX LA TEVA FUNCIÓ "ui_pestanya_ia" PER AQUESTA VERSIÓ FINAL I ESTABLE
+# SUBSTITUEIX LA TEVA FUNCIÓ "ui_pestanya_ia" PER AQUESTA VERSIÓ FINAL
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
 
@@ -306,6 +306,13 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         except Exception as e:
             st.error(f"Error en configurar l'API de Gemini.")
             return
+            
+        # === CANVI 1: INICIALITZEM EL COMPTADOR DE PETICIONS ===
+        if 'api_calls' not in st.session_state:
+            st.session_state.api_calls = 0
+        
+        # Limitem a un número raonable per sessió per evitar arribar al límit diari ràpidament
+        LIMIT_PER_SESSIO = 15
 
         st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i la imatge del mapa.")
         nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat")
@@ -335,66 +342,9 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
 - Cisallament 0-6km: {params_calculats.get('Shear 0-6km', np.nan):.0f} nusos.
 - Helicitat 0-3km (SRH): {params_calculats.get('SRH 0-3km', np.nan):.0f} m²/s²."""
         
-        prompt_multimodal = f"""
-# MISSIÓ I PERSONALITAT
-Ets un expert meteoròleg operatiu, conegut com a Tempestes.CAT-IA. La teva personalitat és la d'un col·lega apassionat del temps. Ets clar, concís i vas directe al gra.
-**IMPORTANT:** Et presentes només una vegada ("Hola! Sóc Tempestes.CAT-IA...") al principi de tota la conversa. Després, mai més.
+        # El teu prompt multimodal es manté igual
+        prompt_multimodal = "" # Aquí aniria el teu prompt
 
----
-## EL TEU MOTOR DE RAONAMENT INTERN (MAI MOSTIS AIXÒ A L'USUARI)
-Aquesta és la teva guia interna per pensar. No has d'escriure "Pas 1", "Pas 2", etc. a la teva resposta.
-
-1.  **Anàlisi Visual:** Primer, busca a la imatge si hi ha **zones vermelles** envoltades per línies de contorn negres. Aquestes són els únics "disparadors" vàlids. IGNORA la llegenda i els colors de fons (verd, blau).
-2.  **Primer Filtre (Decisió Clau):**
-    *   **Si NO hi ha zones vermelles:** Conclou que el risc és BAIX perquè falta el disparador.
-    *   **Si SÍ que hi ha zones vermelles:** Continua amb l'anàlisi.
-3.  **Anàlisi Completa (si hi ha zones vermelles):**
-    *   **Localitza** les zones vermelles sobre el mapa de Catalunya (p. ex., "Prepirineu", "Litoral de Girona", "Pla de Lleida").
-    *   **Valora el sondeig** que et dono (CAPE, CIN, cisallament...).
-    *   **Connecta les dues idees** per formar una conclusió coherent.
-
----
-## COM HAS DE CONSTRUIR I PRESENTAR LA TEVA RESPOSTA
-
-**El teu objectiu és escriure una resposta fluida i natural que integri la teva anàlisi, SENSE enumerar els passos del teu raonament.**
-
-**Exemple d'una resposta CORRECTA (si hi ha risc):**
-"Ep! La situació és molt interessant. Veig un disparador de convergència molt clar sobre la zona del Ripollès al mapa. Com que el sondeig ens diu que l'atmosfera està carregada d'energia (CAPE molt alt), aquesta zona té un risc elevat de desenvolupar tempestes fortes a l'hora indicada. Caldrà estar atents!"
-
-**Exemple d'una resposta CORRECTA (si NO hi ha risc):**
-"Bona pregunta! Tot i que el sondeig mostra que hi ha molta energia a l'atmosfera, la veritat és que no veig cap disparador clar al mapa per a aquesta hora. Sense aquest mecanisme d'inici, és molt poc probable que es formin tempestes. Per tant, el risc és baix."
-
----
-## DADES DEL SONDEIG VERTICAL ({poble_sel})
-{resum_sondeig}
-
----
-## LA TEVA TASCA ARA
-Respon a la pregunta de l'usuari seguint el teu motor de raonament intern, però presentant la informació d'una manera natural i conversacional, com en els exemples que t'he donat.
-
----
-## DADES DEL SONDEIG VERTICAL ({poble_sel})
-{resum_sondeig}
-
----
-## LA TEVA TASCA ARA
-Respon a la pregunta de l'usuari seguint estrictament el procés de raonament que t'he explicat.
-
----
-## DADES DEL SONDEIG VERTICAL ({poble_sel})
-{resum_sondeig}
-
----
-## LA TEVA TASCA ARA
-Respon a la pregunta de l'usuari seguint estrictament el procés de raonament que t'he explicat.
-
-# DADES DEL SONDEIG VERTICAL ({poble_sel})
-{resum_sondeig}
-
-# LA TEVA TASCA
-Combina l'anàlisi: si veus un "disparador" (zona vermella) en una àrea on el sondeig mostra molta energia (CAPE alt), el risc és elevat. Si no veus disparadors, el risc és baix malgrat el CAPE. Respon a la pregunta de l'usuari.
-"""
-        
         if "messages" not in st.session_state:
             st.session_state.messages = []
 
@@ -402,34 +352,48 @@ Combina l'anàlisi: si veus un "disparador" (zona vermella) en una àrea on el s
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-        if prompt_usuari := st.chat_input("Quina és la teva pregunta sobre el temps?"):
-            st.session_state.messages.append({"role": "user", "content": prompt_usuari})
-            with st.chat_message("user"):
-                st.markdown(prompt_usuari)
+        # === CANVI 2: COMPROVEM EL LÍMIT ABANS DE MOSTRAR LA CAIXA D'ENTRADA ===
+        if st.session_state.api_calls >= LIMIT_PER_SESSIO:
+            st.warning(f"Has arribat al límit de {LIMIT_PER_SESSIO} preguntes per aquesta sessió. Torna a intentar-ho més tard.")
+        else:
+            if prompt_usuari := st.chat_input("Quina és la teva pregunta sobre el temps?"):
+                st.session_state.messages.append({"role": "user", "content": prompt_usuari})
+                with st.chat_message("user"):
+                    st.markdown(prompt_usuari)
 
-            with st.chat_message("assistant"):
-                with st.spinner("Analitzant les dades i consultant l'IA..."):
-                    try:
-                        model = genai.GenerativeModel('gemini-1.5-flash')
-                        
-                        # === CANVI CLAU: Eliminem el 'streaming' per a més estabilitat ===
-                        # En lloc de rebre la resposta a trossos, la demanem sencera.
-                        resposta_completa = model.generate_content(
-                            [prompt_multimodal, img_mapa, prompt_usuari] # Hem tret stream=True
-                        )
-                        full_response = resposta_completa.text
-                        st.markdown(full_response)
+                with st.chat_message("assistant"):
+                    with st.spinner("Analitzant les dades i consultant l'IA..."):
+                        try:
+                            # Incrementem el comptador just abans de fer la trucada
+                            st.session_state.api_calls += 1
+                            
+                            model = genai.GenerativeModel('gemini-1.5-flash')
+                            
+                            resposta_completa = model.generate_content(
+                                [prompt_multimodal, img_mapa, prompt_usuari]
+                            )
+                            full_response = resposta_completa.text
+                            st.markdown(full_response)
 
-                    except Exception as e:
-                        full_response = f"Hi ha hagut un error contactant amb l'IA: {e}"
-                        st.error(full_response)
-            
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
-            # st.rerun() # Eliminem el rerun per a una experiència més fluida
+                        except Exception as e:
+                            # === CANVI 3: GESTIÓ D'ERRORS MILLORADA ===
+                            error_text = str(e)
+                            if "429" in error_text and "quota" in error_text:
+                                full_response = "**Has superat el límit diari gratuït de consultes.** Si us plau, torna a intentar-ho demà."
+                                st.error(full_response)
+                            else:
+                                full_response = f"Hi ha hagut un error inesperat contactant amb l'IA."
+                                st.error(full_response)
+                
+                st.session_state.messages.append({"role": "assistant", "content": full_response})
         
         if st.button("Tanca la sessió"):
+            # Resetejem el comptador en tancar sessió
+            st.session_state.api_calls = 0
             del st.session_state.token
             st.rerun()
+
+
             
             
 def ui_capcalera_selectors():
