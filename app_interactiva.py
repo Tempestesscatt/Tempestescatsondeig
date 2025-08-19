@@ -138,6 +138,7 @@ def carregar_dades_mapa_base(variables, hourly_index):
     except Exception as e:
         return None, f"Error en carregar dades del mapa: {e}"
 
+# SUBSTITUEIX LA TEVA FUNCIÓ "carregar_dades_mapa" PER AQUESTA
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
     try:
@@ -157,17 +158,18 @@ def carregar_dades_mapa(nivell, hourly_index):
         grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100))
         u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
         grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-        grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'linear')
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
         convergence_scaled = divergence.magnitude * -1e5
-
-        CONV_THRESHOLD, DEW_THRESHOLD = (20, 14) if nivell >= 950 else (15, 7)
-        effective_risk_mask = (convergence_scaled >= CONV_THRESHOLD) & (grid_dewpoint >= DEW_THRESHOLD)
-
+        
+        # === CANVI CLAU: Ara només filtrem per convergència per a l'anàlisi de l'IA ===
+        CONV_THRESHOLD = 20  # Mantenim un llindar de convergència raonable
+        effective_risk_mask = (convergence_scaled >= CONV_THRESHOLD)
+        # La línia antiga era: effective_risk_mask = (convergence_scaled >= CONV_THRESHOLD) & (grid_dewpoint >= DEW_THRESHOLD)
+        
         labels, num_features = label(effective_risk_mask)
         locations = []
-
+        
         if MUNICIPIS_GDF is not None and num_features > 0:
             for i in range(1, num_features + 1):
                 points = np.argwhere(labels == i)
@@ -178,12 +180,12 @@ def carregar_dades_mapa(nivell, hourly_index):
                     if municipi.geometry.contains(p):
                         locations.append(municipi['NOM'])
                         break
-
+        
+        # Retornem les dades originals (incloent dewpoint) per a la visualització, però les localitzacions per a l'IA
         output_data = {'lons': lons, 'lats': lats, 'speed_data': speed_data, 'dir_data': dir_data, 'dewpoint_data': dewpoint_data, 'alert_locations': locations}
         return output_data, None
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
-
-# --- 2. FUNCIONS DE VISUALITZACIÓ ---
+        
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree())
