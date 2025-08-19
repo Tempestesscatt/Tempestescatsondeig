@@ -529,44 +529,48 @@ def main():
     )
     st.session_state.authenticator = authenticator
 
-    # 3. Pantalla de Login / Registre
-    # CORRECCIÓ: S'afegeix 'or (None, None, None)' per evitar l'error TypeError
-    # durant la càrrega inicial de l'app o en els 'health checks'.
-    name, authentication_status, username = authenticator.login('main') or (None, None, None)
-
-    # 4. Lògica segons l'estat d'autenticació
+    # 3. Lògica d'autenticació i renderització
     
-    # Cas 1: L'usuari ha introduït credencials incorrectes
-    if st.session_state["authentication_status"] == False:
-        st.error('Nom d\'usuari o contrasenya incorrecta')
-        
-    # Cas 2: L'usuari no ha iniciat sessió (estat inicial)
-    elif st.session_state["authentication_status"] is None:
-        st.warning('Si us plau, inicia sessió o registra\'t.')
-        
-        # --- SECCIÓ DE REGISTRE ---
-        try:
-            # La funció register_user mostra el formulari i retorna True si el registre és exitós
-            if authenticator.register_user('Registra\'t', location='main'):
-                # Obtenir les dades del nou usuari directament de l'objecte authenticator
-                new_username_data = authenticator.credentials['usernames']
-                last_user = list(new_username_data.keys())[-1]
-                last_user_data = new_username_data[last_user]
-                
-                # Guardar el nou usuari a la base de dades SQLite
-                conn = sqlite3.connect(DB_FILE)
-                c = conn.cursor()
-                c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)", 
-                          (last_user, last_user_data['name'], last_user_data['password']))
-                conn.commit()
-                conn.close()
-                st.success('Usuari registrat correctament! Ara pots iniciar sessió.')
-        except Exception as e:
-            st.error(e)
-    
-    # Cas 3: L'usuari ha iniciat sessió correctament
-    elif st.session_state["authentication_status"]:
+    # Si l'usuari ja està autenticat, mostra l'aplicació principal
+    if st.session_state.get("authentication_status"):
         app_principal()
+        
+    # Si l'usuari NO està autenticat, mostra les opcions de Login o Registre
+    else:
+        # Creem dues pestanyes per separar les accions
+        login_tab, register_tab = st.tabs(["Inicia Sessió", "Registra't"])
+
+        # PESTANYA D'INICI DE SESSIÓ
+        with login_tab:
+            name, authentication_status, username = authenticator.login('main')
+            
+            # Comprovem l'estat DESPRÉS de l'intent de login
+            if st.session_state["authentication_status"] == False:
+                st.error('Nom d\'usuari o contrasenya incorrecta')
+            elif st.session_state["authentication_status"] is None:
+                st.warning('Si us plau, introdueix el teu nom d\'usuari i contrasenya.')
+
+        # PESTANYA DE REGISTRE
+        with register_tab:
+            try:
+                # La funció register_user mostra el formulari i retorna True si el registre és exitós
+                if authenticator.register_user('Formulari de Registre', preauthorization=False):
+                    # Obtenir les dades del nou usuari
+                    new_username_data = authenticator.credentials['usernames']
+                    last_user = list(new_username_data.keys())[-1]
+                    last_user_data = new_username_data[last_user]
+                    
+                    # Guardar el nou usuari a la base de dades SQLite
+                    conn = sqlite3.connect(DB_FILE)
+                    c = conn.cursor()
+                    c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)", 
+                              (last_user, last_user_data['name'], last_user_data['password']))
+                    conn.commit()
+                    conn.close()
+                    st.success('Usuari registrat correctament! Ara pots anar a la pestanya "Inicia Sessió".')
+            except Exception as e:
+                st.error(e)
+
         
 if __name__ == "__main__":
     main()
