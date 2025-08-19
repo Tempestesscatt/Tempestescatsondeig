@@ -516,9 +516,11 @@ def app_principal():
 
 # AQUESTA ÉS LA VERSIÓ FINAL I MÉS SIMPLE DE LA LÒGICA DE LOGIN
 def main():
+    # 1. Configuració inicial de la base de dades
     setup_database()
     credentials = get_users_from_db()
     
+    # 2. Instanciació de l'autenticador
     authenticator = stauth.Authenticate(
         credentials,
         "TempestesCatCookie",
@@ -527,35 +529,44 @@ def main():
     )
     st.session_state.authenticator = authenticator
 
-    # Pantalla de Login / Registre
+    # 3. Pantalla de Login / Registre
+    # CORRECCIÓ: S'afegeix 'or (None, None, None)' per evitar l'error TypeError
+    # durant la càrrega inicial de l'app o en els 'health checks'.
     name, authentication_status, username = authenticator.login('main') or (None, None, None)
 
+    # 4. Lògica segons l'estat d'autenticació
+    
+    # Cas 1: L'usuari ha introduït credencials incorrectes
     if st.session_state["authentication_status"] == False:
         st.error('Nom d\'usuari o contrasenya incorrecta')
+        
+    # Cas 2: L'usuari no ha iniciat sessió (estat inicial)
     elif st.session_state["authentication_status"] is None:
-    st.warning('Si us plau, inicia sessió o registra\'t.')
-    try:
-        # La crida al registre es fa aquí dins
-        if authenticator.register_user('Registra\'t', location='main'):
-            # Obtenir les dades de l'usuari que s'acaba de registrar
-            new_username_data = authenticator.credentials['usernames']
-            last_user = list(new_username_data.keys())[-1]
-            last_user_data = new_username_data[last_user]
-            
-            # Connexió i inserció a la base de dades
-            conn = sqlite3.connect(DB_FILE)
-            c = conn.cursor()
-            c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)", 
-                      (last_user, last_user_data['name'], last_user_data['password']))
-            conn.commit()
-            conn.close()
-            st.success('Usuari registrat correctament! Ara pots iniciar sessió.')
-    except Exception as e:
-        st.error(e)
+        st.warning('Si us plau, inicia sessió o registra\'t.')
+        
+        # --- SECCIÓ DE REGISTRE ---
+        try:
+            # La funció register_user mostra el formulari i retorna True si el registre és exitós
+            if authenticator.register_user('Registra\'t', location='main'):
+                # Obtenir les dades del nou usuari directament de l'objecte authenticator
+                new_username_data = authenticator.credentials['usernames']
+                last_user = list(new_username_data.keys())[-1]
+                last_user_data = new_username_data[last_user]
+                
+                # Guardar el nou usuari a la base de dades SQLite
+                conn = sqlite3.connect(DB_FILE)
+                c = conn.cursor()
+                c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)", 
+                          (last_user, last_user_data['name'], last_user_data['password']))
+                conn.commit()
+                conn.close()
+                st.success('Usuari registrat correctament! Ara pots iniciar sessió.')
+        except Exception as e:
+            st.error(e)
     
-    # Si l'autenticació és correcta, mostrem l'app
+    # Cas 3: L'usuari ha iniciat sessió correctament
     elif st.session_state["authentication_status"]:
         app_principal()
-
+        
 if __name__ == "__main__":
     main()
