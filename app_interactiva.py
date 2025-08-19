@@ -533,6 +533,9 @@ def main():
     
     # Si l'usuari ja està autenticat, mostra l'aplicació principal
     if st.session_state.get("authentication_status"):
+        # Assegurem que el nom d'usuari estigui disponible a la sessió
+        if 'name' not in st.session_state or st.session_state['name'] is None:
+             st.session_state['name'] = authenticator.credentials['usernames'][st.session_state['username']]['name']
         app_principal()
         
     # Si l'usuari NO està autenticat, mostra les opcions de Login o Registre
@@ -542,18 +545,19 @@ def main():
 
         # PESTANYA D'INICI DE SESSIÓ
         with login_tab:
-            name, authentication_status, username = authenticator.login('main')
+            # CORRECCIÓ: Apliquem el 'or' per evitar el TypeError en la càrrega inicial
+            name, authentication_status, username = authenticator.login('main') or (None, None, None)
             
             # Comprovem l'estat DESPRÉS de l'intent de login
-            if st.session_state["authentication_status"] == False:
+            if st.session_state.get("authentication_status") == False:
                 st.error('Nom d\'usuari o contrasenya incorrecta')
-            elif st.session_state["authentication_status"] is None:
+            elif st.session_state.get("authentication_status") is None:
                 st.warning('Si us plau, introdueix el teu nom d\'usuari i contrasenya.')
 
         # PESTANYA DE REGISTRE
         with register_tab:
             try:
-                # La funció register_user mostra el formulari i retorna True si el registre és exitós
+                # La funció register_user mostra el formulari
                 if authenticator.register_user('Formulari de Registre', preauthorization=False):
                     # Obtenir les dades del nou usuari
                     new_username_data = authenticator.credentials['usernames']
@@ -569,7 +573,8 @@ def main():
                     conn.close()
                     st.success('Usuari registrat correctament! Ara pots anar a la pestanya "Inicia Sessió".')
             except Exception as e:
-                st.error(e)
+                st.error(f"S'ha produït un error durant el registre: {e}")
+
 
         
 if __name__ == "__main__":
