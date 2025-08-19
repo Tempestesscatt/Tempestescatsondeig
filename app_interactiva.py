@@ -43,20 +43,21 @@ PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 2
 
 
 
-# AFEGEIX AQUESTA LÍNIA JUST A SOBRE
+# AFEGEIX LA LÍNIA AQUÍ A sobre
 st.cache_data.clear()
 @st.cache_data(ttl=86400)
 def carregar_mapa_municipis():
     """Carrega un mapa amb els polígons de tots els municipis de Catalunya."""
+    # URL actualitzada a un repositori més estable
     url = "https://raw.githubusercontent.com/project-open-data/catalonia-geodata/master/municipis.geojson"
     try:
         gdf = gpd.read_file(url)
+        # Assegurem que el sistema de coordenades sigui el correcte per a la nostra anàlisi
         return gdf.to_crs(epsg=4326)
     except Exception as e:
         st.warning(f"No s'ha pogut carregar el mapa de municipis. La localització de les convergències serà menys precisa. Detall: {e}")
         return None
-
-# LÍNIA CLAU RESTAURADA: Creem la variable global que conté el mapa
+        
 MUNICIPIS_GDF = carregar_mapa_municipis()
 
 @st.cache_data(ttl=3600)
