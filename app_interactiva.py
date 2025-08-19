@@ -137,7 +137,7 @@ def carregar_dades_mapa_base(variables, hourly_index):
         return output, None
     except Exception as e:
         return None, f"Error en carregar dades del mapa: {e}"
-# SUBSTITUEIX LA TEVA FUNCIÓ "carregar_dades_mapa" PER AQUESTA
+# SUBSTITUEIX LA TEVA FUNCIÓ "carregar_dades_mapa" PER AQUESTA VERSIÓ FINAL
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
     try:
@@ -159,12 +159,11 @@ def carregar_dades_mapa(nivell, hourly_index):
         grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         
-        # Valor real de la divergència en s⁻¹
         divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).magnitude
-        # La convergència és la divergència negativa
         convergence = -divergence
 
-        CONV_THRESHOLD_SCIENTIFIC = 20e-5  # Llindar en notació científica (20 * 10^-5)
+        # === CANVI CLAU: Baixem el llindar per detectar convergències més febles però rellevants ===
+        CONV_THRESHOLD_SCIENTIFIC = 5e-5  # Llindar anterior era 20e-5 (massa alt)
         effective_risk_mask = (convergence >= CONV_THRESHOLD_SCIENTIFIC)
         
         labels, num_features = label(effective_risk_mask)
@@ -173,7 +172,6 @@ def carregar_dades_mapa(nivell, hourly_index):
         if MUNICIPIS_GDF is not None and num_features > 0:
             for i in range(1, num_features + 1):
                 mask_i = (labels == i)
-                # Calculem la intensitat màxima d'aquest focus en unitats científiques
                 max_conv_value = np.max(convergence[mask_i])
                 
                 points = np.argwhere(mask_i)
@@ -183,7 +181,6 @@ def carregar_dades_mapa(nivell, hourly_index):
                 
                 for _, municipi in MUNICIPIS_GDF.iterrows():
                     if municipi.geometry.contains(p):
-                        # Guardem el nom i la seva intensitat CIENTÍFICA
                         locations.append({'municipi': municipi['NOM'], 'intensitat': max_conv_value})
                         break
         
