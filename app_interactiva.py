@@ -516,7 +516,7 @@ def app_principal():
         
     ui_peu_de_pagina()
 
-# SUBSTITUEIX LA TEVA FUNCIÓ MAIN PER AQUESTA VERSIÓ FINAL
+# AQUESTA ÉS L'ESTRUCTURA MÉS ROBUSTA POSSIBLE
 def main():
     setup_database()
     credentials = get_users_from_db()
@@ -534,24 +534,26 @@ def main():
         app_principal()
         return
 
-    # Si NO està autenticat, mostrem la pantalla de Login/Registre amb pestanyes
+    # Si NO està autenticat, mostrem la pantalla de Login/Registre
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
         st.title("Benvingut a Tempestes.cat")
         
-        login_tab, register_tab = st.tabs(["Iniciar Sessió", "Registrar-se"])
+        # Pas 1: L'usuari tria l'acció
+        choice = st.selectbox("Acció:", ["Iniciar Sessió", "Registrar-se"], key="auth_choice")
 
-        with login_tab:
-            authenticator.login('main')
+        # Pas 2: Només mostrem el formulari corresponent a l'acció triada
+        if choice == "Iniciar Sessió":
+            name, authentication_status, username = authenticator.login('main')
             
-            if st.session_state.get("authentication_status") == False:
+            if st.session_state["authentication_status"] == False:
                 st.error('Nom d\'usuari o contrasenya incorrecta')
-            elif st.session_state.get("authentication_status") is None:
+            elif st.session_state["authentication_status"] is None:
                 st.warning('Si us plau, introdueix el teu usuari i contrasenya')
 
-        with register_tab:
+        elif choice == "Registrar-se":
             try:
-                # CORRECCIÓ FINAL: Tornem a afegir el paràmetre 'location'
+                # El formulari de registre ara està en un bloc completament aïllat
                 if authenticator.register_user('Formulari de Registre', location='main'):
                     new_username_data = authenticator.credentials['usernames']
                     last_user = list(new_username_data.keys())[-1]
@@ -563,7 +565,7 @@ def main():
                               (last_user, last_user_data['name'], last_user_data['password']))
                     conn.commit()
                     conn.close()
-                    st.success('Usuari registrat correctament! Ara pots anar a la pestanya "Iniciar Sessió".')
+                    st.success('Usuari registrat correctament! Ara pots tornar a "Iniciar Sessió".')
             except Exception as e:
                 st.error(e)
 
