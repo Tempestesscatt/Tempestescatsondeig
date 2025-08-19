@@ -42,20 +42,19 @@ MAP_EXTENT = [0, 3.5, 40.4, 43]
 PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 
 # --- 1. FUNCIONS D'OBTENCIÓ DE DADES ---
-
 @st.cache_data(ttl=86400)
 def carregar_mapa_municipis():
     """Carrega un mapa amb els polígons de tots els municipis de Catalunya."""
-    url = "https://raw.githubusercontent.com/martgnz/bcn-geodata/master/catalunya/municipis/municipis.geojson"
+    # URL actualitzada a un repositori més estable
+    url = "https://raw.githubusercontent.com/project-open-data/catalonia-geodata/master/municipis.geojson"
     try:
         gdf = gpd.read_file(url)
+        # Assegurem que el sistema de coordenades sigui el correcte per a la nostra anàlisi
         return gdf.to_crs(epsg=4326)
     except Exception as e:
         st.warning(f"No s'ha pogut carregar el mapa de municipis. La localització de les convergències serà menys precisa. Detall: {e}")
         return None
-
-MUNICIPIS_GDF = carregar_mapa_municipis()
-
+        
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
@@ -172,13 +171,14 @@ def carregar_dades_mapa(nivell, hourly_index):
                 p = Point(center_lon, center_lat)
                 for _, municipi in MUNICIPIS_GDF.iterrows():
                     if municipi.geometry.contains(p):
-                        locations.append(municipi['NOM_MUNI'])
+                        # LÍNIA CORREGIDA: Utilitzem 'NOM' en lloc de 'NOM_MUNI'
+                        locations.append(municipi['NOM'])
                         break
         
         output_data = {'lons': lons, 'lats': lats, 'speed_data': speed_data, 'dir_data': dir_data, 'dewpoint_data': dewpoint_data, 'alert_locations': locations}
         return output_data, None
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
-
+        
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
