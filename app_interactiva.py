@@ -1,3 +1,9 @@
+# -*- coding: utf-8 -*-
+import streamlit as st
+import openmeteo_requests
+import requests_cache
+from retry_requests import retry
+import requests
 import numpy as np
 import time
 import matplotlib.pyplot as plt
@@ -131,7 +137,6 @@ def carregar_dades_mapa(nivell, hourly_index):
     except Exception as e:
         return None, f"Error en processar dades del mapa: {e}"
 
-
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(8, 8), dpi=90, subplot_kw={'projection': ccrs.PlateCarree()})
@@ -215,31 +220,18 @@ def crear_hodograf(u, v):
     h.add_grid(increment=20, color='gray'); h.plot(u.to('kt'), v.to('kt'), color='red', linewidth=2)
     ax.set_title("Hodògraf", weight='bold'); return fig
 
-# FUNCIÓ RESTAURADA
 def mostrar_imatge_temps_real(tipus):
-    if tipus == "Satèl·lit (Europa)": 
-        url = "https://modeles20.meteociel.fr/satellite/animsatsandvisirmtgeu.gif"
-        caption = "Satèl·lit Sandvitx (Visible + Infraroig). Font: Meteociel"
+    if tipus == "Satèl·lit (Europa)": url = "https://modeles20.meteociel.fr/satellite/animsatsandvisirmtgeu.gif"; caption = "Satèl·lit Sandvitx (Visible + Infraroig). Font: Meteociel"
     elif tipus == "Satèl·lit (NE Península)":
         now_local = datetime.now(TIMEZONE)
-        if 7 <= now_local.hour < 21: 
-            url = "https://modeles20.meteociel.fr/satellite/animsatviscolmtgsp.gif"
-            caption = "Satèl·lit Visible (Nord-est). Font: Meteociel"
-        else: 
-            url = "https://modeles20.meteociel.fr/satellite/animsatirmtgsp.gif"
-            caption = "Satèl·lit Infraroig (Nord-est). Font: Meteociel"
-    else: 
-        st.error("Tipus d'imatge no reconegut.")
-        return
-        
+        if 7 <= now_local.hour < 21: url = "https://modeles20.meteociel.fr/satellite/animsatviscolmtgsp.gif"; caption = "Satèl·lit Visible (Nord-est). Font: Meteociel"
+        else: url = "https://modeles20.meteociel.fr/satellite/animsatirmtgsp.gif"; caption = "Satèl·lit Infraroig (Nord-est). Font: Meteociel"
+    else: st.error("Tipus d'imatge no reconegut."); return
     try:
         response = requests.get(f"{url}?ver={int(time.time())}", headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-        if response.status_code == 200: 
-            st.image(response.content, caption=caption, use_container_width=True)
-        else: 
-            st.warning(f"No s'ha pogut carregar la imatge. (Codi: {response.status_code})")
-    except Exception as e: 
-        st.error(f"Error de xarxa en carregar la imatge.")
+        if response.status_code == 200: st.image(response.content, caption=caption, use_container_width=True)
+        else: st.warning(f"No s'ha pogut carregar la imatge. (Codi: {response.status_code})")
+    except Exception as e: st.error(f"Error de xarxa en carregar la imatge.")
 
 # --- 3. FUNCIONS PER A L'ASSISTENT D'IA ---
 def get_color_for_param(param_name, value):
@@ -326,8 +318,7 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
         
         buf = io.BytesIO()
-        # LÍNIA CORREGIDA: Eliminem el paràmetre 'quality'
-        fig_mapa.savefig(buf, format='jpeg', bbox_inches='tight')
+        fig_mapa.savefig(buf, format='jpeg', bbox_inches='tight') # Eliminat 'quality' per compatibilitat
         buf.seek(0)
         img_mapa = Image.open(buf)
         
