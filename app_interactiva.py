@@ -190,12 +190,30 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
     
-    colors_wind_final = ['#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700', '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF', '#FFC0CB', '#D3D3D3', '#A9A9A9']
-    speed_levels_final = np.arange(0, 171, 10)
-    custom_cmap = ListedColormap(colors_wind_final); norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
+    # === NOU BLOC DE GRADIENT DE VENTS ===
+    # Nova paleta de colors i nivells inspirada en la imatge
+    colors_wind_new = [
+        '#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f',
+        '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db',
+        '#87ceeb', '#48d1cc', '#b0c4de', '#da70d6', '#ffdead', '#ffd700',
+        '#9acd32', '#a9a9a9'
+    ]
+    speed_levels_new = [
+        0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104,
+        130, 166, 184, 277, 374, 400 # Afegim un límit superior per tancar l'últim interval
+    ]
+    cbar_ticks = [0, 18, 40, 61, 86, 130, 184, 374] # Valors a mostrar a la llegenda
+    
+    custom_cmap = ListedColormap(colors_wind_new)
+    norm_speed = BoundaryNorm(speed_levels_new, ncolors=custom_cmap.N, clip=True)
+    # =======================================
+    
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
-    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels_final[::2])
+    
+    # Dibuixem la barra de colors amb els nous paràmetres
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=cbar_ticks)
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
+    
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density= 5, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
     
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
@@ -212,26 +230,16 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     
     if max_convergence >= CONVERGENCE_THRESHOLD:
         single_level = max_convergence * 0.80
-        
         if single_level >= CONVERGENCE_THRESHOLD:
-            # === CORRECCIÓ DE L'ERROR ===
-            # Per a contourf, definim un rang: des del nostre llindar fins al màxim.
             fill_levels = [single_level, max_convergence]
-            
-            # Per a contour, només necessitem la línia que volem dibuixar.
             line_levels = [single_level]
-            
-            # Dibuixem l'ombrejat utilitzant el rang de nivells.
             ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=['#FF0000'], alpha=0.3, zorder=5, transform=ccrs.PlateCarree())
-            
-            # Dibuixem la línia de contorn com abans.
             contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors='black', linestyles='-', linewidths=1.5, zorder=6, transform=ccrs.PlateCarree())
-            
             ax.clabel(contours, inline=True, fontsize=10, fmt='%1.0f')
-            # ============================
             
     ax.set_title(f"Anàlisi de Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
+    
     
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
@@ -239,16 +247,34 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic')
-    colors_wind_final = ['#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700', '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF', '#FFC0CB', '#D3D3D3', '#A9A9A9']
-    speed_levels_final = np.arange(0, 171, 10)
-    custom_cmap = ListedColormap(colors_wind_final); norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
+
+    # === NOU BLOC DE GRADIENT DE VENTS ===
+    # Nova paleta de colors i nivells inspirada en la imatge
+    colors_wind_new = [
+        '#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f',
+        '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db',
+        '#87ceeb', '#48d1cc', '#b0c4de', '#da70d6', '#ffdead', '#ffd700',
+        '#9acd32', '#a9a9a9'
+    ]
+    speed_levels_new = [
+        0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104,
+        130, 166, 184, 277, 374, 400 # Afegim un límit superior per tancar l'últim interval
+    ]
+    cbar_ticks = [0, 18, 40, 61, 86, 130, 184, 374] # Valors a mostrar a la llegenda
+    
+    custom_cmap = ListedColormap(colors_wind_new)
+    norm_speed = BoundaryNorm(speed_levels_new, ncolors=custom_cmap.N, clip=True)
+    # =======================================
+    
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.7, density=2.5, arrowsize=0.6, zorder=3, transform=ccrs.PlateCarree())
-    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=speed_levels_final[::2])
+    
+    # Dibuixem la barra de colors amb els nous paràmetres
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)")
     ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
-
+    
 def crear_skewt(p, T, Td, u, v, titol):
     fig = plt.figure(figsize=(9, 9), dpi=150); skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
     skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2, label='Temperatura'); skew.plot(p, Td, 'g', lw=2, label='Punt de Rosada')
