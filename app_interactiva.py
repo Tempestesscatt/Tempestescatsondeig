@@ -41,17 +41,16 @@ CIUTATS_CATALUNYA = {
 MAP_EXTENT = [0, 3.5, 40.4, 43]
 PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 
-# --- 1. FUNCIONS D'OBTENCIÓ DE DADES ---
 
+
+# AFEGEIX AQUESTA LÍNIA JUST A SOBRE
+st.cache_data.clear()
 @st.cache_data(ttl=86400)
 def carregar_mapa_municipis():
     """Carrega un mapa amb els polígons de tots els municipis de Catalunya."""
-    # URL ANTIGA (incorrecta): "https://raw.githubusercontent.com/martgnz/bcn-geodata/master/catalunya/municipis/municipis.geojson"
-    # URL NOVA I CORRECTA (aquesta funciona):
     url = "https://raw.githubusercontent.com/project-open-data/catalonia-geodata/master/municipis.geojson"
     try:
         gdf = gpd.read_file(url)
-        # Assegurem que el sistema de coordenades sigui el correcte per a la nostra anàlisi
         return gdf.to_crs(epsg=4326)
     except Exception as e:
         st.warning(f"No s'ha pogut carregar el mapa de municipis. La localització de les convergències serà menys precisa. Detall: {e}")
