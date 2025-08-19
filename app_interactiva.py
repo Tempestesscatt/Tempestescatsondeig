@@ -137,6 +137,8 @@ def carregar_dades_mapa(nivell, hourly_index):
     except Exception as e:
         return None, f"Error en processar dades del mapa: {e}"
 
+# ... (La resta del codi, des de crear_mapa_base fins al final, es manté exactament igual) ...
+
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
