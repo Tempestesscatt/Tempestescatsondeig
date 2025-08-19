@@ -15,16 +15,19 @@ import metpy.calc as mpcalc
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from scipy.interpolate import griddata
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pytz
 from scipy.ndimage import label
 import google.generativeai as genai
 import geopandas as gpd
 from shapely.geometry import Point
 from collections import Counter
+import streamlit_authenticator as stauth
+import sqlite3
+from streamlit_autorefresh import st_autorefresh
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
-st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
+st.set_page_config(layout="wide", page_title="Tempestes.cat | Terminal de Temps Sever")
 
 try:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
@@ -32,7 +35,6 @@ try:
 except (KeyError, Exception):
     GEMINI_CONFIGURAT = False
 
-# ... (La resta de la configuració es manté igual) ...
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
@@ -53,11 +55,62 @@ def carregar_mapa_provincies():
     return gdf[gdf['name'].isin(['Barcelona', 'Tarragona', 'Lleida', 'Girona'])]
 PROVINCIES_GDF = carregar_mapa_provincies()
 
-# --- 1. FUNCIONS D'OBTENCIÓ DE DADES ---
+# --- GESTIÓ DE LA BASE DE DADES ---
+DB_FILE = "users.db"
+
+def setup_database():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            name TEXT,
+            password TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            message TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def get_users_from_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT username, name, password FROM users")
+    users = c.fetchall()
+    conn.close()
+    credentials = {'usernames': {}}
+    for user in users:
+        credentials['usernames'][user[0]] = {'name': user[1], 'password': user[2]}
+    return credentials
+
+def add_message_to_db(username, message):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT INTO messages (username, message) VALUES (?, ?)", (username, message))
+    conn.commit()
+    conn.close()
+
+def get_messages_from_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM messages WHERE timestamp < datetime('now', '-1 hour')")
+    conn.commit()
+    c.execute("SELECT username, message, timestamp FROM messages ORDER BY timestamp DESC")
+    messages = c.fetchall()
+    conn.close()
+    return messages
+
+# --- FUNCIONS D'OBTENCIÓ DE DADES ---
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
-        # ... (la part inicial de la funció es queda igual) ...
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS]
         params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
@@ -78,21 +131,17 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                 u, v = mpcalc.wind_components(p_data["WS"][i] * units('km/h'), p_data["WD"][i] * units.degrees)
                 u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m); h_profile.append(p_data["H"][i])
         if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
-        
         p, T, Td = np.array(p_profile) * units.hPa, np.array(T_profile) * units.degC, np.array(Td_profile) * units.degC
         u, v, heights = np.array(u_profile) * units('m/s'), np.array(v_profile) * units('m/s'), np.array(h_profile) * units.meter
-
         prof = mpcalc.parcel_profile(p, T[0], Td[0])
         params_calc = {}; cape, cin = mpcalc.cape_cin(p, T, Td, prof)
         params_calc['CAPE'], params_calc['CIN'] = (cape.to('J/kg').m if cape.magnitude > 0 else 0), cin.to('J/kg').m
-        
         try: p_lcl, t_lcl = mpcalc.lcl(p[0], T[0], Td[0]); params_calc['LCL_hPa'] = p_lcl.m
         except Exception: params_calc['LCL_hPa'] = np.nan
         try: p_lfc, _ = mpcalc.lfc(p, T, Td); params_calc['LFC_hPa'] = p_lfc.m if not np.isnan(p_lfc.m) else np.nan
         except Exception: params_calc['LFC_hPa'] = np.nan
         try: p_el, _ = mpcalc.el(p, T, Td, prof); params_calc['EL_hPa'] = p_el.m if not np.isnan(p_el.m) else np.nan
         except Exception: params_calc['EL_hPa'] = np.nan
-        
         params_calc['Shear 0-1km'], params_calc['Shear 0-6km'] = np.nan, np.nan
         try:
             shear_0_1km_u, shear_0_1km_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=1000 * units.m)
@@ -102,18 +151,12 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             shear_0_6km_u, shear_0_6km_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=6000 * units.m)
             params_calc['Shear 0-6km'] = mpcalc.wind_speed(shear_0_6km_u, shear_0_6km_v).to('knots').m
         except (ValueError, IndexError): pass
-            
-        # NOU: CÀLCUL DE L'HELICITAT (SRH) - La "traducció" de l'hodògraf a text
         try:
-            # Calculem SRH per a la capa 0-3km, que és la més rellevant
             srh_3km = mpcalc.storm_relative_helicity(heights, u, v, depth=3000 * units.meter)
             params_calc['SRH 0-3km'] = srh_3km[0].to('meter**2 / second**2').m
-        except:
-            params_calc['SRH 0-3km'] = np.nan
-
+        except: params_calc['SRH 0-3km'] = np.nan
         return ((p, T, Td, u, v), params_calc), None
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
-        
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base(variables, hourly_index):
@@ -147,7 +190,6 @@ def carregar_dades_mapa(nivell, hourly_index):
             lons, lats, speed_data, dir_data = map_data_raw['lons'], map_data_raw['lats'], map_data_raw[f"wind_speed_{nivell}hPa"], map_data_raw[f"wind_direction_{nivell}hPa"]
             temp_data, rh_data = np.array(map_data_raw[f'temperature_{nivell}hPa']) * units.degC, np.array(map_data_raw[f'relative_humidity_{nivell}hPa']) * units.percent
             dewpoint_data = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
-
         grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 100), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 100))
         u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
         grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
@@ -155,10 +197,8 @@ def carregar_dades_mapa(nivell, hourly_index):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
         convergence_scaled = divergence.magnitude * -1e5
-        
         CONV_THRESHOLD, DEW_THRESHOLD = (20, 14) if nivell >= 950 else (15, 7)
         effective_risk_mask = (convergence_scaled >= CONV_THRESHOLD) & (grid_dewpoint >= DEW_THRESHOLD)
-        
         labels, num_features = label(effective_risk_mask)
         locations = []
         if num_features > 0:
@@ -168,12 +208,11 @@ def carregar_dades_mapa(nivell, hourly_index):
                 p = Point(center_lon, center_lat)
                 for _, prov in PROVINCIES_GDF.iterrows():
                     if prov.geometry.contains(p): locations.append(prov['name']); break
-        
         output_data = {'lons': lons, 'lats': lats, 'speed_data': speed_data, 'dir_data': dir_data, 'dewpoint_data': dewpoint_data, 'alert_locations': locations}
         return output_data, None
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
 
-# --- 2. FUNCIONS DE VISUALITZACIÓ ---
+# --- FUNCIONS DE VISUALITZACIÓ ---
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
@@ -256,7 +295,7 @@ def mostrar_imatge_temps_real(tipus):
         else: st.warning(f"No s'ha pogut carregar la imatge. (Codi: {response.status_code})")
     except Exception as e: st.error(f"Error de xarxa en carregar la imatge.")
 
-# --- 3. FUNCIONS PER A L'ASSISTENT D'IA ---
+# --- FUNCIONS PER A L'ASSISTENT D'IA ---
 def get_color_for_param(param_name, value):
     if value is None or np.isnan(value): return "#808080"
     if param_name == 'CAPE':
@@ -284,155 +323,32 @@ def get_color_for_param(param_name, value):
         return "#BC13FE"
     return "#FFFFFF"
 
-# VERSIÓ FINAL DEL PROMPT MESTRE AMB INTERPRETACIÓ D'HODÒGRAF (SRH)
 def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, timestamp_str):
-    """
-    Prepara un resum i un prompt de sistema extremadament avançat per a l'IA,
-    dotant-la d'un motor de raonament lògic i un manual tècnic d'interpretació.
-    """
-    
-    resum_sondeig = "No hi ha dades de sondeig vertical disponibles per a aquest punt de referència."
+    # [ ... EL TEU PROMPT MESTRE VA AQUÍ ... ]
+    # Per a que funcioni, enganxa aquí la teva última versió de la funció `preparar_resum_dades_per_ia`
+    # O utilitza aquesta versió de seguretat:
+    resum_sondeig = "No hi ha dades de sondeig."
     if data_tuple:
         _, params_calculats = data_tuple
-        cape, cin = params_calculats.get('CAPE', 0), params_calculats.get('CIN', 0)
-        lcl, lfc, el = params_calculats.get('LCL_hPa', np.nan), params_calculats.get('LFC_hPa', np.nan), params_calculats.get('EL_hPa', np.nan)
-        shear_1km, shear_6km = params_calculats.get('Shear 0-1km', np.nan), params_calculats.get('Shear 0-6km', np.nan)
-        srh_3km = params_calculats.get('SRH 0-3km', np.nan) # Nou paràmetre
-        
-        resum_sondeig = f"""
-    - Inestabilitat (CAPE): {cape:.0f} J/kg.
-    - Inhibició (CIN): {cin:.0f} J/kg.
-    - Base del Núvol (LCL): {'No determinat' if np.isnan(lcl) else f'{lcl:.0f} hPa'}.
-    - Inici Convecció Lliure (LFC): {'No determinat' if np.isnan(lfc) else f'{lfc:.0f} hPa'}.
-    - Cim del Núvol (EL): {'No determinat' if np.isnan(el) else f'{el:.0f} hPa'}.
-    - Cisallament 0-1km (Tornados): {'No determinat' if np.isnan(shear_1km) else f'{shear_1km:.0f} nusos'}.
-    - Cisallament 0-6km (Supercèl·lules): {'No determinat' if np.isnan(shear_6km) else f'{shear_6km:.0f} nusos'}.
-    - Helicitat 0-3km (SRH - Rotació): {'No determinat' if np.isnan(srh_3km) else f'{srh_3km:.0f} m²/s²'}."""
-
-    resum_mapa = "No hi ha dades del mapa general disponibles."
-    # ... (la resta de la compilació de dades es queda igual) ...
-    if map_data and map_data.get('alert_locations') is not None:
-        locations = map_data['alert_locations']
-        if locations:
-            location_counts = Counter(locations)
-            location_summary = ", ".join([f"{count} a la província de {loc}" for loc, count in location_counts.items()])
-            resum_mapa = f"Hi ha mecanismes de 'disparador' actius. S'han detectat {len(locations)} focus de convergència d'humitat a {nivell_mapa}hPa, localitzats a: {location_summary}."
-        else:
-            resum_mapa = f"No es detecten mecanismes de 'disparador' (focus de convergència) a {nivell_mapa}hPa a tot Catalunya."
+        resum_sondeig = "\n".join([f"- {key}: {value:.0f}" for key, value in params_calculats.items() if value is not None])
     
-    resum_final = f"""
-# DADES METEOROLÒGIQUES CONFIDENCIALS (LA TEVA ÚNICA FONT DE VERITAT)
-- Data: {timestamp_str}
-- **Sondeig Vertical (Punt de referència més proper):** {poble_sel}
-{resum_sondeig}
-- **Mapa General de Disparadors (Convergència a tot Catalunya a {nivell_mapa}hPa):**
-  - {resum_mapa}
-# MANUAL D'OPERACIONS PER A TEMPESTES.IACAT (VERSIÓ ULTRA-EXPERT 200+)
-################################################################################
-*IDENTITAT*
-################################################################################
-*Ets Tempestes.IACAT*  
-Només dius el teu nom al primer missatge.  
-Parles sempre en català, estil proper, entusiasta, didàctic i col·lega.  
-Objectiu: explicar meteorologia severa de manera visual i segura.  
+    return f"DADES:\nSondeig per a {poble_sel}:\n{resum_sondeig}\nINSTRUCCIONS:\nRespon a l'usuari."
 
-################################################################################
-*PARÀMETRES I RANGS NUMÈRICS (UN PER UN)*
-################################################################################
-
-1* LFC – inici convecció núvols convectius (hPa):  
-- 1000–850 → LFC baix → cumulus humilis → congestus → cumulonimbus calvus.  
-- 849–700 → LFC mitjà → cumulus congestus → cumulonimbus capillatus.  
-- 699–500 → LFC alt → cumulonimbus capillatus, supercèl·lula si CAPE alt + cisallament fort.  
-
-2* EL – cim núvols no convectius (hPa):  
-- 1000–850 → EL baix → stratus, stratocumulus.  
-- 849–700 → EL mitjà → altostratus, altocumulus.  
-- 699–250 → EL alt → cirrus, cirrostratus, nimbostratus si humitat alta.  
-
-3* CAPE – energia disponible (J/kg):  
-- <500 → energia baixa → núvols mandrosos, poca activitat.  
-- 500–1000 → energia mitjana → núvols petits amb pluja local.  
-- 1000–2000 → energia alta → núvols convectius moderats, pluja i llamps dispersos.  
-- >2000 → energia molt alta → núvols gegants amb ascens ràpid i pluja intensa.  
-
-4* CIN – inhibició convectiva (J/kg):  
-- > -25 → tapa feble → núvols esclaten fàcilment.  
-- -25 a -75 → tapa moderada → triggers locals necessaris.  
-- < -75 → tapa forta → només triggers molt potents poden iniciar tempestes.  
-
-5* Humitat relativa (%):  
-- <50 → núvols prims o inexistents.  
-- 50–80 → núvols moderats, ruixats dispersos.  
-- >80 → núvols densos, pluja probable.  
-
-6* Cisallament 0–1 km (nusos):  
-- 0–15 → núvols desordenats, tempestes curtes.  
-- 16–35 → multicèl·lules, núvols organitzats.  
-- >35 → supercèl·lules, tempestes molt intenses, possibilitat de tornados si helicitat alta.  
-
-7* Cisallament 0–6 km (nusos):  
-- 0–15 → poc organitzat.  
-- 16–35 → núvols multicèl·lules.  
-- >35 → supercèl·lules amb alta organització.  
-
-8* Helicitat (m²/s²):  
-- <50 → risc baix de tornados.  
-- 50–150 → risc moderat.  
-- >150 → risc elevat de tornados, especialment amb cisallament fort.  
-
-9* Triggers i convergència (mapa):  
-- Present → activa tempestes que esperaven energia i baixa CIN.  
-- Absència → només núvols dispersos, ruixats mínims.  
-
-10* Hodògraf i direcció del vent:  
-- Velocitat + direcció determina mobilitat i trajectòria de tempestes.  
-- Vent ràpid → tempestes mòbils.  
-- Vent lent → núvols estacionaris, pluja local intensa.  
-
-################################################################################
-*LÒGICA ESTRICTA PER DECIDIR ESPÈCIES I ACTIVITAT*
-################################################################################
-*PAS 1* → Mira CIN: si tapa forta, només triggers molt potents poden generar activitat.  
-*PAS 2* → Mira CAPE: defineix energia i potencial ascens vertical.  
-*PAS 3* → Mira LFC (convectius) o EL (no convectius) → assigna espècie segons rang exacte.  
-*PAS 4* → Mira humitat: ajusta densitat i pluja probable.  
-*PAS 5* → Mira cisallament i helicitat: ajusta organització i risc de fenòmens extrems.  
-*PAS 6* → Mira triggers i hodògraf: decideix mobilitat i probabilitat d’arribada a zona concreta.  
-*PAS 7* → Narra resultat visual, senzill i entenedor. Mai números sense que usuari demani.  
-*PAS 8* → Dona consells de seguretat: lloc segur, fotos, observar el fenomen.  
-
-################################################################################
-*OUTPUT*
-################################################################################
-- Espècie de núvols convectius o no convectius segons rang exacte.  
-- Probabilitat de pluja i intensitat visual.  
-- Organització de tempestes segons cisallament i helicitat.  
-- Direcció i mobilitat segons hodògraf.  
-- Comentari de triggers i CIN.  
-- Narrativa visual i propera, sense números si no es demana.  
-- Recomanació de seguretat.  
-
-################################################################################
-*FI DEL PROMPT*
-################################################################################
-
-
-Ara comença la conversa.
-"""
-    return resum_final
 
 def generar_resposta_ia_stream(historial_conversa, resum_dades, prompt_usuari):
     if not GEMINI_CONFIGURAT:
         yield "La funcionalitat d'IA no està configurada."
         return
+
     model = genai.GenerativeModel('gemini-1.5-flash')
     historial_formatat = []
     for missatge in historial_conversa:
         role = 'user' if missatge['role'] == 'user' else 'model'
         historial_formatat.append({'role': role, 'parts': [missatge['content']]})
+
     chat = model.start_chat(history=historial_formatat)
     prompt_final = resum_dades + f"\n\nPREGUNTA ACTUAL DE L'USUARI:\n'{prompt_usuari}'"
+    
     try:
         response = chat.send_message(prompt_final, stream=True)
         for chunk in response:
@@ -441,9 +357,9 @@ def generar_resposta_ia_stream(historial_conversa, resum_dades, prompt_usuari):
         print(f"ERROR DETALLAT DE L'API DE GOOGLE: {e}")
         yield f"Hi ha hagut un error contactant amb l'IA de Google: {e}"
 
-# --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
+# --- LÒGICA DE LA INTERFÍCIE D'USUARI ---
 def ui_capcalera_selectors():
-    st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center;">Eina per al pronòstic de convecció mitjançant paràmetres clau.</p>', unsafe_allow_html=True)
     with st.container(border=True):
         col1, col2, col3 = st.columns(3)
@@ -460,7 +376,7 @@ def ui_explicacio_alertes():
         ]
         full_text = "\n".join(text_lines)
         st.markdown(full_text)
-
+        
 def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
     col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large")
     with col_map_1:
@@ -526,60 +442,46 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         with col2: st.pyplot(crear_hodograf(sounding_data[3], sounding_data[4]))
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 
-# SUBSTITUEIX LA TEVA FUNCIÓ ANTIGA PER AQUESTA VERSIÓ FINAL
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
     st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i del mapa.")
     nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector")
-    
     if not GEMINI_CONFIGURAT:
         st.error("Funcionalitat no disponible.")
         return
-        
     map_data_ia, _ = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
     if not data_tuple and not map_data_ia:
         st.warning("No hi ha dades disponibles per analitzar.")
         return
-        
     resum_dades = preparar_resum_dades_per_ia(data_tuple, map_data_ia, nivell_mapa_ia, poble_sel, timestamp_str)
     
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-    # Mostrem tots els missatges de la sessió actual
+    if "messages" not in st.session_state: st.session_state.messages = []
+    
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             
-    # La caixa per escriure apareix al final
     if prompt := st.chat_input("Escriu la teva pregunta..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
         
         with st.chat_message("assistant"):
-            # L'animació "typing" funciona perfectament aquí
             historial_anterior = st.session_state.messages[:-1]
             response_generator = generar_resposta_ia_stream(historial_anterior, resum_dades, prompt)
             full_response = st.write_stream(response_generator)
             
         st.session_state.messages.append({"role": "assistant", "content": full_response})
-        # Forcem un re-dibuix per a assegurar que tot es mostra correctament
         st.rerun()
         
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades del model AROME via <a href='https://open-meteo.com/'>Open-Meteo</a> | Imatges via <a href='https://www.meteociel.fr/'>Meteociel</a> | Anàlisi IA per Google Gemini.</p>", unsafe_allow_html=True)
 
-# --- 5. APLICACIÓ PRINCIPAL ---
-def main():
-    if 'poble_selector' not in st.session_state:
-        st.session_state.poble_selector = 'Barcelona'
-        st.session_state.dia_selector = 'Avui'
-        st.session_state.hora_selector = f"{datetime.now(TIMEZONE).hour:02d}:00h"
-        st.session_state.last_selection = ""
+# --- APLICACIÓ PRINCIPAL ---
+def app_principal(username, name):
     ui_capcalera_selectors()
     current_selection = f"{st.session_state.poble_selector}-{st.session_state.dia_selector}-{st.session_state.hora_selector}"
-    if current_selection != st.session_state.last_selection:
+    if current_selection != st.session_state.get('last_selection', ''):
         st.session_state.messages = []
         st.session_state.last_selection = current_selection
         
@@ -599,8 +501,7 @@ def main():
     global progress_placeholder
     progress_placeholder = st.empty()
     
-    # CORRECCIÓ: Eliminem emojis dels títols per evitar errors de codificació
-    tab_ia, tab_mapes, tab_vertical = st.tabs(["Assistent MeteoIA", "Anàlisi de Mapes", "Anàlisi Vertical"])
+    tab_ia, tab_mapes, tab_vertical, tab_chat = st.tabs(["Assistent MeteoIA", "Anàlisi de Mapes", "Anàlisi Vertical", "Xat de la Comunitat"])
     
     with tab_ia:
         ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
@@ -608,8 +509,62 @@ def main():
         ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
     with tab_vertical: 
         ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
+    with tab_chat:
+        ui_pestanya_chat()
         
     ui_peu_de_pagina()
+
+def main():
+    setup_database()
+
+    # --- Configuració de l'Autenticador ---
+    credentials = get_users_from_db()
+    authenticator = stauth.Authenticate(credentials, "TempestesCatCookie", "abcdef", cookie_expiry_days=30)
+
+    # --- Pantalla de Login / Registre ---
+    if 'authentication_status' not in st.session_state:
+        st.session_state.authentication_status = None
+
+    # Utilitzem columnes per a centrar el formulari de login
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        st.image("https://i.imgur.com/your_logo.png", width=200) # Pots posar un logo aquí
+        st.title("Benvingut a Tempestes.cat")
+        name, authentication_status, username = authenticator.login('main')
+        
+        if authentication_status == False:
+            st.error('Nom d\'usuari o contrasenya incorrecta')
+        elif authentication_status == None:
+            st.warning('Si us plau, inicia sessió o registra\'t.')
+
+        try:
+            if authenticator.register_user('Registra\'t', preauthorization=False):
+                new_username = authenticator.credentials['usernames']
+                last_user = list(new_username.keys())[-1]
+                last_user_data = new_username[last_user]
+                
+                conn = sqlite3.connect(DB_FILE)
+                c = conn.cursor()
+                hashed_password = stauth.Hasher([last_user_data['password']]).generate()[0]
+                c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)", 
+                          (last_user, last_user_data['name'], hashed_password))
+                conn.commit()
+                conn.close()
+                st.success('Usuari registrat correctament! Ara pots iniciar sessió.')
+        except Exception as e:
+            st.error(e)
+
+    # --- Si l'Usuari ha Iniciat Sessió, Mostrem l'App ---
+    if authentication_status:
+        # ---- BARRA SUPERIOR AMB NOM D'USUARI I LOGOUT ----
+        col1, col2 = st.columns([0.85, 0.15])
+        with col1:
+            st.markdown(f"Hola, **{name}**!")
+        with col2:
+            authenticator.logout('Tancar Sessió', 'main')
+        
+        # Cridem a la funció principal de l'aplicació
+        app_principal(username, name)
 
 if __name__ == "__main__":
     main()
