@@ -137,8 +137,6 @@ def carregar_dades_mapa(nivell, hourly_index):
     except Exception as e:
         return None, f"Error en processar dades del mapa: {e}"
 
-# ... (La resta del codi, des de crear_mapa_base fins al final, es manté exactament igual) ...
-
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
@@ -147,7 +145,6 @@ def crear_mapa_base():
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
     ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
-    # Línia problemàtica eliminada
     return fig, ax
 
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
@@ -189,8 +186,6 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
             
     ax.set_title(f"Anàlisi de Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
-    
-# ... (la resta de funcions es mantenen igual) ...
 
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
@@ -265,11 +260,10 @@ def get_color_for_param(param_name, value):
         if value < 50: return "#FF3131"
         return "#BC13FE"
     return "#FFFFFF"
-# SUBSTITUEIX LA TEVA FUNCIÓ "preparar_resum_dades_per_ia" PER AQUESTA
+
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
 
-    # La part de l'autenticació no canvia
     try:
         GOOGLE_CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
         GOOGLE_CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
@@ -278,16 +272,29 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         st.error("Les credencials de Google no estan configurades a st.secrets.")
         return
 
-    oauth2 = OAuth2Component(...) # El teu codi d'autenticació es manté aquí
+    oauth2 = OAuth2Component(
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        authorize_endpoint="https://accounts.google.com/o/oauth2/v2/auth",
+        token_endpoint="https://oauth2.googleapis.com/token",
+        refresh_token_endpoint=None,
+        revoke_token_endpoint="https://oauth2.googleapis.com/revoke",
+    )
 
     if 'token' not in st.session_state:
-        # El teu codi del botó de login es manté aquí
-        result = oauth2.authorize_button(...)
+        result = oauth2.authorize_button(
+            name="Inicia sessió amb Google",
+            icon="https://www.google.com.tw/favicon.ico",
+            redirect_uri="https://tempestescat.streamlit.app/",
+            scope="openid email profile",
+            key="google",
+            use_container_width=True,
+            pkce='S256',
+        )
         if result:
             st.session_state.token = result.get('token')
             st.rerun()
     else:
-        # L'usuari ha iniciat sessió
         token = st.session_state['token']
         user_info = token.get('userinfo')
         if user_info:
@@ -302,27 +309,22 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i la imatge del mapa.")
         nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat")
 
-        # Generem el mapa per a l'anàlisi
         map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
         
         if error_map_ia:
             st.error(f"No s'han pogut carregar les dades per generar el mapa d'anàlisi: {error_map_ia}")
             return
             
-        # Dibuixem el mapa i el convertim en una imatge en memòria
         fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
         
-        # Guardem la figura en un buffer de bytes
         buf = io.BytesIO()
         fig_mapa.savefig(buf, format='png', bbox_inches='tight')
         buf.seek(0)
-        # Creem un objecte d'imatge que Gemini pot entendre
         img_mapa = Image.open(buf)
         
-        st.pyplot(fig_mapa) # Mostrem el mapa a l'usuari
-        plt.close(fig_mapa) # Tanquem la figura per alliberar memòria
+        st.pyplot(fig_mapa)
+        plt.close(fig_mapa)
 
-        # Preparació de les dades per a l'IA (només sondeig)
         resum_sondeig = "No hi ha dades de sondeig disponibles."
         if data_tuple:
             _, params_calculats = data_tuple
@@ -332,7 +334,6 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
 - Cisallament 0-6km: {params_calculats.get('Shear 0-6km', np.nan):.0f} nusos.
 - Helicitat 0-3km (SRH): {params_calculats.get('SRH 0-3km', np.nan):.0f} m²/s²."""
         
-        # El nou prompt multimodal
         prompt_multimodal = f"""
 # MISSIÓ
 Ets un expert meteoròleg. La teva missió és analitzar la imatge del mapa meteorològic i les dades del sondeig vertical per determinar el potencial de temps sever a Catalunya. Respon de manera clara i propera.
@@ -364,7 +365,6 @@ Basant-te en **ambdues fonts d'informació (la imatge i el text)**, respon a la 
 
             with st.chat_message("assistant"):
                 model = genai.GenerativeModel('gemini-1.5-flash')
-                # Enviem el prompt, la imatge i la pregunta de l'usuari
                 resposta = model.generate_content(
                     [prompt_multimodal, img_mapa, prompt_usuari],
                     stream=True
@@ -377,7 +377,8 @@ Basant-te en **ambdues fonts d'informació (la imatge i el text)**, respon a la 
         if st.button("Tanca la sessió"):
             del st.session_state.token
             st.rerun()
-            
+
+# --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
 def ui_capcalera_selectors():
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center;">Eina per al pronòstic de convecció mitjançant paràmetres clau.</p>', unsafe_allow_html=True)
@@ -422,7 +423,9 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
             if error_map:
                 st.error(f"Error en carregar el mapa: {error_map}"); progress_placeholder.empty()
             elif map_data:
-                st.pyplot(crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str))
+                fig = crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str)
+                st.pyplot(fig)
+                plt.close(fig)
                 with progress_placeholder.container():
                     progress_bar.progress(100, text="Completat!")
                     time.sleep(1); progress_bar.empty()
@@ -433,7 +436,10 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
             variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
             map_data, error_map = carregar_dades_mapa_base(variables, hourly_index_sel)
             if error_map: st.error(f"Error en carregar el mapa: {error_map}")
-            elif map_data: st.pyplot(crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str))
+            elif map_data: 
+                fig = crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str)
+                st.pyplot(fig)
+                plt.close(fig)
     with col_map_2:
         st.subheader("Imatges en Temps Real")
         tab_europa, tab_ne = st.tabs(["Europa", "NE Peninsula"])
@@ -458,89 +464,15 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             st.markdown("\n".join(explanation_lines))
         st.divider()
         col1, col2 = st.columns(2)
-        with col1: st.pyplot(crear_skewt(sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4], f"Sondeig Vertical - {poble_sel}"))
-        with col2: st.pyplot(crear_hodograf(sounding_data[3], sounding_data[4]))
+        with col1: 
+            fig = crear_skewt(sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4], f"Sondeig Vertical - {poble_sel}")
+            st.pyplot(fig)
+            plt.close(fig)
+        with col2: 
+            fig = crear_hodograf(sounding_data[3], sounding_data[4])
+            st.pyplot(fig)
+            plt.close(fig)
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
-
-# VERSIÓ FINAL AMB INICI DE SESSIÓ DE GOOGLE
-def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
-    st.subheader("Assistent MeteoIA (amb Google Gemini)")
-
-    try:
-        GOOGLE_CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
-        GOOGLE_CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
-        GEMINI_API_KEY = st.secrets["GOOGLE_API_KEY"]
-    except KeyError:
-        st.error("Les credencials de Google (OAuth o Gemini) no estan configurades a st.secrets. L'assistent no pot funcionar.")
-        return
-
-    oauth2 = OAuth2Component(
-        client_id=GOOGLE_CLIENT_ID,
-        client_secret=GOOGLE_CLIENT_SECRET,
-        authorize_endpoint="https://accounts.google.com/o/oauth2/v2/auth",
-        token_endpoint="https://oauth2.googleapis.com/token",
-        refresh_token_endpoint=None,
-        revoke_token_endpoint="https://oauth2.googleapis.com/revoke",
-    )
-
-    if 'token' not in st.session_state:
-        result = oauth2.authorize_button(
-            name="Inicia sessió amb Google",
-            icon="https://www.google.com.tw/favicon.ico",
-            redirect_uri="https://tempestescat.streamlit.app/",
-            scope="openid email profile",
-            key="google",
-            use_container_width=True,
-            pkce='S256',
-        )
-        if result:
-            st.session_state.token = result.get('token')
-            st.rerun()
-    else:
-        token = st.session_state['token']
-        user_info = token.get('userinfo')
-        if user_info:
-            st.write(f"Hola, **{user_info.get('name', 'Usuari')}**! 👋")
-
-        try:
-            genai.configure(api_key=GEMINI_API_KEY)
-        except Exception as e:
-            st.error(f"Error en configurar l'API de Gemini. Assegura't que la teva GOOGLE_API_KEY a st.secrets és correcta.")
-            return
-
-        st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i del mapa.")
-        nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat")
-
-        map_data_ia, _ = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
-        if not data_tuple and not map_data_ia:
-            st.warning("No hi ha dades disponibles per analitzar en aquest moment i ubicació.")
-            return
-
-        resum_dades = preparar_resum_dades_per_ia(data_tuple, map_data_ia, nivell_mapa_ia, poble_sel, timestamp_str)
-
-        if "messages" not in st.session_state:
-            st.session_state.messages = []
-
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-
-        if prompt := st.chat_input("Quina és la teva pregunta sobre el temps?"):
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-
-            with st.chat_message("assistant"):
-                historial_anterior = st.session_state.messages[:-1]
-                response_generator = generar_resposta_ia_stream(historial_anterior, resum_dades, prompt)
-                full_response = st.write_stream(response_generator)
-
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
-            st.rerun()
-
-        if st.button("Tanca la sessió"):
-            del st.session_state.token
-            st.rerun()
 
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades del model AROME via <a href='https://open-meteo.com/'>Open-Meteo</a> | Imatges via <a href='https://www.meteociel.fr/'>Meteociel</a> | Anàlisi IA per Google Gemini.</p>", unsafe_allow_html=True)
