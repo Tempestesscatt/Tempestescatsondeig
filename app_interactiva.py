@@ -26,13 +26,9 @@ from collections import Counter
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
 
-try:
-    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    GEMINI_CONFIGURAT = True
-except (KeyError, Exception):
-    GEMINI_CONFIGURAT = False
+# La configuració de l'API de Gemini ara es gestiona a través de la sessió de l'usuari,
+# eliminant la necessitat de la variable global GEMINI_CONFIGURAT.
 
-# ... (La resta de la configuració es manté igual) ...
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
@@ -57,7 +53,6 @@ PROVINCIES_GDF = carregar_mapa_provincies()
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
-        # ... (la part inicial de la funció es queda igual) ...
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS]
         params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
@@ -103,9 +98,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             params_calc['Shear 0-6km'] = mpcalc.wind_speed(shear_0_6km_u, shear_0_6km_v).to('knots').m
         except (ValueError, IndexError): pass
             
-        # NOU: CÀLCUL DE L'HELICITAT (SRH) - La "traducció" de l'hodògraf a text
         try:
-            # Calculem SRH per a la capa 0-3km, que és la més rellevant
             srh_3km = mpcalc.storm_relative_helicity(heights, u, v, depth=3000 * units.meter)
             params_calc['SRH 0-3km'] = srh_3km[0].to('meter**2 / second**2').m
         except:
@@ -183,51 +176,28 @@ def crear_mapa_base():
 
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
-    
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 400), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 400))
-
     grid_speed, grid_dewpoint = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
-    
-    # === NOU BLOC DE GRADIENT DE VENTS ===
-    # Nova paleta de colors i nivells inspirada en la imatge
-    colors_wind_new = [
-        '#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f',
-        '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db',
-        '#87ceeb', '#48d1cc', '#b0c4de', '#da70d6', '#ffdead', '#ffd700',
-        '#9acd32', '#a9a9a9'
-    ]
-    speed_levels_new = [
-        0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104,
-        130, 166, 184, 277, 374, 400 # Afegim un límit superior per tancar l'últim interval
-    ]
-    cbar_ticks = [0, 18, 40, 61, 86, 130, 184, 374] # Valors a mostrar a la llegenda
-    
+    colors_wind_new = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db', '#87ceeb', '#48d1cc', '#b0c4de', '#da70d6', '#ffdead', '#ffd700', '#9acd32', '#a9a9a9']
+    speed_levels_new = [0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104, 130, 166, 184, 277, 374, 400]
+    cbar_ticks = [0, 18, 40, 61, 86, 130, 184, 374]
     custom_cmap = ListedColormap(colors_wind_new)
     norm_speed = BoundaryNorm(speed_levels_new, ncolors=custom_cmap.N, clip=True)
-    # =======================================
-    
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
-    
-    # Dibuixem la barra de colors amb els nous paràmetres
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=cbar_ticks)
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
-    
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density= 4, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
-    
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
     convergence_scaled = divergence.magnitude * -1e5
-    
     CONVERGENCE_THRESHOLD = 20
     if nivell >= 950: DEWPOINT_THRESHOLD = 14
     elif nivell >= 925: DEWPOINT_THRESHOLD = 12
     else: DEWPOINT_THRESHOLD = 7
-    
     convergence_in_humid_areas = np.where(grid_dewpoint >= DEWPOINT_THRESHOLD, convergence_scaled, 0)
     max_convergence = np.nanmax(convergence_in_humid_areas)
-    
     if max_convergence >= CONVERGENCE_THRESHOLD:
         single_level = max_convergence * 0.80
         if single_level >= CONVERGENCE_THRESHOLD:
@@ -236,10 +206,8 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
             ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=['#FF0000'], alpha=0.3, zorder=5, transform=ccrs.PlateCarree())
             contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors='black', linestyles='-', linewidths=1.5, zorder=6, transform=ccrs.PlateCarree())
             ax.clabel(contours, inline=True, fontsize=10, fmt='%1.0f')
-            
     ax.set_title(f"Anàlisi de Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
-    
     
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
@@ -247,29 +215,13 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic')
-
-    # === NOU BLOC DE GRADIENT DE VENTS ===
-    # Nova paleta de colors i nivells inspirada en la imatge
-    colors_wind_new = [
-        '#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f',
-        '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db',
-        '#87ceeb', '#48d1cc', '#b0c4de', '#da70d6', '#ffdead', '#ffd700',
-        '#9acd32', '#a9a9a9'
-    ]
-    speed_levels_new = [
-        0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104,
-        130, 166, 184, 277, 374, 400 # Afegim un límit superior per tancar l'últim interval
-    ]
-    cbar_ticks = [0, 18, 40, 61, 86, 130, 184, 374] # Valors a mostrar a la llegenda
-    
+    colors_wind_new = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db', '#87ceeb', '#48d1cc', '#b0c4de', '#da70d6', '#ffdead', '#ffd700', '#9acd32', '#a9a9a9']
+    speed_levels_new = [0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104, 130, 166, 184, 277, 374, 400]
+    cbar_ticks = [0, 18, 40, 61, 86, 130, 184, 374]
     custom_cmap = ListedColormap(colors_wind_new)
     norm_speed = BoundaryNorm(speed_levels_new, ncolors=custom_cmap.N, clip=True)
-    # =======================================
-    
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.7, density=2.5, arrowsize=0.6, zorder=3, transform=ccrs.PlateCarree())
-    
-    # Dibuixem la barra de colors amb els nous paràmetres
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)")
     ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16)
@@ -331,21 +283,14 @@ def get_color_for_param(param_name, value):
         return "#BC13FE"
     return "#FFFFFF"
 
-# VERSIÓ FINAL DEL PROMPT MESTRE AMB INTERPRETACIÓ D'HODÒGRAF (SRH)
 def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, timestamp_str):
-    """
-    Prepara un resum i un prompt de sistema extremadament avançat per a l'IA,
-    dotant-la d'un motor de raonament lògic i un manual tècnic d'interpretació.
-    """
-    
     resum_sondeig = "No hi ha dades de sondeig vertical disponibles per a aquest punt de referència."
     if data_tuple:
         _, params_calculats = data_tuple
         cape, cin = params_calculats.get('CAPE', 0), params_calculats.get('CIN', 0)
         lcl, lfc, el = params_calculats.get('LCL_hPa', np.nan), params_calculats.get('LFC_hPa', np.nan), params_calculats.get('EL_hPa', np.nan)
         shear_1km, shear_6km = params_calculats.get('Shear 0-1km', np.nan), params_calculats.get('Shear 0-6km', np.nan)
-        srh_3km = params_calculats.get('SRH 0-3km', np.nan) # Nou paràmetre
-        
+        srh_3km = params_calculats.get('SRH 0-3km', np.nan)
         resum_sondeig = f"""
     - Inestabilitat (CAPE): {cape:.0f} J/kg.
     - Inhibició (CIN): {cin:.0f} J/kg.
@@ -357,7 +302,6 @@ def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, ti
     - Helicitat 0-3km (SRH - Rotació): {'No determinat' if np.isnan(srh_3km) else f'{srh_3km:.0f} m²/s²'}."""
 
     resum_mapa = "No hi ha dades del mapa general disponibles."
-    # ... (la resta de la compilació de dades es queda igual) ...
     if map_data and map_data.get('alert_locations') is not None:
         locations = map_data['alert_locations']
         if locations:
@@ -367,126 +311,44 @@ def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, ti
         else:
             resum_mapa = f"No es detecten mecanismes de 'disparador' (focus de convergència) a {nivell_mapa}hPa a tot Catalunya."
     
+    # --- NOTA: TAL COM HAS DEMANAT, HE ELIMINAT EL PROMPT LLARG D'AQUÍ ---
+    # En una versió final, el detallat "MANUAL D'OPERACIONS" aniria aquí dins
+    # per donar a l'IA la seva personalitat i coneixements tècnics.
     resum_final = f"""
-# DADES METEOROLÒGIQUES CONFIDENCIALS (LA TEVA ÚNICA FONT DE VERITAT)
+# DADES METEOROLÒGIQUES
 - Data: {timestamp_str}
-- **Sondeig Vertical (Punt de referència més proper):** {poble_sel}
+- **Sondeig Vertical (Punt de referència):** {poble_sel}
 {resum_sondeig}
 - **Mapa General de Disparadors (Convergència a tot Catalunya a {nivell_mapa}hPa):**
   - {resum_mapa}
-# MANUAL D'OPERACIONS PER A TEMPESTES.IACAT (VERSIÓ ULTRA-EXPERT 200+)
-################################################################################
-*IDENTITAT*
-################################################################################
-*Ets Tempestes.IACAT*  
-Només dius el teu nom al primer missatge.  
-Parles sempre en català, estil proper, entusiasta, didàctic i col·lega.  
-Objectiu: explicar meteorologia severa de manera visual i segura.  
 
-################################################################################
-*PARÀMETRES I RANGS NUMÈRICS (UN PER UN)*
-################################################################################
-
-1* LFC – inici convecció núvols convectius (hPa):  
-- 1000–850 → LFC baix → cumulus humilis → congestus → cumulonimbus calvus.  
-- 849–700 → LFC mitjà → cumulus congestus → cumulonimbus capillatus.  
-- 699–500 → LFC alt → cumulonimbus capillatus, supercèl·lula si CAPE alt + cisallament fort.  
-
-2* EL – cim núvols no convectius (hPa):  
-- 1000–850 → EL baix → stratus, stratocumulus.  
-- 849–700 → EL mitjà → altostratus, altocumulus.  
-- 699–250 → EL alt → cirrus, cirrostratus, nimbostratus si humitat alta.  
-
-3* CAPE – energia disponible (J/kg):  
-- <500 → energia baixa → núvols mandrosos, poca activitat.  
-- 500–1000 → energia mitjana → núvols petits amb pluja local.  
-- 1000–2000 → energia alta → núvols convectius moderats, pluja i llamps dispersos.  
-- >2000 → energia molt alta → núvols gegants amb ascens ràpid i pluja intensa.  
-
-4* CIN – inhibició convectiva (J/kg):  
-- > -25 → tapa feble → núvols esclaten fàcilment.  
-- -25 a -75 → tapa moderada → triggers locals necessaris.  
-- < -75 → tapa forta → només triggers molt potents poden iniciar tempestes.  
-
-5* Humitat relativa (%):  
-- <50 → núvols prims o inexistents.  
-- 50–80 → núvols moderats, ruixats dispersos.  
-- >80 → núvols densos, pluja probable.  
-
-6* Cisallament 0–1 km (nusos):  
-- 0–15 → núvols desordenats, tempestes curtes.  
-- 16–35 → multicèl·lules, núvols organitzats.  
-- >35 → supercèl·lules, tempestes molt intenses, possibilitat de tornados si helicitat alta.  
-
-7* Cisallament 0–6 km (nusos):  
-- 0–15 → poc organitzat.  
-- 16–35 → núvols multicèl·lules.  
-- >35 → supercèl·lules amb alta organització.  
-
-8* Helicitat (m²/s²):  
-- <50 → risc baix de tornados.  
-- 50–150 → risc moderat.  
-- >150 → risc elevat de tornados, especialment amb cisallament fort.  
-
-9* Triggers i convergència (mapa):  
-- Present → activa tempestes que esperaven energia i baixa CIN.  
-- Absència → només núvols dispersos, ruixats mínims.  
-
-10* Hodògraf i direcció del vent:  
-- Velocitat + direcció determina mobilitat i trajectòria de tempestes.  
-- Vent ràpid → tempestes mòbils.  
-- Vent lent → núvols estacionaris, pluja local intensa.  
-
-################################################################################
-*LÒGICA ESTRICTA PER DECIDIR ESPÈCIES I ACTIVITAT*
-################################################################################
-*PAS 1* → Mira CIN: si tapa forta, només triggers molt potents poden generar activitat.  
-*PAS 2* → Mira CAPE: defineix energia i potencial ascens vertical.  
-*PAS 3* → Mira LFC (convectius) o EL (no convectius) → assigna espècie segons rang exacte.  
-*PAS 4* → Mira humitat: ajusta densitat i pluja probable.  
-*PAS 5* → Mira cisallament i helicitat: ajusta organització i risc de fenòmens extrems.  
-*PAS 6* → Mira triggers i hodògraf: decideix mobilitat i probabilitat d’arribada a zona concreta.  
-*PAS 7* → Narra resultat visual, senzill i entenedor. Mai números sense que usuari demani.  
-*PAS 8* → Dona consells de seguretat: lloc segur, fotos, observar el fenomen.  
-
-################################################################################
-*OUTPUT*
-################################################################################
-- Espècie de núvols convectius o no convectius segons rang exacte.  
-- Probabilitat de pluja i intensitat visual.  
-- Organització de tempestes segons cisallament i helicitat.  
-- Direcció i mobilitat segons hodògraf.  
-- Comentari de triggers i CIN.  
-- Narrativa visual i propera, sense números si no es demana.  
-- Recomanació de seguretat.  
-
-################################################################################
-*FI DEL PROMPT*
-################################################################################
-
-
-Ara comença la conversa.
+# INSTRUCCIONS
+Ets un expert en meteorologia anomenat Tempestes.IACAT.
+Analitza les dades proporcionades i respon a les preguntes de l'usuari en català,
+de manera didàctica i propera. Explica el potencial de temps sever de forma visual i clara.
+Acaba sempre amb un consell de seguretat.
 """
     return resum_final
 
 def generar_resposta_ia_stream(historial_conversa, resum_dades, prompt_usuari):
-    if not GEMINI_CONFIGURAT:
-        yield "La funcionalitat d'IA no està configurada."
-        return
     model = genai.GenerativeModel('gemini-1.5-flash')
     historial_formatat = []
     for missatge in historial_conversa:
         role = 'user' if missatge['role'] == 'user' else 'model'
         historial_formatat.append({'role': role, 'parts': [missatge['content']]})
+    
     chat = model.start_chat(history=historial_formatat)
     prompt_final = resum_dades + f"\n\nPREGUNTA ACTUAL DE L'USUARI:\n'{prompt_usuari}'"
+    
     try:
         response = chat.send_message(prompt_final, stream=True)
         for chunk in response:
             yield chunk.text
     except Exception as e:
         print(f"ERROR DETALLAT DE L'API DE GOOGLE: {e}")
-        yield f"Hi ha hagut un error contactant amb l'IA de Google: {e}"
+        # Si la clau deixa de funcionar, desactivem la funcionalitat per forçar un nou login
+        st.session_state.gemini_configured = False 
+        yield f"Hi ha hagut un error contactant amb l'IA de Google. La teva clau podria haver expirat o ser invàlida. Si us plau, recarrega la pàgina i torna-la a introduir."
 
 # --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
 def ui_capcalera_selectors():
@@ -573,16 +435,43 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         with col2: st.pyplot(crear_hodograf(sounding_data[3], sounding_data[4]))
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 
-# SUBSTITUEIX LA TEVA FUNCIÓ ANTIGA PER AQUESTA VERSIÓ FINAL
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
     st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i del mapa.")
     nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector")
-    
-    if not GEMINI_CONFIGURAT:
-        st.error("Funcionalitat no disponible.")
-        return
-        
+
+    # NOU: Lògica de "login" / "registre"
+    if not st.session_state.get('gemini_configured', False):
+        with st.container(border=True):
+            st.subheader("☁️ Activa l'Assistent MeteoIA")
+            st.markdown(
+                "Per utilitzar aquesta funcionalitat, necessites una clau API gratuïta de Google AI Studio. "
+                "Un cop la tinguis, introdueix-la a continuació."
+            )
+            st.markdown("[Obtén la teva clau API aquí](https://aistudio.google.com/app/apikey)", unsafe_allow_html=True)
+            
+            api_key_input = st.text_input(
+                "Introdueix la teva clau API de Google Gemini:", 
+                type="password", 
+                key="api_key_input"
+            )
+
+            if st.button("Guardar i Activar ✨"):
+                if not api_key_input:
+                    st.warning("Si us plau, introdueix una clau API.")
+                else:
+                    try:
+                        genai.configure(api_key=api_key_input)
+                        st.session_state.gemini_configured = True
+                        st.session_state.api_key = api_key_input
+                        st.success("API Key guardada correctament! L'assistent està actiu.")
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"La clau API no és vàlida o hi ha hagut un error. Torna a intentar-ho.")
+        return # Aturem l'execució aquí si l'usuari no està "logat"
+
+    # --- El xat només es mostra si st.session_state.gemini_configured és True ---
     map_data_ia, _ = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
     if not data_tuple and not map_data_ia:
         st.warning("No hi ha dades disponibles per analitzar.")
@@ -593,25 +482,21 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Mostrem tots els missatges de la sessió actual
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             
-    # La caixa per escriure apareix al final
     if prompt := st.chat_input("Escriu la teva pregunta..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
         
         with st.chat_message("assistant"):
-            # L'animació "typing" funciona perfectament aquí
             historial_anterior = st.session_state.messages[:-1]
             response_generator = generar_resposta_ia_stream(historial_anterior, resum_dades, prompt)
             full_response = st.write_stream(response_generator)
             
         st.session_state.messages.append({"role": "assistant", "content": full_response})
-        # Forcem un re-dibuix per a assegurar que tot es mostra correctament
         st.rerun()
         
 def ui_peu_de_pagina():
@@ -646,7 +531,6 @@ def main():
     global progress_placeholder
     progress_placeholder = st.empty()
     
-    # CORRECCIÓ: Eliminem emojis dels títols per evitar errors de codificació
     tab_ia, tab_mapes, tab_vertical = st.tabs(["Assistent MeteoIA", "Anàlisi de Mapes", "Anàlisi Vertical"])
     
     with tab_ia:
