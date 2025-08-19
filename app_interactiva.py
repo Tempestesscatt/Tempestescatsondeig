@@ -46,20 +46,18 @@ PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 2
 @st.cache_data(ttl=86400)
 def carregar_mapa_municipis():
     """Carrega un mapa amb els polígons de tots els municipis de Catalunya."""
-    # URL actualitzada a un repositori estable que funciona
     url = "https://raw.githubusercontent.com/project-open-data/catalonia-geodata/master/municipis.geojson"
     try:
         gdf = gpd.read_file(url)
         return gdf.to_crs(epsg=4326)
     except Exception as e:
-        st.error(f"ERROR CRÍTIC: No s'ha pogut carregar el mapa base de municipis des d'internet. La localització de les convergències no funcionarà. Detall: {e}")
+        st.error(f"ERROR CRÍTIC: No s'ha pogut carregar el mapa base de municipis. La localització no funcionarà. Detall: {e}")
         return None
 
 MUNICIPIS_GDF = carregar_mapa_municipis()
 
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
-    # ... (el codi d'aquesta funció no canvia, es queda com estava) ...
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS]
@@ -111,7 +109,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base(variables, hourly_index):
-    # ... (el codi d'aquesta funció no canvia, es queda com estava) ...
     try:
         lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
@@ -133,7 +130,6 @@ def carregar_dades_mapa_base(variables, hourly_index):
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
-    # ... (el codi d'aquesta funció conté la correcció del càlcul de convergència) ...
     try:
         if nivell >= 950:
             variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
