@@ -170,7 +170,6 @@ def carregar_dades_mapa(nivell, hourly_index):
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
-# ... (Totes les funcions de visualització es mantenen iguals a la versió anterior) ...
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
@@ -296,17 +295,15 @@ def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, ti
     - Cim del Núvol (EL): {'No determinat' if np.isnan(el) else f'{el:.0f} hPa'}.
     - Cisallament 0-1km (Tornados): {'No determinat' if np.isnan(shear_1km) else f'{shear_1km:.0f} nusos'}.
     - Cisallament 0-6km (Supercèl·lules): {'No determinat' if np.isnan(shear_6km) else f'{shear_6km:.0f} nusos'}."""
-
     resum_mapa = "No hi ha dades del mapa general disponibles."
     if map_data and map_data.get('alert_locations') is not None:
         locations = map_data['alert_locations']
         if locations:
             location_counts = Counter(locations)
             location_summary = ", ".join([f"{count} a la província de {loc}" for loc, count in location_counts.items()])
-            resum_mapa = f"Hi ha mecanismes de 'disparador' actius (focus de convergència d'humitat) a {nivell_mapa}hPa, localitzats a: {location_summary}."
+            resum_mapa = f"Hi ha mecanismes de 'disparador' actius. S'han detectat {len(locations)} focus de convergència d'humitat a {nivell_mapa}hPa, localitzats a: {location_summary}."
         else:
             resum_mapa = f"No es detecten mecanismes de 'disparador' (focus de convergència) a {nivell_mapa}hPa a tot Catalunya."
-    
     resum_final = f"""
 # DADES METEOROLÒGIQUES CONFIDENCIALS (LA TEVA ÚNICA FONT DE VERITAT)
 - Data: {timestamp_str}
@@ -339,28 +336,18 @@ Ara, comença la conversa.
 """
     return resum_final
 
-# CANVI 1: AFEGIM LA FUNCIÓ QUE GENERA LA RESPOSTA EN STREAMING
 def generar_resposta_ia_stream(historial_conversa, resum_dades, prompt_usuari):
     if not GEMINI_CONFIGURAT:
         yield "La funcionalitat d'IA no està configurada."
         return
-
     model = genai.GenerativeModel('gemini-1.5-flash')
-    
-    # Construïm l'historial en el format que Gemini espera per a un xat
     historial_formatat = []
     for missatge in historial_conversa:
         role = 'user' if missatge['role'] == 'user' else 'model'
         historial_formatat.append({'role': role, 'parts': [missatge['content']]})
-
-    # Iniciem una sessió de xat amb l'historial
     chat = model.start_chat(history=historial_formatat)
-    
-    # El prompt que enviem ara només conté el context de dades i la pregunta actual
     prompt_final = resum_dades + f"\n\nPREGUNTA ACTUAL DE L'USUARI:\n'{prompt_usuari}'"
-    
     try:
-        # Demanem la resposta en mode streaming
         response = chat.send_message(prompt_final, stream=True)
         for chunk in response:
             yield chunk.text
@@ -370,7 +357,7 @@ def generar_resposta_ia_stream(historial_conversa, resum_dades, prompt_usuari):
 
 # --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
 def ui_capcalera_selectors():
-    st.markdown('<h1 style="text-align: center; color: #FF4B4B;">🌪️ Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center;">Eina per al pronòstic de convecció mitjançant paràmetres clau.</p>', unsafe_allow_html=True)
     with st.container(border=True):
         col1, col2, col3 = st.columns(3)
@@ -379,7 +366,7 @@ def ui_capcalera_selectors():
         with col3: st.selectbox("Hora del pronòstic (Hora Local):", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
 
 def ui_explicacio_alertes():
-    with st.expander("📖 Què signifiquen les isòlines de convergència?"):
+    with st.expander("Què signifiquen les isòlines de convergència?"):
         text_lines = [
             "Les línies vermelles discontínues (`---`) marquen zones de **convergència d'humitat**. Són els **disparadors** potencials de tempestes.",
             "", "- **Què són?** Àrees on el vent força l'aire humit a ajuntar-se i ascendir.",
@@ -387,7 +374,7 @@ def ui_explicacio_alertes():
         ]
         full_text = "\n".join(text_lines)
         st.markdown(full_text)
-        
+
 def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
     col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large")
     with col_map_1:
@@ -427,7 +414,7 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
             elif map_data: st.pyplot(crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str))
     with col_map_2:
         st.subheader("Imatges en Temps Real")
-        tab_europa, tab_ne = st.tabs(["🇪🇺 Satèl·lit (Europa)", "🛰️ Satèl·lit (NE Península)"])
+        tab_europa, tab_ne = st.tabs(["Europa", "NE Peninsula"])
         with tab_europa: mostrar_imatge_temps_real("Satèl·lit (Europa)")
         with tab_ne: mostrar_imatge_temps_real("Satèl·lit (NE Península)")
 
@@ -444,7 +431,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                 value_str = f"{val:.0f}" if val is not None and not np.isnan(val) else "---"
                 html_code = f"""<div style="text-align: left;"><span style="font-size: 0.8em; color: #A0A0A0;">{param}</span><br><strong style="font-size: 1.8em; color: {color};">{value_str}</strong> <span style="font-size: 1.1em; color: #A0A0A0;">{unit}</span></div>"""
                 st.markdown(html_code, unsafe_allow_html=True)
-        with st.expander("ℹ️ Què signifiquen aquests paràmetres?"):
+        with st.expander("Què signifiquen aquests paràmetres?"):
             explanation_lines = ["- **CAPE:** Energia per a tempestes. >1000 J/kg és significatiu.", "- **CIN:** \"Tapa\" que impedeix la convecció. > -50 és una tapa forta.", "- **LFC:** Nivell on comença la convecció lliure. Com més baix, millor.", "- **Shear 0-1km:** Cisallament a nivells baixos. >15-20 nusos afavoreix la rotació i el risc de **tornados**.", "- **Shear 0-6km:** Cisallament profund. >35-40 nusos és clau per a **supercèl·lules**."]
             st.markdown("\n".join(explanation_lines))
         st.divider()
@@ -454,7 +441,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
-    st.subheader("💬 Assistent MeteoIA (amb Google Gemini)")
+    st.subheader("Assistent MeteoIA (amb Google Gemini)")
     st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i del mapa.")
     nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector")
     if not GEMINI_CONFIGURAT:
@@ -466,31 +453,39 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         return
     resum_dades = preparar_resum_dades_per_ia(data_tuple, map_data_ia, nivell_mapa_ia, poble_sel, timestamp_str)
     
-    if "messages" not in st.session_state: st.session_state.messages = []
+    # CANVI: Contenidor per al xat amb scroll
+    st.markdown("""<style> .chat-container { height: 500px; overflow-y: auto; display: flex; flex-direction: column-reverse; } </style>""", unsafe_allow_html=True)
+    chat_container = st.container(height=500, border=False)
 
-    # CANVI 2: Limitem els missatges visibles als últims 4
-    for message in st.session_state.messages[-4:]:
-        with st.chat_message(message["role"]): st.markdown(message["content"])
+    if "messages" not in st.session_state: st.session_state.messages = []
+    
+    with chat_container:
+        for message in reversed(st.session_state.messages):
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
         
     if prompt := st.chat_input("Escriu la teva pregunta..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         
-        with st.chat_message("user"): st.markdown(prompt)
-        
-        with st.chat_message("assistant"):
-            # CANVI 3: Utilitzem st.write_stream per a l'efecte "typing"
-            # Passem l'historial COMPLET a la funció, però abans de la pregunta actual
-            historial_anterior = st.session_state.messages[:-1]
-            response_generator = generar_resposta_ia_stream(historial_anterior, resum_dades, prompt)
-            full_response = st.write_stream(response_generator)
-            
-        # Guardem la resposta COMPLETA a l'historial per al context futur
+        # Utilitzem st.rerun per a redibuixar el xat immediatament
+        st.rerun()
+
+    # Si l'últim missatge és de l'usuari, generem la resposta
+    if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+        with chat_container:
+             with st.chat_message("user"):
+                st.markdown(st.session_state.messages[-1]["content"])
+             with st.chat_message("assistant"):
+                historial_anterior = st.session_state.messages[:-1]
+                response_generator = generar_resposta_ia_stream(historial_anterior, resum_dades, st.session_state.messages[-1]["content"])
+                full_response = st.write_stream(response_generator)
         st.session_state.messages.append({"role": "assistant", "content": full_response})
+        st.rerun()
 
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades del model AROME via <a href='https://open-meteo.com/'>Open-Meteo</a> | Imatges via <a href='https://www.meteociel.fr/'>Meteociel</a> | Anàlisi IA per Google Gemini.</p>", unsafe_allow_html=True)
 
-# --- 5. APLICACIÃ PRINCIPAL ---
+# --- 5. APLICACIÓ PRINCIPAL ---
 def main():
     if 'poble_selector' not in st.session_state:
         st.session_state.poble_selector = 'Barcelona'
@@ -505,7 +500,7 @@ def main():
         
     poble_sel, dia_sel, hora_sel = st.session_state.poble_selector, st.session_state.dia_selector, st.session_state.hora_selector
     hora_int = int(hora_sel.split(':')[0]); now_local = datetime.now(TIMEZONE); target_date = now_local.date()
-    if dia_sel == "DemÃ ": target_date += timedelta(days=1)
+    if dia_sel == "Demà": target_date += timedelta(days=1)
     local_dt = TIMEZONE.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_int)); utc_dt = local_dt.astimezone(pytz.utc)
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     time_diff_hours = int((utc_dt - start_of_today_utc).total_seconds() / 3600); hourly_index_sel = max(0, time_diff_hours)
@@ -519,8 +514,8 @@ def main():
     global progress_placeholder
     progress_placeholder = st.empty()
     
-    # Reordenem per posar la pestanya interactiva (IA) primer i evitar el "salt"
-    tab_ia, tab_mapes, tab_vertical = st.tabs(["ð¤🤖 **Assistent MeteoIA**", "ð🗺ï¸ AnÃ lisi de Mapes", "ð📊 AnÃ lisi Vertical"])
+    # CORRECCIÓ: Eliminem emojis dels títols per evitar errors de codificació
+    tab_ia, tab_mapes, tab_vertical = st.tabs(["Assistent MeteoIA", "Anàlisi de Mapes", "Anàlisi Vertical"])
     
     with tab_ia:
         ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
