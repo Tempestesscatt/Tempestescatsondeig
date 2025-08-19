@@ -183,10 +183,16 @@ def crear_mapa_base():
 
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
-    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
+    
+    # === CANVI 1: AUGMENTAR LA RESOLUCIÓ DE LA GRAELLA ===
+    # Augmentem de 200x200 a 400x400 punts per a un resultat més suau.
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 400), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 400))
+    # ===================================================
+
     grid_speed, grid_dewpoint = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    
     colors_wind_final = ['#FFFFFF', '#B0E0E6', '#00FFFF', '#3CB371', '#32CD32', '#ADFF2F', '#FFD700', '#F4A460', '#CD853F', '#A0522D', '#DC143C', '#8B0000', '#800080', '#FF00FF', '#FFC0CB', '#D3D3D3', '#A9A9A9']
     speed_levels_final = np.arange(0, 171, 10)
     custom_cmap = ListedColormap(colors_wind_final); norm_speed = BoundaryNorm(speed_levels_final, ncolors=custom_cmap.N, clip=True)
@@ -194,27 +200,31 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels_final[::2])
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density= 5, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
+    
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
     convergence_scaled = divergence.magnitude * -1e5
+    
     CONVERGENCE_THRESHOLD = 20
     if nivell >= 950: DEWPOINT_THRESHOLD = 14
     elif nivell >= 925: DEWPOINT_THRESHOLD = 12
     else: DEWPOINT_THRESHOLD = 7
+    
     convergence_in_humid_areas = np.where(grid_dewpoint >= DEWPOINT_THRESHOLD, convergence_scaled, 0)
     max_convergence = np.nanmax(convergence_in_humid_areas)
+    
     if max_convergence >= CONVERGENCE_THRESHOLD:
         level1, level2 = max_convergence * 0.60, max_convergence * 0.80
         contour_levels = [lvl for lvl in [level1, level2] if lvl >= CONVERGENCE_THRESHOLD]
         if contour_levels:
-            # === CANVIS APLICATS AQUÍ ===
-            # 1. Afegir ombrejat vermellós amb transparència dins dels contorns
-            ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=contour_levels, colors=['#FF0000'], alpha=0.4, zorder=5, transform=ccrs.PlateCarree())
+            # === CANVI 2: FER L'OMBRETAT MÉS FI (SUBTIL) ===
+            # Reduïm l'alpha de 0.4 a 0.3 per a més transparència.
+            ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=contour_levels, colors=['#FF0000'], alpha=0.3, zorder=5, transform=ccrs.PlateCarree())
+            # ===============================================
             
-            # 2. Canviar estil de línia a sòlid ('-') i mantenir els contorns
             contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=contour_levels, colors='black', linestyles='-', linewidths=1.5, zorder=6, transform=ccrs.PlateCarree())
-            # ============================
             ax.clabel(contours, inline=True, fontsize=10, fmt='%1.0f')
+            
     ax.set_title(f"Anàlisi de Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
