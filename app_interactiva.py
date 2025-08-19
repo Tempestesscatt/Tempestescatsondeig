@@ -25,6 +25,8 @@ from collections import Counter
 import streamlit_authenticator as stauth
 import sqlite3
 from streamlit_autorefresh import st_autorefresh
+import asyncio
+from st_oauth import st_oauth 
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Tempestes.cat | Terminal de Temps Sever")
@@ -514,63 +516,41 @@ def app_principal():
         
     ui_peu_de_pagina()
 
-# AQUESTA ÉS LA VERSIÓ FINAL I MÉS SIMPLE DE LA LÒGICA DE LOGIN
 def main():
-    # 1. Configuració inicial de la base de dades
-    setup_database()
-    credentials = get_users_from_db()
-    
-    # 2. Instanciació de l'autenticador
-    authenticator = stauth.Authenticate(
-        credentials,
-        "TempestesCatCookie",
-        "AquestaEsUnaClauSecretaMoltLlarga",
-        cookie_expiry_days=30
-    )
-    st.session_state.authenticator = authenticator
+    # 1. Configuració de les credencials de Google des de st.secrets
+    client_id = st.secrets["GOOGLE_CLIENT_ID"]
+    client_secret = st.secrets["GOOGLE_CLIENT_SECRET"]
+    redirect_uri = "https://elteunom-la-teva-app.streamlit.app" # IMPORTANT: Posa l'URL de la teva app desplegada
+                                                              # Si proves en local, canvia-ho a: "http://localhost:8501"
 
-    # 3. Lògica d'autenticació i renderització
+    # 2. Creació del botó d'inici de sessió amb Google
+    # Aquesta funció s'encarrega de TOT: mostrar el botó, redirigir a Google,
+    # i retornar la informació de l'usuari un cop ha iniciat sessió.
+    user_info = st_oauth(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=redirect_uri,
+        login_button_text="Inicia sessió amb Google",
+        login_button_icon="fa fa-google",
+        logout_button_text="Tanca la sessió",
+    )
+
+    # 3. Lògica de l'aplicació
     
-    # Si l'usuari ja està autenticat, mostra l'aplicació principal
-    if st.session_state.get("authentication_status"):
-        # Assegurem que el nom d'usuari estigui disponible a la sessió
-        if 'name' not in st.session_state or st.session_state['name'] is None:
-             st.session_state['name'] = authenticator.credentials['usernames'][st.session_state['username']]['name']
+    # Si 'user_info' no és None, l'usuari ha iniciat sessió correctament
+    if user_info:
+        # Guardem el nom de l'usuari a la sessió per utilitzar-lo a altres parts de l'app
+        st.session_state['name'] = user_info.get('name', 'Usuari desconegut')
+        st.session_state['authentication_status'] = True
+        
+        # Cridem a la funció que mostra tota l'aplicació
         app_principal()
         
-    # Si l'usuari NO està autenticat, mostra les opcions de Login o Registre
+    # Si l'usuari no ha iniciat sessió, Streamlit només mostrarà el botó
+    # i no executarà la resta del codi.
     else:
-        # Creem dues pestanyes per separar les accions
-        login_tab, register_tab = st.tabs(["Inicia Sessió", "Registra't"])
-
-        # PESTANYA D'INICI DE SESSIÓ
-        with login_tab:
-            name, authentication_status, username = authenticator.login('main') or (None, None, None)
-            
-            if st.session_state.get("authentication_status") == False:
-                st.error('Nom d\'usuari o contrasenya incorrecta')
-            elif st.session_state.get("authentication_status") is None:
-                st.warning('Si us plau, introdueix el teu nom d\'usuari i contrasenya.')
-
-        # PESTANYA DE REGISTRE
-        with register_tab:
-            try:
-                # CORRECCIÓ: S'ha eliminat l'argument 'preauthorization=False'
-                if authenticator.register_user('Formulari de Registre', location='main'):
-                    new_username_data = authenticator.credentials['usernames']
-                    last_user = list(new_username_data.keys())[-1]
-                    last_user_data = new_username_data[last_user]
-                    
-                    conn = sqlite3.connect(DB_FILE)
-                    c = conn.cursor()
-                    c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)", 
-                              (last_user, last_user_data['name'], last_user_data['password']))
-                    conn.commit()
-                    conn.close()
-                    st.success('Usuari registrat correctament! Ara pots anar a la pestanya "Inicia Sessió".')
-            except Exception as e:
-                st.error(f"S'ha produït un error durant el registre: {e}")
-
+        st.session_state['authentication_status'] = None
+        st.warning("Si us plau, inicia sessió amb el teu compte de Google per continuar.")
 
         
 if __name__ == "__main__":
