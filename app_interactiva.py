@@ -45,11 +45,11 @@ PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 2
 
 @st.cache_data(ttl=86400)
 def carregar_mapa_comarques():
-    """Carrega un mapa amb els polígons de les comarques de Catalunya."""
+    """Carrega un mapa amb els polígons de les comarques de Catalunya i estandarditza el nom de la columna."""
     url = "https://raw.githubusercontent.com/gloriamacia/comarques-catalunya/master/amb-capital/data/catalunya_comarques.geojson"
     try:
         gdf = gpd.read_file(url)
-        # CORRECCIÓ CLAU: Renombrem la columna 'nomcomarca' a un nom estàndard
+        # CORRECCIÓ DEFINITIVA: Renombrem la columna 'nomcomarca' a 'NOM_ZONA' per a ús intern.
         if 'nomcomarca' in gdf.columns:
             gdf = gdf.rename(columns={'nomcomarca': 'NOM_ZONA'})
         return gdf.to_crs(epsg=4326)
@@ -57,7 +57,6 @@ def carregar_mapa_comarques():
         st.error(f"ERROR CRÍTIC: No s'ha pogut carregar el mapa de comarques. La localització no funcionarà. Detall: {e}")
         return None
 
-# CORRECCIÓ: Cridem a la funció amb el nom correcte
 COMARQUES_GDF = carregar_mapa_comarques()
 
 @st.cache_data(ttl=3600)
@@ -110,11 +109,9 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             params_calc['SRH 0-3km'] = np.nan
         return ((p, T, Td, u, v), params_calc), None
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
-        
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base(variables, hourly_index):
-    # ... (aquesta funció no canvia)
     try:
         lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
@@ -134,7 +131,6 @@ def carregar_dades_mapa_base(variables, hourly_index):
     except Exception as e:
         return None, f"Error en carregar dades del mapa: {e}"
 
-# SUBSTITUEIX LA TEVA FUNCIÓ "carregar_dades_mapa" PER AQUESTA
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
     try:
@@ -177,14 +173,16 @@ def carregar_dades_mapa(nivell, hourly_index):
                 p = Point(center_lon, center_lat)
                 for _, comarca in COMARQUES_GDF.iterrows():
                     if comarca.geometry.contains(p):
-                        # === LÍNIA CORREGIDA DEFINITIVAMENT ===
-                        # Utilitzem la columna estàndard 'NOM_ZONA'
-                        locations.append({'municipi': comarca['NOM_ZONA'], 'intensitat': max_conv_value})
+                        # LÍNIA CORREGIDA DEFINITIVAMENT: Utilitzem el nom de columna estandarditzat 'NOM_ZONA'
+                        locations.append({'zona': comarca['NOM_ZONA'], 'intensitat': max_conv_value})
                         break
 
         output_data = {'lons': lons, 'lats': lats, 'speed_data': speed_data, 'dir_data': dir_data, 'dewpoint_data': dewpoint_data, 'alert_locations': locations}
         return output_data, None
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
+
+# --- La resta del codi (visualització, IA, interfície) es manté exactament igual ---
+# ... (enganxa aquí la resta del teu codi, des de crear_mapa_base fins al final)
         
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
