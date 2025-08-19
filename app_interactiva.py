@@ -533,23 +533,25 @@ def main():
     if st.session_state["authentication_status"] == False:
         st.error('Nom d\'usuari o contrasenya incorrecta')
     elif st.session_state["authentication_status"] is None:
-        st.warning('Si us plau, inicia sessió o registra\'t.')
-        try:
-            # CORRECCIÓ: La crida al registre es fa aquí dins
-            if authenticator.register_user('Registra\'t', location='main'):
-                new_username_data = authenticator.credentials['usernames']
-                last_user = list(new_username_data.keys())[-1]
-                last_user_data = new_username_data[last_user]
-                
-                conn = sqlite3.connect(DB_FILE)
-                c = conn.cursor()
-                c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)", 
-                          (last_user, last_user_data['name'], last_user_data['password']))
-                conn.commit()
-                conn.close()
-                st.success('Usuari registrat correctament! Ara pots iniciar sessió.')
-        except Exception as e:
-            st.error(e)
+    st.warning('Si us plau, inicia sessió o registra\'t.')
+    try:
+        # La crida al registre es fa aquí dins
+        if authenticator.register_user('Registra\'t', location='main'):
+            # Obtenir les dades de l'usuari que s'acaba de registrar
+            new_username_data = authenticator.credentials['usernames']
+            last_user = list(new_username_data.keys())[-1]
+            last_user_data = new_username_data[last_user]
+            
+            # Connexió i inserció a la base de dades
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)", 
+                      (last_user, last_user_data['name'], last_user_data['password']))
+            conn.commit()
+            conn.close()
+            st.success('Usuari registrat correctament! Ara pots iniciar sessió.')
+    except Exception as e:
+        st.error(e)
     
     # Si l'autenticació és correcta, mostrem l'app
     elif st.session_state["authentication_status"]:
