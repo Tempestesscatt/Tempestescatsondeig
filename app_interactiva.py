@@ -137,9 +137,10 @@ def carregar_dades_mapa(nivell, hourly_index):
     except Exception as e:
         return None, f"Error en processar dades del mapa: {e}"
 
-# --- 2. FUNCIONS DE VISUALITZACIÓ ---
+
 def crear_mapa_base():
-    fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
+    # CANVI CLAU: Reduïm la resolució (dpi) de 200 a 90. Això redueix la mida de la imatge dràsticament.
+    fig, ax = plt.subplots(figsize=(8, 8), dpi=90, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree())
     ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
@@ -260,10 +261,11 @@ def get_color_for_param(param_name, value):
         if value < 50: return "#FF3131"
         return "#BC13FE"
     return "#FFFFFF"
-
+# SUBSTITUEIX LA TEVA FUNCIÓ "ui_pestanya_ia" PER AQUESTA VERSIÓ FINAL
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
 
+    # La part de l'autenticació es manté igual
     try:
         GOOGLE_CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
         GOOGLE_CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
@@ -272,25 +274,10 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         st.error("Les credencials de Google no estan configurades a st.secrets.")
         return
 
-    oauth2 = OAuth2Component(
-        client_id=GOOGLE_CLIENT_ID,
-        client_secret=GOOGLE_CLIENT_SECRET,
-        authorize_endpoint="https://accounts.google.com/o/oauth2/v2/auth",
-        token_endpoint="https://oauth2.googleapis.com/token",
-        refresh_token_endpoint=None,
-        revoke_token_endpoint="https://oauth2.googleapis.com/revoke",
-    )
+    oauth2 = OAuth2Component(...) # Mantén el teu codi d'autenticació aquí
 
     if 'token' not in st.session_state:
-        result = oauth2.authorize_button(
-            name="Inicia sessió amb Google",
-            icon="https://www.google.com.tw/favicon.ico",
-            redirect_uri="https://tempestescat.streamlit.app/",
-            scope="openid email profile",
-            key="google",
-            use_container_width=True,
-            pkce='S256',
-        )
+        result = oauth2.authorize_button(...) # Mantén el teu botó de login aquí
         if result:
             st.session_state.token = result.get('token')
             st.rerun()
@@ -302,8 +289,8 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
 
         try:
             genai.configure(api_key=GEMINI_API_KEY)
-        except Exception as e:
-            st.error(f"Error en configurar l'API de Gemini.")
+        except Exception:
+            st.error("Error en configurar l'API de Gemini.")
             return
 
         st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i la imatge del mapa.")
@@ -312,13 +299,13 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
         
         if error_map_ia:
-            st.error(f"No s'han pogut carregar les dades per generar el mapa d'anàlisi: {error_map_ia}")
+            st.error(f"No s'han pogut carregar les dades del mapa: {error_map_ia}")
             return
             
         fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
         
         buf = io.BytesIO()
-        fig_mapa.savefig(buf, format='png', bbox_inches='tight')
+        fig_mapa.savefig(buf, format='jpeg', quality=85, bbox_inches='tight') # Canvi a JPEG per més compressió
         buf.seek(0)
         img_mapa = Image.open(buf)
         
@@ -336,19 +323,19 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         
         prompt_multimodal = f"""
 # MISSIÓ
-Ets un expert meteoròleg. La teva missió és analitzar la imatge del mapa meteorològic i les dades del sondeig vertical per determinar el potencial de temps sever a Catalunya. Respon de manera clara i propera.
+Ets un expert meteoròleg. Analitza la imatge del mapa i les dades del sondeig per determinar el potencial de temps sever a Catalunya. Respon de manera clara i propera.
 
 # ANÀLISI VISUAL DEL MAPA (IMATGE ADJUNTA)
-1.  **Observa la imatge del mapa que t'he enviat.**
-2.  **Busca les zones vermelles.** Aquestes zones representen nuclis de convergència de vent, els "disparadors" de tempestes.
-3.  **Localitza-les geogràficament.** Identifica sobre quines comarques o zones de Catalunya es troben (p. ex., "Prepirineu", "Litoral Central", "Pla de Lleida").
-4.  **Analitza les línies de vent (streamlines).** Descriu la direcció general del flux.
+1.  **Observa la imatge.**
+2.  **Busca les zones vermelles.** Són els "disparadors" de tempestes.
+3.  **Localitza-les geogràficament** (p. ex., "Prepirineu", "Litoral Central").
+4.  **Analitza les línies de vent.** Descriu la direcció del flux.
 
 # DADES DEL SONDEIG VERTICAL ({poble_sel})
 {resum_sondeig}
 
 # LA TEVA TASCA
-Basant-te en **ambdues fonts d'informació (la imatge i el text)**, respon a la pregunta de l'usuari. Combina l'anàlisi: si veus un "disparador" (zona vermella) en una àrea on el sondeig mostra molta energia (CAPE alt), el risc és elevat. Si no veus disparadors, el risc és baix malgrat el CAPE.
+Combina l'anàlisi: si veus un "disparador" (zona vermella) en una àrea on el sondeig mostra molta energia (CAPE alt), el risc és elevat. Si no veus disparadors, el risc és baix malgrat el CAPE. Respon a la pregunta de l'usuari.
 """
         
         if "messages" not in st.session_state:
@@ -365,18 +352,30 @@ Basant-te en **ambdues fonts d'informació (la imatge i el text)**, respon a la 
 
             with st.chat_message("assistant"):
                 model = genai.GenerativeModel('gemini-1.5-flash')
-                resposta = model.generate_content(
-                    [prompt_multimodal, img_mapa, prompt_usuari],
-                    stream=True
-                )
-                full_response = st.write_stream(resposta)
-
+                # OPTIMITZACIÓ: Gestionem el streaming de manera més neta
+                response_container = st.empty()
+                full_response = ""
+                
+                try:
+                    stream = model.generate_content(
+                        [prompt_multimodal, img_mapa, prompt_usuari],
+                        stream=True
+                    )
+                    for chunk in stream:
+                        full_response += chunk.text
+                        response_container.markdown(full_response + "▌")
+                    response_container.markdown(full_response)
+                except Exception as e:
+                    full_response = f"Hi ha hagut un error: {e}"
+                    response_container.error(full_response)
+            
             st.session_state.messages.append({"role": "assistant", "content": full_response})
-            st.rerun()
-
+            # Eliminem el rerun() final per evitar recàrregues innecessàries que alenteixen
+        
         if st.button("Tanca la sessió"):
             del st.session_state.token
             st.rerun()
+            
 
 # --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
 def ui_capcalera_selectors():
