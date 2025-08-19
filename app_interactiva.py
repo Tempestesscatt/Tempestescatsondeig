@@ -515,7 +515,7 @@ def app_principal():
         ui_pestanya_chat()
         
     ui_peu_de_pagina()
-# SUBSTITUEIX LA TEVA FUNCIÓ MAIN ACTUAL PER AQUESTA VERSIÓ FINAL
+# SUBSTITUEIX LA TEVA FUNCIÓ MAIN ACTUAL PER AQUESTA VERSIÓ FINAL AMB PESTANYES
 def main():
     setup_database()
     credentials = get_users_from_db()
@@ -526,34 +526,31 @@ def main():
         "AquestaEsUnaClauSecretaMoltLlarga", # Posa aquí una clau llarga i aleatòria
         cookie_expiry_days=30
     )
-
     st.session_state.authenticator = authenticator
 
     # Si l'usuari JA està autenticat, anem directament a l'app
     if st.session_state.get("authentication_status"):
-        st.empty() 
         app_principal()
-        return # Aturem l'execució aquí per a no mostrar el login
+        return
 
-    # Si NO està autenticat, mostrem la pantalla de Login/Registre
+    # Si NO està autenticat, mostrem la pantalla de Login/Registre amb pestanyes
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
         st.title("Benvingut a Tempestes.cat")
-        choice = st.selectbox("Acció:", ["Iniciar Sessió", "Registrar-se"])
+        
+        # LÒGICA DE PESTANYES PER A AÏLLAR ELS FORMULARIS
+        login_tab, register_tab = st.tabs(["Iniciar Sessió", "Registrar-se"])
 
-        if choice == "Iniciar Sessió":
+        with login_tab:
             name, authentication_status, username = authenticator.login('main')
-            if authentication_status == False:
+            if st.session_state["authentication_status"] == False:
                 st.error('Nom d\'usuari o contrasenya incorrecta')
-            elif authentication_status is None:
+            elif st.session_state["authentication_status"] is None:
                 st.warning('Si us plau, introdueix el teu usuari i contrasenya')
-            
-            # Si l'inici de sessió és correcte, Streamlit es re-executarà
-            # i la pròxima vegada entrarà al bloc de dalt (if st.session_state.get("authentication_status"):)
 
-        elif choice == "Registrar-se":
+        with register_tab:
             try:
-                # CORRECCIÓ: Tornem a posar 'location', ja que és necessari
+                # CORRECCIÓ: La crida a register_user ara està totalment aïllada
                 if authenticator.register_user('Formulari de Registre', location='main'):
                     new_username_data = authenticator.credentials['usernames']
                     last_user = list(new_username_data.keys())[-1]
@@ -565,10 +562,9 @@ def main():
                               (last_user, last_user_data['name'], last_user_data['password']))
                     conn.commit()
                     conn.close()
-                    st.success('Usuari registrat correctament! Ara pots anar a "Iniciar Sessió".')
+                    st.success('Usuari registrat correctament! Ara pots anar a la pestanya "Iniciar Sessió".')
             except Exception as e:
                 st.error(e)
-                
 
 if __name__ == "__main__":
     main()
