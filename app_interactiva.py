@@ -466,7 +466,7 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         result = oauth2.authorize_button(
             name="Inicia sessió amb Google",
             icon="https://www.google.com.tw/favicon.ico",
-            redirect_uri="http://localhost:8501", # IMPORTANT: Canvia a la teva URL de producció quan despleguis
+            redirect_uri="https://tempestescat.streamlit.app/", # IMPORTANT: Canvia a la teva URL de producció quan despleguis
             scope="openid email profile",
             key="google",
             use_container_width=True,
