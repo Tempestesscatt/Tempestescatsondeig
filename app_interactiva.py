@@ -524,51 +524,38 @@ def main():
     authenticator = stauth.Authenticate(
         credentials,
         "TempestesCatCookie",
-        "AquestaEsUnaClauSecretaMoltLlarga", # Posa aquí una clau llarga i aleatòria
+        "AquestaEsUnaClauSecretaMoltLlarga",
         cookie_expiry_days=30
     )
     st.session_state.authenticator = authenticator
 
-    # Si l'usuari JA està autenticat, anem directament a l'app
-    if st.session_state.get("authentication_status"):
+    # Pantalla de Login / Registre
+    name, authentication_status, username = authenticator.login('main')
+
+    if st.session_state["authentication_status"] == False:
+        st.error('Nom d\'usuari o contrasenya incorrecta')
+    elif st.session_state["authentication_status"] is None:
+        st.warning('Si us plau, inicia sessió o registra\'t.')
+        try:
+            # CORRECCIÓ: La crida al registre es fa aquí dins
+            if authenticator.register_user('Registra\'t', location='main'):
+                new_username_data = authenticator.credentials['usernames']
+                last_user = list(new_username_data.keys())[-1]
+                last_user_data = new_username_data[last_user]
+                
+                conn = sqlite3.connect(DB_FILE)
+                c = conn.cursor()
+                c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)", 
+                          (last_user, last_user_data['name'], last_user_data['password']))
+                conn.commit()
+                conn.close()
+                st.success('Usuari registrat correctament! Ara pots iniciar sessió.')
+        except Exception as e:
+            st.error(e)
+    
+    # Si l'autenticació és correcta, mostrem l'app
+    elif st.session_state["authentication_status"]:
         app_principal()
-        return
-
-    # Si NO està autenticat, mostrem la pantalla de Login/Registre amb pestanyes
-    col1, col2, col3 = st.columns([1, 1.5, 1])
-    with col2:
-        st.title("Benvingut a Tempestes.cat")
-        
-        login_tab, register_tab = st.tabs(["Iniciar Sessió", "Registrar-se"])
-
-        with login_tab:
-            # CORRECCIÓ CLAU: Assignem el resultat a una única variable per evitar l'error.
-            # La funció actualitzarà st.session_state internament.
-            authenticator.login('main')
-            
-            # Ara, comprovem l'estat des de st.session_state
-            if st.session_state["authentication_status"] == False:
-                st.error('Nom d\'usuari o contrasenya incorrecta')
-            elif st.session_state["authentication_status"] is None:
-                st.warning('Si us plau, introdueix el teu usuari i contrasenya')
-
-        with register_tab:
-            try:
-                if authenticator.register_user('Formulari de Registre'):
-                    # La lògica de registre es queda igual
-                    new_username_data = authenticator.credentials['usernames']
-                    last_user = list(new_username_data.keys())[-1]
-                    last_user_data = new_username_data[last_user]
-                    
-                    conn = sqlite3.connect(DB_FILE)
-                    c = conn.cursor()
-                    c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)", 
-                              (last_user, last_user_data['name'], last_user_data['password']))
-                    conn.commit()
-                    conn.close()
-                    st.success('Usuari registrat correctament! Ara pots anar a la pestanya "Iniciar Sessió".')
-            except Exception as e:
-                st.error(e)
 
 if __name__ == "__main__":
     main()
