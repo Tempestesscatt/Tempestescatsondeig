@@ -437,16 +437,31 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
 
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
-    st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i del mapa.")
-    nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector")
 
-    # NOU: Lògica de "login" / "registre"
-    if not st.session_state.get('gemini_configured', False):
+    # --- LÒGICA D'AUTENTICACIÓ MILLORADA ---
+    # Primer, intentem configurar l'IA si encara no s'ha fet en aquesta sessió.
+    # Aquesta variable de sessió és la nostra única font de veritat.
+    if 'gemini_configured' not in st.session_state:
+        # Per defecte, no està configurat
+        st.session_state.gemini_configured = False
+        try:
+            # Opció A: Intentem configurar amb st.secrets (ideal per desplegaments)
+            genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+            st.session_state.gemini_configured = True
+        except (KeyError, Exception):
+            # Si st.secrets falla, no fem res i deixem que l'usuari posi la clau manualment.
+            pass
+
+    # Ara, comprovem l'estat final. Si després de tot no està configurat, mostrem el formulari.
+    if not st.session_state.gemini_configured:
+        st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i del mapa.")
+        nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_login")
+        
         with st.container(border=True):
             st.subheader("☁️ Activa l'Assistent MeteoIA")
             st.markdown(
-                "Per utilitzar aquesta funcionalitat, necessites una clau API gratuïta de Google AI Studio. "
-                "Un cop la tinguis, introdueix-la a continuació."
+                "Per utilitzar aquesta funcionalitat, necessites la teva pròpia clau API de Google AI Studio. "
+                "És gratuïta i la pots obtenir a l'enllaç següent."
             )
             st.markdown("[Obtén la teva clau API aquí](https://aistudio.google.com/app/apikey)", unsafe_allow_html=True)
             
@@ -462,19 +477,24 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
                 else:
                     try:
                         genai.configure(api_key=api_key_input)
+                        # Si la configuració funciona, ho guardem a la sessió
                         st.session_state.gemini_configured = True
-                        st.session_state.api_key = api_key_input
-                        st.success("API Key guardada correctament! L'assistent està actiu.")
+                        st.success("API Key guardada correctament! L'assistent s'ha activat.")
                         time.sleep(1)
+                        # Forcem la recàrrega de la pàgina per mostrar el xat
                         st.rerun()
                     except Exception as e:
-                        st.error(f"La clau API no és vàlida o hi ha hagut un error. Torna a intentar-ho.")
-        return # Aturem l'execució aquí si l'usuari no està "logat"
+                        st.error(f"La clau API no sembla vàlida. Error: {e}")
+        # Aturem l'execució de la funció aquí per no mostrar el xat
+        return
 
-    # --- El xat només es mostra si st.session_state.gemini_configured és True ---
+    # --- SI EL CODI ARRIBA AQUÍ, L'IA ESTÀ CONFIGURADA I MOSTREM EL XAT ---
+    st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i del mapa.")
+    nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat")
+    
     map_data_ia, _ = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
     if not data_tuple and not map_data_ia:
-        st.warning("No hi ha dades disponibles per analitzar.")
+        st.warning("No hi ha dades disponibles per analitzar en aquest moment i ubicació.")
         return
         
     resum_dades = preparar_resum_dades_per_ia(data_tuple, map_data_ia, nivell_mapa_ia, poble_sel, timestamp_str)
@@ -486,7 +506,7 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             
-    if prompt := st.chat_input("Escriu la teva pregunta..."):
+    if prompt := st.chat_input("Quina és la teva pregunta sobre el temps?"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -498,6 +518,7 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
             
         st.session_state.messages.append({"role": "assistant", "content": full_response})
         st.rerun()
+        
         
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades del model AROME via <a href='https://open-meteo.com/'>Open-Meteo</a> | Imatges via <a href='https://www.meteociel.fr/'>Meteociel</a> | Anàlisi IA per Google Gemini.</p>", unsafe_allow_html=True)
