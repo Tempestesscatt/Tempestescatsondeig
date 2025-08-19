@@ -516,48 +516,56 @@ def app_principal():
         
     ui_peu_de_pagina()
 
+# SUBSTITUEIX LA TEVA FUNCIÓ MAIN ACTUAL PER AQUESTA VERSIÓ FINAL
 def main():
     setup_database()
-
     credentials = get_users_from_db()
-    authenticator = stauth.Authenticate(credentials, "TempestesCatCookie", "abcdefg", cookie_expiry_days=30)
+    
+    # Creem l'objecte autenticador
+    authenticator = stauth.Authenticate(
+        credentials,
+        "TempestesCatCookie",
+        "AquestaEsUnaClauSecretaMoltLlarga", # Posa aquí una clau llarga i aleatòria
+        cookie_expiry_days=30
+    )
+
+    # El desem a st.session_state per poder accedir-hi des de dins de l'app principal
     st.session_state.authenticator = authenticator
 
-    if 'authentication_status' not in st.session_state:
-        st.session_state.authentication_status = None
+    # Pantalla de Login / Registre
+    col1, col2, col3 = st.columns([1, 1.5, 1])
+    with col2:
+        # Aquesta crida només mostra el formulari, no gestiona la lògica encara
+        authenticator.login('main')
 
-    if not st.session_state["authentication_status"]:
-        col1, col2, col3 = st.columns([1,2,1])
-        with col2:
-            st.title("Benvingut a Tempestes.cat")
-            
-            choice = st.selectbox("Acció:", ["Iniciar Sessió", "Registrar-se"])
+        if st.session_state["authentication_status"] == False:
+            st.error('Nom d\'usuari o contrasenya incorrecta.')
+        elif st.session_state["authentication_status"] == None:
+            st.warning('Si us plau, inicia sessió o registra\'t.')
 
-            if choice == "Iniciar Sessió":
-                name, authentication_status, username = authenticator.login('main')
-                if authentication_status == False: st.error('Nom d\'usuari o contrasenya incorrecta')
-                elif authentication_status == None: st.warning('Si us plau, introdueix el teu usuari i contrasenya')
-                
-            elif choice == "Registrar-se":
-                try:
-                    if authenticator.register_user('Formulari de Registre', preauthorization=False):
-                        new_username_data = authenticator.credentials['usernames']
-                        last_user = list(new_username_data.keys())[-1]
-                        last_user_data = new_username_data[last_user]
-                        
-                        conn = sqlite3.connect(DB_FILE)
-                        c = conn.cursor()
-                        hashed_password = stauth.Hasher([last_user_data['password']]).generate()[0]
-                        c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)", 
-                                  (last_user, last_user_data['name'], hashed_password))
-                        conn.commit()
-                        conn.close()
-                        st.success('Usuari registrat correctament! Ara pots anar a "Iniciar Sessió".')
-                except Exception as e:
-                    st.error(e)
-    
+            # Lògica de registre només si no s'ha iniciat sessió
+            try:
+                # CORRECCIÓ: Hem eliminat el paràmetre 'preauthorization'
+                if authenticator.register_user('Registra\'t', location='main'):
+                    # Aquesta part és important: escriu el nou usuari a la base de dades
+                    new_username = list(authenticator.credentials['usernames'].keys())[-1]
+                    new_user_data = authenticator.credentials['usernames'][new_username]
+                    
+                    conn = sqlite3.connect(DB_FILE)
+                    c = conn.cursor()
+                    # La llibreria ja ens dona la contrasenya hashejada
+                    c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)",
+                              (new_username, new_user_data['name'], new_user_data['password']))
+                    conn.commit()
+                    conn.close()
+                    st.success('Usuari registrat correctament! Ara pots iniciar sessió.')
+            except Exception as e:
+                st.error(e)
+
+    # Només si l'autenticació és correcta, executem l'aplicació principal
     if st.session_state["authentication_status"]:
+        # Netegem la pantalla de login/registre
+        st.empty() 
         app_principal()
-
 if __name__ == "__main__":
     main()
