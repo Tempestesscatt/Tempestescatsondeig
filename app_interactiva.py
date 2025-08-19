@@ -515,7 +515,6 @@ def app_principal():
         ui_pestanya_chat()
         
     ui_peu_de_pagina()
-
 # SUBSTITUEIX LA TEVA FUNCIÓ MAIN ACTUAL PER AQUESTA VERSIÓ FINAL
 def main():
     setup_database()
@@ -524,51 +523,52 @@ def main():
     authenticator = stauth.Authenticate(
         credentials,
         "TempestesCatCookie",
-        "AquestaEsUnaClauSecretaMoltLlarga",
+        "AquestaEsUnaClauSecretaMoltLlarga", # Posa aquí una clau llarga i aleatòria
         cookie_expiry_days=30
     )
 
     st.session_state.authenticator = authenticator
 
-    if 'authentication_status' not in st.session_state:
-        st.session_state.authentication_status = None
-
-    if not st.session_state["authentication_status"]:
-        col1, col2, col3 = st.columns([1, 1.5, 1])
-        with col2:
-            st.title("Benvingut a Tempestes.cat")
-            
-            # El selector de Login/Registre es mou fora per a més claredat
-            choice = st.selectbox("Acció:", ["Iniciar Sessió", "Registrar-se"])
-
-            if choice == "Iniciar Sessió":
-                authenticator.login('main')
-                if st.session_state["authentication_status"] == False:
-                    st.error('Nom d\'usuari o contrasenya incorrecta')
-                elif st.session_state["authentication_status"] == None:
-                    st.warning('Si us plau, introdueix el teu usuari i contrasenya')
-                
-            elif choice == "Registrar-se":
-                try:
-                    # CORRECCIÓ: Hem eliminat l'argument 'location'
-                    if authenticator.register_user('Formulari de Registre'):
-                        new_username_data = authenticator.credentials['usernames']
-                        last_user = list(new_username_data.keys())[-1]
-                        last_user_data = new_username_data[last_user]
-                        
-                        conn = sqlite3.connect(DB_FILE)
-                        c = conn.cursor()
-                        c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)", 
-                                  (last_user, last_user_data['name'], last_user_data['password']))
-                        conn.commit()
-                        conn.close()
-                        st.success('Usuari registrat correctament! Ara pots anar a "Iniciar Sessió".')
-                except Exception as e:
-                    st.error(e)
-    
-    if st.session_state["authentication_status"]:
+    # Si l'usuari JA està autenticat, anem directament a l'app
+    if st.session_state.get("authentication_status"):
         st.empty() 
         app_principal()
-        
+        return # Aturem l'execució aquí per a no mostrar el login
+
+    # Si NO està autenticat, mostrem la pantalla de Login/Registre
+    col1, col2, col3 = st.columns([1, 1.5, 1])
+    with col2:
+        st.title("Benvingut a Tempestes.cat")
+        choice = st.selectbox("Acció:", ["Iniciar Sessió", "Registrar-se"])
+
+        if choice == "Iniciar Sessió":
+            name, authentication_status, username = authenticator.login('main')
+            if authentication_status == False:
+                st.error('Nom d\'usuari o contrasenya incorrecta')
+            elif authentication_status is None:
+                st.warning('Si us plau, introdueix el teu usuari i contrasenya')
+            
+            # Si l'inici de sessió és correcte, Streamlit es re-executarà
+            # i la pròxima vegada entrarà al bloc de dalt (if st.session_state.get("authentication_status"):)
+
+        elif choice == "Registrar-se":
+            try:
+                # CORRECCIÓ: Tornem a posar 'location', ja que és necessari
+                if authenticator.register_user('Formulari de Registre', location='main'):
+                    new_username_data = authenticator.credentials['usernames']
+                    last_user = list(new_username_data.keys())[-1]
+                    last_user_data = new_username_data[last_user]
+                    
+                    conn = sqlite3.connect(DB_FILE)
+                    c = conn.cursor()
+                    c.execute("INSERT INTO users (username, name, password) VALUES (?, ?, ?)", 
+                              (last_user, last_user_data['name'], last_user_data['password']))
+                    conn.commit()
+                    conn.close()
+                    st.success('Usuari registrat correctament! Ara pots anar a "Iniciar Sessió".')
+            except Exception as e:
+                st.error(e)
+                
+
 if __name__ == "__main__":
     main()
