@@ -137,7 +137,10 @@ def carregar_dades_mapa_base(variables, hourly_index):
         return output, None
     except Exception as e:
         return None, f"Error en carregar dades del mapa: {e}"
-# SUBSTITUEIX LA TEVA FUNCIÓ "carregar_dades_mapa" PER AQUESTA VERSIÓ FINAL
+
+
+
+# SUBSTITUEIX LA TEVA FUNCIÓ "carregar_dades_mapa" PER AQUESTA
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
     try:
@@ -158,17 +161,21 @@ def carregar_dades_mapa(nivell, hourly_index):
         u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
         grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-        
-        divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).magnitude
-        convergence = -divergence
 
-        # === CANVI CLAU: Baixem el llindar per detectar convergències més febles però rellevants ===
-        CONV_THRESHOLD_SCIENTIFIC = 5e-5  # Llindar anterior era 20e-5 (massa alt)
+        # === CÀLCUL DE CONVERGÈNCIA CORREGIT I ROBUST ===
+        # Calculem les derivades per separat per evitar errors de la funció principal de MetPy
+        dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1)
+        dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
+        divergence = (dudx + dvdy).to('1/s')
+        convergence = -divergence.magnitude # Ara el càlcul és correcte
+
+        # Llindar baix per capturar fins i tot les convergències febles
+        CONV_THRESHOLD_SCIENTIFIC = 3e-5
         effective_risk_mask = (convergence >= CONV_THRESHOLD_SCIENTIFIC)
-        
+
         labels, num_features = label(effective_risk_mask)
         locations = []
-        
+
         if MUNICIPIS_GDF is not None and num_features > 0:
             for i in range(1, num_features + 1):
                 mask_i = (labels == i)
@@ -183,7 +190,7 @@ def carregar_dades_mapa(nivell, hourly_index):
                     if municipi.geometry.contains(p):
                         locations.append({'municipi': municipi['NOM'], 'intensitat': max_conv_value})
                         break
-        
+
         output_data = {'lons': lons, 'lats': lats, 'speed_data': speed_data, 'dir_data': dir_data, 'dewpoint_data': dewpoint_data, 'alert_locations': locations}
         return output_data, None
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
@@ -201,6 +208,7 @@ def crear_mapa_base():
         MUNICIPIS_GDF.plot(ax=ax, edgecolor='gray', facecolor='none', alpha=0.5, linewidth=0.4, transform=ccrs.PlateCarree(), zorder=1)
     return fig, ax
 
+# SUBSTITUEIX LA TEVA FUNCIÓ "crear_mapa_forecast_combinat" PER AQUESTA
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 400), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 400))
@@ -216,9 +224,14 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=cbar_ticks)
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density= 4, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
+    
+    # === CÀLCUL DE CONVERGÈNCIA CORREGIT I ROBUST (PER A LA VISUALITZACIÓ) ===
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-    divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
-    convergence_scaled = divergence.magnitude * -1e5
+    dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1)
+    dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
+    divergence = (dudx + dvdy).to('1/s')
+    convergence_scaled = -divergence.magnitude * 1e5 # El valor escalat que es mostra al mapa
+
     CONVERGENCE_THRESHOLD = 20
     if nivell >= 950: DEWPOINT_THRESHOLD = 14
     elif nivell >= 925: DEWPOINT_THRESHOLD = 12
@@ -233,9 +246,10 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
             ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=['#FF0000'], alpha=0.3, zorder=5, transform=ccrs.PlateCarree())
             contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors='black', linestyles='-', linewidths=1.5, zorder=6, transform=ccrs.PlateCarree())
             ax.clabel(contours, inline=True, fontsize=10, fmt='%1.0f')
+            
     ax.set_title(f"Anàlisi de Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
-
+    
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
