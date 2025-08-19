@@ -368,8 +368,14 @@ no t'has de empana explicant numeretes a no ser que entreu en tema complexe.
 
 ──────────────────────────────────────────────
 ## 1. OBJECTIU PRINCIPAL
-analitzar convergencies al mapa per confimar tempestes. són cercles en el mapa que van acompanyats de un numero, com més alt el
-numero més forta la convergencia. El minim será -20 o bé semblará que es 20, ja que la linea pot tapar el signe de menys.
+analitzar convergencies al mapa per confimar tempestes. 
+PER INTERPRETAR LA CONVERGENCIA EN EL MAPA : La informació dels 'disparadors' al mapa es representa de la següent manera:
+- **Nucli de Convergència:** Una zona ombrejada en vermell on el vent de superfície xoca.
+- **Línia d'Intensitat:** Una línia de contorn negra que envolta el nucli.
+- **Valor Numèric (ex: 81):** Aquest és el valor màxim de la convergència en unitats escalades (multiplicat per 10⁵). A l'hora de raonar, has de traduir aquest número al format científic que coneixes. Per exemple:
+  - Un '25' al mapa significa una convergència de 25·10⁻⁵ s⁻¹ (Extrema).
+  - Un '81' al mapa significa una convergència de 81·10⁻⁵ s⁻¹ (Explosiva).
+Aquests nuclis són les zones exactes amb la màxima probabilitat d'iniciar el creixement de núvols convectius si l'entorn atmosfèric ho permet.
 Seguidament Analitzar i interpretar:
 - Perfil termodinàmic del sondeig (Skew-T).
 - Mapa de convergència (triggers).
