@@ -193,7 +193,7 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=speed_levels_final[::2])
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=4, arrowsize=0.7, zorder=4, transform=ccrs.PlateCarree())
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density= 5, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
     convergence_scaled = divergence.magnitude * -1e5
@@ -207,7 +207,13 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
         level1, level2 = max_convergence * 0.60, max_convergence * 0.80
         contour_levels = [lvl for lvl in [level1, level2] if lvl >= CONVERGENCE_THRESHOLD]
         if contour_levels:
-            contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=contour_levels, colors='darkred', linestyles='--', linewidths=1.5, zorder=6, transform=ccrs.PlateCarree())
+            # === CANVIS APLICATS AQUÍ ===
+            # 1. Afegir ombrejat vermellós amb transparència dins dels contorns
+            ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=contour_levels, colors=['#FF0000'], alpha=0.4, zorder=5, transform=ccrs.PlateCarree())
+            
+            # 2. Canviar estil de línia a sòlid ('-') i mantenir els contorns
+            contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=contour_levels, colors='black', linestyles='-', linewidths=1.5, zorder=6, transform=ccrs.PlateCarree())
+            # ============================
             ax.clabel(contours, inline=True, fontsize=10, fmt='%1.0f')
     ax.set_title(f"Anàlisi de Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
