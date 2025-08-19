@@ -49,6 +49,9 @@ def carregar_mapa_comarques():
     url = "https://raw.githubusercontent.com/gloriamacia/comarques-catalunya/master/amb-capital/data/catalunya_comarques.geojson"
     try:
         gdf = gpd.read_file(url)
+        # CORRECCIÓ CLAU: Renombrem la columna 'nomcomarca' a un nom estàndard
+        if 'nomcomarca' in gdf.columns:
+            gdf = gdf.rename(columns={'nomcomarca': 'NOM_ZONA'})
         return gdf.to_crs(epsg=4326)
     except Exception as e:
         st.error(f"ERROR CRÍTIC: No s'ha pogut carregar el mapa de comarques. La localització no funcionarà. Detall: {e}")
@@ -107,6 +110,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             params_calc['SRH 0-3km'] = np.nan
         return ((p, T, Td, u, v), params_calc), None
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
+        
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base(variables, hourly_index):
@@ -130,9 +134,9 @@ def carregar_dades_mapa_base(variables, hourly_index):
     except Exception as e:
         return None, f"Error en carregar dades del mapa: {e}"
 
+# SUBSTITUEIX LA TEVA FUNCIÓ "carregar_dades_mapa" PER AQUESTA
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
-    # ... (aquesta funció ja està corregida)
     try:
         if nivell >= 950:
             variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
@@ -173,15 +177,14 @@ def carregar_dades_mapa(nivell, hourly_index):
                 p = Point(center_lon, center_lat)
                 for _, comarca in COMARQUES_GDF.iterrows():
                     if comarca.geometry.contains(p):
-                        locations.append({'municipi': comarca['NOMCOMARCA'], 'intensitat': max_conv_value})
+                        # === LÍNIA CORREGIDA DEFINITIVAMENT ===
+                        # Utilitzem la columna estàndard 'NOM_ZONA'
+                        locations.append({'municipi': comarca['NOM_ZONA'], 'intensitat': max_conv_value})
                         break
 
         output_data = {'lons': lons, 'lats': lats, 'speed_data': speed_data, 'dir_data': dir_data, 'dewpoint_data': dewpoint_data, 'alert_locations': locations}
         return output_data, None
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
-
-# --- La resta del codi (visualització, IA, interfície) es manté exactament igual ---
-# ... (enganxa aquí la resta del teu codi, des de crear_mapa_base fins al final)
         
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
