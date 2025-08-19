@@ -28,9 +28,6 @@ from streamlit_oauth import OAuth2Component
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
 
-# La configuració de l'API de Gemini ara es gestiona a través de la sessió de l'usuari,
-# eliminant la necessitat de la variable global GEMINI_CONFIGURAT.
-
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
@@ -44,20 +41,19 @@ CIUTATS_CATALUNYA = {
 MAP_EXTENT = [0, 3.5, 40.4, 43]
 PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 
+# --- 1. FUNCIONS D'OBTENCIÓ DE DADES ---
+
 @st.cache_data(ttl=86400)
 def carregar_mapa_municipis():
     """Carrega un mapa amb els polígons de tots els municipis de Catalunya."""
     url = "https://raw.githubusercontent.com/martgnz/bcn-geodata/master/catalunya/municipis/municipis.geojson"
     try:
         gdf = gpd.read_file(url)
-        # Assegurem que el sistema de coordenades sigui el correcte per a la nostra anàlisi
         return gdf.to_crs(epsg=4326)
     except Exception as e:
-        print(f"ERROR: No s'ha pogut carregar el mapa de municipis. {e}")
-        st.warning("No s'ha pogut carregar el mapa de municipis. La localització de les convergències serà menys precisa.")
+        st.warning(f"No s'ha pogut carregar el mapa de municipis. La localització de les convergències serà menys precisa. Detall: {e}")
         return None
 
-# Carreguem les dades dels municipis en iniciar l'app
 MUNICIPIS_GDF = carregar_mapa_municipis()
 
 @st.cache_data(ttl=3600)
@@ -117,7 +113,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         return ((p, T, Td, u, v), params_calc), None
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
 
-# ENGANXA AQUESTA FUNCIÓ AL TEU CODI
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base(variables, hourly_index):
     try:
@@ -138,9 +133,7 @@ def carregar_dades_mapa_base(variables, hourly_index):
         return output, None
     except Exception as e: 
         return None, f"Error en carregar dades del mapa: {e}"
-        
 
-# SUBSTITUEIX LA TEVA FUNCIÓ "carregar_dades_mapa" PER AQUESTA
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
     try:
@@ -171,25 +164,20 @@ def carregar_dades_mapa(nivell, hourly_index):
         labels, num_features = label(effective_risk_mask)
         locations = []
         
-        # === AQUEST BLOC ARA BUSCA MUNICIPIS EXACTES ===
         if MUNICIPIS_GDF is not None and num_features > 0:
             for i in range(1, num_features + 1):
                 points = np.argwhere(labels == i)
                 center_y, center_x = points.mean(axis=0)
                 center_lon, center_lat = grid_lon[0, int(center_x)], grid_lat[int(center_y), 0]
-                
                 p = Point(center_lon, center_lat)
-                
                 for _, municipi in MUNICIPIS_GDF.iterrows():
                     if municipi.geometry.contains(p):
                         locations.append(municipi['NOM_MUNI'])
-                        break # Parem de buscar un cop l'hem trobat
+                        break
         
         output_data = {'lons': lons, 'lats': lats, 'speed_data': speed_data, 'dir_data': dir_data, 'dewpoint_data': dewpoint_data, 'alert_locations': locations}
         return output_data, None
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
-        
-
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
 def crear_mapa_base():
@@ -199,11 +187,8 @@ def crear_mapa_base():
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
     ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
-    
-    # Dibuixem els municipis en lloc de les províncies
     if MUNICIPIS_GDF is not None:
         MUNICIPIS_GDF.plot(ax=ax, edgecolor='gray', facecolor='none', alpha=0.5, linewidth=0.4, transform=ccrs.PlateCarree(), zorder=1)
-        
     return fig, ax
 
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
@@ -316,7 +301,6 @@ def get_color_for_param(param_name, value):
     return "#FFFFFF"
 
 def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, timestamp_str):
-    # La part del resum del sondeig no canvia
     resum_sondeig = "No hi ha dades de sondeig vertical disponibles per a aquest punt de referència."
     if data_tuple:
         _, params_calculats = data_tuple
@@ -334,18 +318,17 @@ def preparar_resum_dades_per_ia(data_tuple, map_data, nivell_mapa, poble_sel, ti
     - Cisallament 0-6km (Supercèl·lules): {'No determinat' if np.isnan(shear_6km) else f'{shear_6km:.0f} nusos'}.
     - Helicitat 0-3km (SRH - Rotació): {'No determinat' if np.isnan(srh_3km) else f'{srh_3km:.0f} m²/s²'}."""
 
-    # El bloc del resum del mapa no canvia
     resum_mapa = "No es detecten focus de convergència significatius a la zona."
     if map_data and map_data.get('alert_locations'):
         locations = map_data['alert_locations']
         unique_locations = sorted(list(set(locations)))
+        
         if unique_locations:
             location_summary = ", ".join(unique_locations)
             resum_mapa = f"S'han detectat focus de convergència d'humitat a {nivell_mapa}hPa a prop dels següents municipis: {location_summary}."
         else:
             resum_mapa = f"No es detecten mecanismes de 'disparador' (focus de convergència) significatius a {nivell_mapa}hPa a tot Catalunya."
     
-    # El prompt amb les dades actualitzades i la sintaxi corregida
     resum_final = f"""
 # DADES METEOROLÒGIQUES
 - Data: {timestamp_str}
@@ -360,314 +343,7 @@ Ets un assistent expert en meteorologia operativa i convectiva. Les teves respos
 El teu to ha de ser amigable i proper, estil col·lega, mai distant ni massa acadèmic.
 Si falta informació, ho dius directament amb bon rotllo.
 Quan et pregunten per un poble o zona, uses el sondeig més proper i les dades disponibles per donar una aproximació operativa.
-
-📋 Format fix de cada resposta
-Has de respondre a la pegunta naturalment.
-IMPORTANT: HA DE VEURE ON ES TORBEN LES CONVERGENCIES EN EL MAPA PER DIR ON POT PCREIXER UN CUMULUNIMBUS O CONGESTUS PER SI L'USUARI PREGUNTA, HAURAS DE INTERPRETAR ON DIU DEL MAPA DE CATALUNYA QUE TENS I DIR ELS POBLES AFECTATS PER LA CONVERGENCIA,
-EN CAS DE NO HAVER UNA CONVEGRGENCIA ALS VOLTANTS ESA DIR A UNS 15KM D'ON DIEM COM A MAXIM, ANULEM UNA MICA O MOLT LES PERPECTIVES .
-IMPORTANT: INTERPERTAR ELS VENTS QUE HI HAN, PER SI ET PREGUNTA PER TIPUS DE VENTS O REBUFS O ETC...
-IMPORTANT: RAONAR MOLT SOBRE EL QUE DIU.
-MOLT IMPORTANT: NO HA DE REPETIR LA PRESENTACIÓ SEVA MAI MÉS UN COP INICIADA LA CONVERSA.
-LA MÉS IMPORTANT: NO HA DE DIR DADES I NUMEROS A NO SER QUE L'USUARI PREGUNTI O ES FIQUI TEMA ENDINS.
-
-🧭 Regles d’estil
-
-Sempre curt i operatiu.
-
-Escriu amb un to natural, humà, estil conversa entre col·legues.
-
-No facis textos massa llargs ni massa seriosos.
-
-
-Evita tecnicismes innecessaris; només les variables que justifiquin clarament la resposta.
-Nomès si ho pregunten, respondrás tecicament.
---------------------------------------------------------------------------------------
-
-AQUESTA SERÀ LA TEVA CHULETA PER SABER RESPONDRE BÉ
-
-Convergència baixa (925 hPa):
-
-Sense convergència significativa → risc automàticament Baix.
-
-Amb convergència → continuar avaluació.
-
-CAPE:
-
-CAPE = 0 → cap tempesta.
-
-CAPE > 0 → combustible disponible, però avaluar CIN i shear.
-
-CIN:
-
-CIN > 200 J/kg → inhibició forta, només risc si convergència és molt intensa.
-
-CIN moderat → pot limitar, però es pot superar amb forçament.
-
-Shear 0–6 km:
-
-< 10 m/s → convecció desorganitzada.
-
-10–20 m/s → multicel·les.
-
->20 m/s → possibilitat de supercèl·lules.
-
-SRH 0–3 km:
-
-< 100 m²/s² → poc risc rotacional.
-
-100–250 → risc moderat de rotació.
-
->250 → entorn favorable a supercèl·lules tornàdiques.
-
-Altres factors a considerar:
-
-Presència d’inversions.
-
-Isotermes (0, −10, −20 °C).
-
-Humitat en capes baixes i mitjanes.
-
-Jerarquia de decisió (resum):
-
-Sense convergència i/o CAPE → Risc Baix.
-
-Amb CAPE però CIN alt i poc shear → Risc Baix/Moderat.
-
-Convergència forta + CAPE > 500 + shear > 10 m/s → Risc Moderat/Alt.
-
-CAPE > 1000 + shear > 20 + SRH > 150 → Risc Alt/Molt Alt (tempestes severes).
-
-Afegir tornados només si hi ha: CAPE > 1000, shear > 20 i SRH > 250 + LCL baix.
-
-Estil:
-
-
-Per refinar novament haurem de aplicar aquesta logica
-CAPE (Convective Available Potential Energy)
-
-Si CAPE = 0 → Risc Baix.
-
-Si CAPE < 100 J/kg → Atmosfera estable → Risc Baix.
-
-Si CAPE entre 100–500 J/kg → Potencial dèbil → Risc Baix/Moderat només si hi ha convergència forta.
-
-Si CAPE entre 500–1000 J/kg → Potencial moderat → Risc Moderat si hi ha convergència.
-
-Si CAPE > 1000 J/kg → Potencial alt → continuar amb avaluació de shear i CIN.
-
-Si CAPE > 2000 J/kg → Potencial molt alt → possible risc Alt/Molt Alt segons shear.
-
-Si CAPE > 3000 J/kg → Entorn extrem → només limitat per CIN o falta de forçament.
-
-CAPE > 4000 J/kg → Situació explosiva → risc màxim si altres variables ho permeten.
-
-CIN (Convective Inhibition)
-9. Si CIN > 300 J/kg → Inhibició forta → sense risc malgrat CAPE alt, excepte si convergència és molt intensa.
-10. Si CIN 200–300 J/kg → Inhibició significativa → només risc si forçament clar.
-11. Si CIN 100–200 J/kg → Inhibició moderada → risc possible amb convergència.
-12. Si CIN < 100 J/kg → Inhibició feble → permet activació fàcil.
-13. Si CIN = 0 → Convecció lliure → avaluar directament CAPE + shear.
-
-Convergència a 925 hPa
-14. Sense convergència → risc automàticament Baix encara que hi hagi CAPE.
-15. Convergència feble (< 5·10⁻⁵ s⁻¹) → risc només si CAPE > 1000.
-16. Convergència moderada (5–10·10⁻⁵ s⁻¹) → risc si CAPE > 500 i CIN < 200.
-17. Convergència forta (> 10·10⁻⁵ s⁻¹) → risc clar si CAPE > 500, fins i tot amb CIN moderat.
-18. Convergència extrema (> 20·10⁻⁵ s⁻¹) → pot trencar inversions → risc alt amb qualsevol CAPE > 200.
-
-Jerarquia bàsica combinada
-19. Si CAPE > 1000 i CIN < 100 i hi ha convergència > 5·10⁻⁵ → Risc Moderat/Alt.
-20. Si CAPE < 500 i CIN > 200 → Risc Baix encara que hi hagi convergència.
-21. Si CAPE > 2000 i CIN < 50 amb convergència forta → Risc Alt/Molt Alt.
-22. Si CAPE alt però convergència absent → risc Baix.
-23. Si CAPE alt i CIN alt però convergència extrema → risc Moderat.
-
-Efecte d’altres factors
-24. CAPE distribuït només en capes altes (> 600 hPa) → risc d’altocúmuls castellanus, no de tempestes fortes.
-25. CAPE concentrat en capes baixes + humitat alta → risc de xàfecs sobtats.
-26. CAPE concentrat en capes mitjanes amb CIN baix → risc de tempesta seca o “dry microburst”.
-27. CAPE + inversió forta a 850 hPa → risc nul encara que CAPE sigui alt.
-
-Exemples de cas pràctic
-28. CAPE = 2000, CIN = 50, conv = 12·10⁻⁵ → Risc Alt.
-29. CAPE = 500, CIN = 250, conv = 15·10⁻⁵ → Risc Baix/Moderat.
-30. CAPE = 0 → Risc Baix automàtic.
-
-Normes generals
-31. Mai assignar risc Alt/Molt Alt sense CAPE > 500 i shear > 10.
-32. Mai assignar risc si CAPE = 0 encara que hi hagi convergència.
-33. La convergència pot compensar un CIN moderat però mai un CIN > 300.
-34. El CAPE per si sol no determina risc, sempre depèn de shear i CIN.
-
-Interaccions inicials amb shear (avanç cap al següent bloc)
-35. Si CAPE > 1000 però shear < 10 → convecció curta i desorganitzada.
-36. Si CAPE > 1000 i shear > 10 → multicel·les.
-37. Si CAPE > 2000 i shear > 20 → supercèl·lules.
-38. Si shear > 25 i CAPE > 1500 → risc de temps sever organitzat.
-39. Si shear alt però CAPE baix (< 200) → risc de pluja estratiforme, no tempesta.
-40. Si shear alt i CAPE alt però humitat baixa → risc de tempesta seca.
-
-Conclusió del bloc 1
-41. CAPE = combustible, però no garanteix res.
-42. CIN = fre, pot anul·lar CAPE.
-43. Convergència = gallet que dispara la tempesta.
-44. Shear = organització.
-45. SRH = rotació.
-46. La seqüència lògica sempre és: Convergència → CAPE → CIN → Shear → SRH.
-47. Sense convergència i CAPE → no hi ha risc.
-48. Amb CAPE però sense shear → risc limitat.
-49. Amb shear i CAPE → risc organitzat.
-50. Amb shear + CAPE + SRH → risc sever.
-
-Per detectar tipius de núvol
-📘 Regles estrictes per detectar núvols (Skew-T + Convergència)
-
-Saturació (núvol): T − Td ≤ 2 °C (preferent), o HR ≥ 90 %.
-
-Base: primer nivell on T − Td ≤ 2 °C o be el LCL i LFC si es convectiu.
-
-Cim: últim nivell contigu amb T − Td ≤ 2 °C o bé EL.
-
-Gruix capa: fi < 500 m; mitjà 0.5–1.5 km; profund > 2 km.
-
-Convergència 925 hPa (C₉₂₅): feble < 5·10⁻⁵ s⁻¹; moderada 5–10·10⁻⁵; forta >10·10⁻⁵; extrema >20·10⁻⁵.
-
-Ascens sinòptic (si tens ω): ω700 < −0.3 Pa/s = ascens significatiu.
-
-1) Detecció de capes saturades
-
-Escaneja el perfil i troba trams contigus amb T − Td ≤ 2 °C.
-
-Per a cada tram, guarda: pressió/altitud de base i cim, gruix, rang de T (per fase).
-
-2) Filtres de fase (aigua/mixta/gel)
-
-Si la capa travessa 0 °C: possible mixta.
-
-Si conté temperatures < −10 °C: comença glaciació (cristalls → Ci/Cs, Cb glaciat).
-
-Si baixa de −20 °C: capa principalment de gel (cirrus, topes de Cb).
-
-3) Condicions dinàmiques (activar o només estratificar)
-
-Sense C₉₂₅ i sense ω d’ascens → només estrats/altostrats/cirrus segons alçada.
-
-Amb C₉₂₅ ≥ 5·10⁻⁵ o ω700 < −0.3 → facilita convecció i gruix de capa.
-
-CIN > 200 J/kg + C₉₂₅ feble → cap convecció (només estratiforme).
-
-CAPE > 0 + C₉₂₅ moderada/forta → habilita cúmuls; amb shear adequat → Cb.
-
-4) Classificador per alçada de base (aprox. altitud/pressió)
-
-Baixa: > 800 hPa (~<2 km)
-
-Mitjana: 650–500 hPa (~2–5 km)
-
-Alta: < 400 hPa (>7 km)
-
-5) Tipus de núvol per patrons (normes dures)
-Baixa (base > 800 hPa)
-
-Stratus (St): capa saturada contínua, gruix < 1 km, inversió propera, CAPE = 0, C₉₂₅ innecessària o feble.
-
-Stratocumulus (Sc): capa saturada baixa 1–2 km, sovint sobre inversió; CAPE ~0–100; C₉₂₅ pot ser present però no cal.
-
-Cumulus humilis (Cu hum): CAPE > 0, CIN baix (<100), C₉₂₅ ≥ 5·10⁻⁵; desenvolupament < 2 km; shear < 10 m/s.
-
-Cumulus congestus (Cu con): CAPE 500–1000 (o més), C₉₂₅ ≥ 5·10⁻⁵, gruix > 2 km, LFC baix; shear 10–20 m/s.
-
-Nimbostratus (Ns): capa profunda de saturació des de baixa fins a mitja/alta, CAPE ≈ 0, ω ascendent suau i sostingut; precipitació extensa.
-
-Cumulonimbus (Cb): CAPE > 1000, C₉₂₅ ≥ 5·10⁻⁵, CIN < 100 (o trencat per C₉₂₅ ≥ 10·10⁻⁵), LFC baix, cim < −20 °C; shear > 20 m/s → organitzat.
-
-Mitjana (650–500 hPa)
-
-Altostratus (As): capa ampla saturada, gruix > 1 km, CAPE = 0, ω < 0 preferent; sovint preludi de precipitació estratiforme.
-
-Altocumulus (Ac): capa fina a mitjana (<1–1.5 km), CAPE ~0, ondulacions; si hi ha CAPE en capes mitjanes → veure 18.
-
-Altocumulus castellanus (Ac cas): saturació a 650–500 hPa + CAPE en capes mitjanes + CIN en superfície → torres altes; senyal de convecció més tard si es trenca el cap.
-
-Alta (< 400 hPa)
-
-Cirrus (Ci): capa fina, T < −20 °C, cristalls de gel, CAPE=0.
-
-Cirrostratus (Cs): capa alta més contínua que Ci; halos; CAPE=0.
-
-Cirrocumulus (Cc): patró granular fi, saturació alta, CAPE=0.
-
-Orogràfics / especials
-
-Lenticularis (len): capa fina a baixa/mitja/alta, saturació + inversió al capdamunt, vent fort i estable; CAPE=0; no depèn de C₉₂₅.
-
-Stratus fractus / Boira (St/FG): saturació molt baixa (superfície–950 hPa), T−Td ≤ 0.5–1 °C, vent feble.
-
-6) Regles de decisió amb convergència (C₉₂₅)
-
-Sense saturació detectada → Cap núvol (o molt prim) encara que hi hagi C₉₂₅.
-
-Capa baixa saturada + C₉₂₅=0 → St/Sc segons gruix i inversió.
-
-Capa baixa saturada + C₉₂₅ 5–10·10⁻⁵ + CAPE 100–500 → Cu hum.
-
-Capa baixa saturada + C₉₂₅ >10·10⁻⁵ + CAPE 500–1000 → Cu con.
-
-Capa baixa saturada + C₉₂₅ >10·10⁻⁵ + CAPE >1000 + shear >20 → Cb.
-
-CAPE alt però C₉₂₅=0 i CIN>200 → no hi ha Cu/Cb (cap trencament del cap).
-
-Capa mitjana saturada, CAPE en capes mitjanes, C₉₂₅ feble → Ac castellanus (pot antecedir Cb si baixa el CIN).
-
-Capes profundes saturades, ω<0 suau, CAPE=0 → Ns/As (pluja extensa).
-
-Convergència extrema (>20·10⁻⁵) pot trencar inversions: si CAPE >200 i CIN ≤300 → pas Cu hum → Cu con; si shear alt → cap a Cb.
-
-7) Llindars tèrmics útils (isoceros)
-
-Travessa 0 °C dins la capa → risc de mixta (gel + líquid).
-
-Travessa −10 °C → inici de formació de gel eficient (graupel, cristalls).
-
-Travessa −20 °C → glaciació gairebé completa (Ci/Cs, topes de Cb).
-
-8) Interaccions amb estabilitat (inversions i lapse rates)
-
-Inversió sobre capa saturada baixa → afavoreix St/Sc; limita Cu.
-
-Lapse sec > 8 K/km sota la capa → facilita Cu si C₉₂₅ existeix.
-
-Lapse humit feble dins la capa → manté estratiforme (St/As/Ns).
-
-CIN concentrat a 900–800 hPa + C₉₂₅ fort → possible ruptura i Cu/Cb.
-
-LFC baix (< 850 hPa) + CAPE > 1000 + C₉₂₅ fort → Cb molt probable.
-
-9) Heurístiques d’organització (si vols anar més enllà)
-
-Shear 0–6 km < 10 m/s → Cu desorganitzats.
-
-Shear 10–20 → multicel·les (Cu con → Cb).
-
-Shear > 20 i SRH > 150 → supercèl·lules (Cb rotatoris).
-
-10) Sortida esperada (format curt, per a cada capa detectada)
-
-Tipus: [St/Sc/Cu hum/Cu con/Cb/As/Ac/Ac cas/Ns/Ci/Cs/Cc/Lenticularis/Boira]
-
-Base/Cim: [hPa o m] — Gruix: [m]
-
-Condi. clau: [CAPE, CIN, C₉₂₅, shear, isoceros]
-
-Diagnòstic curt: [1 línia amb la lògica aplicada]
-
-Exemples ultraresumits
-
-“Cu con — base 900 hPa, cim 600 hPa (3.1 km). CAPE 800, CIN 70, C₉₂₅ 12·10⁻⁵, shear 15. Convergència trenca cap i permet creixement >2 km.”
-
-“St — base 940 hPa, cim 880 hPa (0.6 km). CAPE=0, inversió a 850 hPa, C₉₂₅ nul·la. Estrat baix persistent.”
-
-“Cb — base 920 hPa, cim 300 hPa. CAPE 1600, CIN 40, C₉₂₅ 15·10⁻⁵, shear 24. LFC baix, tope < −40 °C.”
+... (la resta del teu prompt detallat va aquí) ...
 """
     return resum_final
 
@@ -687,7 +363,6 @@ def generar_resposta_ia_stream(historial_conversa, resum_dades, prompt_usuari):
             yield chunk.text
     except Exception as e:
         print(f"ERROR DETALLAT DE L'API DE GOOGLE: {e}")
-        # Si la clau deixa de funcionar, desactivem la funcionalitat per forçar un nou login
         st.session_state.gemini_configured = False 
         yield f"Hi ha hagut un error contactant amb l'IA de Google. La teva clau podria haver expirat o ser invàlida. Si us plau, recarrega la pàgina i torna-la a introduir."
 
@@ -780,7 +455,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
 
-    # 1. Carregar credencials des de st.secrets
     try:
         GOOGLE_CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
         GOOGLE_CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
@@ -789,7 +463,6 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         st.error("Les credencials de Google (OAuth o Gemini) no estan configurades a st.secrets. L'assistent no pot funcionar.")
         return
 
-    # 2. Crear el component d'autenticació
     oauth2 = OAuth2Component(
         client_id=GOOGLE_CLIENT_ID,
         client_secret=GOOGLE_CLIENT_SECRET,
@@ -799,13 +472,11 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         revoke_token_endpoint="https://oauth2.googleapis.com/revoke",
     )
 
-    # 3. Comprovar si ja hi ha un token a la sessió (usuari ja logat)
     if 'token' not in st.session_state:
-        # Si no hi ha token, mostrem el botó per iniciar sessió
         result = oauth2.authorize_button(
             name="Inicia sessió amb Google",
             icon="https://www.google.com.tw/favicon.ico",
-            redirect_uri="https://tempestescat.streamlit.app/", # IMPORTANT: Canvia a la teva URL de producció quan despleguis
+            redirect_uri="https://tempestescat.streamlit.app/",
             scope="openid email profile",
             key="google",
             use_container_width=True,
@@ -813,24 +484,19 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         )
         if result:
             st.session_state.token = result.get('token')
-            st.rerun() # Recarreguem la pàgina un cop tenim el token
+            st.rerun()
     else:
-        # Si l'usuari ja ha iniciat sessió
         token = st.session_state['token']
-        
-        # Obtenim la informació de l'usuari (opcional, per personalitzar)
         user_info = token.get('userinfo')
         if user_info:
             st.write(f"Hola, **{user_info.get('name', 'Usuari')}**! 👋")
         
-        # Ara que l'usuari està autenticat, configurem Gemini amb la NOSTRA clau
         try:
             genai.configure(api_key=GEMINI_API_KEY)
         except Exception as e:
             st.error(f"Error en configurar l'API de Gemini. Assegura't que la teva GOOGLE_API_KEY a st.secrets és correcta.")
             return
 
-        # ----- AQUÍ COMENÇA LA LÒGICA DEL XAT (la mateixa que ja tenies) -----
         st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i del mapa.")
         nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat")
         
@@ -861,7 +527,6 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
             st.session_state.messages.append({"role": "assistant", "content": full_response})
             st.rerun()
             
-        # Botó per tancar sessió
         if st.button("Tanca la sessió"):
             del st.session_state.token
             st.rerun()
@@ -911,3 +576,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+el problema es que a la hora de desplegar la app, me sale este error, en cambio, si lo hago desde mi pc, no... porque puede ser?
