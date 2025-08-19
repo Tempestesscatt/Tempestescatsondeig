@@ -1,22 +1,8 @@
-
 streamlit
-numpy
-pandas
-
-matplotlib
-Pillow
-pyproj
-shapely
-fiona
 geopandas
 cartopy
-
-# Llibreries científiques i de temps
 metpy
 scipy
-pytz
-
-
 openmeteo-requests
 requests-cache
 retry-requests
@@ -24,3 +10,8 @@ requests
 google-generativeai
 streamlit-autorefresh
 st-oauth
+pandas
+Pillow
+shapely
+fiona
+pyproj
