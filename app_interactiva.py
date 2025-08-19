@@ -516,7 +516,7 @@ def app_principal():
         
     ui_peu_de_pagina()
 
-# SUBSTITUEIX LA TEVA FUNCIÓ MAIN ACTUAL PER AQUESTA VERSIÓ FINAL AMB PESTANYES
+# AQUESTA ÉS LA VERSIÓ FINAL I DEFINITIVA DE LA FUNCIÓ MAIN
 def main():
     setup_database()
     credentials = get_users_from_db()
@@ -539,11 +539,14 @@ def main():
     with col2:
         st.title("Benvingut a Tempestes.cat")
         
-        # LÒGICA DE PESTANYES PER A AÏLLAR ELS FORMULARIS
         login_tab, register_tab = st.tabs(["Iniciar Sessió", "Registrar-se"])
 
         with login_tab:
-            name, authentication_status, username = authenticator.login('main')
+            # CORRECCIÓ CLAU: Assignem el resultat a una única variable per evitar l'error.
+            # La funció actualitzarà st.session_state internament.
+            authenticator.login('main')
+            
+            # Ara, comprovem l'estat des de st.session_state
             if st.session_state["authentication_status"] == False:
                 st.error('Nom d\'usuari o contrasenya incorrecta')
             elif st.session_state["authentication_status"] is None:
@@ -551,8 +554,8 @@ def main():
 
         with register_tab:
             try:
-                # CORRECCIÓ: La crida a register_user ara està totalment aïllada
-                if authenticator.register_user('Formulari de Registre', location='main'):
+                if authenticator.register_user('Formulari de Registre'):
+                    # La lògica de registre es queda igual
                     new_username_data = authenticator.credentials['usernames']
                     last_user = list(new_username_data.keys())[-1]
                     last_user_data = new_username_data[last_user]
