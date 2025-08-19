@@ -261,9 +261,11 @@ def get_color_for_param(param_name, value):
         return "#BC13FE"
     return "#FFFFFF"
 
+# SUBSTITUEIX LA TEVA FUNCIÓ "ui_pestanya_ia" PER AQUESTA VERSIÓ MILLORADA
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
 
+    # La part de l'autenticació no canvia
     try:
         GOOGLE_CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
         GOOGLE_CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
@@ -309,21 +311,12 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         st.markdown("Fes-me preguntes sobre el potencial de temps sever combinant les dades del sondeig i la imatge del mapa.")
         nivell_mapa_ia = st.selectbox("Nivell del mapa per a l'anàlisi de l'IA:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat")
 
+        # Preparació de les dades (abans de mostrar res)
         map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
         
         if error_map_ia:
             st.error(f"No s'han pogut carregar les dades del mapa: {error_map_ia}")
             return
-            
-        fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
-        
-        buf = io.BytesIO()
-        fig_mapa.savefig(buf, format='jpeg', bbox_inches='tight') # Eliminat 'quality' per compatibilitat
-        buf.seek(0)
-        img_mapa = Image.open(buf)
-        
-        st.pyplot(fig_mapa)
-        plt.close(fig_mapa)
 
         resum_sondeig = "No hi ha dades de sondeig disponibles."
         if data_tuple:
@@ -351,43 +344,57 @@ Ets un expert meteoròleg. Analitza la imatge del mapa i les dades del sondeig p
 Combina l'anàlisi: si veus un "disparador" (zona vermella) en una àrea on el sondeig mostra molta energia (CAPE alt), el risc és elevat. Si no veus disparadors, el risc és baix malgrat el CAPE. Respon a la pregunta de l'usuari.
 """
         
+        # === CANVI 1: ESTRUCTUREM EL XAT A LA PART SUPERIOR ===
+        
         if "messages" not in st.session_state:
             st.session_state.messages = []
 
+        # Mostra l'historial del xat
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
+        # La caixa per escriure la pregunta
         if prompt_usuari := st.chat_input("Quina és la teva pregunta sobre el temps?"):
             st.session_state.messages.append({"role": "user", "content": prompt_usuari})
             with st.chat_message("user"):
                 st.markdown(prompt_usuari)
 
+            # === CANVI 2: AFEGIM L'INDICADOR DE CÀRREGA ===
             with st.chat_message("assistant"):
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                response_container = st.empty()
-                full_response = ""
-                
-                try:
+                with st.spinner("Analitzant les dades i consultant l'IA..."):
+                    # Generem la imatge del mapa just abans de la consulta
+                    fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
+                    buf = io.BytesIO()
+                    fig_mapa.savefig(buf, format='jpeg', bbox_inches='tight')
+                    buf.seek(0)
+                    img_mapa = Image.open(buf)
+                    
+                    model = genai.GenerativeModel('gemini-1.5-flash')
                     stream = model.generate_content(
                         [prompt_multimodal, img_mapa, prompt_usuari],
                         stream=True
                     )
-                    for chunk in stream:
-                        full_response += chunk.text
-                        response_container.markdown(full_response + "▌")
-                    response_container.markdown(full_response)
-                except Exception as e:
-                    full_response = f"Hi ha hagut un error: {e}"
-                    response_container.error(full_response)
+                    
+                    # Utilitzem st.write_stream per mostrar la resposta a mesura que arriba
+                    full_response = st.write_stream(stream)
             
             st.session_state.messages.append({"role": "assistant", "content": full_response})
+            # st.rerun() # Eliminem el rerun per a una experiència més fluida
+
+        # === CANVI 3: MOSTREM EL MAPA A SOTA DEL XAT ===
+        st.markdown("---")
+        st.subheader("Mapa d'Anàlisi per a l'IA")
         
+        # Generem i mostrem el mapa per a l'usuari (encara que no hagi preguntat)
+        fig_mapa_display = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
+        st.pyplot(fig_mapa_display)
+        plt.close(fig_mapa_display)
+
         if st.button("Tanca la sessió"):
             del st.session_state.token
             st.rerun()
-
-# --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
+            
 def ui_capcalera_selectors():
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     st.markdown('<p style="text-align: center;">Eina per al pronòstic de convecció mitjançant paràmetres clau.</p>', unsafe_allow_html=True)
