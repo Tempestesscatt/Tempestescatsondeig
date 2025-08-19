@@ -54,6 +54,8 @@ def carregar_mapa_municipis():
     except Exception as e:
         st.warning(f"No s'ha pogut carregar el mapa de municipis. La localització de les convergències serà menys precisa. Detall: {e}")
         return None
+
+MUNICIPIS_GDF = carregar_mapa_municipis()
         
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
