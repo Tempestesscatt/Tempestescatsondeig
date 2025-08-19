@@ -113,7 +113,32 @@ def carregar_dades_mapa_base(variables, hourly_index):
     except Exception as e:
         return None, f"Error en carregar dades del mapa: {e}"
 
-# ... (La resta del codi, des de crear_mapa_base fins al final, es manté exactament igual) ...
+# FUNCIÓ RESTAURADA QUE FALTAVA
+@st.cache_data(ttl=3600)
+def carregar_dades_mapa(nivell, hourly_index):
+    try:
+        if nivell >= 950:
+            variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            map_data_raw, error = carregar_dades_mapa_base(variables, hourly_index)
+            if error: return None, error
+            map_data_raw['dewpoint_data'] = map_data_raw.pop('dew_point_2m')
+        else:
+            variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            map_data_raw, error = carregar_dades_mapa_base(variables, hourly_index)
+            if error: return None, error
+            temp_data = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
+            rh_data = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
+            map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
+
+        map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
+        map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
+
+        return map_data_raw, None
+    except Exception as e:
+        return None, f"Error en processar dades del mapa: {e}"
+
+# --- La resta del teu codi (visualització, IA, interfície) es manté exactament igual ---
+# ... (enganxa aquí la resta del teu codi, des de crear_mapa_base fins al final)
         
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(10, 10), dpi=200, subplot_kw={'projection': ccrs.PlateCarree()})
