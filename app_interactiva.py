@@ -224,7 +224,8 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
             line_levels = [single_level]
             ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=['#FF0000'], alpha=0.3, zorder=5, transform=ccrs.PlateCarree())
             contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors='black', linestyles='-', linewidths=1.5, zorder=6, transform=ccrs.PlateCarree())
-            ax.clabel(contours, inline=True, fontsize=10, fmt='%1.0f')
+           ax.clabel(contours, inline=True, fontsize=14, fmt='%1.0f', fontweight='bold',
+          bbox=dict(facecolor='white', edgecolor='none', pad=1.5, alpha=0.8))
             
     ax.set_title(f"Anàlisi de Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
