@@ -18,14 +18,11 @@ from scipy.interpolate import griddata
 from datetime import datetime, timedelta
 import pytz
 import google.generativeai as genai
-import asyncio
 import io
 from PIL import Image
 import json
 import hashlib
 import os
-from streamlit_option_menu import option_menu
-
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
@@ -94,8 +91,12 @@ def get_hashed_password(password):
 def load_users():
     if not os.path.exists(USERS_FILE):
         return {}
-    with open(USERS_FILE, 'r') as f:
-        return json.load(f)
+    try:
+        with open(USERS_FILE, 'r') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, FileNotFoundError):
+        return {}
+
 
 def save_users(users_data):
     with open(USERS_FILE, 'w') as f:
@@ -104,8 +105,11 @@ def save_users(users_data):
 def load_rate_limits():
     if not os.path.exists(RATE_LIMIT_FILE):
         return {}
-    with open(RATE_LIMIT_FILE, 'r') as f:
-        return json.load(f)
+    try:
+        with open(RATE_LIMIT_FILE, 'r') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, FileNotFoundError):
+        return {}
 
 def save_rate_limits(rate_limits_data):
     with open(RATE_LIMIT_FILE, 'w') as f:
@@ -123,12 +127,13 @@ def format_time_left(time_delta):
 def show_login_page():
     st.markdown("<h1 style='text-align: center;'>Benvingut/da al Terminal de Temps Sever</h1>", unsafe_allow_html=True)
 
-    with st.sidebar:
-        selected = option_menu(
-            "Menú", ["Inicia Sessió", "Registra't"],
-            icons=['box-arrow-in-right', 'person-plus-fill'],
-            menu_icon="cast", default_index=0
-        )
+    # --- CANVI CLAU: S'ha reemplaçat 'option_menu' per 'st.sidebar.radio' ---
+    selected = st.sidebar.radio(
+        "Menú",
+        ["Inicia Sessió", "Registra't"],
+        captions=["Entra amb el teu compte", "Crea un compte nou"]
+    )
+    # --- FI DEL CANVI ---
 
     if selected == "Inicia Sessió":
         st.subheader("Inicia Sessió")
@@ -434,8 +439,17 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         start_time = datetime.fromtimestamp(user_limit_data["window_start_time"], tz=pytz.utc)
         time_to_reset = (start_time + timedelta(hours=WINDOW_HOURS))
         time_left = time_to_reset - datetime.now(pytz.utc)
-        st.warning(f"""**Has arribat al límit de {LIMIT_PER_WINDOW} preguntes.** 
-                    El teu accés es renovarà en aproximadament **{format_time_left(time_left)}**.""")
+        if time_left.total_seconds() > 0:
+            st.warning(f"""**Has arribat al límit de {LIMIT_PER_WINDOW} preguntes.** 
+                        El teu accés es renovarà en aproximadament **{format_time_left(time_left)}**.""")
+        else:
+            # El temps ha passat, resetejem el límit
+            user_limit_data["count"] = 0
+            user_limit_data["window_start_time"] = None
+            rate_limits[username] = user_limit_data
+            save_rate_limits(rate_limits)
+            limit_reached = False
+
 
     # --- FI: LÒGICA DEL LÍMIT D'ÚS ---
 
@@ -560,9 +574,10 @@ Analitza la imatge adjunta i les dades del sondeig que t'acabo de proporcionar p
 # --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
 def ui_capcalera_selectors():
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align: center;">Eina per al pronòstic de convecció mitjançant paràmetres clau.</p>', unsafe_allow_html=True)
     
-    col_main, col_logout = st.columns([0.9, 0.1])
+    col_main, col_user, col_logout = st.columns([0.8, 0.1, 0.1])
+    with col_user:
+        st.write(f"Hola, **{st.session_state.get('username')}**!")
     with col_logout:
         if st.button("Tanca Sessió"):
             for key in ['logged_in', 'username', 'chat', 'messages']:
