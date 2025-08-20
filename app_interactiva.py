@@ -290,19 +290,16 @@ def initialize_db(conn):
 def initialize_db(conn):
     """Crea la taula d'usuaris si no existeix."""
     with conn.session as s:
-        # Utilitzem st.text per a la compatibilitat amb versions de Streamlit
         s.execute(st.text('CREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, question_count INTEGER, window_start_time TIMESTAMP);'))
         s.commit()
 
 def read_user_limit(conn, user_id):
     """Llegeix les dades de límit d'un usuari de la base de dades."""
-    # Utilitzem paràmetres per seguretat
     user_data = conn.query("SELECT * FROM users WHERE user_id = :user_id", params={"user_id": user_id}, ttl=0)
     if user_data.empty:
         return {"count": 0, "window_start_time": None}
     else:
         start_time_str = user_data["window_start_time"].iloc[0]
-        # Converteix a datetime si no és NaT (Not a Time)
         start_time = pd.to_datetime(start_time_str) if pd.notna(start_time_str) else None
         return {
             "count": user_data["question_count"].iloc[0],
@@ -314,7 +311,6 @@ def write_user_limit(conn, user_id, count, window_start_time):
     time_str = window_start_time.strftime('%Y-%m-%d %H:%M:%S') if window_start_time else None
     
     with conn.session as s:
-        # Utilitzem paràmetres per evitar injecció SQL (UPSERT)
         s.execute(st.text("""
             INSERT INTO users (user_id, question_count, window_start_time)
             VALUES (:user_id, :count, :start_time)
@@ -357,7 +353,7 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         result = oauth2.authorize_button(
             name="Inicia sessió amb Google", icon="https://www.google.com.tw/favicon.ico",
             redirect_uri="https://tempestescat.streamlit.app/", scope="openid email profile",
-            key="google", use_container_width=True, pkce='S256',
+            key="google_login_button", use_container_width=True, pkce='S256',
         )
         if result:
             st.session_state.token = result.get('token')
@@ -368,7 +364,7 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
 
         if not user_info or not user_info.get("email"):
             st.error("No s'ha pogut verificar la teva identitat. El token d'inici de sessió no conté el teu email, que és necessari per al sistema de límits.")
-            st.info("Això sol passar per un error puntual de connexió. Si us plau, tanca la sessió i torna a iniciar-la.")
+            st.info("Això sol passar si no s'han acceptat tots els permisos a la pantalla de consentiment de Google. Si us plau, tanca la sessió i torna a iniciar-la, assegurant-te d'acceptar els permisos.")
             if st.button("Tanca la sessió", key="logout_button_error"):
                 del st.session_state.token
                 st.rerun()
@@ -515,6 +511,7 @@ Analitza la imatge adjunta i INTERPRETA les dades de context per respondre la me
             if 'chat' in st.session_state: del st.session_state.chat
             if 'messages' in st.session_state: del st.session_state.messages
             st.rerun()
+            
 # --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
 def ui_capcalera_selectors():
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
