@@ -427,12 +427,8 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
 def ui_pestanya_xat():
     st.subheader("Xat en Línia per a Usuaris")
     st.caption("Els missatges s'esborren automàticament després d'una hora.")
-    
-    if st.checkbox("Refresc automàtic (cada 10s)", key="autorefresh_chat"):
-        st.html("""<meta http-equiv="refresh" content="10">""")
-
     chat_history = load_and_clean_chat_history()
-    for msg in reversed(chat_history): # Mostrem els més nous a dalt
+    for msg in reversed(chat_history):
         with st.chat_message(name=msg['username']):
             if msg['type'] == 'text': st.markdown(msg['content'])
             elif msg['type'] == 'image':
@@ -440,24 +436,19 @@ def ui_pestanya_xat():
                     img_bytes = base64.b64decode(msg['content'])
                     st.image(img_bytes)
                 except Exception: st.error("No s'ha pogut carregar una imatge.")
-    
     prompt = st.chat_input("Escriu el teu missatge...")
     pujada_img = st.file_uploader("O arrossega una imatge aquí", type=['png', 'jpg', 'jpeg'], key="chat_uploader")
-
     if prompt or pujada_img:
         with st.spinner("Enviant..."):
             username = st.session_state.get("username", "Anònim")
             current_history = load_and_clean_chat_history()
-            
             if pujada_img and pujada_img.file_id != st.session_state.get('last_uploaded_id'):
                 img_bytes = pujada_img.getvalue()
                 b64_string = base64.b64encode(img_bytes).decode('utf-8')
                 current_history.append({"username": username, "timestamp": datetime.now(pytz.utc).timestamp(), "type": "image", "content": b64_string})
                 st.session_state['last_uploaded_id'] = pujada_img.file_id
-
             if prompt:
                 current_history.append({"username": username, "timestamp": datetime.now(pytz.utc).timestamp(), "type": "text", "content": prompt})
-            
             save_json_file(current_history, CHAT_FILE)
         st.rerun()
 
@@ -572,8 +563,7 @@ def main():
         show_login_page()
     else:
         is_guest = st.session_state.get('guest_mode', False)
-        if 'poble_selector' not in st.session_state:
-            st.session_state.poble_selector = 'Barcelona'
+        if 'poble_selector' not in st.session_state: st.session_state.poble_selector = 'Barcelona'
         ui_capcalera_selectors()
         poble_sel, dia_sel, hora_sel = st.session_state.poble_selector, st.session_state.dia_selector, st.session_state.hora_selector
         hora_int = int(hora_sel.split(':')[0]); now_local = datetime.now(TIMEZONE); target_date = now_local.date()
@@ -591,6 +581,7 @@ def main():
         if error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         st.markdown("---")
         global progress_placeholder; progress_placeholder = st.empty()
+        
         if is_guest:
             tab_mapes, tab_vertical = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical"])
             with tab_mapes: ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
@@ -602,6 +593,15 @@ def main():
                 if 'chat' in st.session_state: del st.session_state.chat
                 st.session_state.last_selection = current_selection
             
+            # Comprovem el fitxer del xat per a refresc automàtic
+            if 'last_chat_mod_time' not in st.session_state:
+                st.session_state.last_chat_mod_time = os.path.getmtime(CHAT_FILE) if os.path.exists(CHAT_FILE) else 0
+
+            current_mod_time = os.path.getmtime(CHAT_FILE) if os.path.exists(CHAT_FILE) else 0
+            if current_mod_time > st.session_state.last_chat_mod_time:
+                st.session_state.last_chat_mod_time = current_mod_time
+                st.rerun()
+
             tab_ia, tab_xat, tab_mapes, tab_vertical = st.tabs(["Assistent MeteoIA", "💬 Xat en Línia", "Anàlisi de Mapes", "Anàlisi Vertical"])
             with tab_ia: ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
             with tab_xat: ui_pestanya_xat()
