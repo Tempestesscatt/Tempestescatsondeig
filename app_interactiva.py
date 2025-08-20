@@ -24,7 +24,6 @@ import json
 import hashlib
 import os
 import base64
-from streamlit_autorefresh import st_autorefresh # <-- Importem la llibreria
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
@@ -452,7 +451,8 @@ Tens coneixements interns sobre fenòmens meteorològics locals de Catalunya com
 def ui_pestanya_xat():
     st.subheader("Xat en Línia per a Usuaris")
     st.caption("Els missatges s'esborren automàticament després d'una hora.")
-    
+
+    # Component de refresc automàtic que només s'activa quan aquesta pestanya és visible
     st_autorefresh(interval=7000, limit=None, key="chat_refresher")
 
     chat_history = load_and_clean_chat_history()
@@ -617,6 +617,7 @@ def main():
         if error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         st.markdown("---")
         global progress_placeholder; progress_placeholder = st.empty()
+        
         if is_guest:
             tab_mapes, tab_vertical = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical"])
             with tab_mapes: ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
