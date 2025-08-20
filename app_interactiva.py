@@ -24,6 +24,7 @@ import json
 import hashlib
 import os
 import base64
+from streamlit_autorefresh import st_autorefresh # <-- Importem la llibreria
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
@@ -69,7 +70,6 @@ RATE_LIMIT_FILE = 'rate_limits.json'
 CHAT_FILE = 'chat_history.json'
 
 # --- 0.1 FUNCIONS D'AUTENTICACIÓ, LÍMITS I XAT ---
-
 def get_hashed_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -389,10 +389,35 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         </div>""", unsafe_allow_html=True)
     if "chat" not in st.session_state:
         model = genai.GenerativeModel('gemini-1.5-flash')
-        system_prompt = """...""" # El teu system prompt
-        st.session_state.chat = model.start_chat(history=[{'role': 'user', 'parts': [system_prompt]},{'role': 'model', 'parts': ["Hola! Sóc Tempestes.CAT-IA..."]}])
+        system_prompt = """
+# MISSIÓ I PERSONALITAT
+Ets un expert meteoròleg operatiu, Tempestes.CAT-IA. La teva personalitat és la d'un col·lega apassionat pel temps, de bon rotllo i proper. Ets clar i vas directe al gra, però sense ser robòtic. Parles com si estiguéssim comentant els mapes prenent un cafè.
+**IMPORTANT CLAU:** Evita recitar dades numèriques (CAPE, CIN, cisallament, etc.) tret que l'usuari te les demani explícitament. La teva feina és interpretar-les i traduir-les a un llenguatge planer, no llegir-les.
+---
+## CONEIXEMENTS ADDICIONALS
+Tens coneixements interns sobre fenòmens meteorològics locals de Catalunya com la "marinada", el "garbí", "vents de ponent (rebuf)", el "mestral" o el "vent de dalt". Fes-los servir de manera natural quan la conversa o el mapa de vents ho suggereixi.
+---
+## COM INTERPRETAR LA IMATGE ADJUNTA (REGLA D'OR)
+1.  **IGNORA la llegenda i els colors de fons del mapa.**
+2.  **LA TEVA ÚNICA MISSIÓ VISUAL ÉS BUSCAR LÍNIES NEGRES AMB NÚMEROS A DINS.** Aquest número és el "DISPARADOR". Com més alt, més potent.
+---
+## EL TEU PROCÉS DE RAONAMENT (ORDRE ESTRICTE)
+**PAS 1: Busca al mapa si existeix un disparador.**
+**PAS 2: SI NO VEUS CAP DISPARADOR:** Respon de manera directa i amigable.
+- **Exemple de resposta:** "Ep, doncs per a aquesta hora no veig cap disparador clar al mapa. Encara que hi hagi bon combustible a l'atmosfera, sense l'espurna, el risc de tempestes es queda baixet."
+**PAS 3: SI TROBES UN O MÉS DISPARADORS:**
+    a. **Localitza el disparador de manera GENERAL.** Fes servir referències geogràfiques àmplies que es veuen al mapa (Prepirineu, Litoral, Plana de Lleida, a prop de la frontera, etc.).
+       **REGLA CRÍTICA DE GEOGRAFIA:** MAI inventis proximitat a un poble concret que l'usuari mencioni si no és evidentíssim al mapa. És molt millor dir "Veig un focus important a Ponent" que arriscar-te a dir "Està a prop de Tàrrega". Sigues honest sobre la precisió de la teva localització.
+    b. **Analitza el sondeig EN SEGON PLA.** Llegeix les dades de CAPE, cisallament, etc., que et dono, però **NO les recitis**. La teva missió és TRADUIR-LES a una idea senzilla.
+       - Si veus CAPE alt i CIN baix, pensa: "hi ha molta energia disponible i sense tapa".
+       - Si veus cisallament alt, pensa: "l'ambient és favorable a que les tempestes s'organitzin i puguin girar".
+    c. **Junta-ho tot en una conclusió de col·lega.** Combina la localització del disparador (punt a) amb la teva anàlisi del sondeig (punt b) per donar el pronòstic final.
+       - **Exemple de conclusió ideal:** "Doncs sí! He trobat un bon disparador sobre el Prepirineu de Lleida. Com que, a més, el sondeig diu que l'atmosfera està molt carregada d'energia per la zona, aquest punt té molts números per disparar tempestes fortes aquesta tarda. Compte per allà dalt!"
+       - **Un altre exemple:** "Tenim un disparador interessant a la costa de Girona. L'ambient no és explosiu, però és suficient per a que aquest focus pugui generar alguns ruixats o alguna tronada puntual. Res de l'altre món, però podria mullar."
+"""
+        st.session_state.chat = model.start_chat(history=[{'role': 'user', 'parts': [system_prompt]},{'role': 'model', 'parts': ["Hola! Sóc Tempestes.CAT-IA, el teu col·lega apassionat pel temps. Anem al gra. Quina és la teva pregunta?"]}])
     if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": "Hola! Sóc Tempestes.CAT-IA..."}]
+        st.session_state.messages = [{"role": "assistant", "content": "Hola! Sóc Tempestes.CAT-IA, el teu col·lega apassionat pel temps. Anem al gra. Quina és la teva pregunta?"}]
     st.markdown(f"**Anàlisi per:** `{poble_sel.upper()}` | **Dia:** `{timestamp_str}`")
     nivell_mapa_ia = st.selectbox("Nivell d'anàlisi del mapa (IA):", [1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat", disabled=limit_reached)
     for message in st.session_state.messages:
@@ -427,28 +452,39 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
 def ui_pestanya_xat():
     st.subheader("Xat en Línia per a Usuaris")
     st.caption("Els missatges s'esborren automàticament després d'una hora.")
+    
+    st_autorefresh(interval=7000, limit=None, key="chat_refresher")
+
     chat_history = load_and_clean_chat_history()
-    for msg in reversed(chat_history):
-        with st.chat_message(name=msg['username']):
-            if msg['type'] == 'text': st.markdown(msg['content'])
-            elif msg['type'] == 'image':
-                try:
-                    img_bytes = base64.b64decode(msg['content'])
-                    st.image(img_bytes)
-                except Exception: st.error("No s'ha pogut carregar una imatge.")
+    
+    with st.container(height=400):
+        for msg in chat_history:
+            with st.chat_message(name=msg['username']):
+                if msg['type'] == 'text':
+                    st.markdown(msg['content'])
+                elif msg['type'] == 'image':
+                    try:
+                        img_bytes = base64.b64decode(msg['content'])
+                        st.image(img_bytes)
+                    except Exception: st.error("No s'ha pogut carregar una imatge.")
+    
     prompt = st.chat_input("Escriu el teu missatge...")
     pujada_img = st.file_uploader("O arrossega una imatge aquí", type=['png', 'jpg', 'jpeg'], key="chat_uploader")
+
     if prompt or pujada_img:
         with st.spinner("Enviant..."):
             username = st.session_state.get("username", "Anònim")
             current_history = load_and_clean_chat_history()
+            
             if pujada_img and pujada_img.file_id != st.session_state.get('last_uploaded_id'):
                 img_bytes = pujada_img.getvalue()
                 b64_string = base64.b64encode(img_bytes).decode('utf-8')
                 current_history.append({"username": username, "timestamp": datetime.now(pytz.utc).timestamp(), "type": "image", "content": b64_string})
                 st.session_state['last_uploaded_id'] = pujada_img.file_id
+
             if prompt:
                 current_history.append({"username": username, "timestamp": datetime.now(pytz.utc).timestamp(), "type": "text", "content": prompt})
+            
             save_json_file(current_history, CHAT_FILE)
         st.rerun()
 
@@ -501,11 +537,11 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
             else:
                 if data_tuple and data_tuple[1]:
                     cin_value, lfc_hpa = data_tuple[1].get('CIN', 0), data_tuple[1].get('LFC_hPa', np.nan)
-                    if cin_value < -25: st.warning(f"**AVÍS DE 'TAPA' (CIN = {cin_value:.0f} J/kg)...**")
-                    if np.isnan(lfc_hpa): st.error("**DIAGNÒSTIC LFC:** No s'ha trobat LFC...")
-                    elif lfc_hpa >= 900: st.success(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció superficial...")
-                    elif lfc_hpa >= 750: st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció baixa...")
-                    else: st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada...")
+                    if cin_value < -25: st.warning(f"**AVÍS DE 'TAPA' (CIN = {cin_value:.0f} J/kg):** El sondeig mostra una forta inversió.")
+                    if np.isnan(lfc_hpa): st.error("**DIAGNÒSTIC LFC:** No s'ha trobat LFC. Atmosfera estable.")
+                    elif lfc_hpa >= 900: st.success(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció superficial. Recomanació: 1000-925 hPa.")
+                    elif lfc_hpa >= 750: st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció baixa. Recomanació: 850-800 hPa.")
+                    else: st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada. Recomanació: 700 hPa.")
                 nivell_sel = st.selectbox("Nivell d'anàlisi:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa")
             with progress_placeholder.container():
                 progress_bar = st.progress(0, text="Carregant dades del model...")
@@ -581,7 +617,6 @@ def main():
         if error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         st.markdown("---")
         global progress_placeholder; progress_placeholder = st.empty()
-        
         if is_guest:
             tab_mapes, tab_vertical = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical"])
             with tab_mapes: ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
@@ -593,15 +628,6 @@ def main():
                 if 'chat' in st.session_state: del st.session_state.chat
                 st.session_state.last_selection = current_selection
             
-            # Comprovem el fitxer del xat per a refresc automàtic
-            if 'last_chat_mod_time' not in st.session_state:
-                st.session_state.last_chat_mod_time = os.path.getmtime(CHAT_FILE) if os.path.exists(CHAT_FILE) else 0
-
-            current_mod_time = os.path.getmtime(CHAT_FILE) if os.path.exists(CHAT_FILE) else 0
-            if current_mod_time > st.session_state.last_chat_mod_time:
-                st.session_state.last_chat_mod_time = current_mod_time
-                st.rerun()
-
             tab_ia, tab_xat, tab_mapes, tab_vertical = st.tabs(["Assistent MeteoIA", "💬 Xat en Línia", "Anàlisi de Mapes", "Anàlisi Vertical"])
             with tab_ia: ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
             with tab_xat: ui_pestanya_xat()
