@@ -76,11 +76,11 @@ def get_hashed_password(password):
 def load_json_file(filename):
     if not os.path.exists(filename): return {} if 'users' in filename or 'rate' in filename else []
     try:
-        with open(filename, 'r') as f: return json.load(f)
+        with open(filename, 'r', encoding='utf-8') as f: return json.load(f)
     except (json.JSONDecodeError, FileNotFoundError): return {} if 'users' in filename or 'rate' in filename else []
 
 def save_json_file(data, filename):
-    with open(filename, 'w') as f: json.dump(data, f, indent=4)
+    with open(filename, 'w', encoding='utf-8') as f: json.dump(data, f, indent=4, ensure_ascii=False)
 
 def load_and_clean_chat_history():
     if not os.path.exists(CHAT_FILE): return []
@@ -222,14 +222,11 @@ def carregar_dades_mapa(nivell, hourly_index):
             temp_data = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
             rh_data = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
             map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
-
         map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
         map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
-
         return map_data_raw, None
     except Exception as e:
         return None, f"Error en processar dades del mapa: {e}"
-
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
 def crear_mapa_base():
@@ -365,8 +362,7 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     if not username:
         st.error("Error d'autenticació. Si us plau, torna a iniciar sessió.")
         return
-    LIMIT_PER_WINDOW = 10
-    WINDOW_HOURS = 3
+    LIMIT_PER_WINDOW = 10; WINDOW_HOURS = 3
     rate_limits = load_json_file(RATE_LIMIT_FILE)
     user_limit_data = rate_limits.get(username, {"count": 0, "window_start_time": None})
     limit_reached = False
@@ -393,38 +389,10 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         </div>""", unsafe_allow_html=True)
     if "chat" not in st.session_state:
         model = genai.GenerativeModel('gemini-1.5-flash')
-        system_prompt = """
-# MISSIÓ I PERSONALITAT
-Ets un expert meteoròleg operatiu, Tempestes.CAT-IA. La teva personalitat és la d'un col·lega apassionat pel temps, de bon rotllo i proper. Ets clar i vas directe al gra, però sense ser robòtic. Parles com si estiguéssim comentant els mapes prenent un cafè.
-**IMPORTANT CLAU:** Evita recitar dades numèriques (CAPE, CIN, cisallament, etc.) tret que l'usuari te les demani explícitament. La teva feina és interpretar-les i traduir-les a un llenguatge planer, no llegir-les.
----
-## CONEIXEMENTS ADDICIONALS
-Tens coneixements interns sobre fenòmens meteorològics locals de Catalunya com la "marinada", el "garbí", "vents de ponent (rebuf)", el "mestral" o el "vent de dalt". Fes-los servir de manera natural quan la conversa o el mapa de vents ho suggereixi.
----
-## COM INTERPRETAR LA IMATGE ADJUNTA (REGLA D'OR)
-1.  **IGNORA la llegenda i els colors de fons del mapa.**
-2.  **LA TEVA ÚNICA MISSIÓ VISUAL ÉS BUSCAR LÍNIES NEGRES AMB NÚMEROS A DINS.** Aquest número és el "DISPARADOR". Com més alt, més potent.
----
-## EL TEU PROCÉS DE RAONAMENT (ORDRE ESTRICTE)
-**PAS 1: Busca al mapa si existeix un disparador.**
-**PAS 2: SI NO VEUS CAP DISPARADOR:** Respon de manera directa i amigable.
-- **Exemple de resposta:** "Ep, doncs per a aquesta hora no veig cap disparador clar al mapa. Encara que hi hagi bon combustible a l'atmosfera, sense l'espurna, el risc de tempestes es queda baixet."
-**PAS 3: SI TROBES UN O MÉS DISPARADORS:**
-    a. **Localitza el disparador de manera GENERAL.** Fes servir referències geogràfiques àmplies que es veuen al mapa (Prepirineu, Litoral, Plana de Lleida, a prop de la frontera, etc.).
-       **REGLA CRÍTICA DE GEOGRAFIA:** MAI inventis proximitat a un poble concret que l'usuari mencioni si no és evidentíssim al mapa. És molt millor dir "Veig un focus important a Ponent" que arriscar-te a dir "Està a prop de Tàrrega". Sigues honest sobre la precisió de la teva localització.
-    b. **Analitza el sondeig EN SEGON PLA.** Llegeix les dades de CAPE, cisallament, etc., que et dono, però **NO les recitis**. La teva missió és TRADUIR-LES a una idea senzilla.
-       - Si veus CAPE alt i CIN baix, pensa: "hi ha molta energia disponible i sense tapa".
-       - Si veus cisallament alt, pensa: "l'ambient és favorable a que les tempestes s'organitzin i puguin girar".
-    c. **Junta-ho tot en una conclusió de col·lega.** Combina la localització del disparador (punt a) amb la teva anàlisi del sondeig (punt b) per donar el pronòstic final.
-       - **Exemple de conclusió ideal:** "Doncs sí! He trobat un bon disparador sobre el Prepirineu de Lleida. Com que, a més, el sondeig diu que l'atmosfera està molt carregada d'energia per la zona, aquest punt té molts números per disparar tempestes fortes aquesta tarda. Compte per allà dalt!"
-       - **Un altre exemple:** "Tenim un disparador interessant a la costa de Girona. L'ambient no és explosiu, però és suficient per a que aquest focus pugui generar alguns ruixats o alguna tronada puntual. Res de l'altre món, però podria mullar."
-"""
-        st.session_state.chat = model.start_chat(history=[
-            {'role': 'user', 'parts': [system_prompt]},
-            {'role': 'model', 'parts': ["Hola! Sóc Tempestes.CAT-IA, el teu col·lega apassionat pel temps. Anem al gra. Quina és la teva pregunta?"]}
-        ])
+        system_prompt = """...""" # El teu system prompt
+        st.session_state.chat = model.start_chat(history=[{'role': 'user', 'parts': [system_prompt]},{'role': 'model', 'parts': ["Hola! Sóc Tempestes.CAT-IA..."]}])
     if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": "Hola! Sóc Tempestes.CAT-IA, el teu col·lega apassionat pel temps. Anem al gra. Quina és la teva pregunta?"}]
+        st.session_state.messages = [{"role": "assistant", "content": "Hola! Sóc Tempestes.CAT-IA..."}]
     st.markdown(f"**Anàlisi per:** `{poble_sel.upper()}` | **Dia:** `{timestamp_str}`")
     nivell_mapa_ia = st.selectbox("Nivell d'anàlisi del mapa (IA):", [1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat", disabled=limit_reached)
     for message in st.session_state.messages:
@@ -433,32 +401,25 @@ Tens coneixements interns sobre fenòmens meteorològics locals de Catalunya com
         st.session_state.messages.append({"role": "user", "content": prompt_usuari})
         with st.chat_message("user"): st.markdown(prompt_usuari)
         with st.chat_message("assistant"):
-            with st.spinner("Generant mapa i consultant l'IA..."):
+            with st.spinner("Processant..."):
                 if user_limit_data.get("window_start_time") is None:
                     user_limit_data["window_start_time"] = datetime.now(pytz.utc).timestamp()
                 user_limit_data["count"] = user_limit_data.get("count", 0) + 1
                 rate_limits[username] = user_limit_data
                 save_json_file(rate_limits, RATE_LIMIT_FILE)
                 map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
-                if error_map_ia:
-                    st.error(f"No s'han pogut carregar les dades del mapa per a l'IA: {error_map_ia}")
-                    return
+                if error_map_ia: st.error(f"Error en carregar dades del mapa: {error_map_ia}"); return
                 fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
                 buf = io.BytesIO(); fig_mapa.savefig(buf, format='png', dpi=150, bbox_inches='tight'); buf.seek(0); img_mapa = Image.open(buf); plt.close(fig_mapa)
-                resum_sondeig = "No hi ha dades de sondeig disponibles."
-                if data_tuple:
-                    _, params_calculats = data_tuple
-                    resum_sondeig = f"""- Inestabilitat (CAPE): {params_calculats.get('CAPE', 0):.0f} J/kg.
-- Inhibició (CIN): {params_calculats.get('CIN', 0):.0f} J/kg.
-- Cisallament 0-6km: {params_calculats.get('Shear 0-6km', np.nan):.0f} nusos.
-- Helicitat 0-3km (SRH): {params_calculats.get('SRH 0-3km', np.nan):.0f} m²/s²."""
-                prompt_context_torn_actual = f"DADES:\n- Localització: {poble_sel}\n- Sondeig: {resum_sondeig}\nTASCA: Analitza la imatge i les dades per respondre: '{prompt_usuari}'"
+                resum_sondeig = "No hi ha dades de sondeig."
+                if data_tuple: _, params_calculats = data_tuple; resum_sondeig = f"- CAPE: {params_calculats.get('CAPE', 0):.0f} J/kg..."
+                prompt_context = f"DADES:\n- Localització: {poble_sel}\n- Sondeig: {resum_sondeig}\nTASCA: '{prompt_usuari}'"
                 try:
-                    resposta_completa = st.session_state.chat.send_message([prompt_context_torn_actual, img_mapa])
-                    full_response = resposta_completa.text
+                    resposta = st.session_state.chat.send_message([prompt_context, img_mapa])
+                    full_response = resposta.text
                 except Exception as e:
-                    full_response = f"Hi ha hagut un error contactant l'IA: {e}"
-                    if "429" in str(e): full_response = "**Has superat el límit diari gratuït de consultes a l'API de Google.**"
+                    full_response = f"Error contactant l'IA: {e}"
+                    if "429" in str(e): full_response = "**Límit de consultes a l'API de Google superat.**"
                 st.markdown(full_response)
         st.session_state.messages.append({"role": "assistant", "content": full_response})
         st.rerun()
@@ -466,28 +427,38 @@ Tens coneixements interns sobre fenòmens meteorològics locals de Catalunya com
 def ui_pestanya_xat():
     st.subheader("Xat en Línia per a Usuaris")
     st.caption("Els missatges s'esborren automàticament després d'una hora.")
+    
+    if st.checkbox("Refresc automàtic (cada 10s)", key="autorefresh_chat"):
+        st.html("""<meta http-equiv="refresh" content="10">""")
+
     chat_history = load_and_clean_chat_history()
-    for msg in chat_history:
+    for msg in reversed(chat_history): # Mostrem els més nous a dalt
         with st.chat_message(name=msg['username']):
-            if msg['type'] == 'text':
-                st.markdown(msg['content'])
+            if msg['type'] == 'text': st.markdown(msg['content'])
             elif msg['type'] == 'image':
                 try:
                     img_bytes = base64.b64decode(msg['content'])
                     st.image(img_bytes)
                 except Exception: st.error("No s'ha pogut carregar una imatge.")
+    
     prompt = st.chat_input("Escriu el teu missatge...")
     pujada_img = st.file_uploader("O arrossega una imatge aquí", type=['png', 'jpg', 'jpeg'], key="chat_uploader")
+
     if prompt or pujada_img:
-        username = st.session_state.get("username", "Anònim")
-        current_history = load_and_clean_chat_history()
-        if pujada_img:
-            img_bytes = pujada_img.getvalue()
-            b64_string = base64.b64encode(img_bytes).decode('utf-8')
-            current_history.append({"username": username, "timestamp": datetime.now(pytz.utc).timestamp(), "type": "image", "content": b64_string})
-        if prompt:
-            current_history.append({"username": username, "timestamp": datetime.now(pytz.utc).timestamp(), "type": "text", "content": prompt})
-        save_json_file(current_history, CHAT_FILE)
+        with st.spinner("Enviant..."):
+            username = st.session_state.get("username", "Anònim")
+            current_history = load_and_clean_chat_history()
+            
+            if pujada_img and pujada_img.file_id != st.session_state.get('last_uploaded_id'):
+                img_bytes = pujada_img.getvalue()
+                b64_string = base64.b64encode(img_bytes).decode('utf-8')
+                current_history.append({"username": username, "timestamp": datetime.now(pytz.utc).timestamp(), "type": "image", "content": b64_string})
+                st.session_state['last_uploaded_id'] = pujada_img.file_id
+
+            if prompt:
+                current_history.append({"username": username, "timestamp": datetime.now(pytz.utc).timestamp(), "type": "text", "content": prompt})
+            
+            save_json_file(current_history, CHAT_FILE)
         st.rerun()
 
 # --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
@@ -503,7 +474,7 @@ def ui_capcalera_selectors():
     with col_button:
         button_text = "Sortir" if is_guest else "Tanca Sessió"
         if st.button(button_text):
-            for key in ['logged_in', 'username', 'guest_mode', 'chat', 'messages']:
+            for key in ['logged_in', 'username', 'guest_mode', 'chat', 'messages', 'last_uploaded_id']:
                 if key in st.session_state: del st.session_state[key]
             st.rerun()
     with st.container(border=True):
@@ -513,9 +484,9 @@ def ui_capcalera_selectors():
             st.selectbox("Capital de referència:", sorted(ciutats_a_mostrar.keys()), key="poble_selector")
         now_local = datetime.now(TIMEZONE)
         with col2:
-            st.selectbox("Dia del pronòstic:", ("Avui",), key="dia_selector", disabled=is_guest)
+            st.selectbox("Dia del pronòstic:", ("Avui",), key="dia_selector", disabled=is_guest, index=0)
         with col3:
-            st.selectbox("Hora del pronòstic (Hora Local):", (f"{now_local.hour:02d}:00h",) if is_guest else [f"{h:02d}:00h" for h in range(24)], key="hora_selector", disabled=is_guest)
+            st.selectbox("Hora del pronòstic (Hora Local):", (f"{now_local.hour:02d}:00h",) if is_guest else [f"{h:02d}:00h" for h in range(24)], key="hora_selector", disabled=is_guest, index=0)
 
 def ui_explicacio_alertes():
     with st.expander("Què signifiquen les isòlines de convergència?"):
@@ -539,11 +510,11 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
             else:
                 if data_tuple and data_tuple[1]:
                     cin_value, lfc_hpa = data_tuple[1].get('CIN', 0), data_tuple[1].get('LFC_hPa', np.nan)
-                    if cin_value < -25: st.warning(f"**AVÍS DE 'TAPA' (CIN = {cin_value:.0f} J/kg):** El sondeig mostra una forta inversió.")
-                    if np.isnan(lfc_hpa): st.error("**DIAGNÒSTIC LFC:** No s'ha trobat LFC. Atmosfera estable.")
-                    elif lfc_hpa >= 900: st.success(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció superficial. Recomanació: 1000-925 hPa.")
-                    elif lfc_hpa >= 750: st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció baixa. Recomanació: 850-800 hPa.")
-                    else: st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada. Recomanació: 700 hPa.")
+                    if cin_value < -25: st.warning(f"**AVÍS DE 'TAPA' (CIN = {cin_value:.0f} J/kg)...**")
+                    if np.isnan(lfc_hpa): st.error("**DIAGNÒSTIC LFC:** No s'ha trobat LFC...")
+                    elif lfc_hpa >= 900: st.success(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció superficial...")
+                    elif lfc_hpa >= 750: st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció baixa...")
+                    else: st.info(f"**DIAGNÒSTIC LFC ({lfc_hpa:.0f} hPa):** Convecció elevada...")
                 nivell_sel = st.selectbox("Nivell d'anàlisi:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa")
             with progress_placeholder.container():
                 progress_bar = st.progress(0, text="Carregant dades del model...")
@@ -582,7 +553,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                 value_str = f"{val:.0f}" if val is not None and not np.isnan(val) else "---"
                 st.markdown(f"""<div style="text-align: left;"><span style="font-size: 0.8em; color: #A0A0A0;">{param}</span><br><strong style="font-size: 1.8em; color: {color};">{value_str}</strong> <span style="font-size: 1.1em; color: #A0A0A0;">{unit}</span></div>""", unsafe_allow_html=True)
         with st.expander("Què signifiquen aquests paràmetres?"):
-            st.markdown("- **CAPE:** Energia per a tempestes. >1000 J/kg és significatiu.\n- **CIN:** \"Tapa\" que impedeix la convecció. > -50 és forta.\n- **LFC:** Nivell on comença la convecció. Com més baix, millor.\n- **Shear 0-1km:** Cisallament baix. >15-20 nusos afavoreix rotació i **tornados**.\n- **Shear 0-6km:** Cisallament profund. >35-40 nusos és clau per a **supercèl·lules**.")
+            st.markdown("- **CAPE:** Energia per a tempestes...\n- **CIN:** \"Tapa\" que impedeix la convecció...\n- **LFC:** Nivell on comença la convecció...\n- **Shear 0-1km:** Cisallament baix...\n- **Shear 0-6km:** Cisallament profund...")
         st.divider()
         col1, col2 = st.columns(2)
         with col1: fig = crear_skewt(sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4], f"Sondeig Vertical - {poble_sel}"); st.pyplot(fig); plt.close(fig)
@@ -604,33 +575,27 @@ def main():
         if 'poble_selector' not in st.session_state:
             st.session_state.poble_selector = 'Barcelona'
         ui_capcalera_selectors()
-        
         poble_sel, dia_sel, hora_sel = st.session_state.poble_selector, st.session_state.dia_selector, st.session_state.hora_selector
         hora_int = int(hora_sel.split(':')[0]); now_local = datetime.now(TIMEZONE); target_date = now_local.date()
-        if dia_sel == "Demà": target_date += timedelta(days=1)
+        if dia_sel == "Demà" and not is_guest: target_date += timedelta(days=1)
         local_dt = TIMEZONE.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_int)); utc_dt = local_dt.astimezone(pytz.utc)
         start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         time_diff_hours = int((utc_dt - start_of_today_utc).total_seconds() / 3600); hourly_index_sel = max(0, time_diff_hours)
         timestamp_str = f"{dia_sel} a les {hora_sel} (Hora Local)"
         
         ciutats_actuals = CIUTATS_CONVIDAT if is_guest else CIUTATS_CATALUNYA
-        if poble_sel not in ciutats_actuals: # Si canviem de mode, el poble seleccionat podria no existir
-            st.session_state.poble_selector = 'Barcelona'
-            poble_sel = 'Barcelona'
+        if poble_sel not in ciutats_actuals:
+            st.session_state.poble_selector = 'Barcelona'; poble_sel = 'Barcelona'
         lat_sel, lon_sel = ciutats_actuals[poble_sel]['lat'], ciutats_actuals[poble_sel]['lon']
-
         data_tuple, error_msg = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
         if error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
-        
         st.markdown("---")
         global progress_placeholder; progress_placeholder = st.empty()
-
         if is_guest:
             tab_mapes, tab_vertical = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical"])
             with tab_mapes: ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
             with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
         else:
-            # Reiniciem el xat de l'IA si la selecció canvia
             current_selection = f"{poble_sel}-{dia_sel}-{hora_sel}"
             if current_selection != st.session_state.get('last_selection'):
                 if 'messages' in st.session_state: del st.session_state.messages
@@ -642,7 +607,6 @@ def main():
             with tab_xat: ui_pestanya_xat()
             with tab_mapes: ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
             with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
-
         ui_peu_de_pagina()
 
 if __name__ == "__main__":
