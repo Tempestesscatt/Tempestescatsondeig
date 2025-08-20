@@ -24,7 +24,6 @@ from streamlit_oauth import OAuth2Component
 import io
 from PIL import Image
 
-
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
 
@@ -35,48 +34,20 @@ FORECAST_DAYS = 4
 API_URL = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE = pytz.timezone('Europe/Madrid')
 CIUTATS_CATALUNYA = {
-    'Amposta': {'lat': 40.7093, 'lon': 0.5810},
-    'Balaguer': {'lat': 41.7904, 'lon': 0.8066},
-    'Banyoles': {'lat': 42.1197, 'lon': 2.7667},
-    'Barcelona': {'lat': 41.3851, 'lon': 2.1734},
-    'Berga': {'lat': 42.1051, 'lon': 1.8458},
-    'Cervera': {'lat': 41.6669, 'lon': 1.2721},
-    'El Pont de Suert': {'lat': 42.4101, 'lon': 0.7423},
-    'El Vendrell': {'lat': 41.2201, 'lon': 1.5348},
-    'Falset': {'lat': 41.1449, 'lon': 0.8197},
-    'Figueres': {'lat': 42.2662, 'lon': 2.9622},
-    'Gandesa': {'lat': 41.0526, 'lon': 0.4357},
-    'Girona': {'lat': 41.9831, 'lon': 2.8249},
-    'Granollers': {'lat': 41.6083, 'lon': 2.2886},
-    'Igualada': {'lat': 41.5791, 'lon': 1.6174},
-    'La Bisbal d\'Empordà': {'lat': 41.9602, 'lon': 3.0378},
-    'La Seu d\'Urgell': {'lat': 42.3582, 'lon': 1.4593},
-    'Les Borges Blanques': {'lat': 41.5226, 'lon': 0.8698},
-    'Lleida': {'lat': 41.6177, 'lon': 0.6200},
-    'Manresa': {'lat': 41.7230, 'lon': 1.8268},
-    'Mataró': {'lat': 41.5388, 'lon': 2.4449},
-    'Moià': {'lat': 41.8106, 'lon': 2.0975},
-    'Mollerussa': {'lat': 41.6301, 'lon': 0.8958},
-    'Montblanc': {'lat': 41.3761, 'lon': 1.1610},
-    'Móra d\'Ebre': {'lat': 41.0945, 'lon': 0.6433},
-    'Olot': {'lat': 42.1818, 'lon': 2.4900},
-    'Prats de Lluçanès': {'lat': 42.0135, 'lon': 2.0305},
-    'Puigcerdà': {'lat': 42.4331, 'lon': 1.9287},
-    'Reus': {'lat': 41.1550, 'lon': 1.1075},
-    'Ripoll': {'lat': 42.2013, 'lon': 2.1903},
-    'Sant Feliu de Llobregat': {'lat': 41.3833, 'lon': 2.0500},
-    'Santa Coloma de Farners': {'lat': 41.8596, 'lon': 2.6703},
-    'Solsona': {'lat': 41.9942, 'lon': 1.5161},
-    'Sort': {'lat': 42.4131, 'lon': 1.1278},
-    'Tarragona': {'lat': 41.1189, 'lon': 1.2445},
-    'Tàrrega': {'lat': 41.6468, 'lon': 1.1416},
-    'Terrassa': {'lat': 41.5615, 'lon': 2.0084},
-    'Tortosa': {'lat': 40.8126, 'lon': 0.5211},
-    'Tremp': {'lat': 42.1664, 'lon': 0.8953},
-    'Valls': {'lat': 41.2872, 'lon': 1.2505},
-    'Vic': {'lat': 41.9301, 'lon': 2.2545},
-    'Vielha': {'lat': 42.7027, 'lon': 0.7966},
-    'Vilafranca del Penedès': {'lat': 41.3453, 'lon': 1.6995},
+    'Amposta': {'lat': 40.7093, 'lon': 0.5810}, 'Balaguer': {'lat': 41.7904, 'lon': 0.8066}, 'Banyoles': {'lat': 42.1197, 'lon': 2.7667},
+    'Barcelona': {'lat': 41.3851, 'lon': 2.1734}, 'Berga': {'lat': 42.1051, 'lon': 1.8458}, 'Cervera': {'lat': 41.6669, 'lon': 1.2721},
+    'El Pont de Suert': {'lat': 42.4101, 'lon': 0.7423}, 'El Vendrell': {'lat': 41.2201, 'lon': 1.5348}, 'Falset': {'lat': 41.1449, 'lon': 0.8197},
+    'Figueres': {'lat': 42.2662, 'lon': 2.9622}, 'Gandesa': {'lat': 41.0526, 'lon': 0.4357}, 'Girona': {'lat': 41.9831, 'lon': 2.8249},
+    'Granollers': {'lat': 41.6083, 'lon': 2.2886}, 'Igualada': {'lat': 41.5791, 'lon': 1.6174}, 'La Bisbal d\'Empordà': {'lat': 41.9602, 'lon': 3.0378},
+    'La Seu d\'Urgell': {'lat': 42.3582, 'lon': 1.4593}, 'Les Borges Blanques': {'lat': 41.5226, 'lon': 0.8698}, 'Lleida': {'lat': 41.6177, 'lon': 0.6200},
+    'Manresa': {'lat': 41.7230, 'lon': 1.8268}, 'Mataró': {'lat': 41.5388, 'lon': 2.4449}, 'Moià': {'lat': 41.8106, 'lon': 2.0975},
+    'Mollerussa': {'lat': 41.6301, 'lon': 0.8958}, 'Montblanc': {'lat': 41.3761, 'lon': 1.1610}, 'Móra d\'Ebre': {'lat': 41.0945, 'lon': 0.6433},
+    'Olot': {'lat': 42.1818, 'lon': 2.4900}, 'Prats de Lluçanès': {'lat': 42.0135, 'lon': 2.0305}, 'Puigcerdà': {'lat': 42.4331, 'lon': 1.9287},
+    'Reus': {'lat': 41.1550, 'lon': 1.1075}, 'Ripoll': {'lat': 42.2013, 'lon': 2.1903}, 'Sant Feliu de Llobregat': {'lat': 41.3833, 'lon': 2.0500},
+    'Santa Coloma de Farners': {'lat': 41.8596, 'lon': 2.6703}, 'Solsona': {'lat': 41.9942, 'lon': 1.5161}, 'Sort': {'lat': 42.4131, 'lon': 1.1278},
+    'Tarragona': {'lat': 41.1189, 'lon': 1.2445}, 'Tàrrega': {'lat': 41.6468, 'lon': 1.1416}, 'Terrassa': {'lat': 41.5615, 'lon': 2.0084},
+    'Tortosa': {'lat': 40.8126, 'lon': 0.5211}, 'Tremp': {'lat': 42.1664, 'lon': 0.8953}, 'Valls': {'lat': 41.2872, 'lon': 1.2505},
+    'Vic': {'lat': 41.9301, 'lon': 2.2545}, 'Vielha': {'lat': 42.7027, 'lon': 0.7966}, 'Vilafranca del Penedès': {'lat': 41.3453, 'lon': 1.6995},
     'Vilanova i la Geltrú': {'lat': 41.2241, 'lon': 1.7252},
 }
 MAP_EXTENT = [0, 3.5, 40.4, 43]
@@ -179,7 +150,6 @@ def carregar_dades_mapa(nivell, hourly_index):
     except Exception as e:
         return None, f"Error en processar dades del mapa: {e}"
 
-
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
 def crear_mapa_base():
     fig, ax = plt.subplots(figsize=(8, 8), dpi=90, subplot_kw={'projection': ccrs.PlateCarree()})
@@ -227,13 +197,9 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
             ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=['#FF0000'], alpha=0.3, zorder=5, transform=ccrs.PlateCarree())
             contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors='black', linestyles='-', linewidths=1.5, zorder=6, transform=ccrs.PlateCarree())
             
-            # --- BLOC DE CODI CORREGIT ---
-            # 1. Creem les etiquetes de text bàsiques
-            labels = ax.clabel(contours, inline=True, fontsize=5, fmt='%1.0f')
-
-            # 2. Modifiquem cada etiqueta creada per afegir-li un fons blanc
+            labels = ax.clabel(contours, inline=True, fontsize=11, fmt='%1.0f')
             for label in labels:
-                label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.4))
+                label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.8))
             
     ax.set_title(f"Anàlisi de Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
@@ -312,8 +278,6 @@ def get_color_for_param(param_name, value):
         return "#BC13FE"
     return "#FFFFFF"
 
-
-# Afegeix aquesta petita funció d'ajuda a fora de la funció principal
 def format_time_left(time_delta):
     """Formata un timedelta en hores i minuts llegibles."""
     total_seconds = int(time_delta.total_seconds())
@@ -324,7 +288,6 @@ def format_time_left(time_delta):
     else:
         return f"{minutes} min"
 
-# --- Funció Principal de l'IA (Bloc Corregit) ---
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
 
@@ -349,7 +312,7 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         result = oauth2.authorize_button(
             name="Inicia sessió amb Google",
             icon="https://www.google.com.tw/favicon.ico",
-            redirect_uri="https://tempestescat.streamlit.app/", # Assegura't que aquesta URL sigui correcta
+            redirect_uri="https://tempestescat.streamlit.app/",
             scope="openid email profile",
             key="google",
             use_container_width=True,
@@ -377,7 +340,6 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
             st.error(f"Error en configurar l'API de Gemini.")
             return
 
-        # --- INICI: LÒGICA DEL LÍMIT D'ÚS (RATE LIMITER) ---
         LIMIT_PER_WINDOW = 10
         WINDOW_HOURS = 5
         
@@ -385,10 +347,7 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
             st.session_state.rate_limits = {}
 
         if user_id not in st.session_state.rate_limits:
-            st.session_state.rate_limits[user_id] = {
-                "count": 0,
-                "window_start_time": None
-            }
+            st.session_state.rate_limits[user_id] = {"count": 0, "window_start_time": None}
 
         user_limit_data = st.session_state.rate_limits[user_id]
         now_utc = datetime.now(pytz.utc)
@@ -400,20 +359,26 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
                 user_limit_data["count"] = 0
                 user_limit_data["window_start_time"] = None
 
-        if user_limit_data["count"] >= LIMIT_PER_WINDOW:
+        preguntes_fetes = user_limit_data["count"]
+        preguntes_restants = LIMIT_PER_WINDOW - preguntes_fetes
+
+        if preguntes_fetes >= LIMIT_PER_WINDOW:
             limit_reached = True
             time_to_reset = (user_limit_data["window_start_time"] + timedelta(hours=WINDOW_HOURS))
             time_left = time_to_reset - now_utc
-            st.warning(f"""**Has arribat al límit de {LIMIT_PER_WINDOW} preguntes.** 
-                        El teu accés es renovarà en aproximadament **{format_time_left(time_left)}**.""")
-        # --- FI: LÒGICA DEL LÍMIT D'ÚS ---
-
+            st.warning(f"**Has arribat al límit de {LIMIT_PER_WINDOW} preguntes.** El teu accés es renovarà en aprox. **{format_time_left(time_left)}**.")
+        
         if "chat" not in st.session_state:
             model = genai.GenerativeModel('gemini-1.5-flash')
             system_prompt = """
 # MISSIÓ I PERSONALITAT
 Ets un expert meteoròleg operatiu, Tempestes.CAT-IA. La teva personalitat és la d'un col·lega apassionat pel temps, de bon rotllo i proper. Ets clar i vas directe al gra, però sense ser robòtic. Parles com si estiguéssim comentant els mapes prenent un cafè.
-**IMPORTANT CLAU:** Evita recitar dades numèriques (CAPE, CIN, cisallament, etc.) tret que l'usuari te les demani explícitament. La teva feina és interpretar-les i traduir-les a un llenguatge planer, no llegir-les.
+**REGLA D'OR DE PERSONALITAT: PROHIBIT RECITAR ELS NÚMEROS DEL SONDEIG (CAPE, CIN...).** La teva funció és interpretar-los, no llegir-los. Tradueix-los sempre a conceptes com "molta energia", "poca tapa", "ambient favorable a rotació", etc., tret que l'usuari demani el valor exacte.
+
+---
+## GESTIÓ DE PREGUNTES META
+A cada torn, et proporcionaré el número de preguntes que li queden a l'usuari. Si et pregunta directament per això ("quantes preguntes em queden?", etc.), respon de manera breu i directa.
+- **Exemple:** "Ep! Encara et queden [Número] preguntes en aquesta finestra."
 
 ---
 ## CONEIXEMENTS ADDICIONALS
@@ -434,16 +399,11 @@ Respon de manera directa i amigable.
 - **Exemple de resposta:** "Ep, doncs per a aquesta hora no veig cap disparador clar al mapa. Encara que hi hagi bon combustible a l'atmosfera, sense l'espurna, el risc de tempestes es queda baixet."
 
 **PAS 3: SI TROBES UN O MÉS DISPARADORS:**
-    a. **Localitza el disparador de manera GENERAL.** Fes servir referències geogràfiques àmplies que es veuen al mapa (Prepirineu, Litoral, Plana de Lleida, a prop de la frontera, etc.).
-       **REGLA CRÍTICA DE GEOGRAFIA:** MAI inventis proximitat a un poble concret que l'usuari mencioni si no és evidentíssim al mapa. És molt millor dir "Veig un focus important a Ponent" que arriscar-te a dir "Està a prop de Tàrrega". Sigues honest sobre la precisió de la teva localització.
-
-    b. **Analitza el sondeig EN SEGON PLA.** Llegeix les dades de CAPE, cisallament, etc., que et dono, però **NO les recitis**. La teva missió és TRADUIR-LES a una idea senzilla.
-       - Si veus CAPE alt i CIN baix, pensa: "hi ha molta energia disponible i sense tapa".
-       - Si veus cisallament alt, pensa: "l'ambient és favorable a que les tempestes s'organitzin i puguin girar".
-
-    c. **Junta-ho tot en una conclusió de col·lega.** Combina la localització del disparador (punt a) amb la teva anàlisi del sondeig (punt b) per donar el pronòstic final.
-       - **Exemple de conclusió ideal:** "Doncs sí! He trobat un bon disparador sobre el Prepirineu de Lleida. Com que, a més, el sondeig diu que l'atmosfera està molt carregada d'energia per la zona, aquest punt té molts números per disparar tempestes fortes aquesta tarda. Compte per allà dalt!"
-       - **Un altre exemple:** "Tenim un disparador interessant a la costa de Girona. L'ambient no és explosiu, però és suficient per a que aquest focus pugui generar alguns ruixats o alguna tronada puntual. Res de l'altre món, però podria mullar."
+    a. **Localitza el disparador de manera GENERAL.** Fes servir referències geogràfiques àmplies (Prepirineu, Litoral, Plana de Lleida, etc.).
+       **REGLA CRÍTICA DE GEOGRAFIA:** MAI inventis proximitat a un poble concret. És molt millor dir "Veig un focus a Ponent" que arriscar-te a dir "Està a prop de Tàrrega".
+    b. **Analitza el sondeig EN SEGON PLA.** Llegeix les dades que et dono, però **NO les recitis**. La teva missió és TRADUIR-LES a una idea senzilla.
+    c. **Junta-ho tot en una conclusió de col·lega.** Combina el disparador amb la teva anàlisi del sondeig per donar el pronòstic final.
+       - **Exemple de conclusió ideal:** "Doncs sí! He trobat un bon disparador sobre el Prepirineu de Lleida. Com que, a més, el sondeig diu que l'atmosfera està molt carregada d'energia, aquest punt té molts números per disparar tempestes fortes. Compte per allà dalt!"
 """
             st.session_state.chat = model.start_chat(history=[
                 {'role': 'user', 'parts': [system_prompt]},
@@ -451,8 +411,10 @@ Respon de manera directa i amigable.
             ])
             st.session_state.messages = [{"role": "assistant", "content": "Hola! Sóc Tempestes.CAT-IA, el teu col·lega apassionat pel temps. Anem al gra. Quina és la teva pregunta?"}]
 
-        st.markdown("Fes-me preguntes sobre el potencial de temps sever a Catalunya.")
         st.markdown(f"**Anàlisi per:** `{poble_sel.upper()}` | **Dia:** `{timestamp_str}`")
+        if not limit_reached:
+            st.info(f"Tens **{preguntes_restants}** preguntes restants en aquesta finestra de {WINDOW_HOURS} hores.")
+        
         nivell_mapa_ia = st.selectbox("Canvia el nivell d'anàlisi del mapa (només per a l'IA):", 
                                      options=[1000, 950, 925, 850, 800, 700], 
                                      format_func=lambda x: f"{x} hPa", 
@@ -471,47 +433,38 @@ Respon de manera directa i amigable.
             with st.chat_message("assistant"):
                 with st.spinner("Generant mapa i consultant l'IA..."):
                     
-                    # Incrementa el comptador i estableix el timestamp de l'usuari
                     if user_limit_data["window_start_time"] is None:
                         user_limit_data["window_start_time"] = datetime.now(pytz.utc)
                     user_limit_data["count"] += 1
-
-                    # La resta del codi per generar mapa i cridar a l'IA
-                    map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
                     
+                    map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
                     if error_map_ia:
                         st.error(f"No s'han pogut carregar les dades del mapa: {error_map_ia}")
                         return
-
                     fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
                     buf = io.BytesIO()
-                    fig_mapa.savefig(buf, format='png', dpi=150, bbox_inches='tight') # Canviat a PNG i DPI més alt per a millor lectura de l'IA
+                    fig_mapa.savefig(buf, format='png', dpi=150, bbox_inches='tight')
                     buf.seek(0)
                     img_mapa = Image.open(buf)
                     plt.close(fig_mapa)
-
                     resum_sondeig = "No hi ha dades de sondeig disponibles."
                     if data_tuple:
                         _, params_calculats = data_tuple
-                        resum_sondeig = f"""- Inestabilitat (CAPE): {params_calculats.get('CAPE', 0):.0f} J/kg.
-- Inhibició (CIN): {params_calculats.get('CIN', 0):.0f} J/kg.
-- Cisallament 0-6km: {params_calculats.get('Shear 0-6km', np.nan):.0f} nusos.
-- Helicitat 0-3km (SRH): {params_calculats.get('SRH 0-3km', np.nan):.0f} m²/s²."""
+                        resum_sondeig = f"""- Inestabilitat (CAPE): {params_calculats.get('CAPE', 0):.0f} J/kg. - Inhibició (CIN): {params_calculats.get('CIN', 0):.0f} J/kg. - Cisallament 0-6km: {params_calculats.get('Shear 0-6km', np.nan):.0f} nusos. - Helicitat 0-3km (SRH): {params_calculats.get('SRH 0-3km', np.nan):.0f} m²/s²."""
 
                     prompt_context_torn_actual = f"""
 ---
-## DADES PER A AQUESTA PREGUNTA
+## DADES DE CONTEXT PER A AQUESTA PREGUNTA
+- **Preguntes Restants:** {preguntes_restants - 1} de {LIMIT_PER_WINDOW} (ja que aquesta pregunta actual es compta).
 - **Localització d'anàlisi del sondeig:** {poble_sel}
-- **Dades del sondeig:** {resum_sondeig}
+- **Dades brutes del sondeig (PER INTERPRETAR, NO RECITAR):** {resum_sondeig}
 ---
 ## LA TEVA TASCA ARA
-Analitza la imatge adjunta i les dades del sondeig que t'acabo de proporcionar per respondre la meva pregunta: "{prompt_usuari}"
+Analitza la imatge adjunta i INTERPRETA les dades de context per respondre la meva pregunta: "{prompt_usuari}"
 """
                     
                     try:
-                        resposta_completa = st.session_state.chat.send_message(
-                            [prompt_context_torn_actual, img_mapa]
-                        )
+                        resposta_completa = st.session_state.chat.send_message([prompt_context_torn_actual, img_mapa])
                         full_response = resposta_completa.text
                         st.markdown(full_response)
                     except Exception as e:
@@ -524,15 +477,14 @@ Analitza la imatge adjunta i les dades del sondeig que t'acabo de proporcionar p
                             st.error(full_response)
             
             st.session_state.messages.append({"role": "assistant", "content": full_response})
+            st.rerun()
         
         if st.button("Tanca la sessió"):
-            # Esborra només les dades de la sessió de l'usuari, no els límits
             del st.session_state.token
             if 'chat' in st.session_state: del st.session_state.chat
             if 'messages' in st.session_state: del st.session_state.messages
             st.rerun()
-            
-            
+
 # --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
 def ui_capcalera_selectors():
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
@@ -546,9 +498,9 @@ def ui_capcalera_selectors():
 def ui_explicacio_alertes():
     with st.expander("Què signifiquen les isòlines de convergència?"):
         text_lines = [
-            "Les línies vermelles discontínues (`---`) marquen zones de **convergència d'humitat**. Són els **disparadors** potencials de tempestes.",
+            "Les línies negres amb un número a dins marquen zones de **convergència**. Són els **disparadors** potencials de tempestes.",
             "", "- **Què són?** Àrees on el vent força l'aire humit a ajuntar-se i ascendir.",
-            "", "- **Com interpretar-les?** El número sobre la línia indica la seva intensitat (més alt = més fort). Valors > 20 són significatius."
+            "", "- **Com interpretar-les?** El número indica la seva intensitat (més alt = més fort). Valors > 20 són significatius."
         ]
         full_text = "\n".join(text_lines)
         st.markdown(full_text)
@@ -638,11 +590,20 @@ def main():
         st.session_state.poble_selector = 'Barcelona'
         st.session_state.dia_selector = 'Avui'
         st.session_state.hora_selector = f"{datetime.now(TIMEZONE).hour:02d}:00h"
+        
+    # Inicialitza 'last_selection' si no existeix per evitar errors al primer run
+    if 'last_selection' not in st.session_state:
         st.session_state.last_selection = ""
+
     ui_capcalera_selectors()
+    
     current_selection = f"{st.session_state.poble_selector}-{st.session_state.dia_selector}-{st.session_state.hora_selector}"
     if current_selection != st.session_state.last_selection:
-        st.session_state.messages = []
+        # Reseteja el xat si la selecció de pronòstic canvia
+        if 'messages' in st.session_state:
+            del st.session_state.messages
+        if 'chat' in st.session_state:
+            del st.session_state.chat
         st.session_state.last_selection = current_selection
 
     poble_sel, dia_sel, hora_sel = st.session_state.poble_selector, st.session_state.dia_selector, st.session_state.hora_selector
