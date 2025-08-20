@@ -313,16 +313,18 @@ def get_color_for_param(param_name, value):
     return "#FFFFFF"
 
 
+# Afegeix aquesta petita funció d'ajuda a fora de la funció principal
 def format_time_left(time_delta):
     """Formata un timedelta en hores i minuts llegibles."""
     total_seconds = int(time_delta.total_seconds())
     hours, remainder = divmod(total_seconds, 3600)
     minutes, _ = divmod(remainder, 60)
     if hours > 0:
-        return f"{hours} hores i {minutes} minuts"
+        return f"{hours}h {minutes}min"
     else:
-        return f"{minutes} minuts"
+        return f"{minutes} min"
 
+# --- Funció Principal de l'IA (Bloc Corregit) ---
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
 
@@ -441,7 +443,7 @@ Respon de manera directa i amigable.
 
     c. **Junta-ho tot en una conclusió de col·lega.** Combina la localització del disparador (punt a) amb la teva anàlisi del sondeig (punt b) per donar el pronòstic final.
        - **Exemple de conclusió ideal:** "Doncs sí! He trobat un bon disparador sobre el Prepirineu de Lleida. Com que, a més, el sondeig diu que l'atmosfera està molt carregada d'energia per la zona, aquest punt té molts números per disparar tempestes fortes aquesta tarda. Compte per allà dalt!"
-       - **Un altre exemple:** "Tenim un disparador interessant a la costa de Girona. L'ambient no és explosiu, però és suficient per a que aquest focus pugui generar alguns ruixats o alguna tronada puntual. Res de l'altre món, però podria mullar.
+       - **Un altre exemple:** "Tenim un disparador interessant a la costa de Girona. L'ambient no és explosiu, però és suficient per a que aquest focus pugui generar alguns ruixats o alguna tronada puntual. Res de l'altre món, però podria mullar."
 """
             st.session_state.chat = model.start_chat(history=[
                 {'role': 'user', 'parts': [system_prompt]},
@@ -483,7 +485,7 @@ Respon de manera directa i amigable.
 
                     fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
                     buf = io.BytesIO()
-                    fig_mapa.savefig(buf, format='png', dpi=150, bbox_inches='tight') # Canviat a PNG i DPI més alt
+                    fig_mapa.savefig(buf, format='png', dpi=150, bbox_inches='tight') # Canviat a PNG i DPI més alt per a millor lectura de l'IA
                     buf.seek(0)
                     img_mapa = Image.open(buf)
                     plt.close(fig_mapa)
@@ -524,10 +526,12 @@ Analitza la imatge adjunta i les dades del sondeig que t'acabo de proporcionar p
             st.session_state.messages.append({"role": "assistant", "content": full_response})
         
         if st.button("Tanca la sessió"):
+            # Esborra només les dades de la sessió de l'usuari, no els límits
             del st.session_state.token
             if 'chat' in st.session_state: del st.session_state.chat
             if 'messages' in st.session_state: del st.session_state.messages
             st.rerun()
+            
             
 # --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
 def ui_capcalera_selectors():
