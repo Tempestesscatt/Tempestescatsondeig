@@ -327,7 +327,7 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         result = oauth2.authorize_button(
             name="Inicia sessió amb Google",
             icon="https://www.google.com.tw/favicon.ico",
-            redirect_uri="https://tempestescat.streamlit.app/",
+            redirect_uri="https://tempestescat.streamlit.app/", # Assegura't que aquesta URL sigui correcta
             scope="openid email profile",
             key="google",
             use_container_width=True,
@@ -347,7 +347,42 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         except Exception as e:
             st.error(f"Error en configurar l'API de Gemini.")
             return
-            
+
+        # --- INICI DEL NOU BLOC CONVERSACIONAL ---
+
+        # Inicialització del xat (es fa només un cop per sessió)
+        if "chat" not in st.session_state:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            # El "system prompt" ara NOMÉS conté les regles i la personalitat. És estàtic.
+            system_prompt = """
+# MISSIÓ I PERSONALITAT
+Ets un expert meteoròleg operatiu, Tempestes.CAT-IA. La teva personalitat és la d'un col·lega apassionat del temps. Ets clar, concís i vas directe al gra.
+**IMPORTANT:** Et presentes només una vegada ("Hola! Sóc Tempestes.CAT-IA...") al principi de tota la conversa. Després, mai més.
+
+---
+## COM INTERPRETAR LA IMATGE ADJUNTA (REGLA D'OR)
+La teva anàlisi visual ha de seguir aquestes regles estrictes:
+1.  **IGNORA COMPLETAMENT la llegenda de colors de la dreta.**
+2.  **IGNORA els colors de fons del mapa.**
+3.  **LA TEVA ÚNICA MISSIÓ VISUAL ÉS BUSCAR NÚMEROS DINS D'ÀREES TANCADES** per línies de contorn negres i gruixudes. Aquest número és el "DISPARADOR".
+
+---
+## EL TEU PROCÉS DE RAONAMENT (ORDRE ESTRICTE)
+**PAS 1:** Busca al mapa si existeix un disparador (número dins d'una àrea tancada).
+**PAS 2:** SI NO TROBES CAP NÚMERO, el risc és BAIX. Respon que no veus disparadors i que el risc és baix.
+**PAS 3:** SI TROBES UN NÚMERO, combina la informació:
+    a. Informa de la intensitat i localització del disparador.
+    b. Valora les dades del sondeig que et proporcionaré a cada pregunta. Si no hi ha dades, indica-ho.
+    c. Conclou combinant les dues anàlisis per determinar el risc de tempesta.
+"""
+            # Creem la sessió de xat i li passem les instruccions inicials.
+            st.session_state.chat = model.start_chat(history=[
+                {'role': 'user', 'parts': [system_prompt]},
+                {'role': 'model', 'parts': ["Hola! Sóc Tempestes.CAT-IA, el teu col·lega apassionat pel temps. Anem al gra. Quina és la teva pregunta?"]}
+            ])
+            # Inicialitzem els missatges per mostrar a la UI amb la salutació inicial.
+            st.session_state.messages = [{"role": "assistant", "content": "Hola! Sóc Tempestes.CAT-IA, el teu col·lega apassionat pel temps. Anem al gra. Quina és la teva pregunta?"}]
+
         if 'api_calls' not in st.session_state:
             st.session_state.api_calls = 0
         
@@ -357,15 +392,13 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         st.markdown(f"**Anàlisi per:** `{poble_sel.upper()}` | **Dia:** `{timestamp_str}`")
         nivell_mapa_ia = st.selectbox("Canvia el nivell d'anàlisi del mapa (només per a l'IA):", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat")
 
-        if "messages" not in st.session_state:
-            st.session_state.messages = []
-
+        # Mostra l'historial de missatges guardat
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
         if st.session_state.api_calls >= LIMIT_PER_SESSIO:
-            st.warning(f"Has arribat al límit de {LIMIT_PER_SESSIO} preguntes per aquesta sessió. Torna a intentar-ho més tard.")
+            st.warning(f"Has arribat al límit de {LIMIT_PER_SESSIO} preguntes per aquesta sessió.")
         else:
             if prompt_usuari := st.chat_input("Quina és la teva pregunta sobre el temps?"):
                 st.session_state.messages.append({"role": "user", "content": prompt_usuari})
@@ -374,6 +407,7 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
 
                 with st.chat_message("assistant"):
                     with st.spinner("Generant mapa i consultant l'IA..."):
+                        # La generació del mapa i les dades del sondeig es continuen fent a cada torn
                         map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
                         
                         if error_map_ia:
@@ -394,53 +428,33 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
 - Inhibició (CIN): {params_calculats.get('CIN', 0):.0f} J/kg.
 - Cisallament 0-6km: {params_calculats.get('Shear 0-6km', np.nan):.0f} nusos.
 - Helicitat 0-3km (SRH): {params_calculats.get('SRH 0-3km', np.nan):.0f} m²/s²."""
-                        
-                        prompt_multimodal = f"""
-# MISSIÓ I PERSONALITAT
-Ets un super expert meteoròleg, Tempestes.CAT-IA. La teva personalitat és la d'un col·lega molt amigable i bona persona, apassionat del temps i tempestes. Ets clar, confiat i vas directe al gra a l'hora de explicar, no t'enrolles amb dades a no ser que preguntin.
-**IMPORTANT:** Et presentes només una vegada ("Hola! Sóc Tempestes.CAT-IA ;D") al principi de tota la conversa. Després, mai més.
 
+                        # L'enviament del missatge ara és conversacional
+                        # Creem un prompt de context només amb la informació d'aquest torn.
+                        prompt_context_torn_actual = f"""
 ---
----
-## COM INTERPRETAR LA IMATGE ADJUNTA (REGLA D'OR)
-La teva anàlisi visual ha de seguir aquestes regles estrictes:
-1.  **IGNORA COMPLETAMENT la llegenda de colors de la dreta.** No és rellevant per a la teva anàlisi.
-2.  **IGNORA els colors de fons del mapa (blaus, verds, grocs).** Només indiquen la velocitat del vent, no són els disparadors.
-3.  **LA TEVA ÚNICA MISSIÓ VISUAL ÉS BUSCAR NÚMEROS DINS D'ÀREES TANCADES.** Concretament, busca si hi ha una o més **línies de contorn negres i gruixudes** que tanquen una àrea. **DINS d'aquesta àrea tancada** hi haurà un **NÚMERO** (per exemple, 25, 40, 61). **AQUEST NÚMERO ÉS L'ÚNIC QUE IDENTIFICA UN "DISPARADOR"**.
----
-## EL TEU PROCÉS DE RAONAMENT (ORDRE ESTRICTE)
-**PAS 1: Examina el mapa.** La teva missió és trobar si hi ha alguna àrea tancada per una línia de contorn negra gruixuda que contingui un número a dins.
-
-**PAS 2: SI NO TROBES CAP NÚMERO DINS DEL MAPA, el risc és BAIX**, independentment de com de bo sigui el sondeig. La teva anàlisi s'acaba aquí. Respon: "Ep! Malgrat que hi pugui haver energia a l'atmosfera, no veig cap disparador clar (cap línia de convergència amb número) al mapa per a aquesta hora. Per tant, el risc que es formin tempestes és baix."
-
-**PAS 3: SI TROBES UN O MÉS NÚMEROS, combina la informació:**
-    a. **Informa del que has trobat:** "He detectat un disparador amb una intensitat de [NÚMERO] sobre la zona de [localització geogràfica]."
-    b. **Localitza'l:** Fent servir les formes de les províncies i el teu coneixement intern, digues sobre quina àrea es troba (p. ex., "Prepirineu de Lleida", "costa de Girona", "prop del massís del Montseny").
-    c. **Valora el Sondeig:** Ara llegeix les dades que et proporciono a la secció "DADES DEL SONDEIG VERTICAL". **Si hi ha valors numèrics (CAPE, CIN, etc.), fes-ne una valoració meteorològica breu. Si el text diu "No hi ha dades de sondeig disponibles", simplement indica que no disposes d'aquesta informació per completar l'anàlisi.**
-    d. **Connecta les idees:** Conclou combinant l'anàlisi del disparador amb la del sondeig (si està disponible). Si no hi ha dades de sondeig, basa la teva conclusió de risc només en la presència i intensitat del disparador.
-
-
----
-## DADES DEL SONDEIG VERTICAL ({poble_sel})
-{resum_sondeig}
+## DADES PER A AQUESTA PREGUNTA
+- **Localització d'anàlisi del sondeig:** {poble_sel}
+- **Dades del sondeig:** {resum_sondeig}
 
 ---
 ## LA TEVA TASCA ARA
-Respon a la pregunta de l'usuari ("{prompt_usuari}") seguint estrictament el procés de raonament que t'he explicat.
+Analitza la imatge adjunta i les dades del sondeig que t'acabo de proporcionar per respondre la meva pregunta: "{prompt_usuari}"
 """
                         
                         try:
                             st.session_state.api_calls += 1
-                            model = genai.GenerativeModel('gemini-1.5-flash')
-                            resposta_completa = model.generate_content(
-                                [prompt_multimodal, img_mapa, prompt_usuari]
+                            # Fem servir el mètode .send_message() de la sessió de xat guardada
+                            resposta_completa = st.session_state.chat.send_message(
+                                [prompt_context_torn_actual, img_mapa]
                             )
                             full_response = resposta_completa.text
                             st.markdown(full_response)
                         except Exception as e:
+                            # Gestió d'errors
                             error_text = str(e)
                             if "429" in error_text and "quota" in error_text:
-                                full_response = "**Has superat el límit diari gratuït de consultes.** Si us plau, torna a intentar-ho demà."
+                                full_response = "**Has superat el límit diari gratuït de consultes.**"
                                 st.error(full_response)
                             else:
                                 full_response = f"Hi ha hagut un error inesperat contactant amb l'IA."
@@ -449,10 +463,15 @@ Respon a la pregunta de l'usuari ("{prompt_usuari}") seguint estrictament el pro
                 st.session_state.messages.append({"role": "assistant", "content": full_response})
         
         if st.button("Tanca la sessió"):
+            # Resetejar l'estat del xat en tancar sessió
             st.session_state.api_calls = 0
             del st.session_state.token
+            # Esborrem el xat i els missatges per començar de nou a la propera sessió
+            if 'chat' in st.session_state:
+                del st.session_state.chat
+            if 'messages' in st.session_state:
+                del st.session_state.messages
             st.rerun()
-
 # --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
 def ui_capcalera_selectors():
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
