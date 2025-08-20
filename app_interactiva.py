@@ -428,6 +428,10 @@ La teva anàlisi visual ha de seguir aquestes regles estrictes:
     a. Informa de la intensitat i localització del disparador.
     b. Valora les dades del sondeig que et proporcionaré a cada pregunta. Si no hi ha dades, indica-ho.
     c. Conclou combinant les dues anàlisis per determinar el risc de tempesta.
+
+
+
+    Extras: si et pregunta sobre vents, com marinada o rebuff o etc fes servir la teva logica.
 """
             st.session_state.chat = model.start_chat(history=[
                 {'role': 'user', 'parts': [system_prompt]},
