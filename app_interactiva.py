@@ -188,7 +188,6 @@ def crear_mapa_base():
     ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
     return fig, ax
-
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 400), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 400))
@@ -226,13 +225,14 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
             ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=['#FF0000'], alpha=0.3, zorder=5, transform=ccrs.PlateCarree())
             contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors='black', linestyles='-', linewidths=1.5, zorder=6, transform=ccrs.PlateCarree())
             
-            # --- LÍNIA MODIFICADA ---
-            # Hem afegit fontsize, fontweight i un fons blanc (bbox) per fer el número més visible.
-            ax.clabel(contours, inline=True, fontsize=14, fmt='%1.0f', fontweight='bold',
+            # --- LÍNIA CORREGIDA ---
+            # S'ha eliminat 'fontweight', que causava l'error.
+            ax.clabel(contours, inline=True, fontsize=14, fmt='%1.0f',
                       bbox=dict(facecolor='white', edgecolor='none', pad=1.5, alpha=0.8))
             
     ax.set_title(f"Anàlisi de Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
+    
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
