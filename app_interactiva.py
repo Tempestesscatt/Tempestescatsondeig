@@ -232,7 +232,7 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
 
             # 2. Modifiquem cada etiqueta creada per afegir-li un fons blanc
             for label in labels:
-                label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.8))
+                label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.4))
             
     ax.set_title(f"Anàlisi de Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
