@@ -228,7 +228,7 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
             
             # --- BLOC DE CODI CORREGIT ---
             # 1. Creem les etiquetes de text bàsiques
-            labels = ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
+            labels = ax.clabel(contours, inline=True, fontsize=5, fmt='%1.0f')
 
             # 2. Modifiquem cada etiqueta creada per afegir-li un fons blanc
             for label in labels:
