@@ -24,6 +24,7 @@ import json
 import hashlib
 import os
 import base64
+from streamlit_autorefresh import st_autorefresh
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
