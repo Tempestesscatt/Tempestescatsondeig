@@ -54,7 +54,6 @@ PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 2
 # --- 1. FUNCIONS D'OBTENCIÓ DE DADES ---
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
-    # ... (aquesta funció no ha canviat, es queda igual)
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS]
@@ -106,7 +105,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base(variables, hourly_index):
-    # ... (aquesta funció no ha canviat, es queda igual)
     try:
         lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
@@ -128,7 +126,6 @@ def carregar_dades_mapa_base(variables, hourly_index):
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
-    # ... (aquesta funció no ha canviat, es queda igual)
     try:
         if nivell >= 950:
             variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
@@ -150,7 +147,6 @@ def carregar_dades_mapa(nivell, hourly_index):
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
 def crear_mapa_base():
-    # ... (aquesta funció no ha canviat, es queda igual)
     fig, ax = plt.subplots(figsize=(8, 8), dpi=90, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree())
     ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
@@ -160,7 +156,6 @@ def crear_mapa_base():
     return fig, ax
 
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
-    # ... (aquesta funció conté la millora del label, es queda igual)
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 400), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 400))
     grid_speed, grid_dewpoint = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
@@ -200,7 +195,6 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     return fig
 
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
-    # ... (aquesta funció no ha canviat, es queda igual)
     fig, ax = crear_mapa_base()
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
@@ -219,7 +213,6 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
     return fig
 
 def crear_skewt(p, T, Td, u, v, titol):
-    # ... (aquesta funció no ha canviat, es queda igual)
     fig = plt.figure(figsize=(9, 9), dpi=150); skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
     skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2, label='Temperatura'); skew.plot(p, Td, 'g', lw=2, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
@@ -230,13 +223,11 @@ def crear_skewt(p, T, Td, u, v, titol):
     skew.ax.legend(); return fig
 
 def crear_hodograf(u, v):
-    # ... (aquesta funció no ha canviat, es queda igual)
     fig, ax = plt.subplots(1, 1, figsize=(6, 6), dpi=150); h = Hodograph(ax, component_range=60.)
     h.add_grid(increment=20, color='gray'); h.plot(u.to('kt'), v.to('kt'), color='red', linewidth=2)
     ax.set_title("Hodògraf", weight='bold'); return fig
 
 def mostrar_imatge_temps_real(tipus):
-    # ... (aquesta funció no ha canviat, es queda igual)
     if tipus == "Satèl·lit (Europa)": url = "https://modeles20.meteociel.fr/satellite/animsatsandvisirmtgeu.gif"; caption = "Satèl·lit Sandvitx (Visible + Infraroig). Font: Meteociel"
     elif tipus == "Satèl·lit (NE Península)":
         now_local = datetime.now(TIMEZONE)
@@ -251,7 +242,6 @@ def mostrar_imatge_temps_real(tipus):
 
 # --- 3. FUNCIONS D'AJUDA ---
 def get_color_for_param(param_name, value):
-    # ... (aquesta funció no ha canviat, es queda igual)
     if value is None or np.isnan(value): return "#808080"
     if param_name == 'CAPE':
         if value < 100: return "#808080";
@@ -277,15 +267,6 @@ def get_color_for_param(param_name, value):
         if value < 50: return "#FF3131"
         return "#BC13FE"
     return "#FFFFFF"
-
-def initialize_db(conn):
-    """Crea la taula d'usuaris si no existeix."""
-    with conn.session as s:
-        s.execute(st.text('CREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, question_count INTEGER, window_start_time TIMESTAMP);'))
-        s.commit()
-
-
-# --- FUNCIONS D'AJUDA PER A LA BASE DE DADES I LÍMITS ---
 
 def initialize_db(conn):
     """Crea la taula d'usuaris si no existeix."""
@@ -330,7 +311,6 @@ def format_time_left(time_delta):
     else:
         return f"{minutes} min"
 
-# --- FUNCIÓ PRINCIPAL DE L'IA AMB PERSISTÈNCIA ---
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
 
@@ -362,16 +342,19 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         token = st.session_state['token']
         user_info = token.get('userinfo')
 
-        if not user_info or not user_info.get("email"):
-            st.error("No s'ha pogut verificar la teva identitat. El token d'inici de sessió no conté el teu email, que és necessari per al sistema de límits.")
-            st.info("Això sol passar si no s'han acceptat tots els permisos a la pantalla de consentiment de Google. Si us plau, tanca la sessió i torna a iniciar-la, assegurant-te d'acceptar els permisos.")
-            if st.button("Tanca la sessió", key="logout_button_error"):
-                del st.session_state.token
-                st.rerun()
-            return
+        user_id = user_info.get("email") if user_info else None
         
-        user_id = user_info.get("email")
-        st.write(f"Hola, **{user_info.get('name', 'Usuari')}**! 👋")
+        if user_id:
+            st.write(f"Hola, **{user_info.get('name', 'Usuari')}**! 👋")
+            conn = st.connection("persistent_db", type="sql")
+            initialize_db(conn)
+            user_limit_data = read_user_limit(conn, user_id)
+        else:
+            st.write(f"Hola, Convidat! 👋")
+            st.warning("No s'ha pogut verificar el teu email. Estàs en una sessió de convidat. El teu límit de preguntes es reiniciarà si refresques la pàgina.", icon="⚠️")
+            if 'guest_limit_data' not in st.session_state:
+                st.session_state.guest_limit_data = {"count": 0, "window_start_time": None}
+            user_limit_data = st.session_state.guest_limit_data
 
         try:
             genai.configure(api_key=GEMINI_API_KEY)
@@ -379,24 +362,21 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
             st.error(f"Error en configurar l'API de Gemini.")
             return
 
-        conn = st.connection("persistent_db", type="sql")
-        initialize_db(conn)
-
         LIMIT_PER_WINDOW = 10
         WINDOW_HOURS = 5
         
-        user_limit_data = read_user_limit(conn, user_id)
         now_utc = datetime.now(pytz.utc)
         limit_reached = False
 
-        if user_limit_data["window_start_time"]:
+        if user_limit_data.get("window_start_time"):
             elapsed_time = now_utc - user_limit_data["window_start_time"]
             if elapsed_time > timedelta(hours=WINDOW_HOURS):
                 user_limit_data["count"] = 0
                 user_limit_data["window_start_time"] = None
-                write_user_limit(conn, user_id, 0, None)
+                if user_id:
+                    write_user_limit(conn, user_id, 0, None)
 
-        preguntes_fetes = user_limit_data["count"]
+        preguntes_fetes = user_limit_data.get("count", 0)
         preguntes_restants = LIMIT_PER_WINDOW - preguntes_fetes
 
         if preguntes_fetes >= LIMIT_PER_WINDOW:
@@ -443,7 +423,7 @@ Tens coneixements interns sobre fenòmens meteorològics locals de Catalunya com
 
         st.markdown(f"**Anàlisi per:** `{poble_sel.upper()}` | **Dia:** `{timestamp_str}`")
         if not limit_reached:
-            st.info(f"Tens **{preguntes_restants}** preguntes restants en aquesta finestra de {WINDOW_HOURS} hores.")
+            st.info(f"Tens **{preguntes_restants}** preguntes restants en aquesta sessió.")
         
         nivell_mapa_ia = st.selectbox("Canvia el nivell d'anàlisi del mapa (només per a l'IA):", 
                                      options=[1000, 950, 925, 850, 800, 700], 
@@ -463,9 +443,12 @@ Tens coneixements interns sobre fenòmens meteorològics locals de Catalunya com
             with st.chat_message("assistant"):
                 with st.spinner("Generant mapa i consultant l'IA..."):
                     
-                    new_start_time = user_limit_data["window_start_time"] or now_utc
-                    new_count = user_limit_data["count"] + 1
-                    write_user_limit(conn, user_id, new_count, new_start_time)
+                    if user_limit_data.get("window_start_time") is None:
+                        user_limit_data["window_start_time"] = now_utc
+                    user_limit_data["count"] += 1
+
+                    if user_id:
+                        write_user_limit(conn, user_id, user_limit_data["count"], user_limit_data["window_start_time"])
                     
                     map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
                     if error_map_ia:
@@ -510,8 +493,9 @@ Analitza la imatge adjunta i INTERPRETA les dades de context per respondre la me
             del st.session_state.token
             if 'chat' in st.session_state: del st.session_state.chat
             if 'messages' in st.session_state: del st.session_state.messages
+            if 'guest_limit_data' in st.session_state: del st.session_state.guest_limit_data
             st.rerun()
-            
+
 # --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
 def ui_capcalera_selectors():
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
