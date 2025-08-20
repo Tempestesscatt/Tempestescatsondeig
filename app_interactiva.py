@@ -24,6 +24,7 @@ from streamlit_oauth import OAuth2Component
 import io
 from PIL import Image
 
+
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
 
@@ -311,6 +312,17 @@ def get_color_for_param(param_name, value):
         return "#BC13FE"
     return "#FFFFFF"
 
+
+def format_time_left(time_delta):
+    """Formata un timedelta en hores i minuts llegibles."""
+    total_seconds = int(time_delta.total_seconds())
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, _ = divmod(remainder, 60)
+    if hours > 0:
+        return f"{hours} hores i {minutes} minuts"
+    else:
+        return f"{minutes} minuts"
+
 def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent MeteoIA (amb Google Gemini)")
 
@@ -347,8 +359,15 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     else:
         token = st.session_state['token']
         user_info = token.get('userinfo')
-        if user_info:
-            st.write(f"Hola, **{user_info.get('name', 'Usuari')}**! 👋")
+        if not user_info or not user_info.get("email"):
+            st.error("No s'ha pogut verificar la teva identitat. Si us plau, tanca la sessió i torna a entrar.")
+            if st.button("Tanca la sessió"):
+                del st.session_state.token
+                st.rerun()
+            return
+        
+        user_id = user_info.get("email")
+        st.write(f"Hola, **{user_info.get('name', 'Usuari')}**! 👋")
 
         try:
             genai.configure(api_key=GEMINI_API_KEY)
@@ -356,12 +375,39 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
             st.error(f"Error en configurar l'API de Gemini.")
             return
 
-        # --- INICI DEL NOU BLOC CONVERSACIONAL ---
+        # --- INICI: LÒGICA DEL LÍMIT D'ÚS (RATE LIMITER) ---
+        LIMIT_PER_WINDOW = 10
+        WINDOW_HOURS = 5
+        
+        if 'rate_limits' not in st.session_state:
+            st.session_state.rate_limits = {}
 
-        # Inicialització del xat (es fa només un cop per sessió)
+        if user_id not in st.session_state.rate_limits:
+            st.session_state.rate_limits[user_id] = {
+                "count": 0,
+                "window_start_time": None
+            }
+
+        user_limit_data = st.session_state.rate_limits[user_id]
+        now_utc = datetime.now(pytz.utc)
+        limit_reached = False
+
+        if user_limit_data["window_start_time"]:
+            elapsed_time = now_utc - user_limit_data["window_start_time"]
+            if elapsed_time > timedelta(hours=WINDOW_HOURS):
+                user_limit_data["count"] = 0
+                user_limit_data["window_start_time"] = None
+
+        if user_limit_data["count"] >= LIMIT_PER_WINDOW:
+            limit_reached = True
+            time_to_reset = (user_limit_data["window_start_time"] + timedelta(hours=WINDOW_HOURS))
+            time_left = time_to_reset - now_utc
+            st.warning(f"""**Has arribat al límit de {LIMIT_PER_WINDOW} preguntes.** 
+                        El teu accés es renovarà en aproximadament **{format_time_left(time_left)}**.""")
+        # --- FI: LÒGICA DEL LÍMIT D'ÚS ---
+
         if "chat" not in st.session_state:
             model = genai.GenerativeModel('gemini-1.5-flash')
-            # El "system prompt" ara NOMÉS conté les regles i la personalitat. És estàtic.
             system_prompt = """
 # MISSIÓ I PERSONALITAT
 Ets un expert meteoròleg operatiu, Tempestes.CAT-IA. La teva personalitat és la d'un col·lega apassionat del temps. Ets clar, concís i vas directe al gra.
@@ -383,103 +429,92 @@ La teva anàlisi visual ha de seguir aquestes regles estrictes:
     b. Valora les dades del sondeig que et proporcionaré a cada pregunta. Si no hi ha dades, indica-ho.
     c. Conclou combinant les dues anàlisis per determinar el risc de tempesta.
 """
-            # Creem la sessió de xat i li passem les instruccions inicials.
             st.session_state.chat = model.start_chat(history=[
                 {'role': 'user', 'parts': [system_prompt]},
                 {'role': 'model', 'parts': ["Hola! Sóc Tempestes.CAT-IA, el teu col·lega apassionat pel temps. Anem al gra. Quina és la teva pregunta?"]}
             ])
-            # Inicialitzem els missatges per mostrar a la UI amb la salutació inicial.
             st.session_state.messages = [{"role": "assistant", "content": "Hola! Sóc Tempestes.CAT-IA, el teu col·lega apassionat pel temps. Anem al gra. Quina és la teva pregunta?"}]
-
-        if 'api_calls' not in st.session_state:
-            st.session_state.api_calls = 0
-        
-        LIMIT_PER_SESSIO = 15
 
         st.markdown("Fes-me preguntes sobre el potencial de temps sever a Catalunya.")
         st.markdown(f"**Anàlisi per:** `{poble_sel.upper()}` | **Dia:** `{timestamp_str}`")
-        nivell_mapa_ia = st.selectbox("Canvia el nivell d'anàlisi del mapa (només per a l'IA):", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat")
+        nivell_mapa_ia = st.selectbox("Canvia el nivell d'anàlisi del mapa (només per a l'IA):", 
+                                     options=[1000, 950, 925, 850, 800, 700], 
+                                     format_func=lambda x: f"{x} hPa", 
+                                     key="ia_level_selector_chat",
+                                     disabled=limit_reached)
 
-        # Mostra l'historial de missatges guardat
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-        if st.session_state.api_calls >= LIMIT_PER_SESSIO:
-            st.warning(f"Has arribat al límit de {LIMIT_PER_SESSIO} preguntes per aquesta sessió.")
-        else:
-            if prompt_usuari := st.chat_input("Quina és la teva pregunta sobre el temps?"):
-                st.session_state.messages.append({"role": "user", "content": prompt_usuari})
-                with st.chat_message("user"):
-                    st.markdown(prompt_usuari)
+        if prompt_usuari := st.chat_input("Quina és la teva pregunta sobre el temps?", disabled=limit_reached):
+            st.session_state.messages.append({"role": "user", "content": prompt_usuari})
+            with st.chat_message("user"):
+                st.markdown(prompt_usuari)
 
-                with st.chat_message("assistant"):
-                    with st.spinner("Generant mapa i consultant l'IA..."):
-                        # La generació del mapa i les dades del sondeig es continuen fent a cada torn
-                        map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
-                        
-                        if error_map_ia:
-                            st.error(f"No s'han pogut carregar les dades del mapa: {error_map_ia}")
-                            return
+            with st.chat_message("assistant"):
+                with st.spinner("Generant mapa i consultant l'IA..."):
+                    
+                    # Incrementa el comptador i estableix el timestamp de l'usuari
+                    if user_limit_data["window_start_time"] is None:
+                        user_limit_data["window_start_time"] = datetime.now(pytz.utc)
+                    user_limit_data["count"] += 1
 
-                        fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
-                        buf = io.BytesIO()
-                        fig_mapa.savefig(buf, format='jpeg', bbox_inches='tight')
-                        buf.seek(0)
-                        img_mapa = Image.open(buf)
-                        plt.close(fig_mapa)
+                    # La resta del codi per generar mapa i cridar a l'IA
+                    map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
+                    
+                    if error_map_ia:
+                        st.error(f"No s'han pogut carregar les dades del mapa: {error_map_ia}")
+                        return
 
-                        resum_sondeig = "No hi ha dades de sondeig disponibles."
-                        if data_tuple:
-                            _, params_calculats = data_tuple
-                            resum_sondeig = f"""- Inestabilitat (CAPE): {params_calculats.get('CAPE', 0):.0f} J/kg.
+                    fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
+                    buf = io.BytesIO()
+                    fig_mapa.savefig(buf, format='png', dpi=150, bbox_inches='tight') # Canviat a PNG i DPI més alt
+                    buf.seek(0)
+                    img_mapa = Image.open(buf)
+                    plt.close(fig_mapa)
+
+                    resum_sondeig = "No hi ha dades de sondeig disponibles."
+                    if data_tuple:
+                        _, params_calculats = data_tuple
+                        resum_sondeig = f"""- Inestabilitat (CAPE): {params_calculats.get('CAPE', 0):.0f} J/kg.
 - Inhibició (CIN): {params_calculats.get('CIN', 0):.0f} J/kg.
 - Cisallament 0-6km: {params_calculats.get('Shear 0-6km', np.nan):.0f} nusos.
 - Helicitat 0-3km (SRH): {params_calculats.get('SRH 0-3km', np.nan):.0f} m²/s²."""
 
-                        # L'enviament del missatge ara és conversacional
-                        # Creem un prompt de context només amb la informació d'aquest torn.
-                        prompt_context_torn_actual = f"""
+                    prompt_context_torn_actual = f"""
 ---
 ## DADES PER A AQUESTA PREGUNTA
 - **Localització d'anàlisi del sondeig:** {poble_sel}
 - **Dades del sondeig:** {resum_sondeig}
-
 ---
 ## LA TEVA TASCA ARA
 Analitza la imatge adjunta i les dades del sondeig que t'acabo de proporcionar per respondre la meva pregunta: "{prompt_usuari}"
 """
-                        
-                        try:
-                            st.session_state.api_calls += 1
-                            # Fem servir el mètode .send_message() de la sessió de xat guardada
-                            resposta_completa = st.session_state.chat.send_message(
-                                [prompt_context_torn_actual, img_mapa]
-                            )
-                            full_response = resposta_completa.text
-                            st.markdown(full_response)
-                        except Exception as e:
-                            # Gestió d'errors
-                            error_text = str(e)
-                            if "429" in error_text and "quota" in error_text:
-                                full_response = "**Has superat el límit diari gratuït de consultes.**"
-                                st.error(full_response)
-                            else:
-                                full_response = f"Hi ha hagut un error inesperat contactant amb l'IA."
-                                st.error(full_response)
-                
-                st.session_state.messages.append({"role": "assistant", "content": full_response})
+                    
+                    try:
+                        resposta_completa = st.session_state.chat.send_message(
+                            [prompt_context_torn_actual, img_mapa]
+                        )
+                        full_response = resposta_completa.text
+                        st.markdown(full_response)
+                    except Exception as e:
+                        error_text = str(e)
+                        if "429" in error_text and "quota" in error_text:
+                            full_response = "**Has superat el límit diari gratuït de consultes a l'API de Google.**"
+                            st.error(full_response)
+                        else:
+                            full_response = f"Hi ha hagut un error inesperat contactant amb l'IA."
+                            st.error(full_response)
+            
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
         
         if st.button("Tanca la sessió"):
-            # Resetejar l'estat del xat en tancar sessió
-            st.session_state.api_calls = 0
             del st.session_state.token
-            # Esborrem el xat i els missatges per començar de nou a la propera sessió
-            if 'chat' in st.session_state:
-                del st.session_state.chat
-            if 'messages' in st.session_state:
-                del st.session_state.messages
+            if 'chat' in st.session_state: del st.session_state.chat
+            if 'messages' in st.session_state: del st.session_state.messages
             st.rerun()
+            
 # --- 4. LÒGICA DE LA INTERFÍCIE D'USUARI ---
 def ui_capcalera_selectors():
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
