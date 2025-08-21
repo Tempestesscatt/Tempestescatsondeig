@@ -162,8 +162,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 
         heights_agl = heights - heights[0]
         try:
-            lcl_p, _, lcl_h = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50, return_height=True)
-            params_calc['LCL_p'] = lcl_p; params_calc['LCL_Hgt'] = (heights_agl[0] + lcl_h).to('m').m
+            lcl_p, lcl_h = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50)
+            params_calc['LCL_p'] = lcl_p; params_calc['LCL_Hgt'] = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
         except: params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan, np.nan
         try:
             lfc_p, _ = mpcalc.lfc(p, T, Td, prof)
@@ -301,7 +301,7 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 def crear_skewt(p, T, Td, u, v, params_calc, titol):
     fig = plt.figure(figsize=(9, 10), dpi=150)
-    skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
+    skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.8, 0.9))
     skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2.5, label='Temperatura'); skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
     skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
@@ -322,33 +322,26 @@ def crear_skewt(p, T, Td, u, v, params_calc, titol):
     except: pass
     skew.ax.legend(); return fig
 def crear_hodograf_avancat(p, u, v, heights, titol):
-    fig = plt.figure(dpi=150); fig.set_figheight(fig.get_figwidth() * 1.1)
+    fig = plt.figure(figsize=(9, 10), dpi=150)
     gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[1.2, 1], top=0.92, bottom=0.05, left=0.05, right=0.95)
     ax_hodo = fig.add_subplot(gs[0, 0]); ax_info = fig.add_subplot(gs[0, 1]); ax_info.axis('off')
     fig.suptitle(titol, weight='bold', fontsize=16); h = Hodograph(ax_hodo, component_range=80.)
     h.add_grid(increment=20, color='gray', linestyle='--'); h.plot_colormapped(u.to('kt'), v.to('kt'), heights.to('km'), intervals=np.array([0, 3, 6, 12]) * units.km, colors=['red', 'green', 'blue'], linewidth=4)
-    heights_km = heights.to('km').m; valid_indices = ~np.isnan(heights_km) & ~np.isnan(u.m) & ~np.isnan(v.m); altituds_a_mostrar = [1, 3, 5, 8]
+    heights_km = heights.to('km').m; valid_indices = ~np.isnan(heights_km) & ~np.isnan(u.m) & ~np.isnan(v.m)
     if np.count_nonzero(valid_indices) > 1:
-        interp_u = interp1d(heights_km[valid_indices], u[valid_indices].to('kt').m, bounds_error=False, fill_value=np.nan)
-        interp_v = interp1d(heights_km[valid_indices], v[valid_indices].to('kt').m, bounds_error=False, fill_value=np.nan)
-        for h_km in altituds_a_mostrar:
-            if h_km < heights_km[valid_indices][-1]:
-                u_h, v_h = interp_u(h_km), interp_v(h_km)
-                if not (np.isnan(u_h) or np.isnan(v_h)):
-                    ax_hodo.plot(u_h, v_h, 'o', color='white', markersize=8, markeredgecolor='black'); ax_hodo.text(u_h, v_h, str(h_km), ha='center', va='center', fontsize=7, weight='bold')
-    params = {'BWD (nusos)': {}}; motion = {}; right_mover, critical_angle, sr_wind_speed = None, np.nan, None
-    try:
-        right_mover, left_mover, mean_wind_vec = mpcalc.bunkers_storm_motion(p, u, v, heights)
-        motion['RM'] = right_mover; motion['LM'] = left_mover; motion['Vent Mitjà'] = mean_wind_vec
-        for name, vec in motion.items():
-            u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m; marker = 's' if 'Mitjà' in name else 'o'
-            ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
-    except (ValueError, IndexError): right_mover = None
+        try:
+            right_mover, left_mover, mean_wind_vec = mpcalc.bunkers_storm_motion(p, u, v, heights)
+            motion = {'RM': right_mover, 'LM': left_mover, 'Vent Mitjà': mean_wind_vec}
+            for name, vec in motion.items():
+                u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m; marker = 's' if 'Mitjà' in name else 'o'
+                ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
+        except (ValueError, IndexError): right_mover = None
+    params = {'BWD (nusos)': {}}; critical_angle, sr_wind_speed = np.nan, None
     depths = {'0-1 km': 1000 * units.m, '0-3 km': 3000 * units.m, '0-6 km': 6000 * units.m}
     for name, depth in depths.items():
         try: params['BWD (nusos)'][name] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights, depth=depth)).to('kt').m
         except (ValueError, IndexError): params['BWD (nusos)'][name] = np.nan
-    if right_mover is not None:
+    if 'right_mover' in locals() and right_mover is not None:
         try:
             u_storm, v_storm = right_mover; critical_angle = mpcalc.critical_angle(p, u, v, heights, u_storm=u_storm, v_storm=v_storm).to('deg').m
             sr_wind_speed = mpcalc.wind_speed(u - u_storm, v - v_storm).to('kt')
@@ -361,7 +354,7 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
         ax_info.text(x_label, y_pos, key); ax_info.text(x_value, y_pos, f"{val:.0f}" if not np.isnan(val) else "---", ha='center'); y_pos -= y_step
     
     y_pos -= y_step; ax_info.text(0.5, y_pos, "Moviment Tempesta (dir/kts)", ha='center', weight='bold', fontsize=12); y_pos -= y_step*1.5
-    if motion:
+    if 'motion' in locals() and motion:
         for name, vec in motion.items():
             speed = mpcalc.wind_speed(*vec).to('kt').m; direction = mpcalc.wind_direction(*vec).to('deg').m
             ax_info.text(x_label, y_pos, f"{name}:"); ax_info.text(x_value, y_pos, f"{direction:.0f}°/{speed:.0f} kts", ha='left'); y_pos -= y_step
