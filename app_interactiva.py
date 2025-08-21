@@ -154,22 +154,29 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         params_calc['CAPE_total'] = cape.to('J/kg').m; params_calc['CIN_total'] = cin.to('J/kg').m
         
         try: params_calc['MU_CAPE'] = mpcalc.most_unstable_cape_cin(p, T, Td)[0].to('J/kg').m
-        except Exception: params_calc['MU_CAPE'] = np.nan
+        except: params_calc['MU_CAPE'] = np.nan
         try: params_calc['ML_CAPE'] = mpcalc.mixed_layer_cape_cin(p, T, Td)[0].to('J/kg').m
-        except Exception: params_calc['ML_CAPE'] = np.nan
+        except: params_calc['ML_CAPE'] = np.nan
 
         heights_agl = heights - heights[0]
-        try: lcl_p, _, lcl_h = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50, return_height=True); params_calc['LCL_Hgt'] = (heights_agl[0] + lcl_h).to('m').m
-        except: params_calc['LCL_Hgt'] = np.nan
-        try: lfc_p, _ = mpcalc.lfc(p, T, Td, prof); params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m if lfc_p else np.nan
-        except: params_calc['LFC_Hgt'] = np.nan
-        try: el_p, _ = mpcalc.el(p, T, Td, prof); params_calc['EL_Hgt'] = mpcalc.pressure_to_height_std(el_p).to('m').m if el_p else np.nan
-        except: params_calc['EL_Hgt'] = np.nan
+        try:
+            lcl_p, _, lcl_h = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50, return_height=True)
+            params_calc['LCL_p'] = lcl_p; params_calc['LCL_Hgt'] = (heights_agl[0] + lcl_h).to('m').m
+        except: params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan, np.nan
+        try:
+            lfc_p, _ = mpcalc.lfc(p, T, Td, prof)
+            params_calc['LFC_p'] = lfc_p; params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m if lfc_p else np.nan
+        except: params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan, np.nan
+        try:
+            el_p, _ = mpcalc.el(p, T, Td, prof)
+            params_calc['EL_p'] = el_p; params_calc['EL_Hgt'] = mpcalc.pressure_to_height_std(el_p).to('m').m if el_p else np.nan
+        except: params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan, np.nan
             
         try:
-            frz_lvl_h = mpcalc.height_at_pressure(p, heights, 0 * units.degC)
-            params_calc['FRZG_Lvl'] = frz_lvl_h[0].to('m').m if frz_lvl_h.size > 0 else np.nan
-        except: params_calc['FRZG_Lvl'] = np.nan
+            freezing_level_p = mpcalc.isobaric_surface(p, T, 0*units.degC)[0]
+            params_calc['FRZG_Lvl_p'] = freezing_level_p
+            params_calc['FRZG_Lvl_Hgt'] = mpcalc.pressure_to_height_std(freezing_level_p).to('m').m
+        except: params_calc['FRZG_Lvl_p'], params_calc['FRZG_Lvl_Hgt'] = np.nan, np.nan
 
         try:
             rm, _, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
@@ -298,14 +305,30 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.7, density=2.5, arrowsize=0.6, zorder=3, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
-def crear_skewt(p, T, Td, u, v, titol):
+def crear_skewt(p, T, Td, u, v, params_calc, titol):
     fig = plt.figure(figsize=(9, 9), dpi=150); skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
-    skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2, label='Temperatura'); skew.plot(p, Td, 'g', lw=2, label='Punt de Rosada')
+    skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2.5, label='Temperatura'); skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
     skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
-    prof = mpcalc.parcel_profile(p, T[0], Td[0]); skew.plot(p, prof, 'k', linewidth=2, label='Trajectòria Parcel·la')
-    skew.shade_cape(p, T, prof, color='red', alpha=0.3); skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
+    prof = mpcalc.parcel_profile(p, T[0], Td[0]); 
+    skew.plot(p, prof, 'k', linewidth=4, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=6, foreground='white')])
+    skew.shade_cape(p, T, prof, color='red', alpha=0.4); skew.shade_cin(p, T, prof, color='blue', alpha=0.4)
     skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_title(titol, weight='bold', fontsize=14); skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
+    
+    # Dibuixar línies de nivells clau
+    levels_to_plot = {'LCL': 'LCL_p', 'LFC': 'LFC_p', 'EL': 'EL_p', '0°C': 'FRZG_Lvl_p'}
+    for name, key in levels_to_plot.items():
+        if key in params_calc and not np.isnan(params_calc[key].m):
+            p_lvl = params_calc[key]
+            skew.ax.axhline(p_lvl.m, color='blue', linestyle='--', linewidth=1)
+            skew.ax.text(skew.ax.get_xlim()[1], p_lvl.m, f' {name}', color='blue', ha='left', va='center', fontsize=10)
+            
+    # Detecció i marcatge d'inversions
+    inversions = mpcalc.inversions(p, T, Td, top=p.max(), bottom=p.min())
+    for bottom_p, top_p in inversions:
+        skew.ax.axhspan(bottom_p.m, top_p.m, color='blue', alpha=0.2, linewidth=0)
+        skew.ax.text(skew.ax.get_xlim()[0], (bottom_p.m + top_p.m) / 2, ' Subsidència', color='blue', ha='left', va='center', fontsize=9)
+
     skew.ax.legend(); return fig
 def crear_hodograf_avancat(p, u, v, heights, titol):
     fig = plt.figure(figsize=(9, 9), dpi=150) 
@@ -402,7 +425,7 @@ def ui_llegenda_sondeig(params):
         <div style="display: flex; justify-content: space-between;">
             <div style="width: 48%;">
                 <span style="font-weight: bold;">Nivells Clau:</span><br>
-                Congelació: {fmt_int(params.get('FRZG_Lvl'), 'm')}<br>
+                Congelació: {fmt_int(params.get('FRZG_Lvl_Hgt'), 'm')}<br>
                 LCL: {fmt_int(params.get('LCL_Hgt'), 'm')}<br>
                 LFC: {fmt_int(params.get('LFC_Hgt'), 'm')}<br>
                 EL: {fmt_int(params.get('EL_Hgt'), 'm')}<br>
@@ -582,13 +605,14 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         with contingut_principal:
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
-            col1, col2, col3 = st.columns([2.5, 1.5, 2.5]) # Skew-T, Llegenda, Hodògraf
+            col1, col2 = st.columns([2.5, 3]) # Skew-T, Hodògraf i Llegenda
             with col1:
-                fig_skewt = crear_skewt(p, T, Td, u, v, f"Sondeig Vertical\n{poble_sel}"); st.pyplot(fig_skewt); plt.close(fig_skewt)
+                fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}"); 
+                st.pyplot(fig_skewt); plt.close(fig_skewt)
             with col2:
-                ui_llegenda_sondeig(params_calculats)
-            with col3:
-                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}"); st.pyplot(fig_hodo); plt.close(fig_hodo)
+                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}"); 
+                st.pyplot(fig_hodo); plt.close(fig_hodo)
+            ui_llegenda_sondeig(params_calculats)
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteociel | IA per Google Gemini.</p>", unsafe_allow_html=True)
