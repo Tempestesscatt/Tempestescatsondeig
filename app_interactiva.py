@@ -372,12 +372,17 @@ def crear_skewt(p, T, Td, u, v, titol):
 
 # Substitueix la teva funció crear_hodograf_avancat() sencera per aquesta:
 
+# Substitueix la teva funció crear_hodograf_avancat() sencera per aquesta:
+
 def crear_hodograf_avancat(p, u, v, heights, titol):
     """
-    Crea un hodògraf avançat. Versió amb marcadors d'altura selectius i text explicatiu millorat.
+    Crea un hodògraf avançat. Versió amb el text explicatiu situat a sota de tots els gràfics.
     """
     fig = plt.figure(figsize=(9, 9), dpi=150) 
-    gs = fig.add_gridspec(nrows=3, ncols=2, width_ratios=[2.5, 1.5], hspace=0.4, wspace=0.3)
+    
+    # ===> CANVI 1: Ajustem el GridSpec per deixar un marge inferior (bottom=0.25) <===
+    gs = fig.add_gridspec(nrows=3, ncols=2, width_ratios=[2.5, 1.5], hspace=0.4, wspace=0.3,
+                          top=0.9, bottom=0.25, left=0.1, right=0.9)
     
     ax_hodo = fig.add_subplot(gs[:, 0])
     ax_params = fig.add_subplot(gs[0, 1])
@@ -394,7 +399,6 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
     heights_km = heights.to('km').m
     valid_indices = ~np.isnan(heights_km) & ~np.isnan(u.m) & ~np.isnan(v.m)
     
-    # ===> CANVI 1: Només mostrem els números d'altura 1, 3, 5 i 8 <===
     altituds_a_mostrar = [1, 3, 5, 8]
     if np.count_nonzero(valid_indices) > 1:
         interp_u = interp1d(heights_km[valid_indices], u[valid_indices].to('kt').m, bounds_error=False, fill_value=np.nan)
@@ -469,7 +473,7 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
     ax_sr_wind.set_ylim(0, 12); ax_sr_wind.grid(True, linestyle='--')
     
     # --- 5. Text Explicatiu Millorat ---
-    # ===> CANVI 2: Text explicatiu molt més detallat i amb un exemple <===
+    # ===> CANVI 2: Ajustem les coordenades 'y' del text per situar-lo a baix de tot <===
     info_text = (
         "**Com interpretar l'Hodògraf:**\n\n"
         "**• Forma (Clau per al tipus de tempesta):**\n"
@@ -488,8 +492,12 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
         "de **BWD 0-6 km superant els 50 nusos** i, encara que no es mostri, una Helicitat (SRH) per sobre de 200 m²/s².\n"
         "Aquesta combinació, juntament amb un CAPE elevat al sondeig, és un senyal d'alerta per a supercèl·lules."
     )
-    fig.text(0.01, 0.01, info_text, va='bottom', ha='left', fontsize=9, wrap=True, bbox=dict(boxstyle='round,pad=0.5', fc='ivory', alpha=0.5))
-    plt.tight_layout(rect=[0, 0.15, 1, 0.96]) # Ajustem rect per deixar espai al text
+    fig.text(0.5, 0.12, info_text, va='top', ha='center', fontsize=9, wrap=True, 
+             bbox=dict(boxstyle='round,pad=0.5', fc='ivory', alpha=0.5))
+
+    # Eliminem tight_layout que pot interferir amb el posicionament manual
+    # plt.tight_layout(rect=[0, 0.15, 1, 0.96]) 
+    
     return fig
     
 @st.cache_data(ttl=600)
