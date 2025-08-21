@@ -946,7 +946,10 @@ def main():
             chat_tab_label = f"💬 Xat en Línia ({unread_count})" if unread_count > 0 else "💬 Xat en Línia"
 
             tab_ia, tab_xat, tab_mapes, tab_vertical = st.tabs(["Assistent MeteoIA", chat_tab_label, "Anàlisi de Mapes", "Anàlisi Vertical"])
-            with tab_ia: ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
+            
+            # ===> LÍNIA CORREGIDA <===
+            with tab_ia: ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
+            
             with tab_xat: ui_pestanya_xat(chat_history)
             with tab_mapes: ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
             with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
