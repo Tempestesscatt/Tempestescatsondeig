@@ -306,30 +306,49 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 def crear_skewt(p, T, Td, u, v, params_calc, titol):
-    fig = plt.figure(figsize=(9, 9), dpi=150); skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
-    skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2.5, label='Temperatura'); skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
-    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
-    skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
-    prof = mpcalc.parcel_profile(p, T[0], Td[0]); 
-    skew.plot(p, prof, 'k', linewidth=4, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=6, foreground='white')])
-    skew.shade_cape(p, T, prof, color='red', alpha=0.4); skew.shade_cin(p, T, prof, color='blue', alpha=0.4)
-    skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_title(titol, weight='bold', fontsize=14); skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
+    fig = plt.figure(figsize=(9, 9), dpi=150)
+    skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
+    skew.ax.grid(True, linestyle='-', alpha=0.5)
+    skew.plot(p, T, 'r', lw=2.5, label='Temperatura')
+    skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
+    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
+    skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
+    skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6)
+    skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
     
-    # Dibuixar línies de nivells clau
+    prof = mpcalc.parcel_profile(p, T[0], Td[0])
+    skew.plot(p, prof, 'k', linewidth=4, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=6, foreground='white')])
+    skew.shade_cape(p, T, prof, color='red', alpha=0.4)
+    skew.shade_cin(p, T, prof, color='blue', alpha=0.4)
+    
+    skew.ax.set_ylim(1000, 100)
+    skew.ax.set_xlim(-40, 40)
+    skew.ax.set_title(titol, weight='bold', fontsize=14)
+    skew.ax.set_xlabel("Temperatura (°C)")
+    skew.ax.set_ylabel("Pressió (hPa)")
+    
+    # === INICI DE LA CORRECCIÓ ===
     levels_to_plot = {'LCL': 'LCL_p', 'LFC': 'LFC_p', 'EL': 'EL_p', '0°C': 'FRZG_Lvl_p'}
     for name, key in levels_to_plot.items():
-        if key in params_calc and not np.isnan(params_calc[key].m):
-            p_lvl = params_calc[key]
+        p_lvl = params_calc.get(key)
+        # Comprovació robusta: primer assegurem que no és None, després que no és NaN.
+        # Això funciona tant per a Quantities de MetPy com per a floats.
+        if p_lvl is not None and not np.isnan(p_lvl):
             skew.ax.axhline(p_lvl.m, color='blue', linestyle='--', linewidth=1)
             skew.ax.text(skew.ax.get_xlim()[1], p_lvl.m, f' {name}', color='blue', ha='left', va='center', fontsize=10)
-            
-    # Detecció i marcatge d'inversions
-    inversions = mpcalc.inversions(p, T, Td, top=p.max(), bottom=p.min())
-    for bottom_p, top_p in inversions:
-        skew.ax.axhspan(bottom_p.m, top_p.m, color='blue', alpha=0.2, linewidth=0)
-        skew.ax.text(skew.ax.get_xlim()[0], (bottom_p.m + top_p.m) / 2, ' Subsidència', color='blue', ha='left', va='center', fontsize=9)
+    # === FI DE LA CORRECCIÓ ===
 
-    skew.ax.legend(); return fig
+    # Detecció i marcatge d'inversions
+    try:
+        inversions = mpcalc.inversions(p, T, Td, top=p.max(), bottom=p.min())
+        for bottom_p, top_p in inversions:
+            skew.ax.axhspan(bottom_p.m, top_p.m, color='blue', alpha=0.2, linewidth=0)
+            skew.ax.text(skew.ax.get_xlim()[0] + 2, (bottom_p.m + top_p.m) / 2, ' Subsidència', color='blue', ha='left', va='center', fontsize=9)
+    except Exception:
+        pass # Si falla la detecció d'inversions, no fem res
+
+    skew.ax.legend()
+    return fig
 def crear_hodograf_avancat(p, u, v, heights, titol):
     fig = plt.figure(figsize=(9, 9), dpi=150) 
     gs = fig.add_gridspec(nrows=3, ncols=2, width_ratios=[2.5, 1.5], hspace=0.4, wspace=0.3, top=0.9, bottom=0.25, left=0.1, right=0.9)
