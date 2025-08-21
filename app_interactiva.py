@@ -374,9 +374,8 @@ def crear_skewt(p, T, Td, u, v, titol):
 
 def crear_hodograf_avancat(p, u, v, heights, titol):
     """
-    Crea un hodògraf avançat. Versió amb mides ajustades i textos traduïts al català.
+    Crea un hodògraf avançat. Versió amb gràfic i taules simplificades segons la petició.
     """
-    # ===> CANVI: Mida de la figura ajustada per a proporcions similars al Skew-T <===
     fig = plt.figure(figsize=(9, 9), dpi=150) 
     gs = fig.add_gridspec(nrows=3, ncols=2, width_ratios=[2.5, 1.5], hspace=0.4, wspace=0.3)
     
@@ -416,7 +415,7 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
             u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m
             marker = 's' if 'Mitjà' in name else 'o'
             ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
-            ax_hodo.text(u_comp + 2, v_comp + 2, name.replace('Bunkers ', ''), fontsize=10, weight='bold')
+            # ===> CANVI 1: S'ha eliminat la línia ax_hodo.text(...) per treure les etiquetes <===
     except (ValueError, IndexError): right_mover = None
 
     depths = {'0-500 m': 500 * units.m, '0-1 km': 1000 * units.m, '0-3 km': 3000 * units.m, '0-6 km': 6000 * units.m}
@@ -426,6 +425,7 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
             params['BWD (kts)'][name] = mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m
         except (ValueError, IndexError): params['BWD (kts)'][name] = np.nan
         
+        # El càlcul de SRH es manté internament, però no es mostrarà
         if right_mover is not None:
             try:
                 u_storm, v_storm = right_mover
@@ -442,17 +442,18 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
             sr_wind_speed = mpcalc.wind_speed(sr_u, sr_v).to('kt')
         except (ValueError, IndexError, TypeError): pass
 
-    # --- 3. Taules de Paràmetres (Textos en Català) ---
+    # --- 3. Taules de Paràmetres (Simplificada) ---
     ax_params.axis('off'); ax_motion.axis('off')
     ax_params.text(0, 1, "Paràmetres", fontsize=12, weight='bold', va='top')
-    ax_params.text(0.5, 0.85, "BWD\n(nusos)", ha='center', va='top', weight='bold')
-    ax_params.text(0.85, 0.85, "SRH\n(m²/s²)", ha='center', va='top', weight='bold')
+    # ===> CANVI 2: Posició del títol ajustada i eliminació de la capçalera SRH <===
+    ax_params.text(0.65, 0.85, "BWD\n(nusos)", ha='center', va='top', weight='bold')
+    
     y_pos = 0.6
     for key in depths.keys():
-        bwd_val = params['BWD (kts)'].get(key, np.nan); srh_val = params['SRH (m²/s²)'].get(key, np.nan)
-        ax_params.text(0, y_pos, key, va='center')
-        ax_params.text(0.5, y_pos, f"{bwd_val:.0f}" if not np.isnan(bwd_val) else '---', ha='center', va='center')
-        ax_params.text(0.85, y_pos, f"{srh_val:.0f}" if not np.isnan(srh_val) else '---', ha='center', va='center')
+        bwd_val = params['BWD (kts)'].get(key, np.nan)
+        ax_params.text(0.3, y_pos, key, va='center')
+        ax_params.text(0.65, y_pos, f"{bwd_val:.0f}" if not np.isnan(bwd_val) else '---', ha='center', va='center')
+        # ===> CANVI 2: S'ha eliminat la línia que mostrava el valor de SRH <===
         y_pos -= 0.18
 
     ax_motion.text(0, 1, "Moviment Tempesta (dir/kts)", fontsize=12, weight='bold', va='top')
@@ -468,31 +469,32 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
     ax_motion.text(0, y_pos, "Angle Crític:", va='center')
     ax_motion.text(0.9, y_pos, f"{critical_angle:.0f}°" if not np.isnan(critical_angle) else '---', va='center', ha='right')
 
-    # --- 4. Gràfic SR Wind vs Height (Textos en Català) ---
+    # --- 4. Gràfic SR Wind vs Height (Simplificat) ---
     ax_sr_wind.set_title("Vent Relatiu vs. Altura (RM)", fontsize=12, weight='bold')
     if sr_wind_speed is not None:
         ax_sr_wind.plot(sr_wind_speed, heights_km)
         ax_sr_wind.set_xlim(0, max(60, sr_wind_speed[~np.isnan(sr_wind_speed)].max().m + 5 if np.any(~np.isnan(sr_wind_speed)) else 60))
     else: ax_sr_wind.text(0.5, 0.5, "Càlcul no disponible", ha='center', va='center', transform=ax_sr_wind.transAxes, fontsize=9, color='gray')
+    
+    # ===> CANVI 3: Etiqueta de l'eix X simplificada <===
     ax_sr_wind.set_xlabel("Vent Relatiu (nusos)"); ax_sr_wind.set_ylabel("Altura (km)")
+    
     ax_sr_wind.set_ylim(0, 12); ax_sr_wind.grid(True, linestyle='--')
     ax_sr_wind.fill_betweenx([0, 2], 40, 60, color='gray', alpha=0.2)
     ax_sr_wind.text(50, 1, "Supercèl·lula\n(Nivell Baix)", ha='center', va='center', fontsize=8, color='gray')
     ax_sr_wind.fill_betweenx([7, 11], 40, 60, color='gray', alpha=0.2)
     ax_sr_wind.text(50, 9, "Supercèl·lula\nClàssica", ha='center', va='center', fontsize=8, color='gray')
     
-    # --- 5. Text Explicatiu (Textos en Català) ---
+    # --- 5. Text Explicatiu ---
     info_text = (
         "Com interpretar l'Hodògraf:\n"
         "• Forma: Una corba pronunciada indica cisallament direccional, favorable per a tempestes organitzades i rotació (supercèl·lules).\n"
-        "• SRH (Helicitat): Potencial de rotació. Valors > 150 m²/s² (0-3 km) són significatius per a mesociclons.\n"
         "• BWD (Cisallament): Canvi de vent amb l'altura. Valors > 40 nusos (0-6 km) afavoreixen l'organització de les tempestes.\n"
         "• Bunkers RM: Moviment previst d'una supercèl·lula que es desvia cap a la dreta del vent mitjà."
     )
     fig.text(0.01, 0.01, info_text, va='bottom', ha='left', fontsize=9, wrap=True, bbox=dict(boxstyle='round,pad=0.5', fc='ivory', alpha=0.5))
     plt.tight_layout(rect=[0, 0.1, 1, 0.96])
     return fig
-    
 
 @st.cache_data(ttl=600)
 def carregar_imatge_satelit(url):
