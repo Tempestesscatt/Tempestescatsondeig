@@ -643,4 +643,4 @@ def main():
             with tab_mapes: ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
             with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
         ui_peu_de_pagina()
-if __name__ == "__main__": main()```
+if __name__ == "__main__": main()
