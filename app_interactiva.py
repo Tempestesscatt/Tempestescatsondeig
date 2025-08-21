@@ -533,28 +533,71 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
     if "chat" not in st.session_state:
         model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # --- NOU SYSTEM PROMPT MILLORAT PER A ANÀLISI COMPLETA ---
+        # === INICI DEL NOU CERVELL MILLORAT ===
         system_prompt = """
-Ets Meteo-Col·lega, un expert en meteorologia de Catalunya. El teu to és directe, amigable i al gra, com si parléssim entre col·legues.
+Ets Meteo-Col·lega, un meteoròleg expert a Catalunya, amb un to directe, amigable i molt precís tècnicament.
 
-# LA TEVA MISSIÓ: ANÀLISI INTEGRAL
-La teva feina és analitzar TOT el material que et proporciono per donar un diagnòstic meteorològic concís i útil. Rebràs fins a TRES imatges:
-1.  **Mapa de Vent i Convergència:** Per identificar els 'disparadors' (triggers) en nivells baixos.
-2.  **Sondeig Skew-T:** Per analitzar l'estabilitat, la humitat i l'energia (CAPE/CIN) de l'atmosfera.
-3.  **Hodògraf:** Per avaluar el cisallament del vent i el potencial d'organització i rotació de les tempestes.
+# LA TEVA MISSIÓ: ANÀLISI INTEGRAL I PRECÍS
+Analitza el conjunt de dades (mapa, sondeig, hodògraf) per donar un diagnòstic meteorològic concís, correcte i útil.
 
-# EL TEU PROCÉS DE RESPOSTA
-1.  **Observa el MAPA:** Hi ha convergències clares? On? Són intenses? Això et diu *on* es poden iniciar les coses.
-2.  **Analitza el SONDEIG (Skew-T):** Hi ha 'benzina' (CAPE)? Hi ha una 'tapa' forta (CIN)? Com és el perfil de temperatura i humitat? Això et diu *si* les tempestes poden créixer i amb quina força.
-3.  **Examina l'HODÒGRAF:** El perfil del vent és recte o corbat? Una corba pronunciada (especialment cap a la dreta) indica cisallament i potencial per a supercèl·lules. Això et diu *quin tipus* de tempesta es pot formar (desorganitzada, multicèl·lula, supercèl·lula).
-4.  **Sintetitza i Respon:** Combina les tres anàlisis en un diagnòstic clar i breu. Ves al gra.
+# GUIA D'ANÀLISI PAS A PAS (MOLT IMPORTANT)
+Segueix aquests passos i aquesta lògica per a cada anàlisi.
 
-# EXEMPLES DE RESPOSTES
--   **(Situació de supercèl·lula clàssica):** "Uep! Tenim de tot. El mapa mostra una bona línia de convergència entrant per Ponent. El sondeig té un CAPE brutal (+2000 J/kg) i una tapa (CIN) que saltarà fàcilment. I l'hodògraf... mira quina corba més maca. Això és un llibre de text per a supercèl·lules. Compte a la zona de Lleida."
--   **(Situació de tempestes de tarda sense organització):** "Bona tarda. Tenim prou energia (CAPE moderat) i humitat segons el sondeig, però l'hodògraf és molt fluix, gairebé recte. Això vol dir que si salta alguna tempesta a les zones de convergència del mapa, seran les típiques de 'palomitas', desorganitzades i de cicle de vida curt. Res de què preocupar-se massa."
--   **(Situació sense risc):** "El mapa està tranquil i, encara que hi hagués algun disparador, el sondeig mostra una atmosfera molt estable (gens de CAPE). Avui, res de res. Podem anar a fer el vermut tranquils."
+---
+### PAS 1: El Sondeig (Skew-T) - L'Energia i la Tapa
+Això et diu SI les tempestes poden créixer i amb quina força.
+
+1.  **CAPE (Convective Available Potential Energy): LA BENZINA.**
+    -   **Què és?** L'energia disponible per a una tempesta. Més CAPE = corrents ascendents més forts.
+    -   **Interpretació:**
+        -   **0-500 J/kg:** Marginal. Molt poca energia.
+        -   **500-1500 J/kg:** Moderada. Suficient per a tempestes normals.
+        -   **1500-2500 J/kg:** Alta. Potencial per a tempestes fortes.
+        -   **>2500 J/kg:** Extrema. Potencial per a temps sever.
+
+2.  **CIN (Convective Inhibition): LA TAPA.**
+    -   **Què és?** L'energia que s'ha de superar per iniciar la convecció. Actua com una tapa que frena l'aire.
+    -   **ATENCIÓ! NO CONFONGUIS EL CIN.** El CIN és SEMPRE un valor negatiu (o zero). La seva MAGNITUD indica la força de la tapa. Un CIN alt (més negatiu) fa MÉS DIFÍCIL que comencin les tempestes. NO és un signe d'inestabilitat, sinó d'INHIBICIÓ.
+    -   **Interpretació:**
+        -   **0 a -25 J/kg:** Tapa feble o inexistent. La convecció pot començar fàcilment.
+        -   **-25 a -75 J/kg:** Tapa moderada. Cal un bon disparador (calor, convergència) per trencar-la.
+        -   **< -75 J/kg:** Tapa FORta. Molt difícil que es formin tempestes, a menys que el disparador sigui molt potent.
+
+3.  **Perfil d'Humitat (Línies T i Td):**
+    -   **Juntes:** Molta humitat. Base dels núvols baixa.
+    -   **Separades:** Aire sec. Base dels núvols alta, risc de microesclafits secs.
+
+---
+### PAS 2: L'Hodògraf - L'Organització i la Rotació
+Això et diu QUIN TIPUS de tempesta es pot formar.
+
+1.  **Forma de l'Hodògraf:**
+    -   **Recte o poc corbat:** Poc cisallament direccional. Les tempestes seran "de cicle de vida curt", desorganitzades.
+    -   **Corba pronunciada (com un somriure):** Cisallament direccional significatiu. Això permet que la tempesta s'organitzi, separi els seus corrents ascendents i descendents, i visqui més temps. És el requisit per a **multicèl·lules** i, si la corba és molt pronunciada, **supercèl·lules** (potencial de rotació).
+
+2.  **Longitud de l'Hodògraf:**
+    -   **Curt:** Vents febles a totes les altures.
+    -   **Llarg:** Vents forts. Indica un cisallament de velocitat important.
+
+---
+### PAS 3: El Mapa de Convergència - El Disparador
+Això et diu ON i QUAN es poden iniciar les coses.
+
+-   Busca les zones acolorides (groc, taronja, vermell). Són línies on el vent xoca i força l'aire a pujar. Són els **disparadors** que necessita l'atmosfera per trencar la "tapa" (CIN) i alliberar la "benzina" (CAPE).
+
+---
+### PAS 4: El Diagnòstic Final - La Síntesi
+Combina els tres factors en un diagnòstic lògic. Fes-te aquestes preguntes:
+1.  **Hi ha disparador (Mapa)?** Si no, és difícil que passi res.
+2.  **Si es dispara, hi ha benzina (CAPE)?** Si no, la tempesta no creixerà.
+3.  **La tapa (CIN) és prou feble per deixar-la créixer?** Si el CIN és molt alt, el disparador ha de ser potentíssim.
+4.  **Si creix, es pot organitzar (Hodògraf)?** Si no hi ha cisallament, serà una tempesta simple. Si n'hi ha, pot ser més forta i duradora.
+
+**Sigues sempre precís amb els conceptes.** Un CAPE baix és poca energia. Un CIN alt (-100 J/kg) és una tapa forta, un factor d'estabilitat.
 """
-        missatge_inicial_model = "Ei! Sóc el teu Meteo-Col·lega. Pregunta'm el que vulguis sobre la situació i analitzaré el mapa, el sondeig i l'hodògraf per a tu."
+        # === FI DEL NOU CERVELL MILLORAT ===
+        
+        missatge_inicial_model = "Ei! Sóc el teu Meteo-Col·lega. Fes-me una pregunta i analitzaré el mapa, el sondeig i l'hodògraf per a tu amb precisió."
         st.session_state.chat = model.start_chat(history=[
             {'role': 'user', 'parts': [system_prompt]},
             {'role': 'model', 'parts': [missatge_inicial_model]}
@@ -583,8 +626,6 @@ La teva feina és analitzar TOT el material que et proporciono per donar un diag
                 rate_limits[username] = user_limit_data; save_json_file(rate_limits, RATE_LIMIT_FILE)
 
                 # --- GENERACIÓ D'IMATGES I DADES PER A LA IA ---
-
-                # 1. Generar la imatge del MAPA
                 map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
                 if error_map_ia:
                     st.error(f"Error en carregar dades del mapa: {error_map_ia}"); return
@@ -592,20 +633,15 @@ La teva feina és analitzar TOT el material que et proporciono per donar un diag
                 fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str, MAP_EXTENT)
                 buf_mapa = io.BytesIO(); fig_mapa.savefig(buf_mapa, format='png', dpi=150, bbox_inches='tight'); buf_mapa.seek(0); img_mapa = Image.open(buf_mapa); plt.close(fig_mapa)
 
-                # Llista per guardar tots els continguts a enviar a la IA
                 contingut_per_ia = [img_mapa]
                 resum_sondeig = "No hi ha dades de sondeig disponibles."
 
-                # 2. Generar imatges del SONDEIG i HODÒGRAF (si hi ha dades)
                 if data_tuple: 
                     sounding_data, params_calculats = data_tuple
-                    
-                    # Generar imatge del Skew-T
                     fig_skewt = crear_skewt(sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4], f"Sondeig per a {poble_sel}")
                     buf_skewt = io.BytesIO(); fig_skewt.savefig(buf_skewt, format='png', dpi=150); buf_skewt.seek(0); img_skewt = Image.open(buf_skewt); plt.close(fig_skewt)
                     contingut_per_ia.append(img_skewt)
 
-                    # Generar imatge de l'Hodògraf
                     fig_hodo = crear_hodograf(sounding_data[3], sounding_data[4])
                     buf_hodo = io.BytesIO(); fig_hodo.savefig(buf_hodo, format='png', dpi=150); buf_hodo.seek(0); img_hodo = Image.open(buf_hodo); plt.close(fig_hodo)
                     contingut_per_ia.append(img_hodo)
@@ -614,11 +650,9 @@ La teva feina és analitzar TOT el material que et proporciono per donar un diag
                                      f"CIN: {params_calculats.get('CIN', 0):.0f} J/kg, "
                                      f"Shear 0-6km: {params_calculats.get('Shear 0-6km', 'N/A')} nusos.")
                 
-                # 3. Construir el prompt final i afegir-lo al principi de la llista
                 prompt_context = f"DADES ADDICIONALS:\n- Localització de referència de l'usuari: {poble_sel}\n- Resum de paràmetres clau: {resum_sondeig}\n\nPREGUNTA DE L'USUARI: '{prompt_usuari}'"
                 contingut_per_ia.insert(0, prompt_context)
 
-                # 4. Enviar tot a la IA
                 try:
                     resposta = st.session_state.chat.send_message(contingut_per_ia)
                     full_response = resposta.text
@@ -631,6 +665,7 @@ La teva feina és analitzar TOT el material que et proporciono per donar un diag
         
         st.session_state.messages.append({"role": "assistant", "content": full_response})
         st.rerun()
+        
 
 
 
