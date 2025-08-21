@@ -146,13 +146,16 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         valid_indices = ~np.isnan(p_profile) & ~np.isnan(T_profile) & ~np.isnan(Td_profile) & ~np.isnan(u_profile) & ~np.isnan(v_profile) & ~np.isnan(h_profile)
         p, T, Td = np.array(p_profile)[valid_indices] * units.hPa, np.array(T_profile)[valid_indices] * units.degC, np.array(Td_profile)[valid_indices] * units.degC
         u, v, heights = np.array(u_profile)[valid_indices] * units('m/s'), np.array(v_profile)[valid_indices] * units('m/s'), np.array(h_profile)[valid_indices] * units.meter
+        
         params_calc = {}
         prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC'); cape, cin = mpcalc.cape_cin(p, T, Td, prof)
         params_calc['CAPE_total'] = cape.to('J/kg').m; params_calc['CIN_total'] = cin.to('J/kg').m
+        
         try: params_calc['MU_CAPE'] = mpcalc.most_unstable_cape_cin(p, T, Td)[0].to('J/kg').m
         except: params_calc['MU_CAPE'] = np.nan
         try: params_calc['ML_CAPE'] = mpcalc.mixed_layer_cape_cin(p, T, Td)[0].to('J/kg').m
         except: params_calc['ML_CAPE'] = np.nan
+
         heights_agl = heights - heights[0]
         try:
             lcl_p, _, lcl_h = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50, return_height=True)
@@ -166,22 +169,24 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             el_p, _ = mpcalc.el(p, T, Td, prof)
             params_calc['EL_p'] = el_p; params_calc['EL_Hgt'] = mpcalc.pressure_to_height_std(el_p).to('m').m if el_p else np.nan
         except: params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan, np.nan
+            
         try:
             freezing_level_p = mpcalc.isobaric_surface(p, T, 0*units.degC, bottom_up_search=True)[0]
             params_calc['FRZG_Lvl_p'] = freezing_level_p
             params_calc['FRZG_Lvl_Hgt'] = mpcalc.pressure_to_height_std(freezing_level_p).to('m').m
         except: params_calc['FRZG_Lvl_p'], params_calc['FRZG_Lvl_Hgt'] = np.nan, np.nan
+
         try:
             rm, _, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
             params_calc['s-RH_0-1km'] = mpcalc.storm_relative_helicity(heights, u, v, depth=1000 * units.m, u_storm=rm[0], v_storm=rm[1])[0].to('m**2/s**2').m
             params_calc['s-RH_0-3km'] = mpcalc.storm_relative_helicity(heights, u, v, depth=3000 * units.m, u_storm=rm[0], v_storm=rm[1])[0].to('m**2/s**2').m
         except: params_calc['s-RH_0-1km'], params_calc['s-RH_0-3km'] = np.nan, np.nan
+            
         try: params_calc['KI'] = mpcalc.k_index(p, T, Td).m
         except: params_calc['KI'] = np.nan
         try: params_calc['TT'] = mpcalc.total_totals_index(p, T, Td).m
         except: params_calc['TT'] = np.nan
-        try: params_calc['SWEAT'] = mpcalc.sweat_index(p, T, Td, u, v).m
-        except: params_calc['SWEAT'] = np.nan
+        
         return ((p, T, Td, u, v, heights), params_calc), None
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
 
@@ -295,22 +300,21 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 def crear_skewt(p, T, Td, u, v, params_calc, titol):
-    fig, ax = plt.subplots(figsize=(9, 9), dpi=150)
-    skew = SkewT(fig, ax=ax, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
-    skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2, label='Temperatura'); skew.plot(p, Td, 'g', lw=2, label='Punt de Rosada')
+    fig = plt.figure(figsize=(9, 9), dpi=150)
+    skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.8, 0.90))
+    skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2.5, label='Temperatura'); skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
     skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
     prof = mpcalc.parcel_profile(p, T[0], Td[0]); skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
     skew.shade_cape(p, T, prof, color='red', alpha=0.3); skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
     skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_title(titol, weight='bold', fontsize=14); skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
     
-    levels_to_plot = {'LCL_p': 'LCL', 'LFC_p': 'LFC', 'EL_p': 'EL', 'FRZG_Lvl_p': '0°C'}
+    levels_to_plot = {'LCL_p': 'LCL', 'FRZG_Lvl_p': '0°C', 'LFC_p': None, 'EL_p': None}
     for key, name in levels_to_plot.items():
         p_lvl = params_calc.get(key)
         if p_lvl is not None and not np.isnan(p_lvl):
-            skew.ax.axhline(p_lvl.m, color='blue', linestyle='--', linewidth=1)
-            skew.ax.text(skew.ax.get_xlim()[1], p_lvl.m, f' {name}', color='blue', ha='left', va='center', fontsize=10, weight='bold')
-            
+            skew.ax.axhline(p_lvl.m, color='blue', linestyle='--', linewidth=1.5)
+            if name: skew.ax.text(skew.ax.get_xlim()[1], p_lvl.m, f' {name}', color='blue', ha='left', va='center', fontsize=10, weight='bold')
     try:
         for bottom_p, top_p in mpcalc.inversions(p, T, Td):
             skew.ax.axhspan(bottom_p.m, top_p.m, color='blue', alpha=0.15, linewidth=0)
@@ -394,11 +398,6 @@ def get_color_for_param(value, param_type):
         if value < 100: return "white";
         if value < 250: return "yellow"
         if value < 400: return "orange"
-        return "red"
-    if param_type == 'sweat':
-        if value < 250: return "white";
-        if value < 350: return "yellow"
-        if value < 450: return "orange"
         return "red"
     return "white"
 def ui_llegenda_sondeig(params):
@@ -587,25 +586,27 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         with contingut_principal:
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
-            col1, col2 = st.columns(2)
+            col1, col2 = st.columns([0.4, 0.6])
             with col1:
-                fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}"); 
-                st.pyplot(fig_skewt); plt.close(fig_skewt)
+                fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}")
+                st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
             with col2:
-                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}"); 
-                st.pyplot(fig_hodo); plt.close(fig_hodo)
-            
-            ui_llegenda_sondeig(params_calculats)
+                ui_llegenda_sondeig(params_calculats)
+                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
+                st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
 
-            with st.expander("❔ Com interpretar l'Hodògraf i els paràmetres?"):
-                st.markdown("""**Hodògraf:**
-- **Forma:** Una corba pronunciada indica cisallament direccional, favorable per a tempestes organitzades i rotació (supercèl·lules).
-- **BWD (Cisallament):** Valors > 40 nusos (0-6 km) afavoreixen l'organització de les tempestes.
-- **Bunkers RM:** Moviment previst d'una supercèl·lula que es desvia cap a la dreta del vent mitjà.
-**Paràmetres del Sondeig:**
-- **CAPE:** Energia per a les tempestes. Més alt = més forts corrents ascendents.
-- **CIN:** "Tapa" que impedeix que l'aire pugi. Més negatiu = més força necessària per iniciar convecció.
-- **SRH (Helicitat):** Potencial de rotació. Valors > 150 m²/s² són significatius per a mesociclons.""")
+            with st.expander("❔ Com interpretar els paràmetres i gràfics"):
+                st.markdown("""
+                **Paràmetres del Sondeig:**
+                - **CAPE:** Energia per a les tempestes. Més alt = més forts corrents ascendents. >1500 J/kg és alt.
+                - **CIN:** "Tapa" que impedeix que l'aire pugi. Valors més negatius que -50 J/kg indiquen una tapa forta.
+                - **LCL/LFC/EL:** Altures de la base del núvol, inici de l'ascens lliure i sostre de la tempesta.
+                - **SRH (Helicitat):** Potencial de rotació. Valors > 150 m²/s² són significatius per a mesociclons (supercèl·lules).
+                
+                **Hodògraf:**
+                - **Forma:** Una corba pronunciada indica cisallament direccional, favorable per a tempestes organitzades.
+                - **BWD (Cisallament):** Valors > 40 nusos (0-6 km) afavoreixen l'organització de les tempestes.
+                """)
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteociel | IA per Google Gemini.</p>", unsafe_allow_html=True)
