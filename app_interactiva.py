@@ -162,8 +162,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 
         heights_agl = heights - heights[0]
         try:
-            lcl_p, _, lcl_h = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50, return_height=True)
-            params_calc['LCL_p'] = lcl_p; params_calc['LCL_Hgt'] = (heights_agl[0] + lcl_h).to('m').m
+            lcl_p, lcl_h = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50)
+            params_calc['LCL_p'] = lcl_p; params_calc['LCL_Hgt'] = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
         except: params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan, np.nan
         try:
             lfc_p, _ = mpcalc.lfc(p, T, Td, prof)
@@ -175,9 +175,9 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         except: params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan, np.nan
             
         try:
-            freezing_level_p = mpcalc.isobaric_surface(p, T, 0*units.degC, bottom_up_search=True)[0]
-            params_calc['FRZG_Lvl_p'] = freezing_level_p
-            params_calc['FRZG_Lvl_Hgt'] = mpcalc.pressure_to_height_std(freezing_level_p).to('m').m
+            p_frz = np.interp(0, T.to('degC').m[::-1], p.m[::-1]) * units.hPa
+            h_frz = mpcalc.pressure_to_height_std(p_frz).to('m').m
+            params_calc['FRZG_Lvl_p'] = p_frz; params_calc['FRZG_Lvl_Hgt'] = h_frz
         except: params_calc['FRZG_Lvl_p'], params_calc['FRZG_Lvl_Hgt'] = np.nan, np.nan
         
         try: params_calc['KI'] = mpcalc.k_index(p, T, Td).m
@@ -617,7 +617,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         with contingut_principal:
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
-            col1, col_llegenda, col2 = st.columns([0.4, 0.2, 0.4])
+            col1, col2 = st.columns(2)
             with col1:
                 fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}")
                 st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
@@ -628,12 +628,10 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                     <p style="font-size: 0.9em; margin-bottom: 0;">{descripcio}</p>
                 </div>""", unsafe_allow_html=True)
 
-            with col_llegenda:
-                ui_llegenda_sondeig(params_calculats)
             with col2:
                 fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
                 st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
-
+                
                 titol_h, desc_h = analitzar_tipus_hodograf(params_calculats)
                 st.markdown(f"""<div style="border: 1px solid #555; border-radius: 10px; padding: 15px; text-align: center; margin-top: 10px;">
                     <h4 style="margin-top: 0; color: #FFD700;">{titol_h}</h4>
@@ -647,7 +645,9 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                 - **CIN:** "Tapa" que impedeix la convecció. Valors més negatius que -50 J/kg indiquen una tapa forta.
                 - **LCL/LFC/EL:** Altures (en metres sobre el terra) de la base del núvol, inici de l'ascens lliure i sostre teòric de la tempesta.
                 - **KI / TT:** Índexs clàssics d'inestabilitat. Com més alts, més potencial de tempesta.
-                
+                - **PWAT (Aigua Precipitable):** Quantitat total de vapor d'aigua a la columna. Valors > 40 mm indiquen un alt contingut d'humitat, favorable per a pluges intenses.
+                - **DCAPE:** Energia potencial per a corrents descendents forts (rebentades). Valors > 1000 J/kg són un avís de risc.
+
                 **Hodògraf:**
                 - **Forma:** Una corba pronunciada indica cisallament direccional, favorable per a tempestes organitzades.
                 - **BWD (Cisallament):** Valors > 40 nusos (0-6 km) afavoreixen l'organització de les tempestes.
