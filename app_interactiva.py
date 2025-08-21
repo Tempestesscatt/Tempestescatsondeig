@@ -148,7 +148,8 @@ def show_login_page():
         st.session_state.update({'guest_mode': True, 'logged_in': False})
         st.rerun()
 
-# --- 1. FUNCIONS D'OBTENCIÓ DE DADES ---
+# Substitueix la teva funció carregar_dades_sondeig() sencera per aquesta:
+
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
@@ -182,11 +183,9 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             prof = mpcalc.parcel_profile(p, T[0], Td[0])
             cape, cin = mpcalc.cape_cin(p, T, Td, prof)
             params_calc['CAPE'], params_calc['CIN'] = (cape.to('J/kg').m if cape.magnitude > 0 else 0), cin.to('J/kg').m
-        except Exception:
-            params_calc['CAPE'], params_calc['CIN'] = np.nan, np.nan
+        except Exception: params_calc['CAPE'], params_calc['CIN'] = np.nan, np.nan
         
-        params_calc['CAPE_TYPES'] = {'SB': np.nan, 'MU': np.nan, 'ML': np.nan}
-        params_calc['CAPE_TYPES']['SB'] = params_calc['CAPE']
+        params_calc['CAPE_TYPES'] = {'SB': params_calc.get('CAPE', np.nan), 'MU': np.nan, 'ML': np.nan}
         try:
             mu_cape, _ = mpcalc.most_unstable_cape_cin(p, T, Td)
             params_calc['CAPE_TYPES']['MU'] = mu_cape.to('J/kg').m
@@ -195,25 +194,31 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             ml_cape, _ = mpcalc.mixed_layer_cape_cin(p, T, Td)
             params_calc['CAPE_TYPES']['ML'] = ml_cape.to('J/kg').m
         except Exception: pass
+        
         try:
             dcape, _ = mpcalc.dcape(p, T, Td)
             params_calc['DCAPE'] = dcape.to('J/kg').m
-        except Exception:
-            params_calc['DCAPE'] = np.nan
+        except Exception: params_calc['DCAPE'] = np.nan
 
         params_calc['LAPSE_RATES'] = {'0-3km': np.nan, '3-6km': np.nan}
         try:
             heights_agl = heights - heights[0]
-            p_at_3km = np.interp(3000, heights_agl.m, p.m) * units.hPa
-            p_at_6km = np.interp(6000, heights_agl.m, p.m) * units.hPa
-            lr_0_3 = mpcalc.lapse_rate(p, T, p_bottom=p[0], p_top=p_at_3km)
-            params_calc['LAPSE_RATES']['0-3km'] = lr_0_3.to('delta_degC/km').m
-            lr_3_6 = mpcalc.lapse_rate(p, T, p_bottom=p_at_3km, p_top=p_at_6km)
-            params_calc['LAPSE_RATES']['3-6km'] = lr_3_6.to('delta_degC/km').m
+            if heights_agl.m[-1] > 3000:
+                p_at_3km = np.interp(3000, heights_agl.m, p.m) * units.hPa
+                if p[0] > p_at_3km: # Check físicament correcte
+                    lr_0_3 = mpcalc.lapse_rate(p, T, p_bottom=p[0], p_top=p_at_3km)
+                    params_calc['LAPSE_RATES']['0-3km'] = lr_0_3.to('delta_degC/km').m
+            if heights_agl.m[-1] > 6000:
+                p_at_3km = np.interp(3000, heights_agl.m, p.m) * units.hPa
+                p_at_6km = np.interp(6000, heights_agl.m, p.m) * units.hPa
+                if p_at_3km > p_at_6km: # Check físicament correcte
+                    lr_3_6 = mpcalc.lapse_rate(p, T, p_bottom=p_at_3km, p_top=p_at_6km)
+                    params_calc['LAPSE_RATES']['3-6km'] = lr_3_6.to('delta_degC/km').m
         except Exception: pass
             
         return ((p, T, Td, u, v, heights), params_calc), None
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
+        
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base(variables, hourly_index):
@@ -476,21 +481,54 @@ def get_color_for_cape(value):
     return "#FF00FF"
 
 def ui_parametres_avancats(params):
+    """
+    Mostra una taula d'estil professional amb paràmetres de convecció avançats,
+    amb el nou disseny.
+    """
     st.markdown("---")
-    cape_sb = params.get('CAPE_TYPES', {}).get('SB', np.nan); cape_mu = params.get('CAPE_TYPES', {}).get('MU', np.nan)
-    cape_ml = params.get('CAPE_TYPES', {}).get('ML', np.nan); dcape = params.get('DCAPE', np.nan)
-    lr_03 = params.get('LAPSE_RATES', {}).get('0-3km', np.nan); lr_36 = params.get('LAPSE_RATES', {}).get('3-6km', np.nan)
-    color_sb = get_color_for_cape(cape_sb); color_mu = get_color_for_cape(cape_mu); color_ml = get_color_for_cape(cape_ml)
+    
+    cape_sb = params.get('CAPE_TYPES', {}).get('SB', np.nan)
+    cape_mu = params.get('CAPE_TYPES', {}).get('MU', np.nan)
+    cape_ml = params.get('CAPE_TYPES', {}).get('ML', np.nan)
+    dcape = params.get('DCAPE', np.nan)
+    lr_03 = params.get('LAPSE_RATES', {}).get('0-3km', np.nan)
+    lr_36 = params.get('LAPSE_RATES', {}).get('3-6km', np.nan)
+    
+    color_sb = get_color_for_cape(cape_sb)
+    color_mu = get_color_for_cape(cape_mu)
+    color_ml = get_color_for_cape(cape_ml)
     color_dcape = get_color_for_cape(dcape)
-    html = f"""<div style="font-family: monospace; font-size: 1.1em; line-height: 1.6;">
-        <div style="display: flex; justify-content: space-around; font-weight: bold;"><div style="width: 25%; text-align: center;">CAPE</div></div>
-        <div style="display: flex; justify-content: space-around;"><div style="width: 25%; font-weight: bold;">SB:</div><div style="width: 25%; text-align: center; color: {color_sb};">{f'{cape_sb:.0f} J/kg' if not np.isnan(cape_sb) else '---'}</div></div>
-        <div style="display: flex; justify-content: space-around;"><div style="width: 25%; font-weight: bold;">MU:</div><div style="width: 25%; text-align: center; color: {color_mu};">{f'{cape_mu:.0f} J/kg' if not np.isnan(cape_mu) else '---'}</div></div>
-        <div style="display: flex; justify-content: space-around;"><div style="width: 25%; font-weight: bold;">ML:</div><div style="width: 25%; text-align: center; color: {color_ml};">{f'{cape_ml:.0f} J/kg' if not np.isnan(cape_ml) else '---'}</div></div>
+    
+    html = f"""
+    <div style="font-family: monospace; font-size: 1.2em; line-height: 1.8; text-align: center;">
+        
+        <!-- Títol CAPE -->
+        <div style="font-weight: bold;">CAPE</div>
+        
+        <!-- Valors CAPE -->
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 80%; margin: auto;">
+            <span style="font-weight: bold;">SB:</span>
+            <span style="color: {color_sb};">{f'{cape_sb:.0f} J/kg' if not np.isnan(cape_sb) else '---'}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 80%; margin: auto;">
+            <span style="font-weight: bold;">MU:</span>
+            <span style="color: {color_mu};">{f'{cape_mu:.0f} J/kg' if not np.isnan(cape_mu) else '---'}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 80%; margin: auto;">
+            <span style="font-weight: bold;">ML:</span>
+            <span style="color: {color_ml};">{f'{cape_ml:.0f} J/kg' if not np.isnan(cape_ml) else '---'}</span>
+        </div>
+
         <br>
-        <div style="display: flex; justify-content: space-around;"><div style="width: 50%; text-align: center;"><span style="font-weight: bold;">DCAPE:</span> <span style="color: {color_dcape};">{f'{dcape:.0f} J/kg' if not np.isnan(dcape) else '---'}</span></div></div>
-        <div style="display: flex; justify-content: space-around;"><div style="width: 50%; text-align: center;"><span style="font-weight: bold;">Γ₀₋₃:</span> {f'{lr_03:.1f} Δ°C/km' if not np.isnan(lr_03) else '---'}</div><div style="width: 50%; text-align: center;"><span style="font-weight: bold;">Γ₃₋₆:</span> {f'{lr_36:.1f} Δ°C/km' if not np.isnan(lr_36) else '---'}</div></div>
-    </div>"""
+
+        <!-- Línia inferior -->
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin: auto;">
+            <div style="width: 33%;"><span style="font-weight: bold;">Γ₀₋₃:</span> {f'{lr_03:.1f} Δ°C/km' if not np.isnan(lr_03) else '---'}</div>
+            <div style="width: 33%;"><span style="font-weight: bold;">DCAPE:</span> <span style="color: {color_dcape};">{f'{dcape:.0f} J/kg' if not np.isnan(dcape) else '---'}</span></div>
+            <div style="width: 33%;"><span style="font-weight: bold;">Γ₃₋₆:</span> {f'{lr_36:.1f} Δ°C/km' if not np.isnan(lr_36) else '---'}</div>
+        </div>
+    </div>
+    """
     st.markdown(html, unsafe_allow_html=True)
 
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
