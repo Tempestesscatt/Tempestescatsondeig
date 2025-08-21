@@ -300,8 +300,8 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 def crear_skewt(p, T, Td, u, v, params_calc, titol):
-    fig = plt.figure(figsize=(9, 10), dpi=150)
-    skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
+    fig = plt.figure(dpi=150); fig.set_figheight(fig.get_figwidth() * 1.1)
+    skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.8, 0.9))
     skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2.5, label='Temperatura'); skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
     skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
@@ -322,7 +322,7 @@ def crear_skewt(p, T, Td, u, v, params_calc, titol):
     except: pass
     skew.ax.legend(); return fig
 def crear_hodograf_avancat(p, u, v, heights, titol):
-    fig = plt.figure(figsize=(9, 10), dpi=150)
+    fig = plt.figure(dpi=150); fig.set_figheight(fig.get_figwidth() * 1.1)
     gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[1.2, 1], top=0.92, bottom=0.05, left=0.05, right=0.95)
     ax_hodo = fig.add_subplot(gs[0, 0]); ax_info = fig.add_subplot(gs[0, 1]); ax_info.axis('off')
     fig.suptitle(titol, weight='bold', fontsize=16); h = Hodograph(ax_hodo, component_range=80.)
@@ -423,35 +423,49 @@ def analitzar_tipus_hodograf(params):
     else:
         return("POTENCIAL DE TEMPESTES DESORGANITZADES",
                "El cisallament del vent és feble. Si es formen tempestes, probablement seran de cicle de vida únic, de curta durada i amb menys potencial de severitat.")
-def ui_llegenda_sondeig(params):
-    st.markdown("<br>", unsafe_allow_html=True) 
+def ui_caixa_parametres(params):
     def fmt(val, unit): return f"{val:.1f} {unit}" if not np.isnan(val) else "---"
     def fmt_int(val, unit): return f"{val:.0f} {unit}" if not np.isnan(val) else "---"
     
-    html = f"""<div style="font-family: monospace; font-size: 0.9em; line-height: 1.7;">
-        <div style="display: flex; justify-content: space-between;">
-            <div style="width: 48%;">
-                <span style="font-weight: bold;">Nivells Clau:</span><br>
-                Congelació: {fmt_int(params.get('FRZG_Lvl_Hgt', np.nan), 'm')}<br>
-                LCL: {fmt_int(params.get('LCL_Hgt', np.nan), 'm')}<br>
-                LFC: {fmt_int(params.get('LFC_Hgt', np.nan), 'm')}<br>
-                EL: {fmt_int(params.get('EL_Hgt', np.nan), 'm')}
+    titol_s, desc_s = analitzar_tipus_sondeig(params)
+    titol_h, desc_h = analitzar_tipus_hodograf(params)
+
+    html = f"""
+    <div style="border: 1px solid #555; border-radius: 10px; padding: 20px; display: flex; justify-content: space-around; align-items: flex-start;">
+        <div style="width: 30%; text-align: center;">
+            <h4 style="margin-top: 0; color: #FFD700;">{titol_s}</h4>
+            <p style="font-size: 0.9em; margin-bottom: 0;">{desc_s}</p>
+        </div>
+        <div style="width: 35%; font-family: monospace; font-size: 0.9em; line-height: 1.7; border-left: 1px solid #555; border-right: 1px solid #555; padding: 0 20px;">
+            <div style="display: flex; justify-content: space-between;">
+                <div style="width: 48%;">
+                    <span style="font-weight: bold;">Nivells Clau:</span><br>
+                    Congelació: {fmt_int(params.get('FRZG_Lvl_Hgt', np.nan), 'm')}<br>
+                    LCL: {fmt_int(params.get('LCL_Hgt', np.nan), 'm')}<br>
+                    LFC: {fmt_int(params.get('LFC_Hgt', np.nan), 'm')}<br>
+                    EL: {fmt_int(params.get('EL_Hgt', np.nan), 'm')}
+                </div>
+                <div style="width: 48%;">
+                    <span style="font-weight: bold;">Energia (CAPE/CIN):</span><br>
+                    <span style='color:{get_color_for_param(params.get('CAPE_total'), 'cape')};'>SB CAPE: {fmt_int(params.get('CAPE_total', np.nan), 'J/kg')}</span><br>
+                    <span style='color:{get_color_for_param(params.get('MU_CAPE'), 'cape')};'>MU CAPE: {fmt_int(params.get('MU_CAPE', np.nan), 'J/kg')}</span><br>
+                    <span style='color:{get_color_for_param(params.get('ML_CAPE'), 'cape')};'>ML CAPE: {fmt_int(params.get('ML_CAPE', np.nan), 'J/kg')}</span><br>
+                    CIN: {fmt_int(params.get('CIN_total', np.nan), 'J/kg')}
+                </div>
             </div>
-            <div style="width: 48%;">
-                <span style="font-weight: bold;">Energia (CAPE/CIN):</span><br>
-                <span style='color:{get_color_for_param(params.get('CAPE_total'), 'cape')};'>SB CAPE: {fmt_int(params.get('CAPE_total', np.nan), 'J/kg')}</span><br>
-                <span style='color:{get_color_for_param(params.get('MU_CAPE'), 'cape')};'>MU CAPE: {fmt_int(params.get('MU_CAPE', np.nan), 'J/kg')}</span><br>
-                <span style='color:{get_color_for_param(params.get('ML_CAPE'), 'cape')};'>ML CAPE: {fmt_int(params.get('ML_CAPE', np.nan), 'J/kg')}</span><br>
-                CIN: {fmt_int(params.get('CIN_total', np.nan), 'J/kg')}
+            <br>
+            <div style="width: 100%;">
+                <span style="font-weight: bold;">Índexs d'Inestabilitat:</span><br>
+                KI: {fmt(params.get('KI', np.nan), '°C')}<br>
+                TT: {fmt(params.get('TT', np.nan), '°C')}
             </div>
         </div>
-        <br>
-        <div style="width: 100%;">
-            <span style="font-weight: bold;">Índexs d'Inestabilitat:</span><br>
-            KI: {fmt(params.get('KI', np.nan), '°C')}<br>
-            TT: {fmt(params.get('TT', np.nan), '°C')}
+        <div style="width: 30%; text-align: center;">
+            <h4 style="margin-top: 0; color: #FFD700;">{titol_h}</h4>
+            <p style="font-size: 0.9em; margin-bottom: 0;">{desc_h}</p>
         </div>
-    </div>"""
+    </div>
+    """
     st.markdown(html, unsafe_allow_html=True)
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent Meteo-Col·lega (amb Google Gemini)")
