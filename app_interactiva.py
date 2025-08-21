@@ -175,13 +175,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             params_calc['FRZG_Lvl_p'] = freezing_level_p
             params_calc['FRZG_Lvl_Hgt'] = mpcalc.pressure_to_height_std(freezing_level_p).to('m').m
         except: params_calc['FRZG_Lvl_p'], params_calc['FRZG_Lvl_Hgt'] = np.nan, np.nan
-
-        try:
-            rm, _, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
-            params_calc['s-RH_0-1km'] = mpcalc.storm_relative_helicity(heights, u, v, depth=1000 * units.m, u_storm=rm[0], v_storm=rm[1])[0].to('m**2/s**2').m
-            params_calc['s-RH_0-3km'] = mpcalc.storm_relative_helicity(heights, u, v, depth=3000 * units.m, u_storm=rm[0], v_storm=rm[1])[0].to('m**2/s**2').m
-        except: params_calc['s-RH_0-1km'], params_calc['s-RH_0-3km'] = np.nan, np.nan
-            
+        
         try: params_calc['KI'] = mpcalc.k_index(p, T, Td).m
         except: params_calc['KI'] = np.nan
         try: params_calc['TT'] = mpcalc.total_totals_index(p, T, Td).m
@@ -300,8 +294,8 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 def crear_skewt(p, T, Td, u, v, params_calc, titol):
-    fig = plt.figure(figsize=(9, 9), dpi=150)
-    skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.8, 0.90))
+    fig = plt.figure(figsize=(9, 10), dpi=150)
+    skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
     skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2.5, label='Temperatura'); skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
     skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
@@ -322,7 +316,7 @@ def crear_skewt(p, T, Td, u, v, params_calc, titol):
     except: pass
     skew.ax.legend(); return fig
 def crear_hodograf_avancat(p, u, v, heights, titol):
-    fig = plt.figure(figsize=(9, 9), dpi=150) 
+    fig = plt.figure(figsize=(9, 10), dpi=150)
     gs = fig.add_gridspec(nrows=3, ncols=2, width_ratios=[2.5, 1.5], hspace=0.4, wspace=0.3, top=0.9, bottom=0.05, left=0.1, right=0.9)
     ax_hodo = fig.add_subplot(gs[:, 0]); ax_params = fig.add_subplot(gs[0, 1]); ax_motion = fig.add_subplot(gs[1, 1]); ax_sr_wind = fig.add_subplot(gs[2, 1])
     fig.suptitle(titol, weight='bold', fontsize=16); h = Hodograph(ax_hodo, component_range=80.)
@@ -414,20 +408,16 @@ def ui_llegenda_sondeig(params):
                 LFC: {fmt_int(params.get('LFC_Hgt', np.nan), 'm')}<br>
                 EL: {fmt_int(params.get('EL_Hgt', np.nan), 'm')}<br>
                 <br>
+                <span style="font-weight: bold;">Índexs d'Inestabilitat:</span><br>
+                KI: {fmt(params.get('KI', np.nan), '°C')}<br>
+                TT: {fmt(params.get('TT', np.nan), '°C')}
+            </div>
+            <div style="width: 48%;">
                 <span style="font-weight: bold;">Energia (CAPE/CIN):</span><br>
                 <span style='color:{get_color_for_param(params.get('CAPE_total'), 'cape')};'>SB CAPE: {fmt_int(params.get('CAPE_total', np.nan), 'J/kg')}</span><br>
                 <span style='color:{get_color_for_param(params.get('MU_CAPE'), 'cape')};'>MU CAPE: {fmt_int(params.get('MU_CAPE', np.nan), 'J/kg')}</span><br>
                 <span style='color:{get_color_for_param(params.get('ML_CAPE'), 'cape')};'>ML CAPE: {fmt_int(params.get('ML_CAPE', np.nan), 'J/kg')}</span><br>
                 CIN: {fmt_int(params.get('CIN_total', np.nan), 'J/kg')}
-            </div>
-            <div style="width: 48%;">
-                <span style="font-weight: bold;">Índexs d'Inestabilitat:</span><br>
-                KI: {fmt(params.get('KI', np.nan), '°C')}<br>
-                TT: {fmt(params.get('TT', np.nan), '°C')}<br>
-                <br><br><br> 
-                <span style="font-weight: bold;">Helicitat Relativa (SRH):</span><br>
-                <span style='color:{get_color_for_param(params.get('s-RH_0-1km'), 'srh')};'>0-1 km: {fmt_int(params.get('s-RH_0-1km', np.nan), 'm²/s²')}</span><br>
-                <span style='color:{get_color_for_param(params.get('s-RH_0-3km'), 'srh')};'>0-3 km: {fmt_int(params.get('s-RH_0-3km', np.nan), 'm²/s²')}</span><br>
             </div>
         </div></div>"""
     st.markdown(html, unsafe_allow_html=True)
@@ -586,12 +576,13 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         with contingut_principal:
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
-            col1, col2 = st.columns([0.4, 0.6])
+            col1, col_llegenda, col2 = st.columns([0.4, 0.2, 0.4])
             with col1:
                 fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}")
                 st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
-            with col2:
+            with col_llegenda:
                 ui_llegenda_sondeig(params_calculats)
+            with col2:
                 fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
                 st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
 
@@ -601,7 +592,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                 - **CAPE:** Energia per a les tempestes. Més alt = més forts corrents ascendents. >1500 J/kg és alt.
                 - **CIN:** "Tapa" que impedeix que l'aire pugi. Valors més negatius que -50 J/kg indiquen una tapa forta.
                 - **LCL/LFC/EL:** Altures de la base del núvol, inici de l'ascens lliure i sostre de la tempesta.
-                - **SRH (Helicitat):** Potencial de rotació. Valors > 150 m²/s² són significatius per a mesociclons (supercèl·lules).
                 
                 **Hodògraf:**
                 - **Forma:** Una corba pronunciada indica cisallament direccional, favorable per a tempestes organitzades.
@@ -653,4 +643,4 @@ def main():
             with tab_mapes: ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
             with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
         ui_peu_de_pagina()
-if __name__ == "__main__": main()
+if __name__ == "__main__": main()```
