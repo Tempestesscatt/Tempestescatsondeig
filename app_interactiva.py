@@ -69,6 +69,14 @@ USERS_FILE = 'users.json'
 RATE_LIMIT_FILE = 'rate_limits.json'
 CHAT_FILE = 'chat_history.json'
 
+MAP_ZOOM_LEVELS = {
+    'Catalunya (Complet)': MAP_EXTENT,
+    'Nord-est (Girona)': [1.8, 3.4, 41.7, 42.6],
+    'Sud (Tarragona i Ebre)': [0.2, 1.8, 40.5, 41.4],
+    'Ponent i Pirineu (Lleida)': [0.4, 1.9, 41.4, 42.6],
+    'Àrea Metropolitana (BCN)': [1.7, 2.7, 41.2, 41.8]
+}
+
 # --- 0.1 FUNCIONS D'AUTENTICACIÓ, LÍMITS I XAT ---
 def get_hashed_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
@@ -309,22 +317,24 @@ def obtenir_ciutats_actives(hourly_index):
         return CIUTATS_CONVIDAT, f"Error calculant zones actives: {e}. Mostrant capitals."
 
 # --- 2. FUNCIONS DE VISUALITZACIÓ ---
-def crear_mapa_base():
+# Substitueix la funció original
+def crear_mapa_base(map_extent):
     fig, ax = plt.subplots(figsize=(8, 8), dpi=90, subplot_kw={'projection': ccrs.PlateCarree()})
-    ax.set_extent(MAP_EXTENT, crs=ccrs.PlateCarree())
+    ax.set_extent(map_extent, crs=ccrs.PlateCarree()) # <--- Canvi clau aquí
     ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
     ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
     return fig, ax
 
-def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
-    fig, ax = crear_mapa_base()
+def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
+    fig, ax = crear_mapa_base(map_extent) # <--- Passa l'extent a la funció base
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 400), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 400))
     grid_speed, grid_dewpoint = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
     
+    # ... (la resta de la funció és idèntica, no cal copiar-la de nou, només assegura't que la definició inclou 'map_extent')
     colors_wind_new = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db', '#87ceeb', '#48d1cc', '#b0c4de', '#da70d6', '#ffdead', '#ffd700', '#9acd32', '#a9a9a9']
     speed_levels_new = [0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104, 130, 166, 184, 277, 374, 400]
     cbar_ticks = [0, 18, 40, 61, 86, 130, 184, 374]
@@ -346,7 +356,6 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     else: DEWPOINT_THRESHOLD = 7
     convergence_in_humid_areas = np.where(grid_dewpoint >= DEWPOINT_THRESHOLD, convergence_scaled, 0)
 
-    # --- NOU VISUALITZADOR DE CONVERGÈNCIA AMB LLINDARS I COLORS ---
     fill_levels = [15, 25, 40, 150]
     fill_colors = ['#ffc107', '#ff9800', '#f44336']
     line_levels = [15, 25, 40]
@@ -369,13 +378,15 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
         
     ax.set_title(f"Anàlisi de Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
-
-def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str):
-    fig, ax = crear_mapa_base()
+    
+def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, map_extent):
+    fig, ax = crear_mapa_base(map_extent) # <--- Passa l'extent a la funció base
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic')
+    
+    # ... (la resta de la funció és idèntica)
     colors_wind_new = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db', '#87ceeb', '#48d1cc', '#b0c4de', '#da70d6', '#ffdead', '#ffd700', '#9acd32', '#a9a9a9']
     speed_levels_new = [0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104, 130, 166, 184, 277, 374, 400]
     cbar_ticks = [0, 18, 40, 61, 86, 130, 184, 374]
@@ -761,6 +772,7 @@ def ui_info_desenvolupament_tempesta():
         -   **Més lent (> 45 min):** Convergència feble, una "tapa" forta (**CIN alt**) o aire sec a nivells mitjans.
         """)
 
+# Substitueix tota la funció
 def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
     is_guest = st.session_state.get('guest_mode', False)
     
@@ -768,8 +780,15 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
     with contingut_principal:
         col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large")
         with col_map_1:
-            map_options = {"Anàlisi de Vent i Convergència": "forecast_estatic", "Vent a 700hPa": "vent_700", "Vent a 300hPa": "vent_300"}
-            mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
+            # --- NOUS SELECTORS PER CAPA I ZOOM ---
+            col_capa, col_zoom = st.columns(2)
+            with col_capa:
+                map_options = {"Anàlisi de Vent i Convergència": "forecast_estatic", "Vent a 700hPa": "vent_700", "Vent a 300hPa": "vent_300"}
+                mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
+            with col_zoom:
+                zoom_sel = st.selectbox("Nivell de Zoom:", options=list(MAP_ZOOM_LEVELS.keys()))
+            
+            selected_extent = MAP_ZOOM_LEVELS[zoom_sel]
             map_key = map_options[mapa_sel]
             
             if map_key == "forecast_estatic":
@@ -795,7 +814,8 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
                     st.error(f"Error en carregar el mapa: {error_map}")
                     progress_placeholder.empty()
                 elif map_data:
-                    fig = crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str)
+                    # Passa el 'selected_extent' a la funció de creació del mapa
+                    fig = crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str, selected_extent)
                     st.pyplot(fig)
                     plt.close(fig)
                     ui_explicacio_alertes()
@@ -811,7 +831,8 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
                 map_data, error_map = carregar_dades_mapa_base(variables, hourly_index_sel)
                 if error_map: st.error(f"Error en carregar el mapa: {error_map}")
                 elif map_data: 
-                    fig = crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str)
+                    # Passa el 'selected_extent' a la funció de creació del mapa
+                    fig = crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str, selected_extent)
                     st.pyplot(fig)
                     plt.close(fig)
 
@@ -824,7 +845,7 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
                 mostrar_imatge_temps_real("Satèl·lit (NE Península)")
             
             st.markdown("---")
-            ui_info_desenvolupament_tempesta() # <<<--- AQUÍ S'AÑADE EL RECUADRO
+            ui_info_desenvolupament_tempesta()
             
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
