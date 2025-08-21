@@ -488,65 +488,89 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
         st.markdown(f"""<div style="text-align: right; margin-top: -30px; margin-bottom: 10px;"><span style="font-size: 0.9em;">Preguntes restants: <strong style="color: {color}; font-size: 1.1em;">{preguntes_restants}/{LIMIT_PER_WINDOW}</strong></span></div>""", unsafe_allow_html=True)
     if "chat" not in st.session_state:
         model = genai.GenerativeModel('gemini-1.5-flash')
-        system_prompt = """Ets Meteo-Col·lega, un meteoròleg expert a Catalunya, amb un to directe, amigable i molt precís tècnicament. # LA TEVA MISSIÓ: ANÀLISI INTEGRAL I PRECÍS. Analitza el conjunt de dades (mapa, sondeig, hodògraf) per donar un diagnòstic meteorològic concís, correcte i útil. # GUIA D'ANÀLISI PAS A PAS. Segueix aquests passos. --- ### PAS 1: El Sondeig (Skew-T) - L'Energia i la Tapa. 1. **CAPE (LA BENZINA):** 0-500 J/kg: Marginal; 500-1500: Moderada; 1500-2500: Alta; >2500: Extrema. 2. **CIN (LA TAPA):** Un CIN alt (més negatiu, ex: -100) fa MÉS DIFÍCIL que comencin les tempestes. 0 a -25 J/kg: Tapa feble; -25 a -75: Moderada; < -75: FORta. 3. **Perfil d'Humitat:** Línies T i Td juntes = humit; Separades = sec. --- ### PAS 2: L'Hodògraf - L'Organització i la Rotació. 1. **Forma:** Recte = desorganitzades; Corba pronunciada = organitzades (multicèl·lules/supercèl·lules). 2. **Paràmetres Clau:** BWD > 40 kts (0-6km) afavoreix organització. --- ### PAS 3: El Mapa de Convergència - El Disparador. Són les zones acolorides. --- ### PAS 4: El Diagnòstic Final - La Síntesi. 1. Hi ha disparador? 2. Hi ha benzina (CAPE)? 3. La tapa (CIN) és feble? 4. Es pot organitzar (Hodògraf)?"""
-        missatge_inicial_model = "Ei! Sóc el teu Meteo-Col·lega. Fes-me una pregunta i analitzaré el mapa, el sondeig i l'hodògraf per a tu amb precisió."
+        
+        # === NOU CERVELL DE LA IA: "METEO-COL·LEGA" ===
+        system_prompt = f"""
+Ets 'Meteo-Col·lega', un expert en meteorologia de Catalunya. Ets directe, proper i parles de 'tu'. La teva única missió és donar LA CONCLUSIÓ FINAL.
+
+# REGLA D'OR:
+No descriguis les dades. No diguis "el CAPE és X" o "l'hodògraf mostra Y". Això ja ho veu l'usuari. Tu has d'ajuntar totes les peces (mapa, sondeig, hodògraf) i donar el diagnòstic final: què passarà i on. Sigues breu i ves al gra.
+
+# EL TEU PROCÉS MENTAL:
+1.  **On som?** L'usuari et preguntarà per un poble concret de Catalunya. Centra la teva resposta en aquella zona.
+2.  **Hi ha disparador a prop?** Mira el mapa. Si hi ha una zona de convergència (línies de colors) a prop del poble, és un SÍ. Si no n'hi ha, és un NO.
+3.  **Si es dispara, què passarà?** Mira el sondeig i l'hodògraf per saber el potencial.
+    -   Sondeig amb energia (CAPE alt) + Hodògraf amb cisallament (corbat) = Risc de tempestes fortes i organitzades.
+    -   Sondeig amb energia (CAPE alt) + Hodògraf sense cisallament (recte) = Risc de xàfecs o tempestes desorganitzades.
+    -   Sondeig sense energia (CAPE baix) = No passarà res, encara que hi hagi disparador.
+4.  **Dóna la conclusió final:** Ajunta-ho tot en una resposta clara.
+
+# EXEMPLES DE RESPOSTES PERFECTES:
+
+-   **(Pregunta per Lleida, amb convergència a prop i bon sondeig):** "Bona tarda! Avui a la teva zona de Ponent ho teniu tot de cara. Hi ha una bona línia de convergència a prop que actuarà de disparador, i el sondeig mostra prou 'benzina' i organització per a tempestes fortes. Compte a la tarda, que es pot posar interessant."
+
+-   **(Pregunta per Mataró, sense convergència a prop però amb bon sondeig):** "Què tal! Avui pel Maresme la cosa sembla tranquil·la. El problema és que no teniu cap disparador a prop; les línies de convergència queden molt a l'interior. Encara que el sondeig té potencial, si no hi ha qui encengui la metxa, no passarà gran cosa."
+
+-   **(Pregunta per Berga, amb convergència llunyana):** "Ei! Per la teva zona del Berguedà avui sembla que calma. Ara bé, compte a les comarques de Girona! Allà sí que s'està formant una bona línia de convergència. Si vols veure el potencial real d'aquella zona, et recomano que canviïs al sondeig de **Girona** o **Figueres**."
+
+-   **(Pregunta per Reus, amb convergència a prop però sondeig molt estable):** "Avui per la teva zona teniu un bon disparador amb aquesta convergència, però el sondeig està molt estable, gairebé no hi ha 'benzina' (CAPE). Així que, tot i la convergència, el més probable és que només es formin alguns núvols sense més conseqüències. Un dia tranquil."
+
+Recorda, l'usuari té accés a aquests pobles: {', '.join(CIUTATS_CATALUNYA.keys())}. Fes servir-los per guiar l'usuari si cal.
+"""
+        missatge_inicial_model = "Ei! Sóc el teu Meteo-Col·lega. Tria un poble, fes-me una pregunta i et dono la conclusió del que pot passar avui."
         st.session_state.chat = model.start_chat(history=[{'role': 'user', 'parts': [system_prompt]}, {'role': 'model', 'parts': [missatge_inicial_model]}]); st.session_state.messages = [{"role": "assistant", "content": missatge_inicial_model}]
+    
     st.markdown(f"**Anàlisi per:** `{poble_sel.upper()}` | **Dia:** `{timestamp_str}`")
     nivell_mapa_ia = st.selectbox("Nivell d'anàlisi del mapa:", [1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat_final", disabled=limit_reached)
+    
     for message in st.session_state.messages:
         with st.chat_message(message["role"]): st.markdown(message["content"])
-    if prompt_usuari := st.chat_input("Fes la teva pregunta!", disabled=limit_reached):
+        
+    if prompt_usuari := st.chat_input("Què vols saber sobre el temps avui?", disabled=limit_reached):
         st.session_state.messages.append({"role": "user", "content": prompt_usuari})
         with st.chat_message("user"): st.markdown(prompt_usuari)
         with st.chat_message("assistant"):
-            with st.spinner("Analitzant mapa, sondeig i hodògraf..."):
+            with st.spinner("Connectant totes les peces..."):
                 if user_limit_data.get("window_start_time") is None: user_limit_data["window_start_time"] = datetime.now(pytz.utc).timestamp()
                 user_limit_data["count"] += 1; rate_limits[username] = user_limit_data; save_json_file(rate_limits, RATE_LIMIT_FILE)
+                
                 map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
                 if error_map_ia: st.error(f"Error en carregar dades del mapa: {error_map_ia}"); return
                 fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str, MAP_EXTENT)
                 buf_mapa = io.BytesIO(); fig_mapa.savefig(buf_mapa, format='png', dpi=150, bbox_inches='tight'); buf_mapa.seek(0); img_mapa = Image.open(buf_mapa); plt.close(fig_mapa)
-                contingut_per_ia = [img_mapa]; resum_sondeig = "No hi ha dades de sondeig."
+                
+                contingut_per_ia = [img_mapa]
+                resum_sondeig_text = "No s'han pogut carregar les dades del sondeig."
+                
                 if data_tuple: 
                     sounding_data, params_calculats = data_tuple; p, T, Td, u, v, heights = sounding_data
                     fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig per a {poble_sel}")
-                    buf_skewt = io.BytesIO(); fig_skewt.savefig(buf_skewt, format='png', dpi=150); buf_skewt.seek(0); img_skewt = Image.open(buf_skewt); plt.close(fig_skewt); contingut_per_ia.append(img_skewt)
+                    buf_skewt = io.BytesIO(); fig_skewt.savefig(buf_skewt, format='png', dpi=150); buf_skewt.seek(0); img_skewt = Image.open(buf_skewt); plt.close(fig_skewt)
+                    contingut_per_ia.append(img_skewt)
+                    
                     fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat - {poble_sel}")
-                    buf_hodo = io.BytesIO(); fig_hodo.savefig(buf_hodo, format='png', dpi=150); buf_hodo.seek(0); img_hodo = Image.open(buf_hodo); plt.close(fig_hodo); contingut_per_ia.append(img_hodo)
-                    resum_sondeig = f"SB CAPE: {params_calculats.get('CAPE_total', 0):.0f} J/kg, CIN: {params_calculats.get('CIN_total', 0):.0f} J/kg"
-                prompt_context = f"DADES ADDICIONALS:\n- Localització: {poble_sel}\n- Paràmetres clau: {resum_sondeig}\n\nPREGUNTA: '{prompt_usuari}'"
+                    buf_hodo = io.BytesIO(); fig_hodo.savefig(buf_hodo, format='png', dpi=150); buf_hodo.seek(0); img_hodo = Image.open(buf_hodo); plt.close(fig_hodo)
+                    contingut_per_ia.append(img_hodo)
+
+                    titol_s, _ = analitzar_tipus_sondeig(params_calculats)
+                    titol_h, _ = analitzar_tipus_hodograf(params_calculats)
+                    resum_sondeig_text = (f"Poble seleccionat per l'usuari: {poble_sel}. "
+                                          f"Anàlisi automàtica del sondeig: {titol_s}. "
+                                          f"Anàlisi automàtica de l'hodògraf: {titol_h}.")
+                
+                prompt_context = f"INFO ADDICIONAL PER A TU:\n- {resum_sondeig_text}\n\nPREGUNTA DE L'USUARI: '{prompt_usuari}'"
                 contingut_per_ia.insert(0, prompt_context)
+                
                 try:
-                    resposta = st.session_state.chat.send_message(contingut_per_ia); full_response = resposta.text
+                    resposta = st.session_state.chat.send_message(contingut_per_ia)
+                    full_response = resposta.text
                 except Exception as e:
                     full_response = f"Vaja, hi ha hagut un error contactant la IA: {e}"
                     if "429" in str(e): full_response = "**Ep, hem superat el límit de consultes a l'API de Google per avui.**"
                 st.markdown(full_response)
-        st.session_state.messages.append({"role": "assistant", "content": full_response}); st.rerun()
-def ui_pestanya_xat(chat_history):
-    st.subheader("Xat en Línia per a Usuaris"); col1, col2 = st.columns([0.7, 0.3]);
-    with col1: st.caption("Els missatges s'esborren automàticament després d'una hora.")
-    with col2:
-        if st.button("🔄 Refrescar", use_container_width=True): st.rerun()
-    if chat_history: st.session_state.last_seen_timestamp = chat_history[-1]['timestamp']
-    with st.container(height=400):
-        for msg in chat_history:
-            with st.chat_message(name=msg['username']):
-                if msg['type'] == 'text': st.markdown(msg['content'])
-                elif msg['type'] == 'image':
-                    try: st.image(base64.b64decode(msg['content']))
-                    except Exception: st.error("No s'ha pogut carregar la imatge.")
-    prompt = st.chat_input("Escriu el teu missatge..."); pujada_img = st.file_uploader("O arrossega una imatge", type=['png', 'jpg', 'jpeg'], key="chat_uploader")
-    if prompt or pujada_img:
-        with st.spinner("Enviant..."):
-            username = st.session_state.get("username", "Anònim"); current_history = load_and_clean_chat_history()
-            if pujada_img and pujada_img.file_id != st.session_state.get('last_uploaded_id'):
-                b64_string = base64.b64encode(pujada_img.getvalue()).decode('utf-8')
-                current_history.append({"username": username, "timestamp": datetime.now(pytz.utc).timestamp(), "type": "image", "content": b64_string})
-                st.session_state['last_uploaded_id'] = pujada_img.file_id
-            if prompt: current_history.append({"username": username, "timestamp": datetime.now(pytz.utc).timestamp(), "type": "text", "content": prompt})
-            save_json_file(current_history, CHAT_FILE); st.rerun()
-
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        st.rerun()
+        
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None):
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal d\'Anàlisi de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False); col_text, col_button = st.columns([0.85, 0.15])
