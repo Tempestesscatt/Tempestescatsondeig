@@ -370,12 +370,14 @@ def crear_skewt(p, T, Td, u, v, titol):
     skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_title(titol, weight='bold', fontsize=14); skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
     skew.ax.legend(); return fig
 
+# Substitueix la teva funció crear_hodograf_avancat() sencera per aquesta:
+
 def crear_hodograf_avancat(p, u, v, heights, titol):
     """
-    Crea un hodògraf avançat. Aquesta versió és més robusta i gestiona els errors de càlcul
-    sense deixar el gràfic en blanc, i és compatible amb versions anteriors de MetPy.
+    Crea un hodògraf avançat. Versió amb mides ajustades i textos traduïts al català.
     """
-    fig = plt.figure(figsize=(14, 9), dpi=150)
+    # ===> CANVI: Mida de la figura ajustada per a proporcions similars al Skew-T <===
+    fig = plt.figure(figsize=(9, 9), dpi=150) 
     gs = fig.add_gridspec(nrows=3, ncols=2, width_ratios=[2.5, 1.5], hspace=0.4, wspace=0.3)
     
     ax_hodo = fig.add_subplot(gs[:, 0])
@@ -409,10 +411,10 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
 
     try:
         right_mover, left_mover, mean_wind_vec = mpcalc.bunkers_storm_motion(p, u, v, heights)
-        motion['Bunkers RM'] = right_mover; motion['Bunkers LM'] = left_mover; motion['Mean Wind'] = mean_wind_vec
+        motion['Bunkers RM'] = right_mover; motion['Bunkers LM'] = left_mover; motion['Vent Mitjà'] = mean_wind_vec
         for name, vec in motion.items():
             u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m
-            marker = 's' if 'Mean' in name else 'o'
+            marker = 's' if 'Mitjà' in name else 'o'
             ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
             ax_hodo.text(u_comp + 2, v_comp + 2, name.replace('Bunkers ', ''), fontsize=10, weight='bold')
     except (ValueError, IndexError): right_mover = None
@@ -426,7 +428,6 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
         
         if right_mover is not None:
             try:
-                # ===> CANVI 1: Descomponem 'right_mover' per a la compatibilitat <===
                 u_storm, v_storm = right_mover
                 srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth, u_storm=u_storm, v_storm=v_storm)
                 params['SRH (m²/s²)'][name] = srh[0].to('m**2/s**2').m
@@ -435,17 +436,16 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
 
     if right_mover is not None:
         try:
-            # ===> CANVI 2: Descomponem 'right_mover' de nou <===
             u_storm, v_storm = right_mover
             critical_angle = mpcalc.critical_angle(p, u, v, heights, u_storm=u_storm, v_storm=v_storm).to('deg').m
             sr_u, sr_v = u - right_mover[0], v - right_mover[1]
             sr_wind_speed = mpcalc.wind_speed(sr_u, sr_v).to('kt')
         except (ValueError, IndexError, TypeError): pass
 
-    # --- 3. Taules de Paràmetres ---
+    # --- 3. Taules de Paràmetres (Textos en Català) ---
     ax_params.axis('off'); ax_motion.axis('off')
-    ax_params.text(0, 1, "Parameters", fontsize=12, weight='bold', va='top')
-    ax_params.text(0.5, 0.85, "BWD\n(kts)", ha='center', va='top', weight='bold')
+    ax_params.text(0, 1, "Paràmetres", fontsize=12, weight='bold', va='top')
+    ax_params.text(0.5, 0.85, "BWD\n(nusos)", ha='center', va='top', weight='bold')
     ax_params.text(0.85, 0.85, "SRH\n(m²/s²)", ha='center', va='top', weight='bold')
     y_pos = 0.6
     for key in depths.keys():
@@ -455,7 +455,7 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
         ax_params.text(0.85, y_pos, f"{srh_val:.0f}" if not np.isnan(srh_val) else '---', ha='center', va='center')
         y_pos -= 0.18
 
-    ax_motion.text(0, 1, "Storm Motion (dir/kts)", fontsize=12, weight='bold', va='top')
+    ax_motion.text(0, 1, "Moviment Tempesta (dir/kts)", fontsize=12, weight='bold', va='top')
     y_pos = 0.8
     if motion:
         for name, vec in motion.items():
@@ -465,33 +465,34 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
             ax_motion.text(0.9, y_pos, f"{direction:.0f}°/{speed:.0f} kts", va='center', ha='right')
             y_pos -= 0.2
     else: ax_motion.text(0.5, 0.6, "Càlcul no disponible", ha='center', va='center', fontsize=9, color='gray')
-    ax_motion.text(0, y_pos, "Critical Angle:", va='center')
+    ax_motion.text(0, y_pos, "Angle Crític:", va='center')
     ax_motion.text(0.9, y_pos, f"{critical_angle:.0f}°" if not np.isnan(critical_angle) else '---', va='center', ha='right')
 
-    # --- 4. Gràfic SR Wind vs Height ---
-    ax_sr_wind.set_title("SR Wind vs. Height (RM)", fontsize=12, weight='bold')
+    # --- 4. Gràfic SR Wind vs Height (Textos en Català) ---
+    ax_sr_wind.set_title("Vent Relatiu vs. Altura (RM)", fontsize=12, weight='bold')
     if sr_wind_speed is not None:
         ax_sr_wind.plot(sr_wind_speed, heights_km)
         ax_sr_wind.set_xlim(0, max(60, sr_wind_speed[~np.isnan(sr_wind_speed)].max().m + 5 if np.any(~np.isnan(sr_wind_speed)) else 60))
     else: ax_sr_wind.text(0.5, 0.5, "Càlcul no disponible", ha='center', va='center', transform=ax_sr_wind.transAxes, fontsize=9, color='gray')
-    ax_sr_wind.set_xlabel("SR Wind (kts)"); ax_sr_wind.set_ylabel("Height (km)")
+    ax_sr_wind.set_xlabel("Vent Relatiu (nusos)"); ax_sr_wind.set_ylabel("Altura (km)")
     ax_sr_wind.set_ylim(0, 12); ax_sr_wind.grid(True, linestyle='--')
     ax_sr_wind.fill_betweenx([0, 2], 40, 60, color='gray', alpha=0.2)
-    ax_sr_wind.text(50, 1, "Supercell\n(Low-level)", ha='center', va='center', fontsize=8, color='gray')
+    ax_sr_wind.text(50, 1, "Supercèl·lula\n(Nivell Baix)", ha='center', va='center', fontsize=8, color='gray')
     ax_sr_wind.fill_betweenx([7, 11], 40, 60, color='gray', alpha=0.2)
-    ax_sr_wind.text(50, 9, "Classic\nSupercell", ha='center', va='center', fontsize=8, color='gray')
+    ax_sr_wind.text(50, 9, "Supercèl·lula\nClàssica", ha='center', va='center', fontsize=8, color='gray')
     
-    # --- 5. Text Explicatiu ---
+    # --- 5. Text Explicatiu (Textos en Català) ---
     info_text = (
         "Com interpretar l'Hodògraf:\n"
         "• Forma: Una corba pronunciada indica cisallament direccional, favorable per a tempestes organitzades i rotació (supercèl·lules).\n"
         "• SRH (Helicitat): Potencial de rotació. Valors > 150 m²/s² (0-3 km) són significatius per a mesociclons.\n"
-        "• BWD (Cisallament): Canvi de vent amb l'altura. Valors > 40 kts (0-6 km) afavoreixen l'organització de les tempestes.\n"
+        "• BWD (Cisallament): Canvi de vent amb l'altura. Valors > 40 nusos (0-6 km) afavoreixen l'organització de les tempestes.\n"
         "• Bunkers RM: Moviment previst d'una supercèl·lula que es desvia cap a la dreta del vent mitjà."
     )
     fig.text(0.01, 0.01, info_text, va='bottom', ha='left', fontsize=9, wrap=True, bbox=dict(boxstyle='round,pad=0.5', fc='ivory', alpha=0.5))
     plt.tight_layout(rect=[0, 0.1, 1, 0.96])
     return fig
+    
 
 @st.cache_data(ttl=600)
 def carregar_imatge_satelit(url):
@@ -786,7 +787,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             # ===> CANVI: DESEMPAQUETEM TOTES LES DADES DEL SONDEIG <===
             p, T, Td, u, v, heights = sounding_data
-            col1, col2 = st.columns([0.6, 0.4]) # Ajustem mida de columnes
+            col1, col2 = st.columns(2) # Proporció 1:1 per a la mateixa mida
             with col1:
                 fig_skewt = crear_skewt(p, T, Td, u, v, f"Sondeig Vertical - {poble_sel}")
                 st.pyplot(fig_skewt); plt.close(fig_skewt)
