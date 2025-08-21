@@ -148,56 +148,43 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         p, T, Td = np.array(p_profile)[valid_indices] * units.hPa, np.array(T_profile)[valid_indices] * units.degC, np.array(Td_profile)[valid_indices] * units.degC
         u, v, heights = np.array(u_profile)[valid_indices] * units('m/s'), np.array(v_profile)[valid_indices] * units('m/s'), np.array(h_profile)[valid_indices] * units.meter
         
-        # Diccionari de paràmetres
         params_calc = {}
-        
-        # CAPE i CIN (Surface-Based)
         prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
         cape, cin = mpcalc.cape_cin(p, T, Td, prof)
-        params_calc['CAPE_total'] = cape.to('J/kg').m
-        params_calc['CIN_total'] = cin.to('J/kg').m
+        params_calc['CAPE_total'] = cape.to('J/kg').m; params_calc['CIN_total'] = cin.to('J/kg').m
         
-        # Nivells LCL, LFC, EL
-        try:
-            lcl_p, _, lcl_h = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50, return_height=True)
-            params_calc['LCL_Hgt'] = lcl_h.to('m').m
+        try: params_calc['MU_CAPE'] = mpcalc.most_unstable_cape_cin(p, T, Td)[0].to('J/kg').m
+        except Exception: params_calc['MU_CAPE'] = np.nan
+        try: params_calc['ML_CAPE'] = mpcalc.mixed_layer_cape_cin(p, T, Td)[0].to('J/kg').m
+        except Exception: params_calc['ML_CAPE'] = np.nan
+
+        heights_agl = heights - heights[0]
+        try: lcl_p, _, lcl_h = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50, return_height=True); params_calc['LCL_Hgt'] = (heights_agl[0] + lcl_h).to('m').m
         except: params_calc['LCL_Hgt'] = np.nan
-        try:
-            lfc_p, _ = mpcalc.lfc(p, T, Td, which='most_cape')
-            params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m if lfc_p is not None else np.nan
+        try: lfc_p, _ = mpcalc.lfc(p, T, Td, prof); params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m if lfc_p else np.nan
         except: params_calc['LFC_Hgt'] = np.nan
-        try:
-            el_p, _ = mpcalc.el(p, T, Td, prof)
-            params_calc['EL_Hgt'] = mpcalc.pressure_to_height_std(el_p).to('m').m if el_p is not None else np.nan
+        try: el_p, _ = mpcalc.el(p, T, Td, prof); params_calc['EL_Hgt'] = mpcalc.pressure_to_height_std(el_p).to('m').m if el_p else np.nan
         except: params_calc['EL_Hgt'] = np.nan
             
-        # Nivell de Congelació (Freezing Level)
         try:
             frz_lvl_h = mpcalc.height_at_pressure(p, heights, 0 * units.degC)
-            params_calc['FRZG_Lvl'] = frz_lvl_h.to('m').m
+            params_calc['FRZG_Lvl'] = frz_lvl_h[0].to('m').m if frz_lvl_h.size > 0 else np.nan
         except: params_calc['FRZG_Lvl'] = np.nan
-            
-        # Helicitat (SRH)
+
         try:
-            rm, lm, mw = mpcalc.bunkers_storm_motion(p, u, v, heights)
-            params_calc['s-RH_0-1km'] = mpcalc.storm_relative_helicity(heights, u, v, depth=1000 * units.m, u_storm=rm[0], v_storm=rm[1])[0].to('m**2/s**2').m
-            params_calc['s-RH_0-3km'] = mpcalc.storm_relative_helicity(heights, u, v, depth=3000 * units.m, u_storm=rm[0], v_storm=rm[1])[0].to('m**2/s**2').m
-        except:
-            params_calc['s-RH_0-1km'], params_calc['s-RH_0-3km'] = np.nan, np.nan
+            rm, _, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
+            srh1 = mpcalc.storm_relative_helicity(heights, u, v, depth=1000 * units.m, u_storm=rm[0], v_storm=rm[1])[0]
+            srh3 = mpcalc.storm_relative_helicity(heights, u, v, depth=3000 * units.m, u_storm=rm[0], v_storm=rm[1])[0]
+            params_calc['s-RH_0-1km'] = srh1.to('m**2/s**2').m
+            params_calc['s-RH_0-3km'] = srh3.to('m**2/s**2').m
+        except: params_calc['s-RH_0-1km'], params_calc['s-RH_0-3km'] = np.nan, np.nan
             
-        # Índexs de Tempesta (KI, TT, SWEAT)
         try: params_calc['KI'] = mpcalc.k_index(p, T, Td).m
         except: params_calc['KI'] = np.nan
         try: params_calc['TT'] = mpcalc.total_totals_index(p, T, Td).m
         except: params_calc['TT'] = np.nan
         try: params_calc['SWEAT'] = mpcalc.sweat_index(p, T, Td, u, v).m
         except: params_calc['SWEAT'] = np.nan
-
-        # Altres tipus de CAPE (MU, ML)
-        try: mu_cape, _ = mpcalc.most_unstable_cape_cin(p, T, Td); params_calc['MU_CAPE'] = mu_cape.to('J/kg').m
-        except: params_calc['MU_CAPE'] = np.nan
-        try: ml_cape, _ = mpcalc.mixed_layer_cape_cin(p, T, Td); params_calc['ML_CAPE'] = ml_cape.to('J/kg').m
-        except: params_calc['ML_CAPE'] = np.nan
         
         return ((p, T, Td, u, v, heights), params_calc), None
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
@@ -390,55 +377,56 @@ def mostrar_imatge_temps_real(tipus):
 def get_color_for_param(value, param_type):
     if value is None or np.isnan(value): return "#808080"
     if param_type == 'cape':
-        if value < 100: return "#FFFFFF";
-        if value < 1000: return "#FFFF00"
-        if value < 2500: return "#FF8C00"
-        return "#FF0000"
+        if value < 100: return "white";
+        if value < 1000: return "yellow"
+        if value < 2500: return "orange"
+        return "red"
     if param_type == 'srh':
-        if value < 100: return "#FFFFFF";
-        if value < 250: return "#FFFF00"
-        if value < 400: return "#FF8C00"
-        return "#FF0000"
+        if value < 100: return "white";
+        if value < 250: return "yellow"
+        if value < 400: return "orange"
+        return "red"
     if param_type == 'sweat':
-        if value < 250: return "#FFFFFF";
-        if value < 350: return "#FFFF00"
-        if value < 450: return "#FF8C00"
-        return "#FF0000"
-    return "#FFFFFF"
+        if value < 250: return "white";
+        if value < 350: return "yellow"
+        if value < 450: return "orange"
+        return "red"
+    return "white"
 def ui_llegenda_sondeig(params):
-    st.markdown("---")
+    st.markdown("<br>", unsafe_allow_html=True) # Espai superior
     def fmt(val, unit): return f"{val:.1f} {unit}" if val is not None and not np.isnan(val) else "---"
     def fmt_int(val, unit): return f"{val:.0f} {unit}" if val is not None and not np.isnan(val) else "---"
     
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown(f"""
-        **Nivells Clau:**
-        - **Congelació:** {fmt_int(params.get('FRZG_Lvl'), 'm')}
-        - **LCL:** {fmt_int(params.get('LCL_Hgt'), 'm')}
-        - **LFC:** {fmt_int(params.get('LFC_Hgt'), 'm')}
-        - **EL:** {fmt_int(params.get('EL_Hgt'), 'm')}
-        """)
-        st.markdown(f"""
-        **Energia (CAPE / CIN):**
-        - <span style='color:{get_color_for_param(params.get('CAPE_total'), 'cape')};'>**SB CAPE:** {fmt_int(params.get('CAPE_total'), 'J/kg')}</span>
-        - <span style='color:{get_color_for_param(params.get('MU_CAPE'), 'cape')};'>**MU CAPE:** {fmt_int(params.get('MU_CAPE'), 'J/kg')}</span>
-        - <span style='color:{get_color_for_param(params.get('ML_CAPE'), 'cape')};'>**ML CAPE:** {fmt_int(params.get('ML_CAPE'), 'J/kg')}</span>
-        - **CIN:** {fmt_int(params.get('CIN_total'), 'J/kg')}
-        """, unsafe_allow_html=True)
-
-    with col2:
-        st.markdown(f"""
-        **Índexs d'Inestabilitat:**
-        - <span style='color:{get_color_for_param(params.get('SWEAT'), 'sweat')};'>**SWEAT:** {fmt(params.get('SWEAT'), '')}</span>
-        - **KI:** {fmt(params.get('KI'), '°C')}
-        - **TT:** {fmt(params.get('TT'), '°C')}
-        """)
-        st.markdown(f"""
-        **Helicitat Relativa (SRH):**
-        - <span style='color:{get_color_for_param(params.get('s-RH_0-1km'), 'srh')};'>**0-1 km:** {fmt_int(params.get('s-RH_0-1km'), 'm²/s²')}</span>
-        - <span style='color:{get_color_for_param(params.get('s-RH_0-3km'), 'srh')};'>**0-3 km:** {fmt_int(params.get('s-RH_0-3km'), 'm²/s²')}</span>
-        """, unsafe_allow_html=True)
+    html = f"""
+    <div style="font-family: monospace; font-size: 0.9em; line-height: 1.6;">
+        <div style="display: flex; justify-content: space-between;">
+            <div style="width: 48%;">
+                <span style="font-weight: bold;">Nivells Clau:</span><br>
+                Congelació: {fmt_int(params.get('FRZG_Lvl'), 'm')}<br>
+                LCL: {fmt_int(params.get('LCL_Hgt'), 'm')}<br>
+                LFC: {fmt_int(params.get('LFC_Hgt'), 'm')}<br>
+                EL: {fmt_int(params.get('EL_Hgt'), 'm')}<br>
+                <br>
+                <span style="font-weight: bold;">Energia (CAPE/CIN):</span><br>
+                <span style='color:{get_color_for_param(params.get('CAPE_total'), 'cape')};'>SB CAPE: {fmt_int(params.get('CAPE_total'), 'J/kg')}</span><br>
+                <span style='color:{get_color_for_param(params.get('MU_CAPE'), 'cape')};'>MU CAPE: {fmt_int(params.get('MU_CAPE'), 'J/kg')}</span><br>
+                <span style='color:{get_color_for_param(params.get('ML_CAPE'), 'cape')};'>ML CAPE: {fmt_int(params.get('ML_CAPE'), 'J/kg')}</span><br>
+                CIN: {fmt_int(params.get('CIN_total'), 'J/kg')}
+            </div>
+            <div style="width: 48%;">
+                <span style="font-weight: bold;">Índexs d'Inestabilitat:</span><br>
+                <span style='color:{get_color_for_param(params.get('SWEAT'), 'sweat')};'>SWEAT: {fmt(params.get('SWEAT'), '')}</span><br>
+                KI: {fmt(params.get('KI'), '°C')}<br>
+                TT: {fmt(params.get('TT'), '°C')}<br>
+                <br>
+                <span style="font-weight: bold;">Helicitat Relativa (SRH):</span><br>
+                <span style='color:{get_color_for_param(params.get('s-RH_0-1km'), 'srh')};'>0-1 km: {fmt_int(params.get('s-RH_0-1km'), 'm²/s²')}</span><br>
+                <span style='color:{get_color_for_param(params.get('s-RH_0-3km'), 'srh')};'>0-3 km: {fmt_int(params.get('s-RH_0-3km'), 'm²/s²')}</span><br>
+            </div>
+        </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent Meteo-Col·lega (amb Google Gemini)")
     try: genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -594,15 +582,13 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         with contingut_principal:
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
-            col1, col2, col3 = st.columns([2.5, 1, 2.5]) # Skew-T, Llegenda, Hodògraf
+            col1, col2, col3 = st.columns([2.5, 1.5, 2.5]) # Skew-T, Llegenda, Hodògraf
             with col1:
-                fig_skewt = crear_skewt(p, T, Td, u, v, f"Sondeig Vertical\n{poble_sel}")
-                st.pyplot(fig_skewt); plt.close(fig_skewt)
+                fig_skewt = crear_skewt(p, T, Td, u, v, f"Sondeig Vertical\n{poble_sel}"); st.pyplot(fig_skewt); plt.close(fig_skewt)
             with col2:
                 ui_llegenda_sondeig(params_calculats)
             with col3:
-                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
-                st.pyplot(fig_hodo); plt.close(fig_hodo)
+                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}"); st.pyplot(fig_hodo); plt.close(fig_hodo)
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteociel | IA per Google Gemini.</p>", unsafe_allow_html=True)
