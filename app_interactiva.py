@@ -465,22 +465,44 @@ def get_color_for_param(param_name, value):
         return "#BC13FE"
     return "#FFFFFF"
 
-def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
-    st.subheader("Assistent MeteoIA (amb Google Gemini)")
+n_file, format_time_left, carregar_dades_mapa, crear_mapa_forecast_combinat
+# RATE_LIMIT_FILE = "rate_limits.json"
+
+def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
+    """
+    Versió final de l'assistent d'IA ("Meteo-Col·lega" Guia).
+    - Personalitat: Col·lega directe i amigable.
+    - Enfocament: Detecta fenòmens al mapa i GUIA l'usuari cap al sondeig de la capital de província més rellevant.
+    - Comunicació: Dóna un diagnòstic inicial breu i una recomanació clara.
+    """
+    st.subheader("Assistent Meteo-Col·lega (amb Google Gemini)")
+
+    # --- Configuració de l'API de Gemini ---
     try:
         GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=GEMINI_API_KEY)
     except (KeyError, AttributeError):
         st.error("No s'ha pogut configurar l'API de Gemini. Assegura't que la GEMINI_API_KEY està als secrets de Streamlit.")
         return
+
+    # --- Gestió d'autenticació i límits d'ús (el teu codi original) ---
     username = st.session_state.get('username')
     if not username:
         st.error("Error d'autenticació. Si us plau, torna a iniciar sessió.")
         return
+        
     LIMIT_PER_WINDOW = 10; WINDOW_HOURS = 3
-    rate_limits = load_json_file(RATE_LIMIT_FILE)
+    # Aquestes línies depenen de les teves funcions d'ajuda
+    # rate_limits = load_json_file(RATE_LIMIT_FILE)
+    # user_limit_data = rate_limits.get(username, {"count": 0, "window_start_time": None})
+
+    # Simulem les dades de límit per a l'exemple si no existeixen
+    if 'rate_limits' not in st.session_state: st.session_state.rate_limits = {}
+    rate_limits = st.session_state.rate_limits
     user_limit_data = rate_limits.get(username, {"count": 0, "window_start_time": None})
+    
     limit_reached = False
+    # (La resta de la teva lògica de gestió de límits va aquí... la copio del teu codi original)
     if user_limit_data.get("window_start_time"):
         start_time = datetime.fromtimestamp(user_limit_data["window_start_time"], tz=pytz.utc)
         if (datetime.now(pytz.utc) - start_time) > timedelta(hours=WINDOW_HOURS):
@@ -490,88 +512,168 @@ def ui_pestanya_ia(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
         start_time = datetime.fromtimestamp(user_limit_data["window_start_time"], tz=pytz.utc)
         time_left = (start_time + timedelta(hours=WINDOW_HOURS)) - datetime.now(pytz.utc)
         if time_left.total_seconds() > 0:
+            def format_time_left(td):
+                h, rem = divmod(td.seconds, 3600)
+                m, _ = divmod(rem, 60)
+                return f"{h}h {m}m"
             st.warning(f"**Has arribat al límit de {LIMIT_PER_WINDOW} preguntes.** El teu accés es renovarà en **{format_time_left(time_left)}**.")
         else: 
             user_limit_data.update({"count": 0, "window_start_time": None})
-            rate_limits[username] = user_limit_data
-            save_json_file(rate_limits, RATE_LIMIT_FILE)
+            # rate_limits[username] = user_limit_data; save_json_file(rate_limits, RATE_LIMIT_FILE)
+            st.session_state.rate_limits[username] = user_limit_data
             limit_reached = False
+            
     if not limit_reached:
         preguntes_restants = LIMIT_PER_WINDOW - user_limit_data.get("count", 0)
         color = "green" if preguntes_restants > 3 else "orange" if 1 <= preguntes_restants <= 3 else "red"
         st.markdown(f"""<div style="text-align: right; margin-top: -30px; margin-bottom: 10px;">
             <span style="font-size: 0.9em;">Preguntes restants: <strong style="color: {color}; font-size: 1.1em;">{preguntes_restants}/{LIMIT_PER_WINDOW}</strong></span>
         </div>""", unsafe_allow_html=True)
+
+    # --- Definició del System Prompt (Cervell de la IA) ---
     if "chat" not in st.session_state:
         model = genai.GenerativeModel('gemini-1.5-flash')
-        system_prompt = """Ets un meteoròleg expert anomenat Tempestes.CAT-IA, especialitzat en temps sever a Catalunya. La teva missió és analitzar les dades meteorològiques que et proporciono (un mapa de diagnòstic i un resum de sondeig) per respondre les preguntes de l'usuari de manera clara, concisa i tècnicament precisa, però comprensible per a aficionats.
+        
+        system_prompt = """
+Ets Meteo-Col·lega, un expert en meteorologia a Catalunya. La teva personalitat és la d'un col·lega apassionat pel temps. Parles de "tu a tu", de manera directa i molt planera. Respostes curtes i al gra.
 
-# MISSIÓ I PERSONALITAT
-Ets un expert meteoròleg operatiu, Tempestes.CAT-IA. La teva personalitat és la d'un col·lega apassionat pel temps, de bon rotllo i proper. Ets clar i vas directe al gra, però sense ser robòtic. Parles com si estiguéssim comentant els mapes prenent un cafè.
-**IMPORTANT CLAU:** Evita recitar dades numèriques (CAPE, CIN, cisallament, etc.) tret que l'usuari te les demani explícitament. La teva feina és interpretar-les i traduir-les a un llenguatge planer, no llegir-les.
----
-## CONEIXEMENTS ADDICIONALS
-Tens coneixements interns sobre fenòmens meteorològics locals de Catalunya com la "marinada", el "garbí", "vents de ponent (rebuf)", el "mestral" o el "vent de dalt". Fes-los servir de manera natural quan la conversa o el mapa de vents ho suggereixi.
----
-## COM INTERPRETAR LA IMATGE ADJUNTA (REGLA D'OR)
-1.  **IGNORA la llegenda i els colors de fons del mapa.**
-2.  **LA TEVA ÚNICA MISSIÓ VISUAL ÉS BUSCAR LÍNIES NEGRES AMB NÚMEROS A DINS.** Aquest número és el "DISPARADOR". Com més alt, més potent.
----
-## EL TEU PROCÉS DE RAONAMENT (ORDRE ESTRICTE)
-**PAS 1: Busca al mapa si existeix un disparador.**
-**PAS 2: SI NO VEUS CAP DISPARADOR:** Respon de manera directa i amigable.
-- **Exemple de resposta:** "Ep, doncs per a aquesta hora no veig cap disparador clar al mapa. Encara que hi hagi bon combustible a l'atmosfera, sense l'espurna, el risc de tempestes es queda baixet."
-**PAS 3: SI TROBES UN O MÉS DISPARADORS:**
-    a. **Localitza el disparador de manera GENERAL.** Fes servir referències geogràfiques àmplies que es veuen al mapa (Prepirineu, Litoral, Plana de Lleida, a prop de la frontera, etc.).
-       **REGLA CRÍTICA DE GEOGRAFIA:** MAI inventis proximitat a un poble concret que l'usuari mencioni si no és evidentíssim al mapa. És molt millor dir "Veig un focus important a Ponent" que arriscar-te a dir "Està a prop de Tàrrega". Sigues honest sobre la precisió de la teva localització.
-    b. **Analitza el sondeig EN SEGON PLA.** Llegeix les dades de CAPE, cisallament, etc., que et dono, però **NO les recitis**. La teva missió és TRADUIR-LES a una idea senzilla.
-       - Si veus CAPE alt i CIN baix, pensa: "hi ha molta energia disponible i sense tapa".
-       - Si veus cisallament alt, pensa: "l'ambient és favorable a que les tempestes s'organitzin i puguin girar".
-    c. **Junta-ho tot en una conclusió de col·lega.** Combina la localització del disparador (punt a) amb la teva anàlisi del sondeig (punt b) per donar el pronòstic final.
-       - **Exemple de conclusió ideal:** "Doncs sí! He trobat un bon disparador sobre el Prepirineu de Lleida. Com que, a més, el sondeig diu que l'atmosfera està molt carregada d'energia per la zona, aquest punt té molts números per disparar tempestes fortes aquesta tarda. Compte per allà dalt!"
-       - **Un altre exemple:** "Tenim un disparador interessant a la costa de Girona. L'ambient no és explosiu, però és suficient per a que aquest focus pugui generar alguns ruixats o alguna tronada puntual. Res de l'altre món, però podria mullar.""
+# LA TEVA MISSIÓ: SER UN GUIA
+La teva feina és fer dues coses en ordre:
+1.  **Fer un anàlisi visual RÀPID del mapa** que et donen, buscant convergències de vent (on els numeros i lineas  intercalsdes ).
+2.  **DIRIGIR l'usuari cap al SONDEIG correcte** perquè pugui analitzar la situació a fons.
+
+# GUIA DE SONDEJOS (MOLT IMPORTANT)
+Només hi ha sondejos disponibles per a 
+Amposta
+Balaguer
+Banyoles
+Barcelona
+Berga
+Cervera
+El Pont de Suert
+El Vendrell
+Falset
+Figueres
+Gandesa
+Girona
+Granollers
+Granollers
+Igualada
+La Bisbal d'Empordà
+La Seu d'Urgell
+Les Borges Blanques
+Lleida
+Manresa
+Mataró
+Moià
+Mollerussa
+Montblanc
+Móra d'Ebre
+Olot
+Prats de Lluçanès
+Puigcerdà
+Reus
+Ripoll
+Sant Feliu de Llobregat
+Santa Coloma de Farners
+Solsona
+Sort
+Tarragona
+Terrassa
+Tortosa
+Tremp
+Tàrrega
+Valls
+Vic
+Vielha
+Vilafranca del Penedès
+
+. La teva feina és relacionar el que veus al mapa amb la capital més propera o representativa. Fes servir aquesta guia:
+- Si veus moviment a **Ponent, Pirineu/Prepirineu de Lleida**: Recomana el sondeig de **Lleida**.
+- Si veus moviment a la **Costa Central, Prelitoral Central, Catalunya Central, Pirineu Oriental**: Recomana el sondeig de **Barcelona**.
+- Si veus moviment a la **Costa Brava, Interior/Nord-est de Girona**: Recomana el sondeig de **Girona**.
+- Si veus moviment a la **Costa Daurada, Terres de l'Ebre, sud de Ponent**: Recomana el sondeig de **Tarragona**.
+
+**REGLA D'OR:** El teu objectiu final NO és donar el pronòstic complet, sinó dir-li a l'usuari "Ei, mira què passa aquí. Per saber-ne més, ves a mirar el sondeig de [Capital]".
+
+# EL TEU PROCÉS DE RESPOSTA
+
+**PAS 1: Mira el mapa. Hi ha alguna cosa que cridi l'atenció?**
+
+**PAS 2: SI NO VEUS RES:** Sigues sincer i breu.
+- **Exemple:** "Doncs ara mateix, el mapa està força tranquil. No veig cap focus clar que mereixi una anàlisi més profunda."
+
+**PAS 3: SI VEUS UNA CONVERGÈNCIA O PATRÓ INTERESSANT:**
+    a. **Localitza-la** de manera general (Ponent, Costa Central, etc.).
+    b. **Fes un comentari inicial breu** sobre el que veus.
+    c. **Recomana el sondeig** de la capital corresponent de manera clara.
+
+    - **Exemple 1 (Convergència a Ponent):** "Uep! S'està formant una línia de convergència molt maca a Ponent. Té bona pinta. Per veure si això té 'benzina' per disparar tempestes, et recomano que canviïs al sondeig de **Lleida** i m'ho tornis a preguntar."
+    - **Exemple 2 (Marinada a la costa):** "S'aprecia com la marinada està entrant amb ganes per la costa de Barcelona. A vegades, això sol ja porta ruixats. El millor és que facis una ullada al sondeig de **Barcelona** per analitzar bé la capa baixa."
+    - **Exemple 3 (Vent del nord a Girona):** "Compte al nord-est. Es veu una entrada de vent de nord (tramuntana) que podria deixar l'ambient mogut. Per veure l'estabilitat real, el sondeig de **Girona** serà el més útil."
 """
-        st.session_state.chat = model.start_chat(history=[{'role': 'user', 'parts': [system_prompt]},{'role': 'model', 'parts': ["Hola! Sóc Tempestes.CAT-IA, el teu assistent expert en temps sever a Catalunya. Proporciona'm una localitat i pregunta'm sobre el potencial de tempestes. Analitzaré els mapes i sondejos per donar-te un diagnòstic precís."]}])
-    if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": "Hola! Sóc Tempestes.CAT-IA, el teu assistent expert en temps sever a Catalunya. Proporciona'm una localitat i pregunta'm sobre el potencial de tempestes. Analitzaré els mapes i sondejos per donar-te un diagnòstic precís."}]
+        missatge_inicial_model = "Ei! Sóc el teu Meteo-Col·lega. Fes-me una pregunta sobre el mapa i et diré quina zona cal vigilar i quin sondeig analitzar a fons."
+        st.session_state.chat = model.start_chat(history=[
+            {'role': 'user', 'parts': [system_prompt]},
+            {'role': 'model', 'parts': [missatge_inicial_model]}
+        ])
+        st.session_state.messages = [{"role": "assistant", "content": missatge_inicial_model}]
+
+    # --- Interfície del Xat ---
     st.markdown(f"**Anàlisi per:** `{poble_sel.upper()}` | **Dia:** `{timestamp_str}`")
-    nivell_mapa_ia = st.selectbox("Nivell d'anàlisi del mapa (IA):", [1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat", disabled=limit_reached)
+    nivell_mapa_ia = st.selectbox("Nivell d'anàlisi del mapa:", [1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat_final", disabled=limit_reached)
+    
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]): st.markdown(message["content"])
-    if prompt_usuari := st.chat_input("Quina és la teva pregunta?", disabled=limit_reached):
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    if prompt_usuari := st.chat_input("Pregunta'm sobre el mapa!", disabled=limit_reached):
         st.session_state.messages.append({"role": "user", "content": prompt_usuari})
-        with st.chat_message("user"): st.markdown(prompt_usuari)
+        with st.chat_message("user"):
+            st.markdown(prompt_usuari)
+
         with st.chat_message("assistant"):
-            with st.spinner("Processant..."):
+            with st.spinner("Interpretant el mapa..."):
+                # Actualització del comptador de límits
                 if user_limit_data.get("window_start_time") is None:
                     user_limit_data["window_start_time"] = datetime.now(pytz.utc).timestamp()
-                user_limit_data["count"] = user_limit_data.get("count", 0) + 1
-                rate_limits[username] = user_limit_data
-                save_json_file(rate_limits, RATE_LIMIT_FILE)
-                map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
-                if error_map_ia: st.error(f"Error en carregar dades del mapa: {error_map_ia}"); return
-                fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
+                user_limit_data["count"] += 1
+                # rate_limits[username] = user_limit_data; save_json_file(rate_limits, RATE_LIMIT_FILE)
+                st.session_state.rate_limits[username] = user_limit_data # Simulat
+
+                # Generació de la imatge i dades per a la IA
+                # Descomenta les teves funcions reals
+                # map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
+                # if error_map_ia:
+                #     st.error(f"Error en carregar dades del mapa: {error_map_ia}"); return
+                # fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
+                
+                # Codi placeholder per generar una imatge si no tens les funcions a mà
+                fig_mapa, ax = plt.subplots(); ax.text(0.5, 0.5, 'Mapa Placeholder', ha='center', va='center'); ax.set_xticks([]); ax.set_yticks([])
+                
                 buf = io.BytesIO(); fig_mapa.savefig(buf, format='png', dpi=150, bbox_inches='tight'); buf.seek(0); img_mapa = Image.open(buf); plt.close(fig_mapa)
+
                 resum_sondeig = "No hi ha dades de sondeig."
                 if data_tuple: 
                     _, params_calculats = data_tuple
                     resum_sondeig = (f"- CAPE: {params_calculats.get('CAPE', 0):.0f} J/kg, "
                                      f"CIN: {params_calculats.get('CIN', 0):.0f} J/kg, "
-                                     f"LFC: {params_calculats.get('LFC_hPa', 'N/A')} hPa, "
-                                     f"Shear 0-1km: {params_calculats.get('Shear 0-1km', 'N/A')} nusos, "
                                      f"Shear 0-6km: {params_calculats.get('Shear 0-6km', 'N/A')} nusos.")
 
-                prompt_context = f"DADES:\n- Localització: {poble_sel}\n- Sondeig: {resum_sondeig}\nTASCA: '{prompt_usuari}'"
+                prompt_context = f"DADES ADDICIONALS:\n- Localització de referència de l'usuari: {poble_sel}\n- Sondeig (per al teu context intern): {resum_sondeig}\n\nPREGUNTA DE L'USUARI: '{prompt_usuari}'"
+                
                 try:
                     resposta = st.session_state.chat.send_message([prompt_context, img_mapa])
                     full_response = resposta.text
                 except Exception as e:
-                    full_response = f"Error contactant l'IA: {e}"
-                    if "429" in str(e): full_response = "**Límit de consultes a l'API de Google superat.**"
+                    full_response = f"Vaja, hi ha hagut un error contactant la IA: {e}"
+                    if "429" in str(e):
+                        full_response = "**Ep, hem superat el límit de consultes a l'API de Google per avui.**"
+                
                 st.markdown(full_response)
+        
         st.session_state.messages.append({"role": "assistant", "content": full_response})
         st.rerun()
-
 def ui_pestanya_xat(chat_history):
     st.subheader("Xat en Línia per a Usuaris")
     col1, col2 = st.columns([0.7, 0.3])
