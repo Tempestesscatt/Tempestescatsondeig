@@ -298,8 +298,8 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 def crear_skewt(p, T, Td, u, v, params_calc, titol):
-    fig = plt.figure(figsize=(9, 10), dpi=150)
-    skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
+    fig = plt.figure(dpi=150); fig.set_figheight(fig.get_figwidth() * 1.1)
+    skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.8, 0.9))
     skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2.5, label='Temperatura'); skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
     skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
@@ -320,12 +320,11 @@ def crear_skewt(p, T, Td, u, v, params_calc, titol):
     except: pass
     skew.ax.legend(); return fig
 def crear_hodograf_avancat(p, u, v, heights, titol):
-    fig = plt.figure(figsize=(9, 10), dpi=150)
+    fig = plt.figure(dpi=150); fig.set_figheight(fig.get_figwidth() * 1.1)
     gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[1.2, 1], top=0.92, bottom=0.05, left=0.05, right=0.95)
     ax_hodo = fig.add_subplot(gs[0, 0]); ax_info = fig.add_subplot(gs[0, 1]); ax_info.axis('off')
-    fig.suptitle(titol, weight='bold', fontsize=16)
-    h = Hodograph(ax_hodo, component_range=80.); h.add_grid(increment=20, color='gray', linestyle='--')
-    h.plot_colormapped(u.to('kt'), v.to('kt'), heights.to('km'), intervals=np.array([0, 3, 6, 12]) * units.km, colors=['red', 'green', 'blue'], linewidth=4)
+    fig.suptitle(titol, weight='bold', fontsize=16); h = Hodograph(ax_hodo, component_range=80.)
+    h.add_grid(increment=20, color='gray', linestyle='--'); h.plot_colormapped(u.to('kt'), v.to('kt'), heights.to('km'), intervals=np.array([0, 3, 6, 12]) * units.km, colors=['red', 'green', 'blue'], linewidth=4)
     heights_km = heights.to('km').m; valid_indices = ~np.isnan(heights_km) & ~np.isnan(u.m) & ~np.isnan(v.m); altituds_a_mostrar = [1, 3, 5, 8]
     if np.count_nonzero(valid_indices) > 1:
         interp_u = interp1d(heights_km[valid_indices], u[valid_indices].to('kt').m, bounds_error=False, fill_value=np.nan)
@@ -376,7 +375,6 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
     ax_sr_wind.set_xlabel("Vent Relatiu (nusos)", fontsize=8); ax_sr_wind.set_ylabel("Altura (km)", fontsize=8); ax_sr_wind.set_ylim(0, 12); ax_sr_wind.grid(True, linestyle='--')
     ax_sr_wind.tick_params(axis='both', which='major', labelsize=8)
     return fig
-
 @st.cache_data(ttl=600)
 def carregar_imatge_satelit(url):
     try:
@@ -422,15 +420,34 @@ def analitzar_tipus_sondeig(params):
         return ("SONDEIG DE CONVECCIÓ ESTÀNDARD",
                 "Condicions típiques per a la formació de tempestes de tarda. La severitat dependrà d'altres factors com el cisallament del vent (veure hodògraf).")
 def ui_llegenda_sondeig(params):
-    st.markdown("<br>", unsafe_allow_html=True)
-    titol, descripcio = analitzar_tipus_sondeig(params)
+    def fmt(val, unit): return f"{val:.1f} {unit}" if not np.isnan(val) else "---"
+    def fmt_int(val, unit): return f"{val:.0f} {unit}" if not np.isnan(val) else "---"
     
-    st.markdown(f"""
-    <div style="border: 1px solid #555; border-radius: 10px; padding: 15px; text-align: center;">
-        <h3 style="margin-top: 0; color: #FFD700;">{titol}</h3>
-        <p style="font-size: 0.9em;">{descripcio}</p>
-    </div>
-    """, unsafe_allow_html=True)
+    html = f"""<div style="font-family: monospace; font-size: 0.9em; line-height: 1.7;">
+        <div style="display: flex; justify-content: space-between;">
+            <div style="width: 48%;">
+                <span style="font-weight: bold;">Nivells Clau:</span><br>
+                Congelació: {fmt_int(params.get('FRZG_Lvl_Hgt', np.nan), 'm')}<br>
+                LCL: {fmt_int(params.get('LCL_Hgt', np.nan), 'm')}<br>
+                LFC: {fmt_int(params.get('LFC_Hgt', np.nan), 'm')}<br>
+                EL: {fmt_int(params.get('EL_Hgt', np.nan), 'm')}
+            </div>
+            <div style="width: 48%;">
+                <span style="font-weight: bold;">Energia (CAPE/CIN):</span><br>
+                <span style='color:{get_color_for_param(params.get('CAPE_total'), 'cape')};'>SB CAPE: {fmt_int(params.get('CAPE_total', np.nan), 'J/kg')}</span><br>
+                <span style='color:{get_color_for_param(params.get('MU_CAPE'), 'cape')};'>MU CAPE: {fmt_int(params.get('MU_CAPE', np.nan), 'J/kg')}</span><br>
+                <span style='color:{get_color_for_param(params.get('ML_CAPE'), 'cape')};'>ML CAPE: {fmt_int(params.get('ML_CAPE', np.nan), 'J/kg')}</span><br>
+                CIN: {fmt_int(params.get('CIN_total', np.nan), 'J/kg')}
+            </div>
+        </div>
+        <br>
+        <div style="width: 100%;">
+            <span style="font-weight: bold;">Índexs d'Inestabilitat:</span><br>
+            KI: {fmt(params.get('KI', np.nan), '°C')}<br>
+            TT: {fmt(params.get('TT', np.nan), '°C')}
+        </div>
+    </div>"""
+    st.markdown(html, unsafe_allow_html=True)
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent Meteo-Col·lega (amb Google Gemini)")
     try: genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -590,6 +607,13 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             with col1:
                 fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}")
                 st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
+                
+                titol, descripcio = analitzar_tipus_sondeig(params_calculats)
+                st.markdown(f"""<div style="border: 1px solid #555; border-radius: 10px; padding: 15px; text-align: center; margin-top: 10px;">
+                    <h4 style="margin-top: 0; color: #FFD700;">{titol}</h4>
+                    <p style="font-size: 0.9em; margin-bottom: 0;">{descripcio}</p>
+                </div>""", unsafe_allow_html=True)
+
             with col_llegenda:
                 ui_llegenda_sondeig(params_calculats)
             with col2:
@@ -599,14 +623,15 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             with st.expander("❔ Com interpretar els paràmetres i gràfics"):
                 st.markdown("""
                 **Paràmetres del Sondeig:**
-                - **CAPE:** Energia per a les tempestes. Més alt = més forts corrents ascendents. >1500 J/kg és alt.
-                - **CIN:** "Tapa" que impedeix que l'aire pugi. Valors més negatius que -50 J/kg indiquen una tapa forta.
-                - **LCL/LFC/EL:** Altures de la base del núvol, inici de l'ascens lliure i sostre de la tempesta.
-                - **KI / TT:** Índexs d'inestabilitat. Valors més alts indiquen més potencial de tempesta.
+                - **CAPE (SB/MU/ML):** Energia disponible per a una tempesta. >1500 J/kg es considera alt.
+                - **CIN:** "Tapa" que impedeix la convecció. Valors > -50 J/kg indiquen una tapa forta.
+                - **LCL/LFC/EL:** Altures (en metres sobre el terra) de la base del núvol, inici de l'ascens lliure i sostre teòric de la tempesta.
+                - **KI / TT:** Índexs clàssics d'inestabilitat. Com més alts, més potencial de tempesta.
                 
                 **Hodògraf:**
-                - **Forma:** Una corba pronunciada indica cisallament direccional, favorable per a tempestes organitzades.
-                - **BWD (Cisallament):** Valors > 40 nusos (0-6 km) afavoreixen l'organització de les tempestes.
+                - **Forma:** Una corba pronunciada indica un fort canvi en la direcció del vent, favorable per a tempestes organitzades (multicèl·lules, supercèl·lules).
+                - **BWD (Cisallament):** Mesura el canvi total de vent. Valors de 0-6 km > 40 nusos són un bon indicador per a l'organització de tempestes severes.
+                - **Vent Relatiu vs. Altura:** Mostra com de fort és el vent relatiu a la tempesta a diferents altures. Valors alts a nivells baixos afavoreixen la formació de tornados.
                 """)
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 def ui_peu_de_pagina():
