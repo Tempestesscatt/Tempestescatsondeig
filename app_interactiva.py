@@ -301,7 +301,7 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 def crear_skewt(p, T, Td, u, v, params_calc, titol):
     fig = plt.figure(figsize=(9, 10), dpi=150)
-    skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.8, 0.9))
+    skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
     skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2.5, label='Temperatura'); skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
     skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
@@ -327,21 +327,19 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
     ax_hodo = fig.add_subplot(gs[0, 0]); ax_info = fig.add_subplot(gs[0, 1]); ax_info.axis('off')
     fig.suptitle(titol, weight='bold', fontsize=16); h = Hodograph(ax_hodo, component_range=80.)
     h.add_grid(increment=20, color='gray', linestyle='--'); h.plot_colormapped(u.to('kt'), v.to('kt'), heights.to('km'), intervals=np.array([0, 3, 6, 12]) * units.km, colors=['red', 'green', 'blue'], linewidth=4)
-    heights_km = heights.to('km').m; valid_indices = ~np.isnan(heights_km) & ~np.isnan(u.m) & ~np.isnan(v.m)
-    if np.count_nonzero(valid_indices) > 1:
-        try:
-            right_mover, left_mover, mean_wind_vec = mpcalc.bunkers_storm_motion(p, u, v, heights)
-            motion = {'RM': right_mover, 'LM': left_mover, 'Vent Mitjà': mean_wind_vec}
-            for name, vec in motion.items():
-                u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m; marker = 's' if 'Mitjà' in name else 'o'
-                ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
-        except (ValueError, IndexError): right_mover = None
-    params = {'BWD (nusos)': {}}; critical_angle, sr_wind_speed = np.nan, None
+    params = {'BWD (nusos)': {}}; motion = {}; right_mover, critical_angle, sr_wind_speed = None, np.nan, None
+    try:
+        right_mover, left_mover, mean_wind_vec = mpcalc.bunkers_storm_motion(p, u, v, heights)
+        motion['RM'] = right_mover; motion['LM'] = left_mover; motion['Vent Mitjà'] = mean_wind_vec
+        for name, vec in motion.items():
+            u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m; marker = 's' if 'Mitjà' in name else 'o'
+            ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
+    except (ValueError, IndexError): right_mover = None
     depths = {'0-1 km': 1000 * units.m, '0-3 km': 3000 * units.m, '0-6 km': 6000 * units.m}
     for name, depth in depths.items():
         try: params['BWD (nusos)'][name] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights, depth=depth)).to('kt').m
         except (ValueError, IndexError): params['BWD (nusos)'][name] = np.nan
-    if 'right_mover' in locals() and right_mover is not None:
+    if right_mover is not None:
         try:
             u_storm, v_storm = right_mover; critical_angle = mpcalc.critical_angle(p, u, v, heights, u_storm=u_storm, v_storm=v_storm).to('deg').m
             sr_wind_speed = mpcalc.wind_speed(u - u_storm, v - v_storm).to('kt')
@@ -354,7 +352,7 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
         ax_info.text(x_label, y_pos, key); ax_info.text(x_value, y_pos, f"{val:.0f}" if not np.isnan(val) else "---", ha='center'); y_pos -= y_step
     
     y_pos -= y_step; ax_info.text(0.5, y_pos, "Moviment Tempesta (dir/kts)", ha='center', weight='bold', fontsize=12); y_pos -= y_step*1.5
-    if 'motion' in locals() and motion:
+    if motion:
         for name, vec in motion.items():
             speed = mpcalc.wind_speed(*vec).to('kt').m; direction = mpcalc.wind_direction(*vec).to('deg').m
             ax_info.text(x_label, y_pos, f"{name}:"); ax_info.text(x_value, y_pos, f"{direction:.0f}°/{speed:.0f} kts", ha='left'); y_pos -= y_step
@@ -364,7 +362,7 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
     ax_sr_wind = fig.add_axes([0.62, 0.08, 0.3, 0.25])
     ax_sr_wind.set_title("Vent Relatiu vs. Altura (RM)", fontsize=10);
     if sr_wind_speed is not None:
-        ax_sr_wind.plot(sr_wind_speed, heights_km); ax_sr_wind.set_xlim(0, max(60, sr_wind_speed[~np.isnan(sr_wind_speed)].max().m + 5 if np.any(~np.isnan(sr_wind_speed)) else 60))
+        ax_sr_wind.plot(sr_wind_speed, heights.to('km').m); ax_sr_wind.set_xlim(0, max(60, sr_wind_speed[~np.isnan(sr_wind_speed)].max().m + 5 if np.any(~np.isnan(sr_wind_speed)) else 60))
         ax_sr_wind.fill_betweenx([0, 2], 40, 60, color='gray', alpha=0.2); ax_sr_wind.fill_betweenx([7, 11], 40, 60, color='gray', alpha=0.2)
     else: ax_sr_wind.text(0.5, 0.5, "No disponible", ha='center', va='center', transform=ax_sr_wind.transAxes, fontsize=9, color='gray')
     ax_sr_wind.set_xlabel("Vent Relatiu (nusos)", fontsize=8); ax_sr_wind.set_ylabel("Altura (km)", fontsize=8); ax_sr_wind.set_ylim(0, 12); ax_sr_wind.grid(True, linestyle='--')
@@ -610,26 +608,17 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         with contingut_principal:
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
+            
+            ui_caixa_parametres(params_calculats)
+            st.markdown("---")
+
             col1, col2 = st.columns(2)
             with col1:
                 fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}")
                 st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
-                
-                titol, descripcio = analitzar_tipus_sondeig(params_calculats)
-                st.markdown(f"""<div style="border: 1px solid #555; border-radius: 10px; padding: 15px; text-align: center; margin-top: 10px;">
-                    <h4 style="margin-top: 0; color: #FFD700;">{titol}</h4>
-                    <p style="font-size: 0.9em; margin-bottom: 0;">{descripcio}</p>
-                </div>""", unsafe_allow_html=True)
-
             with col2:
                 fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
                 st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
-                
-                titol_h, desc_h = analitzar_tipus_hodograf(params_calculats)
-                st.markdown(f"""<div style="border: 1px solid #555; border-radius: 10px; padding: 15px; text-align: center; margin-top: 10px;">
-                    <h4 style="margin-top: 0; color: #FFD700;">{titol_h}</h4>
-                    <p style="font-size: 0.9em; margin-bottom: 0;">{desc_h}</p>
-                </div>""", unsafe_allow_html=True)
 
             with st.expander("❔ Com interpretar els paràmetres i gràfics"):
                 st.markdown("""
