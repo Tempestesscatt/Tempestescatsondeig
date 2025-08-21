@@ -293,21 +293,12 @@ def crear_skewt(p, T, Td, u, v, titol):
     skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_title(titol, weight='bold', fontsize=14); skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
     skew.ax.legend(); return fig
 def crear_hodograf_avancat(p, u, v, heights, titol):
-    """
-    Crea un hodògraf avançat. Versió amb la correcció del ValueError.
-    """
     fig = plt.figure(figsize=(9, 9), dpi=150) 
     gs = fig.add_gridspec(nrows=3, ncols=2, width_ratios=[2.5, 1.5], hspace=0.4, wspace=0.3, top=0.9, bottom=0.25, left=0.1, right=0.9)
-    ax_hodo = fig.add_subplot(gs[:, 0]); ax_params = fig.add_subplot(gs[0, 1])
-    ax_motion = fig.add_subplot(gs[1, 1]); ax_sr_wind = fig.add_subplot(gs[2, 1])
-    fig.suptitle(titol, weight='bold', fontsize=16)
-    h = Hodograph(ax_hodo, component_range=80.)
-    h.add_grid(increment=20, color='gray', linestyle='--')
-    h.plot_colormapped(u.to('kt'), v.to('kt'), heights.to('km'), intervals=np.array([0, 3, 6, 12]) * units.km, 
-                       colors=['red', 'green', 'blue'], linewidth=4)
-    heights_km = heights.to('km').m
-    valid_indices = ~np.isnan(heights_km) & ~np.isnan(u.m) & ~np.isnan(v.m)
-    altituds_a_mostrar = [1, 3, 5, 8]
+    ax_hodo = fig.add_subplot(gs[:, 0]); ax_params = fig.add_subplot(gs[0, 1]); ax_motion = fig.add_subplot(gs[1, 1]); ax_sr_wind = fig.add_subplot(gs[2, 1])
+    fig.suptitle(titol, weight='bold', fontsize=16); h = Hodograph(ax_hodo, component_range=80.)
+    h.add_grid(increment=20, color='gray', linestyle='--'); h.plot_colormapped(u.to('kt'), v.to('kt'), heights.to('km'), intervals=np.array([0, 3, 6, 12]) * units.km, colors=['red', 'green', 'blue'], linewidth=4)
+    heights_km = heights.to('km').m; valid_indices = ~np.isnan(heights_km) & ~np.isnan(u.m) & ~np.isnan(v.m); altituds_a_mostrar = [1, 3, 5, 8]
     if np.count_nonzero(valid_indices) > 1:
         interp_u = interp1d(heights_km[valid_indices], u[valid_indices].to('kt').m, bounds_error=False, fill_value=np.nan)
         interp_v = interp1d(heights_km[valid_indices], v[valid_indices].to('kt').m, bounds_error=False, fill_value=np.nan)
@@ -315,91 +306,42 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
             if h_km < heights_km[valid_indices][-1]:
                 u_h, v_h = interp_u(h_km), interp_v(h_km)
                 if not (np.isnan(u_h) or np.isnan(v_h)):
-                    ax_hodo.plot(u_h, v_h, 'o', color='white', markersize=8, markeredgecolor='black')
-                    ax_hodo.text(u_h, v_h, str(h_km), ha='center', va='center', fontsize=7, weight='bold')
-    params = {'BWD (kts)': {}}
-    motion = {}
-    right_mover, critical_angle, sr_wind_speed = None, np.nan, None
+                    ax_hodo.plot(u_h, v_h, 'o', color='white', markersize=8, markeredgecolor='black'); ax_hodo.text(u_h, v_h, str(h_km), ha='center', va='center', fontsize=7, weight='bold')
+    params = {'BWD (kts)': {}}; motion = {}; right_mover, critical_angle, sr_wind_speed = None, np.nan, None
     try:
         right_mover, left_mover, mean_wind_vec = mpcalc.bunkers_storm_motion(p, u, v, heights)
-        motion['Bunkers RM'] = right_mover
-        motion['Bunkers LM'] = left_mover
-        motion['Vent Mitjà'] = mean_wind_vec
+        motion['Bunkers RM'] = right_mover; motion['Bunkers LM'] = left_mover; motion['Vent Mitjà'] = mean_wind_vec
         for name, vec in motion.items():
-            u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m
-            marker = 's' if 'Mitjà' in name else 'o'
+            u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m; marker = 's' if 'Mitjà' in name else 'o'
             ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
-    except (ValueError, IndexError):
-        right_mover = None
+    except (ValueError, IndexError): right_mover = None
     depths = {'0-1 km': 1000 * units.m, '0-3 km': 3000 * units.m, '0-6 km': 6000 * units.m}
     for name, depth in depths.items():
-        try:
-            bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth)
-            params['BWD (kts)'][name] = mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m
-        except (ValueError, IndexError):
-            params['BWD (kts)'][name] = np.nan
-            
-    # ===> CANVI: S'ha substituït 'if right_mover:' per 'if right_mover is not None:' <===
+        try: params['BWD (kts)'][name] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights, depth=depth)).to('kt').m
+        except (ValueError, IndexError): params['BWD (kts)'][name] = np.nan
     if right_mover is not None:
         try:
-            u_storm, v_storm = right_mover
-            critical_angle = mpcalc.critical_angle(p, u, v, heights, u_storm=u_storm, v_storm=v_storm).to('deg').m
-            sr_u, sr_v = u - right_mover[0], v - right_mover[1]
-            sr_wind_speed = mpcalc.wind_speed(sr_u, sr_v).to('kt')
-        except (ValueError, IndexError, TypeError):
-            pass
-    ax_params.axis('off'); ax_motion.axis('off')
-    ax_params.text(0, 1, "Paràmetres", fontsize=12, weight='bold', va='top')
-    ax_params.text(0.65, 0.85, "BWD\n(nusos)", ha='center', va='top', weight='bold')
-    y_pos = 0.6
+            u_storm, v_storm = right_mover; critical_angle = mpcalc.critical_angle(p, u, v, heights, u_storm=u_storm, v_storm=v_storm).to('deg').m
+            sr_wind_speed = mpcalc.wind_speed(u - u_storm, v - v_storm).to('kt')
+        except (ValueError, IndexError, TypeError): pass
+    ax_params.axis('off'); ax_motion.axis('off'); ax_params.text(0, 1, "Paràmetres", fontsize=12, weight='bold', va='top')
+    ax_params.text(0.65, 0.85, "BWD\n(nusos)", ha='center', va='top', weight='bold'); y_pos = 0.6
     for key in depths.keys():
-        bwd_val = params['BWD (kts)'].get(key, np.nan)
-        ax_params.text(0.3, y_pos, key, va='center')
-        ax_params.text(0.65, y_pos, f"{bwd_val:.0f}" if not np.isnan(bwd_val) else '---', ha='center', va='center')
-        y_pos -= 0.22
-    ax_motion.text(0, 1, "Moviment Tempesta (dir/kts)", fontsize=12, weight='bold', va='top')
-    y_pos = 0.8
+        bwd_val = params['BWD (kts)'].get(key, np.nan); ax_params.text(0.3, y_pos, key, va='center'); ax_params.text(0.65, y_pos, f"{bwd_val:.0f}" if not np.isnan(bwd_val) else '---', ha='center', va='center'); y_pos -= 0.22
+    ax_motion.text(0, 1, "Moviment Tempesta (dir/kts)", fontsize=12, weight='bold', va='top'); y_pos = 0.8
     if motion:
         for name, vec in motion.items():
-            speed = mpcalc.wind_speed(vec[0], vec[1]).to('kt').m
-            direction = mpcalc.wind_direction(vec[0], vec[1]).to('deg').m
-            ax_motion.text(0, y_pos, f"{name}:", va='center')
-            ax_motion.text(0.9, y_pos, f"{direction:.0f}°/{speed:.0f} kts", va='center', ha='right')
-            y_pos -= 0.2
-    else:
-        ax_motion.text(0.5, 0.6, "Càlcul no disponible", ha='center', va='center', fontsize=9, color='gray')
-    ax_motion.text(0, y_pos, "Angle Crític:", va='center')
-    ax_motion.text(0.9, y_pos, f"{critical_angle:.0f}°" if not np.isnan(critical_angle) else '---', va='center', ha='right')
+            speed = mpcalc.wind_speed(*vec).to('kt').m; direction = mpcalc.wind_direction(*vec).to('deg').m
+            ax_motion.text(0, y_pos, f"{name}:", va='center'); ax_motion.text(0.9, y_pos, f"{direction:.0f}°/{speed:.0f} kts", va='center', ha='right'); y_pos -= 0.2
+    else: ax_motion.text(0.5, 0.6, "Càlcul no disponible", ha='center', va='center', fontsize=9, color='gray')
+    ax_motion.text(0, y_pos, "Angle Crític:", va='center'); ax_motion.text(0.9, y_pos, f"{critical_angle:.0f}°" if not np.isnan(critical_angle) else '---', va='center', ha='right')
     ax_sr_wind.set_title("Vent Relatiu vs. Altura (RM)", fontsize=12, weight='bold')
     if sr_wind_speed is not None:
-        ax_sr_wind.plot(sr_wind_speed, heights_km)
-        ax_sr_wind.set_xlim(0, max(60, sr_wind_speed[~np.isnan(sr_wind_speed)].max().m + 5 if np.any(~np.isnan(sr_wind_speed)) else 60))
-    else:
-        ax_sr_wind.text(0.5, 0.5, "Càlcul no disponible", ha='center', va='center', transform=ax_sr_wind.transAxes, fontsize=9, color='gray')
-    ax_sr_wind.set_xlabel("Vent Relatiu (nusos)")
-    ax_sr_wind.set_ylabel("Altura (km)")
-    ax_sr_wind.set_ylim(0, 12)
-    ax_sr_wind.grid(True, linestyle='--')
-    info_text = (
-        "**Com interpretar l'Hodògraf:**\n\n"
-        "**• Forma (Clau per al tipus de tempesta):**\n"
-        "  - **Recte o poc corbat:** Indica poc canvi en la direcció del vent amb l'altura. Les tempestes tendeixen a ser\n"
-        "    desorganitzades i de curta durada ('de cicle de vida únic'). El corrent descendent apaga ràpidament l'ascendent.\n"
-        "  - **Corba pronunciada (somriure):** Mostra un fort cisallament direccional. Això permet que el corrent ascendent\n"
-        "    se separi del descendent, donant a la tempesta una vida més llarga i una estructura més organitzada\n"
-        "    (multicèl·lules o supercèl·lules).\n\n"
-        "**• BWD (Cisallament del Vent):**\n"
-        "  - Mesura la diferència total de vent entre dos nivells. Valors de **BWD 0-6 km > 40 nusos** són un indicador\n"
-        "    clàssic de què l'entorn pot suportar tempestes organitzades i severes.\n\n"
-        "**• Bunkers RM (Right Mover):**\n"
-        "  - En entorns amb cisallament, les supercèl·lules sovint es divideixen. La 'RM' és la cèl·lula que es mou cap a\n"
-        "    la dreta del vent mitjà, i sol ser la dominant i amb rotació ciclònica (la més perillosa).\n\n"
-        "**Exemple d'un dia de temps sever:** T'esperaries veure un hodògraf amb una **corba molt marcada**, un valor\n"
-        "de **BWD 0-6 km superant els 50 nusos** i, encara que no es mostri, una Helicitat (SRH) per sobre de 200 m²/s².\n"
-        "Aquesta combinació, juntament amb un CAPE elevat al sondeig, és un senyal d'alerta per a supercèl·lules."
-    )
-    fig.text(0.5, 0.12, info_text, va='top', ha='center', fontsize=9, wrap=True, bbox=dict(boxstyle='round,pad=0.5', fc='ivory', alpha=0.5))
-    return fig
+        ax_sr_wind.plot(sr_wind_speed, heights_km); ax_sr_wind.set_xlim(0, max(60, sr_wind_speed[~np.isnan(sr_wind_speed)].max().m + 5 if np.any(~np.isnan(sr_wind_speed)) else 60))
+    else: ax_sr_wind.text(0.5, 0.5, "Càlcul no disponible", ha='center', va='center', transform=ax_sr_wind.transAxes, fontsize=9, color='gray')
+    ax_sr_wind.set_xlabel("Vent Relatiu (nusos)"); ax_sr_wind.set_ylabel("Altura (km)"); ax_sr_wind.set_ylim(0, 12); ax_sr_wind.grid(True, linestyle='--')
+    info_text = ("**Com interpretar l'Hodògraf:**\n\n""**• Forma (Clau per al tipus de tempesta):**\n""  - **Recte o poc corbat:** Indica poc canvi en la direcció del vent amb l'altura. Les tempestes tendeixen a ser\n""    desorganitzades i de curta durada ('de cicle de vida únic'). El corrent descendent apaga ràpidament l'ascendent.\n""  - **Corba pronunciada (somriure):** Mostra un fort cisallament direccional. Això permet que el corrent ascendent\n""    se separi del descendent, donant a la tempesta una vida més llarga i una estructura més organitzada\n""    (multicèl·lules o supercèl·lules).\n\n""**• BWD (Cisallament del Vent):**\n""  - Mesura la diferència total de vent entre dos nivells. Valors de **BWD 0-6 km > 40 nusos** són un indicador\n""    clàssic de què l'entorn pot suportar tempestes organitzades i severes.\n\n""**• Bunkers RM (Right Mover):**\n""  - En entorns amb cisallament, les supercèl·lules sovint es divideixen. La 'RM' és la cèl·lula que es mou cap a\n""    la dreta del vent mitjà, i sol ser la dominant i amb rotació ciclònica (la més perillosa).\n\n""**Exemple d'un dia de temps sever:** T'esperaries veure un hodògraf amb una **corba molt marcada**, un valor\n""de **BWD 0-6 km superant els 50 nusos** i, encara que no es mostri, una Helicitat (SRH) per sobre de 200 m²/s².\n""Aquesta combinació, juntament amb un CAPE elevat al sondeig, és un senyal d'alerta per a supercèl·lules.")
+    fig.text(0.5, 0.12, info_text, va='top', ha='center', fontsize=9, wrap=True, bbox=dict(boxstyle='round,pad=0.5', fc='ivory', alpha=0.5)); return fig
 @st.cache_data(ttl=600)
 def carregar_imatge_satelit(url):
     try:
@@ -418,7 +360,8 @@ def mostrar_imatge_temps_real(tipus):
     else: st.warning(error_msg)
 
 def get_color_for_cape(value):
-    if value is None or np.isnan(value) or value < 100: return "#FFFFFF" 
+    if value is None or np.isnan(value): return "#FFFFFF" 
+    if value < 100: return "#FFFFFF"
     if value < 1000: return "#FFFF00";
     if value < 2500: return "#FF8C00"
     if value < 4000: return "#FF0000"; return "#FF00FF"
