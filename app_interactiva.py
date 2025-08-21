@@ -184,6 +184,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         except: params_calc['KI'] = np.nan
         try: params_calc['TT'] = mpcalc.total_totals_index(p, T, Td).m
         except: params_calc['TT'] = np.nan
+        try: params_calc['BWD_0_6km'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights, depth=6000*units.m)).to('kt').m
+        except: params_calc['BWD_0_6km'] = np.nan
         
         return ((p, T, Td, u, v, heights), params_calc), None
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
@@ -419,7 +421,19 @@ def analitzar_tipus_sondeig(params):
     else:
         return ("SONDEIG DE CONVECCIÓ ESTÀNDARD",
                 "Condicions típiques per a la formació de tempestes de tarda. La severitat dependrà d'altres factors com el cisallament del vent (veure hodògraf).")
+def analitzar_tipus_hodograf(params):
+    bwd = params.get('BWD_0_6km', 0)
+    if bwd > 50:
+        return("POTENCIAL DE SUPERCÈL·LULES",
+               "El cisallament del vent és molt fort. Aquest entorn és extremadament favorable per a l'organització de tempestes i la formació de supercèl·lules amb rotació (mesociclons).")
+    elif bwd > 35:
+        return("POTENCIAL DE TEMPESTES ORGANITZADES",
+               "El cisallament del vent és significatiu. Les tempestes poden organitzar-se en sistemes multicel·lulars (línies de torbonada, MCS) o fins i tot supercèl·lules aïllades.")
+    else:
+        return("POTENCIAL DE TEMPESTES DESORGANITZADES",
+               "El cisallament del vent és feble. Si es formen tempestes, probablement seran de cicle de vida únic, de curta durada i amb menys potencial de severitat.")
 def ui_llegenda_sondeig(params):
+    st.markdown("<br>", unsafe_allow_html=True) 
     def fmt(val, unit): return f"{val:.1f} {unit}" if not np.isnan(val) else "---"
     def fmt_int(val, unit): return f"{val:.0f} {unit}" if not np.isnan(val) else "---"
     
@@ -620,17 +634,23 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                 fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
                 st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
 
+                titol_h, desc_h = analitzar_tipus_hodograf(params_calculats)
+                st.markdown(f"""<div style="border: 1px solid #555; border-radius: 10px; padding: 15px; text-align: center; margin-top: 10px;">
+                    <h4 style="margin-top: 0; color: #FFD700;">{titol_h}</h4>
+                    <p style="font-size: 0.9em; margin-bottom: 0;">{desc_h}</p>
+                </div>""", unsafe_allow_html=True)
+
             with st.expander("❔ Com interpretar els paràmetres i gràfics"):
                 st.markdown("""
                 **Paràmetres del Sondeig:**
                 - **CAPE (SB/MU/ML):** Energia disponible per a una tempesta. >1500 J/kg es considera alt.
-                - **CIN:** "Tapa" que impedeix la convecció. Valors > -50 J/kg indiquen una tapa forta.
+                - **CIN:** "Tapa" que impedeix la convecció. Valors més negatius que -50 J/kg indiquen una tapa forta.
                 - **LCL/LFC/EL:** Altures (en metres sobre el terra) de la base del núvol, inici de l'ascens lliure i sostre teòric de la tempesta.
                 - **KI / TT:** Índexs clàssics d'inestabilitat. Com més alts, més potencial de tempesta.
                 
                 **Hodògraf:**
-                - **Forma:** Una corba pronunciada indica un fort canvi en la direcció del vent, favorable per a tempestes organitzades (multicèl·lules, supercèl·lules).
-                - **BWD (Cisallament):** Mesura el canvi total de vent. Valors de 0-6 km > 40 nusos són un bon indicador per a l'organització de tempestes severes.
+                - **Forma:** Una corba pronunciada indica cisallament direccional, favorable per a tempestes organitzades.
+                - **BWD (Cisallament):** Valors > 40 nusos (0-6 km) afavoreixen l'organització de les tempestes.
                 - **Vent Relatiu vs. Altura:** Mostra com de fort és el vent relatiu a la tempesta a diferents altures. Valors alts a nivells baixos afavoreixen la formació de tornados.
                 """)
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
