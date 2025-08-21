@@ -479,7 +479,6 @@ def get_color_for_param(param_name, value):
 
 
 
-
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     """
     Versió final de l'assistent d'IA ("Meteo-Col·lega" Guia).
@@ -545,49 +544,10 @@ La teva feina és fer dues coses en ordre:
 
 # GUIA DE SONDEJOS (MOLT IMPORTANT)
 Només hi ha sondejos disponibles per a 
-Amposta
-Balaguer
-Banyoles
-Barcelona
-Berga
-Cervera
-El Pont de Suert
-El Vendrell
-Falset
-Figueres
-Gandesa
-Girona
-Granollers
-Granollers
-Igualada
-La Bisbal d'Empordà
-La Seu d'Urgell
-Les Borges Blanques
-Lleida
-Manresa
-Mataró
-Moià
-Mollerussa
-Montblanc
-Móra d'Ebre
-Olot
-Prats de Lluçanès
-Puigcerdà
-Reus
-Ripoll
-Sant Feliu de Llobregat
-Santa Coloma de Farners
-Solsona
-Sort
-Tarragona
-Terrassa
-Tortosa
-Tremp
-Tàrrega
-Valls
-Vic
-Vielha
-Vilafranca del Penedès
+Amposta, Balaguer, Banyoles, Barcelona, Berga, Cervera, El Pont de Suert, El Vendrell, Falset, Figueres, Gandesa, Girona, Granollers,
+Igualada, La Bisbal d'Empordà, La Seu d'Urgell, Les Borges Blanques, Lleida, Manresa, Mataró, Moià, Mollerussa, Montblanc,
+Móra d'Ebre, Olot, Prats de Lluçanès, Puigcerdà, Reus, Ripoll, Sant Feliu de Llobregat, Santa Coloma de Farners, Solsona,
+Sort, Tarragona, Tàrrega, Terrassa, Tortosa, Tremp, Valls, Vic, Vielha, Vilafranca del Penedès.
 
 . La teva feina és relacionar el que veus al mapa amb la capital més propera o representativa. Fes servir aquesta guia:
 - Si veus moviment a **Ponent, Pirineu/Prepirineu de Lleida**: Recomana el sondeig de **Lleida**.
@@ -646,7 +606,9 @@ Vilafranca del Penedès
                 if error_map_ia:
                     st.error(f"Error en carregar dades del mapa: {error_map_ia}"); return
                 
-                fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
+                # === LÍNIA CORREGIDA ===
+                # S'ha afegit MAP_EXTENT al final per solucionar el TypeError
+                fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str, MAP_EXTENT)
                 
                 buf = io.BytesIO(); fig_mapa.savefig(buf, format='png', dpi=150, bbox_inches='tight'); buf.seek(0); img_mapa = Image.open(buf); plt.close(fig_mapa)
 
@@ -671,6 +633,9 @@ Vilafranca del Penedès
         
         st.session_state.messages.append({"role": "assistant", "content": full_response})
         st.rerun()
+
+
+
 
 
 def ui_pestanya_xat(chat_history):
