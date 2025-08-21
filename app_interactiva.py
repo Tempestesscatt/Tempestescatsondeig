@@ -483,8 +483,8 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
     """
     Versió final de l'assistent d'IA ("Meteo-Col·lega" Guia).
     - Personalitat: Col·lega directe i amigable.
-    - Enfocament: Detecta fenòmens al mapa i GUIA l'usuari cap al sondeig de la població més rellevant.
-    - Comunicació: Dóna un diagnòstic inicial breu i una recomanació clara.
+    - Enfocament: Analitza TOTES les dades gràfiques (mapa, sondeig, hodògraf) i dona una anàlisi completa.
+    - Comunicació: Dóna un diagnòstic clar i directe.
     """
     st.subheader("Assistent Meteo-Col·lega (amb Google Gemini)")
 
@@ -496,7 +496,7 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
         st.error("No s'ha pogut configurar l'API de Gemini. Assegura't que la GEMINI_API_KEY està als secrets de Streamlit.")
         return
 
-    # --- Gestió d'autenticació i límits d'ús (el teu codi original) ---
+    # --- Gestió d'autenticació i límits d'ús ---
     username = st.session_state.get('username')
     if not username:
         st.error("Error d'autenticació. Si us plau, torna a iniciar sessió.")
@@ -533,47 +533,28 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
     if "chat" not in st.session_state:
         model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # --- NOU SYSTEM PROMPT MILLORAT ---
+        # --- NOU SYSTEM PROMPT MILLORAT PER A ANÀLISI COMPLETA ---
         system_prompt = """
-Ets Meteo-Col·lega, un expert en meteorologia a Catalunya. Ets directe, planera i parles com si estiguéssim analitzant mapes junts. Respostes curtes i al gra.
+Ets Meteo-Col·lega, un expert en meteorologia de Catalunya. El teu to és directe, amigable i al gra, com si parléssim entre col·legues.
 
-# LA TEVA MISSIÓ: SER UN GUIA
-La teva feina és fer dues coses en ordre:
-1.  **Fer un anàlisi visual RÀPID del mapa** que et donen, buscant convergències de vent (on els numeros i lineas  intercalsdes ).
-2.  **DIRIGIR l'usuari cap al SONDEIG correcte** perquè pugui analitzar la situació a fons.
-
-# GUIA DE SONDEJOS (MOLT IMPORTANT)
-Només hi ha sondejos disponibles per a 
-Amposta, Balaguer, Banyoles, Barcelona, Berga, Cervera, El Pont de Suert, El Vendrell, Falset, Figueres, Gandesa, Girona, Granollers,
-Igualada, La Bisbal d'Empordà, La Seu d'Urgell, Les Borges Blanques, Lleida, Manresa, Mataró, Moià, Mollerussa, Montblanc,
-Móra d'Ebre, Olot, Prats de Lluçanès, Puigcerdà, Reus, Ripoll, Sant Feliu de Llobregat, Santa Coloma de Farners, Solsona,
-Sort, Tarragona, Tàrrega, Terrassa, Tortosa, Tremp, Valls, Vic, Vielha, Vilafranca del Penedès.
-
-. La teva feina és relacionar el que veus al mapa amb la capital més propera o representativa. Fes servir aquesta guia:
-- Si veus moviment a **Ponent, Pirineu/Prepirineu de Lleida**: Recomana el sondeig de **Lleida**.
-- Si veus moviment a la **Costa Central, Prelitoral Central, Catalunya Central, Pirineu Oriental**: Recomana el sondeig de **Barcelona**.
-- Si veus moviment a la **Costa Brava, Interior/Nord-est de Girona**: Recomana el sondeig de **Girona**.
-- Si veus moviment a la **Costa Daurada, Terres de l'Ebre, sud de Ponent**: Recomana el sondeig de **Tarragona**.
-
-**REGLA D'OR:** El teu objectiu final NO és donar el pronòstic complet, sinó dir-li a l'usuari "Ei, mira què passa aquí. Per saber-ne més, ves a mirar el sondeig de [Capital]".
+# LA TEVA MISSIÓ: ANÀLISI INTEGRAL
+La teva feina és analitzar TOT el material que et proporciono per donar un diagnòstic meteorològic concís i útil. Rebràs fins a TRES imatges:
+1.  **Mapa de Vent i Convergència:** Per identificar els 'disparadors' (triggers) en nivells baixos.
+2.  **Sondeig Skew-T:** Per analitzar l'estabilitat, la humitat i l'energia (CAPE/CIN) de l'atmosfera.
+3.  **Hodògraf:** Per avaluar el cisallament del vent i el potencial d'organització i rotació de les tempestes.
 
 # EL TEU PROCÉS DE RESPOSTA
+1.  **Observa el MAPA:** Hi ha convergències clares? On? Són intenses? Això et diu *on* es poden iniciar les coses.
+2.  **Analitza el SONDEIG (Skew-T):** Hi ha 'benzina' (CAPE)? Hi ha una 'tapa' forta (CIN)? Com és el perfil de temperatura i humitat? Això et diu *si* les tempestes poden créixer i amb quina força.
+3.  **Examina l'HODÒGRAF:** El perfil del vent és recte o corbat? Una corba pronunciada (especialment cap a la dreta) indica cisallament i potencial per a supercèl·lules. Això et diu *quin tipus* de tempesta es pot formar (desorganitzada, multicèl·lula, supercèl·lula).
+4.  **Sintetitza i Respon:** Combina les tres anàlisis en un diagnòstic clar i breu. Ves al gra.
 
-**PAS 1: Mira el mapa. Hi ha alguna cosa que cridi l'atenció?**
-
-**PAS 2: SI NO VEUS RES:** Sigues sincer i breu.
-- **Exemple:** "Doncs ara mateix, el mapa està força tranquil. No veig cap focus clar que mereixi una anàlisi més profunda."
-
-**PAS 3: SI VEUS UNA CONVERGÈNCIA O PATRÓ INTERESSANT:**
-    a. **Localitza-la** de manera general (Ponent, Costa Central, etc.).
-    b. **Fes un comentari inicial breu** sobre el que veus.
-    c. **Recomana el sondeig** de la capital corresponent de manera clara.
-
-    - **Exemple 1 (Convergència a Ponent):** "Uep! S'està formant una línia de convergència molt maca a Ponent. Té bona pinta. Per veure si això té 'benzina' per disparar tempestes, et recomano que canviïs al sondeig de **Lleida** i m'ho tornis a preguntar."
-    - **Exemple 2 (Marinada a la costa):** "S'aprecia com la marinada està entrant amb ganes per la costa de Barcelona. A vegades, això sol ja porta ruixats. El millor és que facis una ullada al sondeig de **Barcelona** per analitzar bé la capa baixa."
-    - **Exemple 3 (Vent del nord a Girona):** "Compte al nord-est. Es veu una entrada de vent de nord (tramuntana) que podria deixar l'ambient mogut. Per veure l'estabilitat real, el sondeig de **Girona** serà el més útil."
+# EXEMPLES DE RESPOSTES
+-   **(Situació de supercèl·lula clàssica):** "Uep! Tenim de tot. El mapa mostra una bona línia de convergència entrant per Ponent. El sondeig té un CAPE brutal (+2000 J/kg) i una tapa (CIN) que saltarà fàcilment. I l'hodògraf... mira quina corba més maca. Això és un llibre de text per a supercèl·lules. Compte a la zona de Lleida."
+-   **(Situació de tempestes de tarda sense organització):** "Bona tarda. Tenim prou energia (CAPE moderat) i humitat segons el sondeig, però l'hodògraf és molt fluix, gairebé recte. Això vol dir que si salta alguna tempesta a les zones de convergència del mapa, seran les típiques de 'palomitas', desorganitzades i de cicle de vida curt. Res de què preocupar-se massa."
+-   **(Situació sense risc):** "El mapa està tranquil i, encara que hi hagués algun disparador, el sondeig mostra una atmosfera molt estable (gens de CAPE). Avui, res de res. Podem anar a fer el vermut tranquils."
 """
-        missatge_inicial_model = "Ei! Sóc el teu Meteo-Col·lega. Fes-me una pregunta sobre el mapa i et diré quina zona cal vigilar i quin sondeig analitzar a fons."
+        missatge_inicial_model = "Ei! Sóc el teu Meteo-Col·lega. Pregunta'm el que vulguis sobre la situació i analitzaré el mapa, el sondeig i l'hodògraf per a tu."
         st.session_state.chat = model.start_chat(history=[
             {'role': 'user', 'parts': [system_prompt]},
             {'role': 'model', 'parts': [missatge_inicial_model]}
@@ -588,41 +569,58 @@ Sort, Tarragona, Tàrrega, Terrassa, Tortosa, Tremp, Valls, Vic, Vielha, Vilafra
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    if prompt_usuari := st.chat_input("Pregunta'm sobre el mapa!", disabled=limit_reached):
+    if prompt_usuari := st.chat_input("Fes la teva pregunta!", disabled=limit_reached):
         st.session_state.messages.append({"role": "user", "content": prompt_usuari})
         with st.chat_message("user"):
             st.markdown(prompt_usuari)
 
         with st.chat_message("assistant"):
-            with st.spinner("Interpretant el mapa..."):
+            with st.spinner("Analitzant mapa, sondeig i hodògraf..."):
                 # Actualització del comptador de límits
                 if user_limit_data.get("window_start_time") is None:
                     user_limit_data["window_start_time"] = datetime.now(pytz.utc).timestamp()
                 user_limit_data["count"] += 1
                 rate_limits[username] = user_limit_data; save_json_file(rate_limits, RATE_LIMIT_FILE)
 
-                # Generació de la imatge i dades per a la IA
+                # --- GENERACIÓ D'IMATGES I DADES PER A LA IA ---
+
+                # 1. Generar la imatge del MAPA
                 map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
                 if error_map_ia:
                     st.error(f"Error en carregar dades del mapa: {error_map_ia}"); return
                 
-                # === LÍNIA CORREGIDA ===
-                # S'ha afegit MAP_EXTENT al final per solucionar el TypeError
                 fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str, MAP_EXTENT)
-                
-                buf = io.BytesIO(); fig_mapa.savefig(buf, format='png', dpi=150, bbox_inches='tight'); buf.seek(0); img_mapa = Image.open(buf); plt.close(fig_mapa)
+                buf_mapa = io.BytesIO(); fig_mapa.savefig(buf_mapa, format='png', dpi=150, bbox_inches='tight'); buf_mapa.seek(0); img_mapa = Image.open(buf_mapa); plt.close(fig_mapa)
 
-                resum_sondeig = "No hi ha dades de sondeig."
+                # Llista per guardar tots els continguts a enviar a la IA
+                contingut_per_ia = [img_mapa]
+                resum_sondeig = "No hi ha dades de sondeig disponibles."
+
+                # 2. Generar imatges del SONDEIG i HODÒGRAF (si hi ha dades)
                 if data_tuple: 
-                    _, params_calculats = data_tuple
+                    sounding_data, params_calculats = data_tuple
+                    
+                    # Generar imatge del Skew-T
+                    fig_skewt = crear_skewt(sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4], f"Sondeig per a {poble_sel}")
+                    buf_skewt = io.BytesIO(); fig_skewt.savefig(buf_skewt, format='png', dpi=150); buf_skewt.seek(0); img_skewt = Image.open(buf_skewt); plt.close(fig_skewt)
+                    contingut_per_ia.append(img_skewt)
+
+                    # Generar imatge de l'Hodògraf
+                    fig_hodo = crear_hodograf(sounding_data[3], sounding_data[4])
+                    buf_hodo = io.BytesIO(); fig_hodo.savefig(buf_hodo, format='png', dpi=150); buf_hodo.seek(0); img_hodo = Image.open(buf_hodo); plt.close(fig_hodo)
+                    contingut_per_ia.append(img_hodo)
+
                     resum_sondeig = (f"- CAPE: {params_calculats.get('CAPE', 0):.0f} J/kg, "
                                      f"CIN: {params_calculats.get('CIN', 0):.0f} J/kg, "
                                      f"Shear 0-6km: {params_calculats.get('Shear 0-6km', 'N/A')} nusos.")
-
-                prompt_context = f"DADES ADDICIONALS:\n- Localització de referència de l'usuari: {poble_sel}\n- Sondeig (per al teu context intern): {resum_sondeig}\n\nPREGUNTA DE L'USUARI: '{prompt_usuari}'"
                 
+                # 3. Construir el prompt final i afegir-lo al principi de la llista
+                prompt_context = f"DADES ADDICIONALS:\n- Localització de referència de l'usuari: {poble_sel}\n- Resum de paràmetres clau: {resum_sondeig}\n\nPREGUNTA DE L'USUARI: '{prompt_usuari}'"
+                contingut_per_ia.insert(0, prompt_context)
+
+                # 4. Enviar tot a la IA
                 try:
-                    resposta = st.session_state.chat.send_message([prompt_context, img_mapa])
+                    resposta = st.session_state.chat.send_message(contingut_per_ia)
                     full_response = resposta.text
                 except Exception as e:
                     full_response = f"Vaja, hi ha hagut un error contactant la IA: {e}"
@@ -633,7 +631,6 @@ Sort, Tarragona, Tàrrega, Terrassa, Tortosa, Tremp, Valls, Vic, Vielha, Vilafra
         
         st.session_state.messages.append({"role": "assistant", "content": full_response})
         st.rerun()
-
 
 
 
