@@ -374,7 +374,7 @@ def crear_skewt(p, T, Td, u, v, titol):
 
 def crear_hodograf_avancat(p, u, v, heights, titol):
     """
-    Crea un hodògraf avançat. Versió amb gràfic i taules simplificades segons la petició.
+    Crea un hodògraf avançat. Versió amb marcadors d'altura selectius i text explicatiu millorat.
     """
     fig = plt.figure(figsize=(9, 9), dpi=150) 
     gs = fig.add_gridspec(nrows=3, ncols=2, width_ratios=[2.5, 1.5], hspace=0.4, wspace=0.3)
@@ -393,10 +393,13 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
                        colors=['red', 'green', 'blue'], linewidth=4)
     heights_km = heights.to('km').m
     valid_indices = ~np.isnan(heights_km) & ~np.isnan(u.m) & ~np.isnan(v.m)
+    
+    # ===> CANVI 1: Només mostrem els números d'altura 1, 3, 5 i 8 <===
+    altituds_a_mostrar = [1, 3, 5, 8]
     if np.count_nonzero(valid_indices) > 1:
         interp_u = interp1d(heights_km[valid_indices], u[valid_indices].to('kt').m, bounds_error=False, fill_value=np.nan)
         interp_v = interp1d(heights_km[valid_indices], v[valid_indices].to('kt').m, bounds_error=False, fill_value=np.nan)
-        for h_km in range(1, 11):
+        for h_km in altituds_a_mostrar:
             if h_km < heights_km[valid_indices][-1]:
                 u_h, v_h = interp_u(h_km), interp_v(h_km)
                 if not (np.isnan(u_h) or np.isnan(v_h)):
@@ -404,7 +407,7 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
                     ax_hodo.text(u_h, v_h, str(h_km), ha='center', va='center', fontsize=7, weight='bold')
 
     # --- 2. Càlculs de Paràmetres ---
-    params = {'BWD (kts)': {}, 'SRH (m²/s²)': {}}
+    params = {'BWD (kts)': {}}
     motion = {}
     right_mover, critical_angle, sr_wind_speed = None, np.nan, None
 
@@ -415,24 +418,14 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
             u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m
             marker = 's' if 'Mitjà' in name else 'o'
             ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
-            # ===> CANVI 1: S'ha eliminat la línia ax_hodo.text(...) per treure les etiquetes <===
     except (ValueError, IndexError): right_mover = None
 
-    depths = {'0-500 m': 500 * units.m, '0-1 km': 1000 * units.m, '0-3 km': 3000 * units.m, '0-6 km': 6000 * units.m}
+    depths = {'0-1 km': 1000 * units.m, '0-3 km': 3000 * units.m, '0-6 km': 6000 * units.m}
     for name, depth in depths.items():
         try:
             bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth)
             params['BWD (kts)'][name] = mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m
         except (ValueError, IndexError): params['BWD (kts)'][name] = np.nan
-        
-        # El càlcul de SRH es manté internament, però no es mostrarà
-        if right_mover is not None:
-            try:
-                u_storm, v_storm = right_mover
-                srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth, u_storm=u_storm, v_storm=v_storm)
-                params['SRH (m²/s²)'][name] = srh[0].to('m**2/s**2').m
-            except (ValueError, IndexError, TypeError): params['SRH (m²/s²)'][name] = np.nan
-        else: params['SRH (m²/s²)'][name] = np.nan
 
     if right_mover is not None:
         try:
@@ -445,16 +438,13 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
     # --- 3. Taules de Paràmetres (Simplificada) ---
     ax_params.axis('off'); ax_motion.axis('off')
     ax_params.text(0, 1, "Paràmetres", fontsize=12, weight='bold', va='top')
-    # ===> CANVI 2: Posició del títol ajustada i eliminació de la capçalera SRH <===
     ax_params.text(0.65, 0.85, "BWD\n(nusos)", ha='center', va='top', weight='bold')
-    
     y_pos = 0.6
     for key in depths.keys():
         bwd_val = params['BWD (kts)'].get(key, np.nan)
         ax_params.text(0.3, y_pos, key, va='center')
         ax_params.text(0.65, y_pos, f"{bwd_val:.0f}" if not np.isnan(bwd_val) else '---', ha='center', va='center')
-        # ===> CANVI 2: S'ha eliminat la línia que mostrava el valor de SRH <===
-        y_pos -= 0.18
+        y_pos -= 0.22
 
     ax_motion.text(0, 1, "Moviment Tempesta (dir/kts)", fontsize=12, weight='bold', va='top')
     y_pos = 0.8
@@ -469,33 +459,39 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
     ax_motion.text(0, y_pos, "Angle Crític:", va='center')
     ax_motion.text(0.9, y_pos, f"{critical_angle:.0f}°" if not np.isnan(critical_angle) else '---', va='center', ha='right')
 
-    # --- 4. Gràfic SR Wind vs Height (Simplificat) ---
+    # --- 4. Gràfic SR Wind vs Height ---
     ax_sr_wind.set_title("Vent Relatiu vs. Altura (RM)", fontsize=12, weight='bold')
     if sr_wind_speed is not None:
         ax_sr_wind.plot(sr_wind_speed, heights_km)
         ax_sr_wind.set_xlim(0, max(60, sr_wind_speed[~np.isnan(sr_wind_speed)].max().m + 5 if np.any(~np.isnan(sr_wind_speed)) else 60))
     else: ax_sr_wind.text(0.5, 0.5, "Càlcul no disponible", ha='center', va='center', transform=ax_sr_wind.transAxes, fontsize=9, color='gray')
-    
-    # ===> CANVI 3: Etiqueta de l'eix X simplificada <===
     ax_sr_wind.set_xlabel("Vent Relatiu (nusos)"); ax_sr_wind.set_ylabel("Altura (km)")
-    
     ax_sr_wind.set_ylim(0, 12); ax_sr_wind.grid(True, linestyle='--')
-    ax_sr_wind.fill_betweenx([0, 2], 40, 60, color='gray', alpha=0.2)
-    ax_sr_wind.text(50, 1, "Supercèl·lula\n(Nivell Baix)", ha='center', va='center', fontsize=8, color='gray')
-    ax_sr_wind.fill_betweenx([7, 11], 40, 60, color='gray', alpha=0.2)
-    ax_sr_wind.text(50, 9, "Supercèl·lula\nClàssica", ha='center', va='center', fontsize=8, color='gray')
     
-    # --- 5. Text Explicatiu ---
+    # --- 5. Text Explicatiu Millorat ---
+    # ===> CANVI 2: Text explicatiu molt més detallat i amb un exemple <===
     info_text = (
-        "Com interpretar l'Hodògraf:\n"
-        "• Forma: Una corba pronunciada indica cisallament direccional, favorable per a tempestes organitzades i rotació (supercèl·lules).\n"
-        "• BWD (Cisallament): Canvi de vent amb l'altura. Valors > 40 nusos (0-6 km) afavoreixen l'organització de les tempestes.\n"
-        "• Bunkers RM: Moviment previst d'una supercèl·lula que es desvia cap a la dreta del vent mitjà."
+        "**Com interpretar l'Hodògraf:**\n\n"
+        "**• Forma (Clau per al tipus de tempesta):**\n"
+        "  - **Recte o poc corbat:** Indica poc canvi en la direcció del vent amb l'altura. Les tempestes tendeixen a ser\n"
+        "    desorganitzades i de curta durada ('de cicle de vida únic'). El corrent descendent apaga ràpidament l'ascendent.\n"
+        "  - **Corba pronunciada (somriure):** Mostra un fort cisallament direccional. Això permet que el corrent ascendent\n"
+        "    se separi del descendent, donant a la tempesta una vida més llarga i una estructura més organitzada\n"
+        "    (multicèl·lules o supercèl·lules).\n\n"
+        "**• BWD (Cisallament del Vent):**\n"
+        "  - Mesura la diferència total de vent entre dos nivells. Valors de **BWD 0-6 km > 40 nusos** són un indicador\n"
+        "    clàssic de què l'entorn pot suportar tempestes organitzades i severes.\n\n"
+        "**• Bunkers RM (Right Mover):**\n"
+        "  - En entorns amb cisallament, les supercèl·lules sovint es divideixen. La 'RM' és la cèl·lula que es mou cap a\n"
+        "    la dreta del vent mitjà, i sol ser la dominant i amb rotació ciclònica (la més perillosa).\n\n"
+        "**Exemple d'un dia de temps sever:** T'esperaries veure un hodògraf amb una **corba molt marcada**, un valor\n"
+        "de **BWD 0-6 km superant els 50 nusos** i, encara que no es mostri, una Helicitat (SRH) per sobre de 200 m²/s².\n"
+        "Aquesta combinació, juntament amb un CAPE elevat al sondeig, és un senyal d'alerta per a supercèl·lules."
     )
     fig.text(0.01, 0.01, info_text, va='bottom', ha='left', fontsize=9, wrap=True, bbox=dict(boxstyle='round,pad=0.5', fc='ivory', alpha=0.5))
-    plt.tight_layout(rect=[0, 0.1, 1, 0.96])
+    plt.tight_layout(rect=[0, 0.15, 1, 0.96]) # Ajustem rect per deixar espai al text
     return fig
-
+    
 @st.cache_data(ttl=600)
 def carregar_imatge_satelit(url):
     try:
