@@ -155,6 +155,10 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         except: params_calc['MU_CAPE'] = np.nan
         try: params_calc['ML_CAPE'] = mpcalc.mixed_layer_cape_cin(p, T, Td)[0].to('J/kg').m
         except: params_calc['ML_CAPE'] = np.nan
+        try: params_calc['DCAPE'] = mpcalc.dcape(p, T, Td)[0].to('J/kg').m
+        except: params_calc['DCAPE'] = np.nan
+        try: params_calc['PWAT'] = mpcalc.precipitable_water(p, Td).to('mm').m
+        except: params_calc['PWAT'] = np.nan
 
         heights_agl = heights - heights[0]
         try:
@@ -294,65 +298,34 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 def crear_skewt(p, T, Td, u, v, params_calc, titol):
-    # ===> CANVI: Mida de figura i RECT ajustats per a màxima ocupació vertical <===
     fig = plt.figure(figsize=(9, 10), dpi=150)
-    skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.8, 0.9)) # bottom=0.05, height=0.9
-    
-    skew.ax.grid(True, linestyle='-', alpha=0.5)
-    skew.plot(p, T, 'r', lw=2.5, label='Temperatura')
-    skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
-    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
-    skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
-    skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6)
-    skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
-    
-    prof = mpcalc.parcel_profile(p, T[0], Td[0])
-    skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
-    skew.shade_cape(p, T, prof, color='red', alpha=0.3)
-    skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
-    
-    skew.ax.set_ylim(1000, 100)
-    skew.ax.set_xlim(-40, 40)
-    skew.ax.set_title(titol, weight='bold', fontsize=14)
-    skew.ax.set_xlabel("Temperatura (°C)")
-    skew.ax.set_ylabel("Pressió (hPa)")
+    skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
+    skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2.5, label='Temperatura'); skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
+    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
+    skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
+    prof = mpcalc.parcel_profile(p, T[0], Td[0]); skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+    skew.shade_cape(p, T, prof, color='red', alpha=0.3); skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
+    skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_title(titol, weight='bold', fontsize=14); skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
     
     levels_to_plot = {'LCL_p': 'LCL', 'FRZG_Lvl_p': '0°C', 'LFC_p': None, 'EL_p': None}
     for key, name in levels_to_plot.items():
         p_lvl = params_calc.get(key)
-        if p_lvl is not None and not np.isnan(p_lvl):
+        if p_lvl is not None and hasattr(p_lvl, 'm') and not np.isnan(p_lvl.m):
             skew.ax.axhline(p_lvl.m, color='blue', linestyle='--', linewidth=1.5)
-            if name:
-                skew.ax.text(skew.ax.get_xlim()[1], p_lvl.m, f' {name}', color='blue', ha='left', va='center', fontsize=10, weight='bold')
-            
+            if name: skew.ax.text(skew.ax.get_xlim()[1], p_lvl.m, f' {name}', color='blue', ha='left', va='center', fontsize=10, weight='bold')
     try:
         for bottom_p, top_p in mpcalc.inversions(p, T, Td):
             skew.ax.axhspan(bottom_p.m, top_p.m, color='blue', alpha=0.15, linewidth=0)
             skew.ax.text(skew.ax.get_xlim()[0] + 2, (bottom_p.m + top_p.m) / 2, 'Subsidència', color='blue', ha='left', va='center', fontsize=9)
-    except:
-        pass
-
-    skew.ax.legend()
-    return fig
+    except: pass
+    skew.ax.legend(); return fig
 def crear_hodograf_avancat(p, u, v, heights, titol):
-    fig = plt.figure(figsize=(9, 10), dpi=150)
-    
-    # ===> CANVI: GridSpec ajustat per a màxima ocupació vertical <===
-    gs = fig.add_gridspec(nrows=3, ncols=2, width_ratios=[2.5, 1.5], hspace=0.4, wspace=0.3, top=0.92, bottom=0.02, left=0.1, right=0.9)
-    
-    ax_hodo = fig.add_subplot(gs[:, 0])
-    ax_params = fig.add_subplot(gs[0, 1])
-    ax_motion = fig.add_subplot(gs[1, 1])
-    ax_sr_wind = fig.add_subplot(gs[2, 1])
-    
-    fig.suptitle(titol, weight='bold', fontsize=16)
-    h = Hodograph(ax_hodo, component_range=80.)
-    h.add_grid(increment=20, color='gray', linestyle='--')
-    h.plot_colormapped(u.to('kt'), v.to('kt'), heights.to('km'), intervals=np.array([0, 3, 6, 12]) * units.km, 
-                       colors=['red', 'green', 'blue'], linewidth=4)
-    heights_km = heights.to('km').m
-    valid_indices = ~np.isnan(heights_km) & ~np.isnan(u.m) & ~np.isnan(v.m)
-    altituds_a_mostrar = [1, 3, 5, 8]
+    fig = plt.figure(figsize=(9, 10), dpi=150) 
+    gs = fig.add_gridspec(nrows=3, ncols=2, width_ratios=[2.5, 1.5], hspace=0.4, wspace=0.3, top=0.92, bottom=0.05, left=0.1, right=0.9)
+    ax_hodo = fig.add_subplot(gs[:, 0]); ax_params = fig.add_subplot(gs[0, 1]); ax_motion = fig.add_subplot(gs[1, 1]); ax_sr_wind = fig.add_subplot(gs[2, 1])
+    fig.suptitle(titol, weight='bold', fontsize=16); h = Hodograph(ax_hodo, component_range=80.)
+    h.add_grid(increment=20, color='gray', linestyle='--'); h.plot_colormapped(u.to('kt'), v.to('kt'), heights.to('km'), intervals=np.array([0, 3, 6, 12]) * units.km, colors=['red', 'green', 'blue'], linewidth=4)
+    heights_km = heights.to('km').m; valid_indices = ~np.isnan(heights_km) & ~np.isnan(u.m) & ~np.isnan(v.m); altituds_a_mostrar = [1, 3, 5, 8]
     if np.count_nonzero(valid_indices) > 1:
         interp_u = interp1d(heights_km[valid_indices], u[valid_indices].to('kt').m, bounds_error=False, fill_value=np.nan)
         interp_v = interp1d(heights_km[valid_indices], v[valid_indices].to('kt').m, bounds_error=False, fill_value=np.nan)
@@ -360,69 +333,40 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
             if h_km < heights_km[valid_indices][-1]:
                 u_h, v_h = interp_u(h_km), interp_v(h_km)
                 if not (np.isnan(u_h) or np.isnan(v_h)):
-                    ax_hodo.plot(u_h, v_h, 'o', color='white', markersize=8, markeredgecolor='black')
-                    ax_hodo.text(u_h, v_h, str(h_km), ha='center', va='center', fontsize=7, weight='bold')
-    params = {'BWD (kts)': {}}
-    motion = {}
-    right_mover, critical_angle, sr_wind_speed = None, np.nan, None
+                    ax_hodo.plot(u_h, v_h, 'o', color='white', markersize=8, markeredgecolor='black'); ax_hodo.text(u_h, v_h, str(h_km), ha='center', va='center', fontsize=7, weight='bold')
+    params = {'BWD (kts)': {}}; motion = {}; right_mover, critical_angle, sr_wind_speed = None, np.nan, None
     try:
         right_mover, left_mover, mean_wind_vec = mpcalc.bunkers_storm_motion(p, u, v, heights)
-        motion['Bunkers RM'] = right_mover
-        motion['Bunkers LM'] = left_mover
-        motion['Vent Mitjà'] = mean_wind_vec
+        motion['Bunkers RM'] = right_mover; motion['Bunkers LM'] = left_mover; motion['Vent Mitjà'] = mean_wind_vec
         for name, vec in motion.items():
-            u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m
-            marker = 's' if 'Mitjà' in name else 'o'
+            u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m; marker = 's' if 'Mitjà' in name else 'o'
             ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
-    except (ValueError, IndexError):
-        right_mover = None
+    except (ValueError, IndexError): right_mover = None
     depths = {'0-1 km': 1000 * units.m, '0-3 km': 3000 * units.m, '0-6 km': 6000 * units.m}
     for name, depth in depths.items():
-        try:
-            bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth)
-            params['BWD (kts)'][name] = mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m
-        except (ValueError, IndexError):
-            params['BWD (kts)'][name] = np.nan
-            
+        try: params['BWD (kts)'][name] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights, depth=depth)).to('kt').m
+        except (ValueError, IndexError): params['BWD (kts)'][name] = np.nan
     if right_mover is not None:
         try:
-            u_storm, v_storm = right_mover
-            critical_angle = mpcalc.critical_angle(p, u, v, heights, u_storm=u_storm, v_storm=v_storm).to('deg').m
+            u_storm, v_storm = right_mover; critical_angle = mpcalc.critical_angle(p, u, v, heights, u_storm=u_storm, v_storm=v_storm).to('deg').m
             sr_wind_speed = mpcalc.wind_speed(u - u_storm, v - v_storm).to('kt')
-        except (ValueError, IndexError, TypeError):
-            pass
-    ax_params.axis('off'); ax_motion.axis('off')
-    ax_params.text(0, 1, "Paràmetres", fontsize=12, weight='bold', va='top')
-    ax_params.text(0.65, 0.85, "BWD\n(nusos)", ha='center', va='top', weight='bold')
-    y_pos = 0.6
+        except (ValueError, IndexError, TypeError): pass
+    ax_params.axis('off'); ax_motion.axis('off'); ax_params.text(0, 1, "Paràmetres", fontsize=12, weight='bold', va='top')
+    ax_params.text(0.65, 0.85, "BWD\n(nusos)", ha='center', va='top', weight='bold'); y_pos = 0.6
     for key in depths.keys():
-        bwd_val = params['BWD (kts)'].get(key, np.nan)
-        ax_params.text(0.3, y_pos, key, va='center')
-        ax_params.text(0.65, y_pos, f"{bwd_val:.0f}" if not np.isnan(bwd_val) else '---', ha='center', va='center')
-        y_pos -= 0.22
-    ax_motion.text(0, 1, "Moviment Tempesta (dir/kts)", fontsize=12, weight='bold', va='top')
-    y_pos = 0.8
+        bwd_val = params['BWD (kts)'].get(key, np.nan); ax_params.text(0.3, y_pos, key, va='center'); ax_params.text(0.65, y_pos, f"{bwd_val:.0f}" if not np.isnan(bwd_val) else '---', ha='center', va='center'); y_pos -= 0.22
+    ax_motion.text(0, 1, "Moviment Tempesta (dir/kts)", fontsize=12, weight='bold', va='top'); y_pos = 0.8
     if motion:
         for name, vec in motion.items():
-            speed = mpcalc.wind_speed(vec[0], vec[1]).to('kt').m
-            direction = mpcalc.wind_direction(vec[0], vec[1]).to('deg').m
-            ax_motion.text(0, y_pos, f"{name}:", va='center')
-            ax_motion.text(0.9, y_pos, f"{direction:.0f}°/{speed:.0f} kts", va='center', ha='right')
-            y_pos -= 0.2
-    else:
-        ax_motion.text(0.5, 0.6, "Càlcul no disponible", ha='center', va='center', fontsize=9, color='gray')
-    ax_motion.text(0, y_pos, "Angle Crític:", va='center')
-    ax_motion.text(0.9, y_pos, f"{critical_angle:.0f}°" if not np.isnan(critical_angle) else '---', va='center', ha='right')
+            speed = mpcalc.wind_speed(*vec).to('kt').m; direction = mpcalc.wind_direction(*vec).to('deg').m
+            ax_motion.text(0, y_pos, f"{name}:", va='center'); ax_motion.text(0.9, y_pos, f"{direction:.0f}°/{speed:.0f} kts", va='center', ha='right'); y_pos -= 0.2
+    else: ax_motion.text(0.5, 0.6, "Càlcul no disponible", ha='center', va='center', fontsize=9, color='gray')
+    ax_motion.text(0, y_pos, "Angle Crític:", va='center'); ax_motion.text(0.9, y_pos, f"{critical_angle:.0f}°" if not np.isnan(critical_angle) else '---', va='center', ha='right')
     ax_sr_wind.set_title("Vent Relatiu vs. Altura (RM)", fontsize=12, weight='bold')
     if sr_wind_speed is not None:
-        ax_sr_wind.plot(sr_wind_speed, heights_km)
-        ax_sr_wind.set_xlim(0, max(60, sr_wind_speed[~np.isnan(sr_wind_speed)].max().m + 5 if np.any(~np.isnan(sr_wind_speed)) else 60))
-    else:
-        ax_sr_wind.text(0.5, 0.5, "Càlcul no disponible", ha='center', va='center', transform=ax_sr_wind.transAxes, fontsize=9, color='gray')
-    ax_sr_wind.set_xlabel("Vent Relatiu (nusos)")
-    ax_sr_wind.set_ylabel("Altura (km)")
-    ax_sr_wind.set_ylim(0, 12)
-    ax_sr_wind.grid(True, linestyle='--')
+        ax_sr_wind.plot(sr_wind_speed, heights_km); ax_sr_wind.set_xlim(0, max(60, sr_wind_speed[~np.isnan(sr_wind_speed)].max().m + 5 if np.any(~np.isnan(sr_wind_speed)) else 60))
+    else: ax_sr_wind.text(0.5, 0.5, "Càlcul no disponible", ha='center', va='center', transform=ax_sr_wind.transAxes, fontsize=9, color='gray')
+    ax_sr_wind.set_xlabel("Vent Relatiu (nusos)"); ax_sr_wind.set_ylabel("Altura (km)"); ax_sr_wind.set_ylim(0, 12); ax_sr_wind.grid(True, linestyle='--')
     return fig
 @st.cache_data(ttl=600)
 def carregar_imatge_satelit(url):
@@ -442,7 +386,7 @@ def mostrar_imatge_temps_real(tipus):
     else: st.warning(error_msg)
 
 def get_color_for_param(value, param_type):
-    if value is None or np.isnan(value): return "#808080"
+    if value is None or np.isnan(value): return "white" # Canviat a blanc per defecte
     if param_type == 'cape':
         if value < 100: return "white";
         if value < 1000: return "yellow"
@@ -645,13 +589,14 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             with col2:
                 fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
                 st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
-
+            
             with st.expander("❔ Com interpretar els paràmetres i gràfics"):
                 st.markdown("""
                 **Paràmetres del Sondeig:**
                 - **CAPE:** Energia per a les tempestes. Més alt = més forts corrents ascendents. >1500 J/kg és alt.
                 - **CIN:** "Tapa" que impedeix que l'aire pugi. Valors més negatius que -50 J/kg indiquen una tapa forta.
                 - **LCL/LFC/EL:** Altures de la base del núvol, inici de l'ascens lliure i sostre de la tempesta.
+                - **KI / TT:** Índexs d'inestabilitat. Valors més alts indiquen més potencial de tempesta.
                 
                 **Hodògraf:**
                 - **Forma:** Una corba pronunciada indica cisallament direccional, favorable per a tempestes organitzades.
