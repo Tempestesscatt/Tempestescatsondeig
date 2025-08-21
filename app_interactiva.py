@@ -298,8 +298,11 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 def crear_skewt(p, T, Td, u, v, params_calc, titol):
-    fig = plt.figure(figsize=(9, 10), dpi=150)
-    skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
+    # ===> CANVI: Eliminem figsize per deixar que Streamlit gestioni l'amplada <===
+    fig = plt.figure(dpi=150)
+    fig.set_figheight(fig.get_figwidth() * 1.1) # Controlem l'alçada en relació a l'amplada
+    
+    skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.8, 0.9))
     skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2.5, label='Temperatura'); skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
     skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
@@ -320,7 +323,10 @@ def crear_skewt(p, T, Td, u, v, params_calc, titol):
     except: pass
     skew.ax.legend(); return fig
 def crear_hodograf_avancat(p, u, v, heights, titol):
-    fig = plt.figure(figsize=(9, 10), dpi=150) 
+    # ===> CANVI: Eliminem figsize per deixar que Streamlit gestioni l'amplada <===
+    fig = plt.figure(dpi=150)
+    fig.set_figheight(fig.get_figwidth() * 1.1) # Controlem l'alçada en relació a l'amplada
+    
     gs = fig.add_gridspec(nrows=3, ncols=2, width_ratios=[2.5, 1.5], hspace=0.4, wspace=0.3, top=0.92, bottom=0.05, left=0.1, right=0.9)
     ax_hodo = fig.add_subplot(gs[:, 0]); ax_params = fig.add_subplot(gs[0, 1]); ax_motion = fig.add_subplot(gs[1, 1]); ax_sr_wind = fig.add_subplot(gs[2, 1])
     fig.suptitle(titol, weight='bold', fontsize=16); h = Hodograph(ax_hodo, component_range=80.)
@@ -580,16 +586,23 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         with contingut_principal:
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
+            
+            # ===> CANVI: Noves proporcions de columna per a una millor alineació <===
             col1, col_llegenda, col2 = st.columns([0.4, 0.2, 0.4])
+
             with col1:
                 fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}")
-                st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
+                st.pyplot(fig_skewt, use_container_width=True)
+                plt.close(fig_skewt)
+            
             with col_llegenda:
                 ui_llegenda_sondeig(params_calculats)
+
             with col2:
                 fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
-                st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
-            
+                st.pyplot(fig_hodo, use_container_width=True)
+                plt.close(fig_hodo)
+
             with st.expander("❔ Com interpretar els paràmetres i gràfics"):
                 st.markdown("""
                 **Paràmetres del Sondeig:**
@@ -602,7 +615,8 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                 - **Forma:** Una corba pronunciada indica cisallament direccional, favorable per a tempestes organitzades.
                 - **BWD (Cisallament):** Valors > 40 nusos (0-6 km) afavoreixen l'organització de les tempestes.
                 """)
-    else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
+    else:
+        st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteociel | IA per Google Gemini.</p>", unsafe_allow_html=True)
 
