@@ -473,17 +473,18 @@ def mostrar_imatge_temps_real(tipus):
     else: st.error("Tipus d'imatge no reconegut.")
 
 def get_color_for_cape(value):
-    if value is None or np.isnan(value) or value < 100: return "#FFFFFF" 
+    # ===> CANVI: Si el valor no és NaN però és menor de 100, el color serà blanc. <===
+    if value is None or np.isnan(value): return "#FFFFFF" 
+    if value < 100: return "#FFFFFF"
     if value < 1000: return "#FFFF00"
     if value < 2500: return "#FF8C00"
     if value < 4000: return "#FF0000"
     return "#FF00FF"
 
-
 def ui_parametres_avancats(params):
     """
     Mostra una taula d'estil professional amb paràmetres de convecció avançats,
-    utilitzant una taula HTML per a una alineació perfecta.
+    amb el disseny final basat en la imatge.
     """
     st.markdown("---")
     
@@ -499,38 +500,33 @@ def ui_parametres_avancats(params):
     color_ml = get_color_for_cape(cape_ml)
     color_dcape = get_color_for_cape(dcape)
     
-    # ===> CANVI: Utilitzem una taula HTML per a un disseny net i alineat <===
+    # ===> CANVI: Utilitzem una taula HTML més complexa per replicar el disseny <===
     html = f"""
     <div style="display: flex; justify-content: center;">
-        <table style="width: 90%; font-family: monospace; font-size: 1.2em; line-height: 1.8; border-collapse: collapse;">
-            <thead>
-                <tr>
-                    <th colspan="2" style="text-align: center; padding-bottom: 10px;">CAPE</th>
-                </tr>
-            </thead>
+        <table style="width: 90%; font-family: monospace; font-size: 1.2em; line-height: 1.8; border-collapse: collapse; border: 1px solid grey;">
             <tbody>
                 <tr>
-                    <td style="font-weight: bold; text-align: left; width: 50%;">SB:</td>
-                    <td style="text-align: right; color: {color_sb};">{f'{cape_sb:.0f} J/kg' if not np.isnan(cape_sb) else '---'}</td>
+                    <td colspan="2" style="text-align: center; padding: 5px; border-bottom: 1px solid grey; font-weight: bold;">CAPE</td>
                 </tr>
                 <tr>
-                    <td style="font-weight: bold; text-align: left;">MU:</td>
-                    <td style="text-align: right; color: {color_mu};">{f'{cape_mu:.0f} J/kg' if not np.isnan(cape_mu) else '---'}</td>
+                    <td style="font-weight: bold; text-align: left; padding: 5px 10px; width: 50%; border-right: 1px solid grey;">SB:</td>
+                    <td style="text-align: right; padding: 5px 10px; color: {color_sb};">{f'{cape_sb:.0f} J/kg' if not np.isnan(cape_sb) else '---'}</td>
                 </tr>
                 <tr>
-                    <td style="font-weight: bold; text-align: left;">ML:</td>
-                    <td style="text-align: right; color: {color_ml};">{f'{cape_ml:.0f} J/kg' if not np.isnan(cape_ml) else '---'}</td>
+                    <td style="font-weight: bold; text-align: left; padding: 5px 10px; border-right: 1px solid grey;">MU:</td>
+                    <td style="text-align: right; padding: 5px 10px; color: {color_mu};">{f'{cape_mu:.0f} J/kg' if not np.isnan(cape_mu) else '---'}</td>
                 </tr>
                 <tr>
-                    <td colspan="2" style="height: 20px;"></td>
+                    <td style="font-weight: bold; text-align: left; padding: 5px 10px; border-right: 1px solid grey; border-bottom: 1px solid grey;">ML:</td>
+                    <td style="text-align: right; padding: 5px 10px; color: {color_ml}; border-bottom: 1px solid grey;">{f'{cape_ml:.0f} J/kg' if not np.isnan(cape_ml) else '---'}</td>
                 </tr>
                 <tr>
-                    <td style="text-align: center;"><span style="font-weight: bold;">Γ₀₋₃:</span> {f'{lr_03:.1f} Δ°C/km' if not np.isnan(lr_03) else '---'}</td>
-                    <td style="text-align: center;"><span style="font-weight: bold;">DCAPE:</span> <span style="color: {color_dcape};">{f'{dcape:.0f} J/kg' if not np.isnan(dcape) else '---'}</span></td>
+                    <td style="padding: 5px 10px; border-right: 1px solid grey;"><span style="font-weight: bold;">Γ₀₋₃:</span> {f'{lr_03:.1f} Δ°C/km' if not np.isnan(lr_03) else '---'}</td>
+                    <td style="padding: 5px 10px;"><span style="font-weight: bold;">DCAPE:</span> <span style="color: {color_dcape};">{f'{dcape:.0f} J/kg' if not np.isnan(dcape) else '---'}</span></td>
                 </tr>
                  <tr>
-                    <td style="text-align: center;"></td>
-                    <td style="text-align: center;"><span style="font-weight: bold;">Γ₃₋₆:</span> {f'{lr_36:.1f} Δ°C/km' if not np.isnan(lr_36) else '---'}</td>
+                    <td style="padding: 5px 10px; border-right: 1px solid grey;"></td>
+                    <td style="padding: 5px 10px;"><span style="font-weight: bold;">Γ₃₋₆:</span> {f'{lr_36:.1f} Δ°C/km' if not np.isnan(lr_36) else '---'}</td>
                 </tr>
             </tbody>
         </table>
