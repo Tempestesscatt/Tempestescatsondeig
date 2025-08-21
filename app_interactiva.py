@@ -472,7 +472,6 @@ def mostrar_imatge_temps_real(tipus):
         else: st.warning(error_msg)
     else: st.error("Tipus d'imatge no reconegut.")
 
-# --- 3. FUNCIONS PER A PESTANYES ---
 def get_color_for_cape(value):
     if value is None or np.isnan(value) or value < 100: return "#FFFFFF" 
     if value < 1000: return "#FFFF00"
@@ -480,10 +479,11 @@ def get_color_for_cape(value):
     if value < 4000: return "#FF0000"
     return "#FF00FF"
 
+
 def ui_parametres_avancats(params):
     """
     Mostra una taula d'estil professional amb paràmetres de convecció avançats,
-    amb el nou disseny.
+    utilitzant una taula HTML per a una alineació perfecta.
     """
     st.markdown("---")
     
@@ -499,34 +499,41 @@ def ui_parametres_avancats(params):
     color_ml = get_color_for_cape(cape_ml)
     color_dcape = get_color_for_cape(dcape)
     
+    # ===> CANVI: Utilitzem una taula HTML per a un disseny net i alineat <===
     html = f"""
-    <div style="font-family: monospace; font-size: 1.2em; line-height: 1.8; text-align: center;">
-        
-        <!-- Títol CAPE -->
-        <div style="font-weight: bold;">CAPE</div>
-        
-        <!-- Valors CAPE -->
-        <div style="display: flex; justify-content: space-between; align-items: center; width: 80%; margin: auto;">
-            <span style="font-weight: bold;">SB:</span>
-            <span style="color: {color_sb};">{f'{cape_sb:.0f} J/kg' if not np.isnan(cape_sb) else '---'}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; width: 80%; margin: auto;">
-            <span style="font-weight: bold;">MU:</span>
-            <span style="color: {color_mu};">{f'{cape_mu:.0f} J/kg' if not np.isnan(cape_mu) else '---'}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; width: 80%; margin: auto;">
-            <span style="font-weight: bold;">ML:</span>
-            <span style="color: {color_ml};">{f'{cape_ml:.0f} J/kg' if not np.isnan(cape_ml) else '---'}</span>
-        </div>
-
-        <br>
-
-        <!-- Línia inferior -->
-        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin: auto;">
-            <div style="width: 33%;"><span style="font-weight: bold;">Γ₀₋₃:</span> {f'{lr_03:.1f} Δ°C/km' if not np.isnan(lr_03) else '---'}</div>
-            <div style="width: 33%;"><span style="font-weight: bold;">DCAPE:</span> <span style="color: {color_dcape};">{f'{dcape:.0f} J/kg' if not np.isnan(dcape) else '---'}</span></div>
-            <div style="width: 33%;"><span style="font-weight: bold;">Γ₃₋₆:</span> {f'{lr_36:.1f} Δ°C/km' if not np.isnan(lr_36) else '---'}</div>
-        </div>
+    <div style="display: flex; justify-content: center;">
+        <table style="width: 90%; font-family: monospace; font-size: 1.2em; line-height: 1.8; border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th colspan="2" style="text-align: center; padding-bottom: 10px;">CAPE</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="font-weight: bold; text-align: left; width: 50%;">SB:</td>
+                    <td style="text-align: right; color: {color_sb};">{f'{cape_sb:.0f} J/kg' if not np.isnan(cape_sb) else '---'}</td>
+                </tr>
+                <tr>
+                    <td style="font-weight: bold; text-align: left;">MU:</td>
+                    <td style="text-align: right; color: {color_mu};">{f'{cape_mu:.0f} J/kg' if not np.isnan(cape_mu) else '---'}</td>
+                </tr>
+                <tr>
+                    <td style="font-weight: bold; text-align: left;">ML:</td>
+                    <td style="text-align: right; color: {color_ml};">{f'{cape_ml:.0f} J/kg' if not np.isnan(cape_ml) else '---'}</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="height: 20px;"></td>
+                </tr>
+                <tr>
+                    <td style="text-align: center;"><span style="font-weight: bold;">Γ₀₋₃:</span> {f'{lr_03:.1f} Δ°C/km' if not np.isnan(lr_03) else '---'}</td>
+                    <td style="text-align: center;"><span style="font-weight: bold;">DCAPE:</span> <span style="color: {color_dcape};">{f'{dcape:.0f} J/kg' if not np.isnan(dcape) else '---'}</span></td>
+                </tr>
+                 <tr>
+                    <td style="text-align: center;"></td>
+                    <td style="text-align: center;"><span style="font-weight: bold;">Γ₃₋₆:</span> {f'{lr_36:.1f} Δ°C/km' if not np.isnan(lr_36) else '---'}</td>
+                </tr>
+            </tbody>
+        </table>
     </div>
     """
     st.markdown(html, unsafe_allow_html=True)
