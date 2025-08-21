@@ -147,30 +147,58 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         valid_indices = ~np.isnan(p_profile) & ~np.isnan(T_profile) & ~np.isnan(Td_profile) & ~np.isnan(u_profile) & ~np.isnan(v_profile) & ~np.isnan(h_profile)
         p, T, Td = np.array(p_profile)[valid_indices] * units.hPa, np.array(T_profile)[valid_indices] * units.degC, np.array(Td_profile)[valid_indices] * units.degC
         u, v, heights = np.array(u_profile)[valid_indices] * units('m/s'), np.array(v_profile)[valid_indices] * units('m/s'), np.array(h_profile)[valid_indices] * units.meter
+        
+        # Diccionari de paràmetres
         params_calc = {}
+        
+        # CAPE i CIN (Surface-Based)
+        prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
+        cape, cin = mpcalc.cape_cin(p, T, Td, prof)
+        params_calc['CAPE_total'] = cape.to('J/kg').m
+        params_calc['CIN_total'] = cin.to('J/kg').m
+        
+        # Nivells LCL, LFC, EL
         try:
-            prof = mpcalc.parcel_profile(p, T[0], Td[0]); cape, cin = mpcalc.cape_cin(p, T, Td, prof)
-            params_calc['CAPE'], params_calc['CIN'] = (cape.to('J/kg').m if cape.magnitude > 0 else 0), cin.to('J/kg').m
-        except Exception: params_calc['CAPE'], params_calc['CIN'] = np.nan, np.nan
-        params_calc['CAPE_TYPES'] = {'SB': params_calc.get('CAPE', np.nan), 'MU': np.nan, 'ML': np.nan}
-        try: params_calc['CAPE_TYPES']['MU'] = mpcalc.most_unstable_cape_cin(p, T, Td)[0].to('J/kg').m
-        except Exception: pass
-        try: params_calc['CAPE_TYPES']['ML'] = mpcalc.mixed_layer_cape_cin(p, T, Td)[0].to('J/kg').m
-        except Exception: pass
-        try: params_calc['DCAPE'] = mpcalc.dcape(p, T, Td)[0].to('J/kg').m
-        except Exception: params_calc['DCAPE'] = np.nan
-        params_calc['LAPSE_RATES'] = {'0-3km': np.nan, '3-6km': np.nan}
+            lcl_p, _, lcl_h = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50, return_height=True)
+            params_calc['LCL_Hgt'] = lcl_h.to('m').m
+        except: params_calc['LCL_Hgt'] = np.nan
         try:
-            heights_agl = heights.to('m').m - heights[0].to('m').m
-            if heights_agl[-1] > 3000:
-                idx_3km = np.argmin(np.abs(heights_agl - 3000))
-                if p[0] > p[idx_3km]:
-                    params_calc['LAPSE_RATES']['0-3km'] = mpcalc.lapse_rate(p, T, bottom=p[0], top=p[idx_3km]).to('delta_degC/km').m
-            if heights_agl[-1] > 6000:
-                idx_3km = np.argmin(np.abs(heights_agl - 3000)); idx_6km = np.argmin(np.abs(heights_agl - 6000))
-                if p[idx_3km] > p[idx_6km]:
-                    params_calc['LAPSE_RATES']['3-6km'] = mpcalc.lapse_rate(p, T, bottom=p[idx_3km], top=p[idx_6km]).to('delta_degC/km').m
-        except Exception: pass
+            lfc_p, _ = mpcalc.lfc(p, T, Td, which='most_cape')
+            params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m if lfc_p is not None else np.nan
+        except: params_calc['LFC_Hgt'] = np.nan
+        try:
+            el_p, _ = mpcalc.el(p, T, Td, prof)
+            params_calc['EL_Hgt'] = mpcalc.pressure_to_height_std(el_p).to('m').m if el_p is not None else np.nan
+        except: params_calc['EL_Hgt'] = np.nan
+            
+        # Nivell de Congelació (Freezing Level)
+        try:
+            frz_lvl_h = mpcalc.height_at_pressure(p, heights, 0 * units.degC)
+            params_calc['FRZG_Lvl'] = frz_lvl_h.to('m').m
+        except: params_calc['FRZG_Lvl'] = np.nan
+            
+        # Helicitat (SRH)
+        try:
+            rm, lm, mw = mpcalc.bunkers_storm_motion(p, u, v, heights)
+            params_calc['s-RH_0-1km'] = mpcalc.storm_relative_helicity(heights, u, v, depth=1000 * units.m, u_storm=rm[0], v_storm=rm[1])[0].to('m**2/s**2').m
+            params_calc['s-RH_0-3km'] = mpcalc.storm_relative_helicity(heights, u, v, depth=3000 * units.m, u_storm=rm[0], v_storm=rm[1])[0].to('m**2/s**2').m
+        except:
+            params_calc['s-RH_0-1km'], params_calc['s-RH_0-3km'] = np.nan, np.nan
+            
+        # Índexs de Tempesta (KI, TT, SWEAT)
+        try: params_calc['KI'] = mpcalc.k_index(p, T, Td).m
+        except: params_calc['KI'] = np.nan
+        try: params_calc['TT'] = mpcalc.total_totals_index(p, T, Td).m
+        except: params_calc['TT'] = np.nan
+        try: params_calc['SWEAT'] = mpcalc.sweat_index(p, T, Td, u, v).m
+        except: params_calc['SWEAT'] = np.nan
+
+        # Altres tipus de CAPE (MU, ML)
+        try: mu_cape, _ = mpcalc.most_unstable_cape_cin(p, T, Td); params_calc['MU_CAPE'] = mu_cape.to('J/kg').m
+        except: params_calc['MU_CAPE'] = np.nan
+        try: ml_cape, _ = mpcalc.mixed_layer_cape_cin(p, T, Td); params_calc['ML_CAPE'] = ml_cape.to('J/kg').m
+        except: params_calc['ML_CAPE'] = np.nan
+        
         return ((p, T, Td, u, v, heights), params_calc), None
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
 
@@ -359,26 +387,58 @@ def mostrar_imatge_temps_real(tipus):
     if image_content: st.image(image_content, caption=caption, use_container_width=True)
     else: st.warning(error_msg)
 
-def get_color_for_cape(value):
-    if value is None or np.isnan(value): return "#FFFFFF" 
-    if value < 100: return "#FFFFFF"
-    if value < 1000: return "#FFFF00";
-    if value < 2500: return "#FF8C00"
-    if value < 4000: return "#FF0000"; return "#FF00FF"
-def ui_parametres_avancats(params):
+def get_color_for_param(value, param_type):
+    if value is None or np.isnan(value): return "#808080"
+    if param_type == 'cape':
+        if value < 100: return "#FFFFFF";
+        if value < 1000: return "#FFFF00"
+        if value < 2500: return "#FF8C00"
+        return "#FF0000"
+    if param_type == 'srh':
+        if value < 100: return "#FFFFFF";
+        if value < 250: return "#FFFF00"
+        if value < 400: return "#FF8C00"
+        return "#FF0000"
+    if param_type == 'sweat':
+        if value < 250: return "#FFFFFF";
+        if value < 350: return "#FFFF00"
+        if value < 450: return "#FF8C00"
+        return "#FF0000"
+    return "#FFFFFF"
+def ui_llegenda_sondeig(params):
     st.markdown("---")
-    cape_sb = params.get('CAPE_TYPES', {}).get('SB', np.nan); cape_mu = params.get('CAPE_TYPES', {}).get('MU', np.nan); cape_ml = params.get('CAPE_TYPES', {}).get('ML', np.nan)
-    dcape = params.get('DCAPE', np.nan); lr_03 = params.get('LAPSE_RATES', {}).get('0-3km', np.nan); lr_36 = params.get('LAPSE_RATES', {}).get('3-6km', np.nan)
-    color_sb = get_color_for_cape(cape_sb); color_mu = get_color_for_cape(cape_mu); color_ml = get_color_for_cape(cape_ml); color_dcape = get_color_for_cape(dcape)
-    html = f"""<div style="display: flex; justify-content: center;"><table style="width: 90%; font-family: monospace; font-size: 1.2em; line-height: 1.8; border-collapse: collapse; border: 1px solid grey;"><tbody>
-        <tr><td colspan="2" style="text-align: center; padding: 5px; border-bottom: 1px solid grey; font-weight: bold;">CAPE</td></tr>
-        <tr><td style="font-weight: bold; text-align: left; padding: 5px 10px; width: 50%; border-right: 1px solid grey;">SB:</td><td style="text-align: right; padding: 5px 10px; color: {color_sb};">{f'{cape_sb:.0f} J/kg' if not np.isnan(cape_sb) else '---'}</td></tr>
-        <tr><td style="font-weight: bold; text-align: left; padding: 5px 10px; border-right: 1px solid grey;">MU:</td><td style="text-align: right; padding: 5px 10px; color: {color_mu};">{f'{cape_mu:.0f} J/kg' if not np.isnan(cape_mu) else '---'}</td></tr>
-        <tr><td style="font-weight: bold; text-align: left; padding: 5px 10px; border-right: 1px solid grey; border-bottom: 1px solid grey;">ML:</td><td style="text-align: right; padding: 5px 10px; color: {color_ml}; border-bottom: 1px solid grey;">{f'{cape_ml:.0f} J/kg' if not np.isnan(cape_ml) else '---'}</td></tr>
-        <tr><td style="padding: 5px 10px; border-right: 1px solid grey;"><span style="font-weight: bold;">Γ₀₋₃:</span> {f'{lr_03:.1f} Δ°C/km' if not np.isnan(lr_03) else '---'}</td><td style="padding: 5px 10px;"><span style="font-weight: bold;">DCAPE:</span> <span style="color: {color_dcape};">{f'{dcape:.0f} J/kg' if not np.isnan(dcape) else '---'}</span></td></tr>
-        <tr><td style="padding: 5px 10px; border-right: 1px solid grey;"></td><td style="padding: 5px 10px;"><span style="font-weight: bold;">Γ₃₋₆:</span> {f'{lr_36:.1f} Δ°C/km' if not np.isnan(lr_36) else '---'}</td></tr>
-    </tbody></table></div>"""
-    st.markdown(html, unsafe_allow_html=True)
+    def fmt(val, unit): return f"{val:.1f} {unit}" if val is not None and not np.isnan(val) else "---"
+    def fmt_int(val, unit): return f"{val:.0f} {unit}" if val is not None and not np.isnan(val) else "---"
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"""
+        **Nivells Clau:**
+        - **Congelació:** {fmt_int(params.get('FRZG_Lvl'), 'm')}
+        - **LCL:** {fmt_int(params.get('LCL_Hgt'), 'm')}
+        - **LFC:** {fmt_int(params.get('LFC_Hgt'), 'm')}
+        - **EL:** {fmt_int(params.get('EL_Hgt'), 'm')}
+        """)
+        st.markdown(f"""
+        **Energia (CAPE / CIN):**
+        - <span style='color:{get_color_for_param(params.get('CAPE_total'), 'cape')};'>**SB CAPE:** {fmt_int(params.get('CAPE_total'), 'J/kg')}</span>
+        - <span style='color:{get_color_for_param(params.get('MU_CAPE'), 'cape')};'>**MU CAPE:** {fmt_int(params.get('MU_CAPE'), 'J/kg')}</span>
+        - <span style='color:{get_color_for_param(params.get('ML_CAPE'), 'cape')};'>**ML CAPE:** {fmt_int(params.get('ML_CAPE'), 'J/kg')}</span>
+        - **CIN:** {fmt_int(params.get('CIN_total'), 'J/kg')}
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown(f"""
+        **Índexs d'Inestabilitat:**
+        - <span style='color:{get_color_for_param(params.get('SWEAT'), 'sweat')};'>**SWEAT:** {fmt(params.get('SWEAT'), '')}</span>
+        - **KI:** {fmt(params.get('KI'), '°C')}
+        - **TT:** {fmt(params.get('TT'), '°C')}
+        """)
+        st.markdown(f"""
+        **Helicitat Relativa (SRH):**
+        - <span style='color:{get_color_for_param(params.get('s-RH_0-1km'), 'srh')};'>**0-1 km:** {fmt_int(params.get('s-RH_0-1km'), 'm²/s²')}</span>
+        - <span style='color:{get_color_for_param(params.get('s-RH_0-3km'), 'srh')};'>**0-3 km:** {fmt_int(params.get('s-RH_0-3km'), 'm²/s²')}</span>
+        """, unsafe_allow_html=True)
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent Meteo-Col·lega (amb Google Gemini)")
     try: genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -425,7 +485,7 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
                     buf_skewt = io.BytesIO(); fig_skewt.savefig(buf_skewt, format='png', dpi=150); buf_skewt.seek(0); img_skewt = Image.open(buf_skewt); plt.close(fig_skewt); contingut_per_ia.append(img_skewt)
                     fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat - {poble_sel}")
                     buf_hodo = io.BytesIO(); fig_hodo.savefig(buf_hodo, format='png', dpi=150); buf_hodo.seek(0); img_hodo = Image.open(buf_hodo); plt.close(fig_hodo); contingut_per_ia.append(img_hodo)
-                    resum_sondeig = f"SB CAPE: {params_calculats.get('CAPE_TYPES', {}).get('SB', 0):.0f} J/kg, CIN: {params_calculats.get('CIN', 0):.0f} J/kg, DCAPE: {params_calculats.get('DCAPE', 0):.0f} J/kg"
+                    resum_sondeig = f"SB CAPE: {params_calculats.get('CAPE_total', 0):.0f} J/kg, CIN: {params_calculats.get('CIN_total', 0):.0f} J/kg"
                 prompt_context = f"DADES ADDICIONALS:\n- Localització: {poble_sel}\n- Paràmetres clau: {resum_sondeig}\n\nPREGUNTA: '{prompt_usuari}'"
                 contingut_per_ia.insert(0, prompt_context)
                 try:
@@ -534,16 +594,15 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         with contingut_principal:
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns([2.5, 1, 2.5]) # Skew-T, Llegenda, Hodògraf
             with col1:
-                fig_skewt = crear_skewt(p, T, Td, u, v, f"Sondeig Vertical - {poble_sel}"); st.pyplot(fig_skewt); plt.close(fig_skewt)
-                ui_parametres_avancats(params_calculats)
+                fig_skewt = crear_skewt(p, T, Td, u, v, f"Sondeig Vertical\n{poble_sel}")
+                st.pyplot(fig_skewt); plt.close(fig_skewt)
             with col2:
-                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat - {poble_sel}"); st.pyplot(fig_hodo); plt.close(fig_hodo)
-            with st.expander("Què signifiquen aquests paràmetres?"):
-                st.markdown("""- **CAPE (SB/MU/ML):** Energia disponible per a una tempesta calculada des de diferents nivells d'inici (Superfície, Més Inestable, Capa Mixta). Valors alts indiquen potencial per a corrents ascendents forts.
-- **DCAPE:** Energia potencial per a corrents descendents forts (microesclafits o "downbursts"). Valors > 1000 J/kg són un avís a tenir en compte.
-- **Γ (Gamma / Gradent Tèrmic):** Ritme al qual la temperatura baixa amb l'altura. Gradents > 6.5 °C/km indiquen una atmosfera més inestable i favorable a la convecció.""")
+                ui_llegenda_sondeig(params_calculats)
+            with col3:
+                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
+                st.pyplot(fig_hodo); plt.close(fig_hodo)
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteociel | IA per Google Gemini.</p>", unsafe_allow_html=True)
