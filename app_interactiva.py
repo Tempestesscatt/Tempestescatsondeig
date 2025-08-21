@@ -121,7 +121,6 @@ def show_login_page():
     if st.button("Entrar com a Convidat", use_container_width=True, type="secondary"):
         st.session_state.update({'guest_mode': True, 'logged_in': False}); st.rerun()
 
-# --- 1. FUNCIONS D'OBTENCIÓ DE DADES ---
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
@@ -147,17 +146,13 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         valid_indices = ~np.isnan(p_profile) & ~np.isnan(T_profile) & ~np.isnan(Td_profile) & ~np.isnan(u_profile) & ~np.isnan(v_profile) & ~np.isnan(h_profile)
         p, T, Td = np.array(p_profile)[valid_indices] * units.hPa, np.array(T_profile)[valid_indices] * units.degC, np.array(Td_profile)[valid_indices] * units.degC
         u, v, heights = np.array(u_profile)[valid_indices] * units('m/s'), np.array(v_profile)[valid_indices] * units('m/s'), np.array(h_profile)[valid_indices] * units.meter
-        
         params_calc = {}
-        prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
-        cape, cin = mpcalc.cape_cin(p, T, Td, prof)
+        prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC'); cape, cin = mpcalc.cape_cin(p, T, Td, prof)
         params_calc['CAPE_total'] = cape.to('J/kg').m; params_calc['CIN_total'] = cin.to('J/kg').m
-        
         try: params_calc['MU_CAPE'] = mpcalc.most_unstable_cape_cin(p, T, Td)[0].to('J/kg').m
         except: params_calc['MU_CAPE'] = np.nan
         try: params_calc['ML_CAPE'] = mpcalc.mixed_layer_cape_cin(p, T, Td)[0].to('J/kg').m
         except: params_calc['ML_CAPE'] = np.nan
-
         heights_agl = heights - heights[0]
         try:
             lcl_p, _, lcl_h = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50, return_height=True)
@@ -171,28 +166,22 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             el_p, _ = mpcalc.el(p, T, Td, prof)
             params_calc['EL_p'] = el_p; params_calc['EL_Hgt'] = mpcalc.pressure_to_height_std(el_p).to('m').m if el_p else np.nan
         except: params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan, np.nan
-            
         try:
-            freezing_level_p = mpcalc.isobaric_surface(p, T, 0*units.degC)[0]
+            freezing_level_p = mpcalc.isobaric_surface(p, T, 0*units.degC, bottom_up_search=True)[0]
             params_calc['FRZG_Lvl_p'] = freezing_level_p
             params_calc['FRZG_Lvl_Hgt'] = mpcalc.pressure_to_height_std(freezing_level_p).to('m').m
         except: params_calc['FRZG_Lvl_p'], params_calc['FRZG_Lvl_Hgt'] = np.nan, np.nan
-
         try:
             rm, _, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
-            srh1 = mpcalc.storm_relative_helicity(heights, u, v, depth=1000 * units.m, u_storm=rm[0], v_storm=rm[1])[0]
-            srh3 = mpcalc.storm_relative_helicity(heights, u, v, depth=3000 * units.m, u_storm=rm[0], v_storm=rm[1])[0]
-            params_calc['s-RH_0-1km'] = srh1.to('m**2/s**2').m
-            params_calc['s-RH_0-3km'] = srh3.to('m**2/s**2').m
+            params_calc['s-RH_0-1km'] = mpcalc.storm_relative_helicity(heights, u, v, depth=1000 * units.m, u_storm=rm[0], v_storm=rm[1])[0].to('m**2/s**2').m
+            params_calc['s-RH_0-3km'] = mpcalc.storm_relative_helicity(heights, u, v, depth=3000 * units.m, u_storm=rm[0], v_storm=rm[1])[0].to('m**2/s**2').m
         except: params_calc['s-RH_0-1km'], params_calc['s-RH_0-3km'] = np.nan, np.nan
-            
         try: params_calc['KI'] = mpcalc.k_index(p, T, Td).m
         except: params_calc['KI'] = np.nan
         try: params_calc['TT'] = mpcalc.total_totals_index(p, T, Td).m
         except: params_calc['TT'] = np.nan
         try: params_calc['SWEAT'] = mpcalc.sweat_index(p, T, Td, u, v).m
         except: params_calc['SWEAT'] = np.nan
-        
         return ((p, T, Td, u, v, heights), params_calc), None
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
 
@@ -306,52 +295,31 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 def crear_skewt(p, T, Td, u, v, params_calc, titol):
-    fig = plt.figure(figsize=(9, 9), dpi=150)
-    skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
-    skew.ax.grid(True, linestyle='-', alpha=0.5)
-    skew.plot(p, T, 'r', lw=2.5, label='Temperatura')
-    skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
-    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
-    skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
-    skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6)
-    skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
+    fig, ax = plt.subplots(figsize=(9, 9), dpi=150)
+    skew = SkewT(fig, ax=ax, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
+    skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2, label='Temperatura'); skew.plot(p, Td, 'g', lw=2, label='Punt de Rosada')
+    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
+    skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
+    prof = mpcalc.parcel_profile(p, T[0], Td[0]); skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+    skew.shade_cape(p, T, prof, color='red', alpha=0.3); skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
+    skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_title(titol, weight='bold', fontsize=14); skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
     
-    prof = mpcalc.parcel_profile(p, T[0], Td[0])
-    skew.plot(p, prof, 'k', linewidth=4, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=6, foreground='white')])
-    skew.shade_cape(p, T, prof, color='red', alpha=0.4)
-    skew.shade_cin(p, T, prof, color='blue', alpha=0.4)
-    
-    skew.ax.set_ylim(1000, 100)
-    skew.ax.set_xlim(-40, 40)
-    skew.ax.set_title(titol, weight='bold', fontsize=14)
-    skew.ax.set_xlabel("Temperatura (°C)")
-    skew.ax.set_ylabel("Pressió (hPa)")
-    
-    # === INICI DE LA CORRECCIÓ ===
-    levels_to_plot = {'LCL': 'LCL_p', 'LFC': 'LFC_p', 'EL': 'EL_p', '0°C': 'FRZG_Lvl_p'}
-    for name, key in levels_to_plot.items():
+    levels_to_plot = {'LCL_p': 'LCL', 'LFC_p': 'LFC', 'EL_p': 'EL', 'FRZG_Lvl_p': '0°C'}
+    for key, name in levels_to_plot.items():
         p_lvl = params_calc.get(key)
-        # Comprovació robusta: primer assegurem que no és None, després que no és NaN.
-        # Això funciona tant per a Quantities de MetPy com per a floats.
         if p_lvl is not None and not np.isnan(p_lvl):
             skew.ax.axhline(p_lvl.m, color='blue', linestyle='--', linewidth=1)
-            skew.ax.text(skew.ax.get_xlim()[1], p_lvl.m, f' {name}', color='blue', ha='left', va='center', fontsize=10)
-    # === FI DE LA CORRECCIÓ ===
-
-    # Detecció i marcatge d'inversions
+            skew.ax.text(skew.ax.get_xlim()[1], p_lvl.m, f' {name}', color='blue', ha='left', va='center', fontsize=10, weight='bold')
+            
     try:
-        inversions = mpcalc.inversions(p, T, Td, top=p.max(), bottom=p.min())
-        for bottom_p, top_p in inversions:
-            skew.ax.axhspan(bottom_p.m, top_p.m, color='blue', alpha=0.2, linewidth=0)
-            skew.ax.text(skew.ax.get_xlim()[0] + 2, (bottom_p.m + top_p.m) / 2, ' Subsidència', color='blue', ha='left', va='center', fontsize=9)
-    except Exception:
-        pass # Si falla la detecció d'inversions, no fem res
-
-    skew.ax.legend()
-    return fig
+        for bottom_p, top_p in mpcalc.inversions(p, T, Td):
+            skew.ax.axhspan(bottom_p.m, top_p.m, color='blue', alpha=0.15, linewidth=0)
+            skew.ax.text(skew.ax.get_xlim()[0] + 2, (bottom_p.m + top_p.m) / 2, 'Subsidència', color='blue', ha='left', va='center', fontsize=9)
+    except: pass
+    skew.ax.legend(); return fig
 def crear_hodograf_avancat(p, u, v, heights, titol):
     fig = plt.figure(figsize=(9, 9), dpi=150) 
-    gs = fig.add_gridspec(nrows=3, ncols=2, width_ratios=[2.5, 1.5], hspace=0.4, wspace=0.3, top=0.9, bottom=0.25, left=0.1, right=0.9)
+    gs = fig.add_gridspec(nrows=3, ncols=2, width_ratios=[2.5, 1.5], hspace=0.4, wspace=0.3, top=0.9, bottom=0.05, left=0.1, right=0.9)
     ax_hodo = fig.add_subplot(gs[:, 0]); ax_params = fig.add_subplot(gs[0, 1]); ax_motion = fig.add_subplot(gs[1, 1]); ax_sr_wind = fig.add_subplot(gs[2, 1])
     fig.suptitle(titol, weight='bold', fontsize=16); h = Hodograph(ax_hodo, component_range=80.)
     h.add_grid(increment=20, color='gray', linestyle='--'); h.plot_colormapped(u.to('kt'), v.to('kt'), heights.to('km'), intervals=np.array([0, 3, 6, 12]) * units.km, colors=['red', 'green', 'blue'], linewidth=4)
@@ -397,8 +365,7 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
         ax_sr_wind.plot(sr_wind_speed, heights_km); ax_sr_wind.set_xlim(0, max(60, sr_wind_speed[~np.isnan(sr_wind_speed)].max().m + 5 if np.any(~np.isnan(sr_wind_speed)) else 60))
     else: ax_sr_wind.text(0.5, 0.5, "Càlcul no disponible", ha='center', va='center', transform=ax_sr_wind.transAxes, fontsize=9, color='gray')
     ax_sr_wind.set_xlabel("Vent Relatiu (nusos)"); ax_sr_wind.set_ylabel("Altura (km)"); ax_sr_wind.set_ylim(0, 12); ax_sr_wind.grid(True, linestyle='--')
-    info_text = ("**Com interpretar l'Hodògraf:**\n\n""**• Forma (Clau per al tipus de tempesta):**\n""  - **Recte o poc corbat:** Indica poc canvi en la direcció del vent amb l'altura. Les tempestes tendeixen a ser\n""    desorganitzades i de curta durada ('de cicle de vida únic'). El corrent descendent apaga ràpidament l'ascendent.\n""  - **Corba pronunciada (somriure):** Mostra un fort cisallament direccional. Això permet que el corrent ascendent\n""    se separi del descendent, donant a la tempesta una vida més llarga i una estructura més organitzada\n""    (multicèl·lules o supercèl·lules).\n\n""**• BWD (Cisallament del Vent):**\n""  - Mesura la diferència total de vent entre dos nivells. Valors de **BWD 0-6 km > 40 nusos** són un indicador\n""    clàssic de què l'entorn pot suportar tempestes organitzades i severes.\n\n""**• Bunkers RM (Right Mover):**\n""  - En entorns amb cisallament, les supercèl·lules sovint es divideixen. La 'RM' és la cèl·lula que es mou cap a\n""    la dreta del vent mitjà, i sol ser la dominant i amb rotació ciclònica (la més perillosa).\n\n""**Exemple d'un dia de temps sever:** T'esperaries veure un hodògraf amb una **corba molt marcada**, un valor\n""de **BWD 0-6 km superant els 50 nusos** i, encara que no es mostri, una Helicitat (SRH) per sobre de 200 m²/s².\n""Aquesta combinació, juntament amb un CAPE elevat al sondeig, és un senyal d'alerta per a supercèl·lules.")
-    fig.text(0.5, 0.12, info_text, va='top', ha='center', fontsize=9, wrap=True, bbox=dict(boxstyle='round,pad=0.5', fc='ivory', alpha=0.5)); return fig
+    return fig
 @st.cache_data(ttl=600)
 def carregar_imatge_satelit(url):
     try:
@@ -435,39 +402,35 @@ def get_color_for_param(value, param_type):
         return "red"
     return "white"
 def ui_llegenda_sondeig(params):
-    st.markdown("<br>", unsafe_allow_html=True) # Espai superior
-    def fmt(val, unit): return f"{val:.1f} {unit}" if val is not None and not np.isnan(val) else "---"
-    def fmt_int(val, unit): return f"{val:.0f} {unit}" if val is not None and not np.isnan(val) else "---"
+    st.markdown("<br>", unsafe_allow_html=True) 
+    def fmt(val, unit): return f"{val:.1f} {unit}" if not np.isnan(val) else "---"
+    def fmt_int(val, unit): return f"{val:.0f} {unit}" if not np.isnan(val) else "---"
     
-    html = f"""
-    <div style="font-family: monospace; font-size: 0.9em; line-height: 1.6;">
+    html = f"""<div style="font-family: monospace; font-size: 0.9em; line-height: 1.7;">
         <div style="display: flex; justify-content: space-between;">
             <div style="width: 48%;">
                 <span style="font-weight: bold;">Nivells Clau:</span><br>
-                Congelació: {fmt_int(params.get('FRZG_Lvl_Hgt'), 'm')}<br>
-                LCL: {fmt_int(params.get('LCL_Hgt'), 'm')}<br>
-                LFC: {fmt_int(params.get('LFC_Hgt'), 'm')}<br>
-                EL: {fmt_int(params.get('EL_Hgt'), 'm')}<br>
+                Congelació: {fmt_int(params.get('FRZG_Lvl_Hgt', np.nan), 'm')}<br>
+                LCL: {fmt_int(params.get('LCL_Hgt', np.nan), 'm')}<br>
+                LFC: {fmt_int(params.get('LFC_Hgt', np.nan), 'm')}<br>
+                EL: {fmt_int(params.get('EL_Hgt', np.nan), 'm')}<br>
                 <br>
                 <span style="font-weight: bold;">Energia (CAPE/CIN):</span><br>
-                <span style='color:{get_color_for_param(params.get('CAPE_total'), 'cape')};'>SB CAPE: {fmt_int(params.get('CAPE_total'), 'J/kg')}</span><br>
-                <span style='color:{get_color_for_param(params.get('MU_CAPE'), 'cape')};'>MU CAPE: {fmt_int(params.get('MU_CAPE'), 'J/kg')}</span><br>
-                <span style='color:{get_color_for_param(params.get('ML_CAPE'), 'cape')};'>ML CAPE: {fmt_int(params.get('ML_CAPE'), 'J/kg')}</span><br>
-                CIN: {fmt_int(params.get('CIN_total'), 'J/kg')}
+                <span style='color:{get_color_for_param(params.get('CAPE_total'), 'cape')};'>SB CAPE: {fmt_int(params.get('CAPE_total', np.nan), 'J/kg')}</span><br>
+                <span style='color:{get_color_for_param(params.get('MU_CAPE'), 'cape')};'>MU CAPE: {fmt_int(params.get('MU_CAPE', np.nan), 'J/kg')}</span><br>
+                <span style='color:{get_color_for_param(params.get('ML_CAPE'), 'cape')};'>ML CAPE: {fmt_int(params.get('ML_CAPE', np.nan), 'J/kg')}</span><br>
+                CIN: {fmt_int(params.get('CIN_total', np.nan), 'J/kg')}
             </div>
             <div style="width: 48%;">
                 <span style="font-weight: bold;">Índexs d'Inestabilitat:</span><br>
-                <span style='color:{get_color_for_param(params.get('SWEAT'), 'sweat')};'>SWEAT: {fmt(params.get('SWEAT'), '')}</span><br>
-                KI: {fmt(params.get('KI'), '°C')}<br>
-                TT: {fmt(params.get('TT'), '°C')}<br>
-                <br>
+                KI: {fmt(params.get('KI', np.nan), '°C')}<br>
+                TT: {fmt(params.get('TT', np.nan), '°C')}<br>
+                <br><br><br> 
                 <span style="font-weight: bold;">Helicitat Relativa (SRH):</span><br>
-                <span style='color:{get_color_for_param(params.get('s-RH_0-1km'), 'srh')};'>0-1 km: {fmt_int(params.get('s-RH_0-1km'), 'm²/s²')}</span><br>
-                <span style='color:{get_color_for_param(params.get('s-RH_0-3km'), 'srh')};'>0-3 km: {fmt_int(params.get('s-RH_0-3km'), 'm²/s²')}</span><br>
+                <span style='color:{get_color_for_param(params.get('s-RH_0-1km'), 'srh')};'>0-1 km: {fmt_int(params.get('s-RH_0-1km', np.nan), 'm²/s²')}</span><br>
+                <span style='color:{get_color_for_param(params.get('s-RH_0-3km'), 'srh')};'>0-3 km: {fmt_int(params.get('s-RH_0-3km', np.nan), 'm²/s²')}</span><br>
             </div>
-        </div>
-    </div>
-    """
+        </div></div>"""
     st.markdown(html, unsafe_allow_html=True)
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent Meteo-Col·lega (amb Google Gemini)")
@@ -511,7 +474,7 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
                 contingut_per_ia = [img_mapa]; resum_sondeig = "No hi ha dades de sondeig."
                 if data_tuple: 
                     sounding_data, params_calculats = data_tuple; p, T, Td, u, v, heights = sounding_data
-                    fig_skewt = crear_skewt(p, T, Td, u, v, f"Sondeig per a {poble_sel}")
+                    fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig per a {poble_sel}")
                     buf_skewt = io.BytesIO(); fig_skewt.savefig(buf_skewt, format='png', dpi=150); buf_skewt.seek(0); img_skewt = Image.open(buf_skewt); plt.close(fig_skewt); contingut_per_ia.append(img_skewt)
                     fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat - {poble_sel}")
                     buf_hodo = io.BytesIO(); fig_hodo.savefig(buf_hodo, format='png', dpi=150); buf_hodo.seek(0); img_hodo = Image.open(buf_hodo); plt.close(fig_hodo); contingut_per_ia.append(img_hodo)
@@ -624,14 +587,25 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         with contingut_principal:
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
-            col1, col2 = st.columns([2.5, 3]) # Skew-T, Hodògraf i Llegenda
+            col1, col2 = st.columns(2)
             with col1:
                 fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}"); 
                 st.pyplot(fig_skewt); plt.close(fig_skewt)
             with col2:
                 fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}"); 
                 st.pyplot(fig_hodo); plt.close(fig_hodo)
+            
             ui_llegenda_sondeig(params_calculats)
+
+            with st.expander("❔ Com interpretar l'Hodògraf i els paràmetres?"):
+                st.markdown("""**Hodògraf:**
+- **Forma:** Una corba pronunciada indica cisallament direccional, favorable per a tempestes organitzades i rotació (supercèl·lules).
+- **BWD (Cisallament):** Valors > 40 nusos (0-6 km) afavoreixen l'organització de les tempestes.
+- **Bunkers RM:** Moviment previst d'una supercèl·lula que es desvia cap a la dreta del vent mitjà.
+**Paràmetres del Sondeig:**
+- **CAPE:** Energia per a les tempestes. Més alt = més forts corrents ascendents.
+- **CIN:** "Tapa" que impedeix que l'aire pugi. Més negatiu = més força necessària per iniciar convecció.
+- **SRH (Helicitat):** Potencial de rotació. Valors > 150 m²/s² són significatius per a mesociclons.""")
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteociel | IA per Google Gemini.</p>", unsafe_allow_html=True)
