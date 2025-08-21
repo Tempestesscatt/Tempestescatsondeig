@@ -465,8 +465,7 @@ def get_color_for_param(param_name, value):
         return "#BC13FE"
     return "#FFFFFF"
 
-n_file, format_time_left, carregar_dades_mapa, crear_mapa_forecast_combinat
-# RATE_LIMIT_FILE = "rate_limits.json"
+
 
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     """
