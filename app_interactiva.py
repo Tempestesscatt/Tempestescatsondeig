@@ -373,7 +373,7 @@ def crear_skewt(p, T, Td, u, v, titol):
 def crear_hodograf_avancat(p, u, v, heights, titol):
     """
     Crea un hodògraf avançat. Aquesta versió és més robusta i gestiona els errors de càlcul
-    sense deixar el gràfic en blanc, calculant i mostrant només els paràmetres possibles.
+    sense deixar el gràfic en blanc, i és compatible amb versions anteriors de MetPy.
     """
     fig = plt.figure(figsize=(14, 9), dpi=150)
     gs = fig.add_gridspec(nrows=3, ncols=2, width_ratios=[2.5, 1.5], hspace=0.4, wspace=0.3)
@@ -385,13 +385,12 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
     
     fig.suptitle(titol, weight='bold', fontsize=16)
 
-    # --- 1. Dibuixar l'Hodògraf Base (sempre es pot fer) ---
+    # --- 1. Dibuixar l'Hodògraf Base ---
     h = Hodograph(ax_hodo, component_range=80.)
     h.add_grid(increment=20, color='gray', linestyle='--')
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights.to('km'), intervals=np.array([0, 3, 6, 12]) * units.km, 
                        colors=['red', 'green', 'blue'], linewidth=4)
     heights_km = heights.to('km').m
-    # Assegurem que no hi ha NaNs abans d'interpolar
     valid_indices = ~np.isnan(heights_km) & ~np.isnan(u.m) & ~np.isnan(v.m)
     if np.count_nonzero(valid_indices) > 1:
         interp_u = interp1d(heights_km[valid_indices], u[valid_indices].to('kt').m, bounds_error=False, fill_value=np.nan)
@@ -403,51 +402,45 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
                     ax_hodo.plot(u_h, v_h, 'o', color='white', markersize=8, markeredgecolor='black')
                     ax_hodo.text(u_h, v_h, str(h_km), ha='center', va='center', fontsize=7, weight='bold')
 
-    # --- 2. Càlculs de Paràmetres (amb gestió d'errors individual) ---
-    # Inicialitzem tots els valors a NaN per si fallen els càlculs
+    # --- 2. Càlculs de Paràmetres ---
     params = {'BWD (kts)': {}, 'SRH (m²/s²)': {}}
     motion = {}
-    right_mover, left_mover, mean_wind_vec = None, None, None
-    critical_angle = np.nan
-    sr_wind_speed = None
+    right_mover, critical_angle, sr_wind_speed = None, np.nan, None
 
     try:
         right_mover, left_mover, mean_wind_vec = mpcalc.bunkers_storm_motion(p, u, v, heights)
-        motion['Bunkers RM'] = right_mover
-        motion['Bunkers LM'] = left_mover
-        motion['Mean Wind'] = mean_wind_vec
+        motion['Bunkers RM'] = right_mover; motion['Bunkers LM'] = left_mover; motion['Mean Wind'] = mean_wind_vec
         for name, vec in motion.items():
             u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m
             marker = 's' if 'Mean' in name else 'o'
             ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
             ax_hodo.text(u_comp + 2, v_comp + 2, name.replace('Bunkers ', ''), fontsize=10, weight='bold')
-    except (ValueError, IndexError):
-        right_mover = None # Assegurem que és None si falla
+    except (ValueError, IndexError): right_mover = None
 
     depths = {'0-500 m': 500 * units.m, '0-1 km': 1000 * units.m, '0-3 km': 3000 * units.m, '0-6 km': 6000 * units.m}
     for name, depth in depths.items():
         try:
             bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth)
             params['BWD (kts)'][name] = mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m
-        except (ValueError, IndexError):
-            params['BWD (kts)'][name] = np.nan
+        except (ValueError, IndexError): params['BWD (kts)'][name] = np.nan
         
         if right_mover is not None:
             try:
-                srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth, storm_motion=right_mover)
+                # ===> CANVI 1: Descomponem 'right_mover' per a la compatibilitat <===
+                u_storm, v_storm = right_mover
+                srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth, u_storm=u_storm, v_storm=v_storm)
                 params['SRH (m²/s²)'][name] = srh[0].to('m**2/s**2').m
-            except (ValueError, IndexError):
-                params['SRH (m²/s²)'][name] = np.nan
-        else:
-            params['SRH (m²/s²)'][name] = np.nan
+            except (ValueError, IndexError, TypeError): params['SRH (m²/s²)'][name] = np.nan
+        else: params['SRH (m²/s²)'][name] = np.nan
 
     if right_mover is not None:
         try:
-            critical_angle = mpcalc.critical_angle(p, u, v, heights, storm_motion=right_mover).to('deg').m
+            # ===> CANVI 2: Descomponem 'right_mover' de nou <===
+            u_storm, v_storm = right_mover
+            critical_angle = mpcalc.critical_angle(p, u, v, heights, u_storm=u_storm, v_storm=v_storm).to('deg').m
             sr_u, sr_v = u - right_mover[0], v - right_mover[1]
             sr_wind_speed = mpcalc.wind_speed(sr_u, sr_v).to('kt')
-        except (ValueError, IndexError):
-            pass # Els valors ja són NaN o None
+        except (ValueError, IndexError, TypeError): pass
 
     # --- 3. Taules de Paràmetres ---
     ax_params.axis('off'); ax_motion.axis('off')
@@ -456,8 +449,7 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
     ax_params.text(0.85, 0.85, "SRH\n(m²/s²)", ha='center', va='top', weight='bold')
     y_pos = 0.6
     for key in depths.keys():
-        bwd_val = params['BWD (kts)'].get(key, np.nan)
-        srh_val = params['SRH (m²/s²)'].get(key, np.nan)
+        bwd_val = params['BWD (kts)'].get(key, np.nan); srh_val = params['SRH (m²/s²)'].get(key, np.nan)
         ax_params.text(0, y_pos, key, va='center')
         ax_params.text(0.5, y_pos, f"{bwd_val:.0f}" if not np.isnan(bwd_val) else '---', ha='center', va='center')
         ax_params.text(0.85, y_pos, f"{srh_val:.0f}" if not np.isnan(srh_val) else '---', ha='center', va='center')
@@ -472,9 +464,7 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
             ax_motion.text(0, y_pos, f"{name}:", va='center')
             ax_motion.text(0.9, y_pos, f"{direction:.0f}°/{speed:.0f} kts", va='center', ha='right')
             y_pos -= 0.2
-    else:
-        ax_motion.text(0.5, 0.6, "Càlcul no disponible", ha='center', va='center', fontsize=9, color='gray')
-    
+    else: ax_motion.text(0.5, 0.6, "Càlcul no disponible", ha='center', va='center', fontsize=9, color='gray')
     ax_motion.text(0, y_pos, "Critical Angle:", va='center')
     ax_motion.text(0.9, y_pos, f"{critical_angle:.0f}°" if not np.isnan(critical_angle) else '---', va='center', ha='right')
 
@@ -483,8 +473,7 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
     if sr_wind_speed is not None:
         ax_sr_wind.plot(sr_wind_speed, heights_km)
         ax_sr_wind.set_xlim(0, max(60, sr_wind_speed[~np.isnan(sr_wind_speed)].max().m + 5 if np.any(~np.isnan(sr_wind_speed)) else 60))
-    else:
-        ax_sr_wind.text(0.5, 0.5, "Càlcul no disponible", ha='center', va='center', transform=ax_sr_wind.transAxes, fontsize=9, color='gray')
+    else: ax_sr_wind.text(0.5, 0.5, "Càlcul no disponible", ha='center', va='center', transform=ax_sr_wind.transAxes, fontsize=9, color='gray')
     ax_sr_wind.set_xlabel("SR Wind (kts)"); ax_sr_wind.set_ylabel("Height (km)")
     ax_sr_wind.set_ylim(0, 12); ax_sr_wind.grid(True, linestyle='--')
     ax_sr_wind.fill_betweenx([0, 2], 40, 60, color='gray', alpha=0.2)
@@ -503,7 +492,6 @@ def crear_hodograf_avancat(p, u, v, heights, titol):
     fig.text(0.01, 0.01, info_text, va='bottom', ha='left', fontsize=9, wrap=True, bbox=dict(boxstyle='round,pad=0.5', fc='ivory', alpha=0.5))
     plt.tight_layout(rect=[0, 0.1, 1, 0.96])
     return fig
-
 
 @st.cache_data(ttl=600)
 def carregar_imatge_satelit(url):
