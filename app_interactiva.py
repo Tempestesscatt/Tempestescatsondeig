@@ -467,11 +467,13 @@ def get_color_for_param(param_name, value):
 
 
 
+
+
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     """
     Versió final de l'assistent d'IA ("Meteo-Col·lega" Guia).
     - Personalitat: Col·lega directe i amigable.
-    - Enfocament: Detecta fenòmens al mapa i GUIA l'usuari cap al sondeig de la capital de província més rellevant.
+    - Enfocament: Detecta fenòmens al mapa i GUIA l'usuari cap al sondeig de la població més rellevant.
     - Comunicació: Dóna un diagnòstic inicial breu i una recomanació clara.
     """
     st.subheader("Assistent Meteo-Col·lega (amb Google Gemini)")
@@ -491,17 +493,10 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
         return
         
     LIMIT_PER_WINDOW = 10; WINDOW_HOURS = 3
-    # Aquestes línies depenen de les teves funcions d'ajuda
-    # rate_limits = load_json_file(RATE_LIMIT_FILE)
-    # user_limit_data = rate_limits.get(username, {"count": 0, "window_start_time": None})
-
-    # Simulem les dades de límit per a l'exemple si no existeixen
-    if 'rate_limits' not in st.session_state: st.session_state.rate_limits = {}
-    rate_limits = st.session_state.rate_limits
+    rate_limits = load_json_file(RATE_LIMIT_FILE)
     user_limit_data = rate_limits.get(username, {"count": 0, "window_start_time": None})
     
     limit_reached = False
-    # (La resta de la teva lògica de gestió de límits va aquí... la copio del teu codi original)
     if user_limit_data.get("window_start_time"):
         start_time = datetime.fromtimestamp(user_limit_data["window_start_time"], tz=pytz.utc)
         if (datetime.now(pytz.utc) - start_time) > timedelta(hours=WINDOW_HOURS):
@@ -511,15 +506,10 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
         start_time = datetime.fromtimestamp(user_limit_data["window_start_time"], tz=pytz.utc)
         time_left = (start_time + timedelta(hours=WINDOW_HOURS)) - datetime.now(pytz.utc)
         if time_left.total_seconds() > 0:
-            def format_time_left(td):
-                h, rem = divmod(td.seconds, 3600)
-                m, _ = divmod(rem, 60)
-                return f"{h}h {m}m"
             st.warning(f"**Has arribat al límit de {LIMIT_PER_WINDOW} preguntes.** El teu accés es renovarà en **{format_time_left(time_left)}**.")
         else: 
             user_limit_data.update({"count": 0, "window_start_time": None})
-            # rate_limits[username] = user_limit_data; save_json_file(rate_limits, RATE_LIMIT_FILE)
-            st.session_state.rate_limits[username] = user_limit_data
+            rate_limits[username] = user_limit_data; save_json_file(rate_limits, RATE_LIMIT_FILE)
             limit_reached = False
             
     if not limit_reached:
@@ -533,8 +523,9 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
     if "chat" not in st.session_state:
         model = genai.GenerativeModel('gemini-1.5-flash')
         
+        # --- NOU SYSTEM PROMPT MILLORAT ---
         system_prompt = """
-Ets Meteo-Col·lega, un expert en meteorologia a Catalunya. La teva personalitat és la d'un col·lega apassionat pel temps. Parles de "tu a tu", de manera directa i molt planera. Respostes curtes i al gra.
+Ets Meteo-Col·lega, un expert en meteorologia a Catalunya. Ets directe, planera i parles com si estiguéssim analitzant mapes junts. Respostes curtes i al gra.
 
 # LA TEVA MISSIÓ: SER UN GUIA
 La teva feina és fer dues coses en ordre:
@@ -637,18 +628,14 @@ Vilafranca del Penedès
                 if user_limit_data.get("window_start_time") is None:
                     user_limit_data["window_start_time"] = datetime.now(pytz.utc).timestamp()
                 user_limit_data["count"] += 1
-                # rate_limits[username] = user_limit_data; save_json_file(rate_limits, RATE_LIMIT_FILE)
-                st.session_state.rate_limits[username] = user_limit_data # Simulat
+                rate_limits[username] = user_limit_data; save_json_file(rate_limits, RATE_LIMIT_FILE)
 
                 # Generació de la imatge i dades per a la IA
-                # Descomenta les teves funcions reals
-                # map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
-                # if error_map_ia:
-                #     st.error(f"Error en carregar dades del mapa: {error_map_ia}"); return
-                # fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
+                map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
+                if error_map_ia:
+                    st.error(f"Error en carregar dades del mapa: {error_map_ia}"); return
                 
-                # Codi placeholder per generar una imatge si no tens les funcions a mà
-                fig_mapa, ax = plt.subplots(); ax.text(0.5, 0.5, 'Mapa Placeholder', ha='center', va='center'); ax.set_xticks([]); ax.set_yticks([])
+                fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str)
                 
                 buf = io.BytesIO(); fig_mapa.savefig(buf, format='png', dpi=150, bbox_inches='tight'); buf.seek(0); img_mapa = Image.open(buf); plt.close(fig_mapa)
 
@@ -673,6 +660,8 @@ Vilafranca del Penedès
         
         st.session_state.messages.append({"role": "assistant", "content": full_response})
         st.rerun()
+
+
 def ui_pestanya_xat(chat_history):
     st.subheader("Xat en Línia per a Usuaris")
     col1, col2 = st.columns([0.7, 0.3])
