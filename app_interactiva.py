@@ -161,23 +161,26 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             params_calc['SBCIN'] = sbcin.to('J/kg').m
 
             mucape_cin_result = mpcalc.most_unstable_cape_cin(p, T, Td)
-            if isinstance(mucape_cin_result, tuple) and len(mucape_cin_result) == 2:
-                params_calc['MUCAPE'] = mucape_cin_result[0].to('J/kg').m
-            else:
-                params_calc['MUCAPE'] = np.nan
-
+            params_calc['MUCAPE'] = mucape_cin_result[0].to('J/kg').m if isinstance(mucape_cin_result, tuple) else np.nan
+            
+            mlcape_cin_result = mpcalc.mixed_layer_cape_cin(p, T, Td)
+            params_calc['MLCAPE'] = mlcape_cin_result[0].to('J/kg').m if isinstance(mlcape_cin_result, tuple) else np.nan
+            
             li_result = mpcalc.lifted_index(p, T, Td)
-            if isinstance(li_result, tuple) and len(li_result) == 2:
-                params_calc['LI'] = li_result[0].to('delta_degC').m
-            else:
-                params_calc['LI'] = np.nan
+            params_calc['LI'] = li_result[0].to('delta_degC').m if isinstance(li_result, tuple) else np.nan
 
         heights_agl = heights - heights[0]
         try:
+            p_3km_agl = np.interp(3000, heights_agl.m, p.m) * units.hPa
+            cape_0_3, _ = mpcalc.cape_cin(p, T, Td, prof, top=p_3km_agl)
+            params_calc['CAPE_0-3km'] = cape_0_3.to('J/kg').m
+        except:
+            params_calc['CAPE_0-3km'] = np.nan
+            
+        try:
             lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50)
             params_calc['LCL_p'] = lcl_p; params_calc['LCL_Hgt'] = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
-        except: 
-            params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan * units.hPa, np.nan
+        except: params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan * units.hPa, np.nan
         
         try:
             lfc_result = mpcalc.lfc(p, T, Td, which='surface', parcel_profile=prof)
@@ -185,29 +188,22 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                 lfc_p = lfc_result[0]
                 params_calc['LFC_p'] = lfc_p
                 params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m if hasattr(lfc_p, 'm') else np.nan
-            else:
-                params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
-        except: 
-            params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
-
+            else: params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
+        except: params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
         try:
             p_frz = np.interp(0, T.to('degC').m[::-1], p.m[::-1]) * units.hPa
             params_calc['FRZG_Lvl_p'] = p_frz
-        except: 
-            params_calc['FRZG_Lvl_p'] = np.nan * units.hPa
+        except: params_calc['FRZG_Lvl_p'] = np.nan * units.hPa
 
         try:
             right_mover, left_mover, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
             params_calc['RM'] = right_mover; params_calc['LM'] = left_mover; params_calc['Mean_Wind'] = mean_wind
-        except: 
-            params_calc.update({'RM': None, 'LM': None, 'Mean_Wind': None})
+        except: params_calc.update({'RM': None, 'LM': None, 'Mean_Wind': None})
         
         depths = {'0-1km': 1000 * units.m, '0-6km': 6000 * units.m}
         for name, depth in depths.items():
-            try: 
-                params_calc[f'BWD_{name}'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights, depth=depth)).to('kt').m
-            except: 
-                params_calc[f'BWD_{name}'] = np.nan
+            try: params_calc[f'BWD_{name}'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights, depth=depth)).to('kt').m
+            except: params_calc[f'BWD_{name}'] = np.nan
         
         if params_calc.get('RM') is not None:
             try:
@@ -225,32 +221,14 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                     params_calc['EBWD'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights_agl, bottom=eff_h_bottom, depth=eff_depth)).to('kt').m
                     esrh, _, _ = mpcalc.storm_relative_helicity(heights_agl, u, v, bottom=eff_h_bottom, depth=eff_depth, storm_u=u_storm, storm_v=v_storm)
                     params_calc['ESRH'] = esrh.to('m**2/s**2').m
-                else: 
-                    params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
-            except: 
-                params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
-        else: 
-            params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
+                else: params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
+            except: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
+        else: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
             
         return ((p, T, Td, u, v, heights, prof), params_calc), None
     except Exception as e: 
         return None, f"Error en processar dades del sondeig: {e}"
-@st.cache_data(ttl=3600)
-def carregar_dades_mapa_base(variables, hourly_index):
-    try:
-        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
-        lon_grid, lat_grid = np.meshgrid(lons, lats)
-        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
-        responses = openmeteo.weather_api(API_URL, params=params)
-        output = {var: [] for var in ["lats", "lons"] + variables}
-        for r in responses:
-            vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
-            if not any(np.isnan(v) for v in vals):
-                output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
-                for i, var in enumerate(variables): output[var].append(vals[i])
-        if not output["lats"]: return None, "No s'han rebut dades vàlides."
-        return output, None
-    except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
+        
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
     try:
@@ -414,22 +392,68 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     return fig
 
 def ui_caixa_parametres_sondeig(params):
+    
+    # --- Funció auxiliar per definir colors ---
+    def get_color(value, thresholds, reverse_colors=False):
+        if np.isnan(value): return "#808080" # Gris per a NaN
+        
+        colors = ["#808080", "#28a745", "#ffc107", "#fd7e14", "#dc3545"] # Gris, Verd, Groc, Taronja, Vermell
+        
+        if reverse_colors: # Per a paràmetres com CIN i LI on valors més baixos són pitjors
+            thresholds = sorted(thresholds, reverse=True)
+            colors = list(reversed(colors))
+        else:
+            thresholds = sorted(thresholds)
+
+        for i, threshold in enumerate(thresholds):
+            if value < threshold:
+                return colors[i]
+        return colors[-1]
+
+    # --- Definició de llindars per a cada paràmetre ---
+    THRESHOLDS = {
+        'SBCAPE': (100, 500, 1500, 2500),
+        'MUCAPE': (100, 500, 1500, 2500),
+        'MLCAPE': (50, 250, 1000, 2000),
+        'CAPE_0-3km': (25, 75, 150, 250),
+        'SBCIN': (0, -25, -75, -150),
+        'LI': (0, -2, -5, -8),
+        'BWD_0-6km': (10, 20, 30, 40),
+        'SRH_0-1km': (50, 100, 150, 250),
+        'SRH_0-3km': (100, 150, 250, 400),
+        'ESRH': (100, 150, 250, 400),
+    }
+
+    # --- Funció per crear una mètrica amb estil ---
+    def styled_metric(label, value, unit, param_key, precision=0, reverse_colors=False):
+        color = get_color(value, THRESHOLDS.get(param_key, []), reverse_colors)
+        val_str = f"{value:.{precision}f}" if not np.isnan(value) else "---"
+        st.markdown(f"""
+            <div style="text-align: center; padding: 5px; border-radius: 5px; background-color: #262730;">
+                <span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit})</span><br>
+                <strong style="font-size: 1.5em; color: {color};">{val_str}</strong>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # --- Dibuix de la caixa de paràmetres ---
     st.markdown("##### Paràmetres Termodinàmics")
     cols = st.columns(3)
-    cols[0].metric("SBCAPE (J/kg)", f"{params.get('SBCAPE', 0):.0f}")
-    cols[1].metric("MUCAPE (J/kg)", f"{params.get('MUCAPE', 0):.0f}")
-    cols[2].metric("SBCIN (J/kg)", f"{params.get('SBCIN', 0):.0f}")
+    with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE')
+    with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE')
+    with cols[2]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE')
     
+    st.markdown("") # Espai
     cols = st.columns(3)
-    cols[0].metric("LI (°C)", f"{params.get('LI', 0):.1f}")
-    cols[1].metric("LCL (m)", f"{params.get('LCL_Hgt', 0):.0f}")
-    cols[2].metric("LFC (m)", f"{params.get('LFC_Hgt', 0):.0f}")
-    
+    with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True)
+    with cols[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', precision=1, reverse_colors=True)
+    with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
+
+    st.divider()
     st.markdown("##### Paràmetres de Cisallament i Helicitat")
     cols = st.columns(3)
-    cols[0].metric("BWD 0-6km (nusos)", f"{params.get('BWD_0-6km', 0):.0f}")
-    cols[1].metric("SRH 0-3km (m²/s²)", f"{params.get('SRH_0-3km', '---')}")
-    cols[2].metric("ESRH (m²/s²)", f"{params.get('ESRH', '---')}")
+    with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
+    with cols[1]: styled_metric("SRH 0-3km", params.get('SRH_0-3km', np.nan), "m²/s²", 'SRH_0-3km')
+    with cols[2]: styled_metric("ESRH", params.get('ESRH', np.nan), "m²/s²", 'ESRH')
     
 # --- Funcions d'interfície (amb canvis a ui_pestanya_vertical) ---
 @st.cache_data(ttl=600)
