@@ -722,7 +722,6 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
             st.pyplot(fig); plt.close(fig)
             with st.container(border=True):
                 ui_explicacio_alertes()
-                ui_info_desenvolupament_tempesta()
             with progress_placeholder.container(): 
                 progress_bar.progress(100, text="Completat!"); time.sleep(1); progress_placeholder.empty()
 
@@ -740,23 +739,29 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
     st.divider()
     st.markdown("#### Visualització en Temps Real")
     
-    # Radar de Precipitació
-    st.markdown("##### Radar de Precipitació (Rainviewer)")
-    radar_url = f"https://www.rainviewer.com/map.html?loc=41.8,1.8,6&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
-    html_code_radar = f"""
-    <div style="position: relative; width: 100%; height: 450px; border-radius: 10px; overflow: hidden;">
-        <iframe src="{radar_url}" width="100%" height="450" frameborder="0" style="border:0;"></iframe>
-        <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div>
-    </div>
-    """
-    st.components.v1.html(html_code_radar, height=460)
+    col_radar, col_sat = st.columns(2)
 
-    # Satèl·lit
-    st.markdown("##### Satèl·lit - Topalls de Núvols (Meteologix)")
-    # ENLLAÇ CORREGIT per a la Península Ibèrica
-    satellite_url = "https://modeles20.meteociel.fr/satellite/animsatsandvisirmtgsp.gif"
-    st.components.v1.html(f'<iframe src="{satellite_url}" style="border:0; width:100%; height:450px;"></iframe>', height=460)
-
+    with col_radar:
+        st.markdown("##### Radar de Precipitació (Rainviewer)")
+        radar_url = f"https://www.rainviewer.com/map.html?loc=41.8,1.8,7&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
+        html_code_radar = f"""
+        <div style="position: relative; width: 100%; height: 500px; border-radius: 10px; overflow: hidden;">
+            <iframe src="{radar_url}" width="100%" height="500" frameborder="0" style="border:0;"></iframe>
+            <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div>
+        </div>
+        """
+        st.components.v1.html(html_code_radar, height=510)
+    
+    with col_sat:
+        st.markdown("##### Satèl·lit - Topalls de Núvols (Meteociel)")
+        # Codi HTML/CSS per retallar i centrar la imatge a Catalunya
+        html_code_sat = f"""
+        <div style="width: 100%; height: 500px; overflow: hidden; border-radius: 10px; position: relative;">
+            <img src="https://modeles20.meteociel.fr/satellite/animsatsandvisirmtgsp.gif?ver={int(time.time())}" 
+                 style="position: absolute; top: -5%; left: -110%; width: 200%; max-width: none;">
+        </div>
+        """
+        st.components.v1.html(html_code_sat, height=510)```
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteologix & Rainviewer | IA per Google Gemini.</p>", unsafe_allow_html=True)
 
