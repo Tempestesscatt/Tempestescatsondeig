@@ -421,53 +421,93 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     return fig
 
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
-    fig = plt.figure(dpi=150, figsize=(7, 9))
-    gs = fig.add_gridspec(nrows=2, ncols=1, height_ratios=[2, 1], hspace=0.3, top=0.92, bottom=0.05, left=0.05, right=0.95)
+    fig = plt.figure(dpi=150, figsize=(10, 7))
+    gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[1.5, 1], wspace=0.3)
     ax_hodo = fig.add_subplot(gs[0])
-    ax_srw = fig.add_subplot(gs[1])
-    fig.suptitle(titol, weight='bold', fontsize=14)
-    
+    ax_params = fig.add_subplot(gs[1])
+    fig.suptitle(titol, weight='bold', fontsize=16)
+
+    # --- Configuració del gràfic principal de l'Hodògraf ---
     h = Hodograph(ax_hodo, component_range=80.)
     h.add_grid(increment=20, color='gray', linestyle='--')
-    h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=np.array([0, 1, 3, 6, 9]) * units.km, 
-                       colors=['red', 'blue', 'green', 'purple'], linewidth=3)
     
+    # Dibuixar la línia de l'hodògraf amb colors per altitud
+    intervals = np.array([0, 1, 3, 6, 9, 12]) * units.km
+    colors = ['red', 'blue', 'green', 'purple', 'gold']
+    h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors, linewidth=2)
+
+    # Ressaltar la capa efectiva (si existeix)
+    if not np.isnan(params_calc.get('ESRH', np.nan)):
+        try:
+            heights_agl = heights - heights[0]
+            eff_p_bottom, eff_p_top = mpcalc.effective_inflow_layer(p, T, Td, prof)
+            mask = (p >= eff_p_top) & (p <= eff_p_bottom)
+            h.plot(u[mask].to('kt'), v[mask].to('kt'), color='cyan', linewidth=6, alpha=0.6, label='Capa Efectiva')
+        except: pass # Si falla, simplement no es dibuixa
+
+    # Marcadors d'altitud
     for alt_km in [1, 3, 6, 9]:
         try:
             idx = np.argmin(np.abs(heights - alt_km * 1000 * units.m))
-            ax_hodo.text(u[idx].to('kt').m, v[idx].to('kt').m, f'{alt_km}km', fontsize=9, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+            ax_hodo.text(u[idx].to('kt').m + 1, v[idx].to('kt').m + 1, f'{alt_km}km', fontsize=9, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
         except: continue
-
-    motion = {'RM': params_calc.get('RM'), 'LM': params_calc.get('LM')}
+    
+    # Vectors de moviment de tempesta i vent mitjà
+    motion = {'RM': params_calc.get('RM'), 'LM': params_calc.get('LM'), 'Vent Mitjà': params_calc.get('Mean_Wind')}
     if all(v is not None for v in motion.values()):
         for name, vec in motion.items():
             u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m
-            ax_hodo.plot(u_comp, v_comp, 'o', color='black', markersize=8, fillstyle='none', mew=1.5)
-            ax_hodo.text(u_comp + 2, v_comp + 2, name, ha='center', weight='bold', fontsize=10)
-    
-    ax_srw.set_title("Vent Relatiu vs. Altura (RM)", fontsize=10)
-    sr_wind_speed = params_calc.get('SR_Wind')
-    if sr_wind_speed is not None and sr_wind_speed.size > 0:
-        heights_km = heights.to('km').m
-        srw_kts = sr_wind_speed.m
-        
-        lcl_hgt_km = params_calc.get('LCL_Hgt', np.nan) / 1000
-        el_hgt_km = params_calc.get('EL_Hgt', np.nan) / 1000
-        
-        ax_srw.plot(srw_kts, heights_km, color='black', linewidth=1)
-        
-        if not np.isnan(lcl_hgt_km) and not np.isnan(el_hgt_km):
-            cloud_mask = (heights_km >= lcl_hgt_km) & (heights_km <= el_hgt_km)
-            ax_srw.fill_betweenx(heights_km, 0, srw_kts, where=cloud_mask, facecolor='lightblue', alpha=0.6)
-            ax_srw.axhline(lcl_hgt_km, color='green', linestyle='--', linewidth=1)
-            ax_srw.text(ax_srw.get_xlim()[1] * 0.95, lcl_hgt_km, ' Base Plana', ha='right', va='bottom', fontsize=8, color='green')
+            marker = 's' if 'Mitjà' in name else 'o'
+            ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
+            ax_hodo.text(u_comp + 2, v_comp + 2, name, ha='left', va='bottom', weight='bold', fontsize=10)
 
-        ax_srw.set_xlim(left=0)
-    else: 
-        ax_srw.text(0.5, 0.5, "No disponible", ha='center', va='center', transform=ax_srw.transAxes, fontsize=9, color='gray')
+    # Vector de cisallament 0-6km
+    try:
+        shear_vec = mpcalc.bulk_shear(p, u, v, height=heights - heights[0], depth=6000 * units.m)
+        ax_hodo.arrow(0, 0, shear_vec[0].to('kt').m, shear_vec[1].to('kt').m,
+                      color='black', linestyle='--', alpha=0.7, head_width=2, length_includes_head=True)
+    except: pass
+    ax_hodo.set_xlabel('U-Component (nusos)')
+    ax_hodo.set_ylabel('V-Component (nusos)')
+
+    # --- Taula de Paràmetres a la dreta ---
+    ax_params.axis('off')
+    def get_color(value, thresholds):
+        if pd.isna(value): return "#808080"
+        colors = ["#808080", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
+        thresholds = sorted(thresholds)
+        for i, threshold in enumerate(thresholds):
+            if value < threshold: return colors[i]
+        return colors[-1]
+
+    THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
     
-    ax_srw.set_xlabel("Vent Relatiu (nusos)", fontsize=9); ax_srw.set_ylabel("Altura (km)", fontsize=9)
-    ax_srw.set_ylim(0, 14); ax_srw.grid(True, linestyle='--'); ax_srw.tick_params(axis='both', which='major', labelsize=8)
+    y = 0.95
+    ax_params.text(0, y, "Moviment (dir/kts)", ha='left', weight='bold', fontsize=11); y-=0.07
+    for name, vec in motion.items():
+        if vec is not None:
+            speed = mpcalc.wind_speed(*vec).to('kt').m; direction = mpcalc.wind_direction(*vec).to('deg').m
+            ax_params.text(0.05, y, f"{name}:"); ax_params.text(0.95, y, f"{direction:.0f}°/{speed:.0f} kts", ha='right')
+        else:
+            ax_params.text(0.05, y, f"{name}:"); ax_params.text(0.95, y, "---", ha='right')
+        y-=0.06
+
+    y-=0.03
+    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.07
+    for key, label in [('0-1km', '0-1 km'), ('0-6km', '0-6 km'), ('EBWD', 'Efectiu')]:
+        val = params_calc.get(key if key == 'EBWD' else f'BWD_{key}', np.nan)
+        color = get_color(val, THRESHOLDS['BWD'])
+        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
+        y-=0.06
+
+    y-=0.03
+    ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.07
+    for key, label in [('0-1km', '0-1 km'), ('0-3km', '0-3 km'), ('ESRH', 'Efectiva')]:
+        val = params_calc.get(key if key == 'ESRH' else f'SRH_{key}', np.nan)
+        color = get_color(val, THRESHOLDS['SRH'])
+        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
+        y-=0.06
+
     return fig
 
 def ui_caixa_parametres_sondeig(params):
