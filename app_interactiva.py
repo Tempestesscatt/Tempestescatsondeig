@@ -25,10 +25,12 @@ import json
 import hashlib
 import os
 import base64
+import threading
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
 
+parcel_lock = threading.Lock()
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
@@ -40,7 +42,7 @@ CIUTATS_CATALUNYA = {
     'Banyoles': {'lat': 42.1197, 'lon': 2.7667}, 'Barcelona': {'lat': 41.3851, 'lon': 2.1734},
     'Berga': {'lat': 42.1051, 'lon': 1.8458}, 'Cervera': {'lat': 41.6669, 'lon': 1.2721},
     'El Pont de Suert': {'lat': 42.4101, 'lon': 0.7423}, 'El Vendrell': {'lat': 41.2201, 'lon': 1.5348},
-    'Falset': {'lat': 41.1449, 'lon': 0.8197}, 'Figueres': {'lat': 42.2662, 'lon': 2.9622},
+    'Falset': {'lat': 41.1499, 'lon': 0.8197}, 'Figueres': {'lat': 42.2662, 'lon': 2.9622},
     'Gandesa': {'lat': 41.0526, 'lon': 0.4357}, 'Girona': {'lat': 41.9831, 'lon': 2.8249},
     'Granollers': {'lat': 41.6083, 'lon': 2.2886}, 'Igualada': {'lat': 41.5791, 'lon': 1.6174},
     'La Bisbal d\'Empordà': {'lat': 41.9602, 'lon': 3.0378}, 'La Seu d\'Urgell': {'lat': 42.3582, 'lon': 1.4593},
@@ -120,7 +122,7 @@ def show_login_page():
     st.divider()
     if st.button("Entrar com a Convidat", use_container_width=True, type="secondary"):
         st.session_state.update({'guest_mode': True, 'logged_in': False}); st.rerun()
-
+        
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
@@ -148,48 +150,61 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         u, v, heights = np.array(u_profile)[valid_indices] * units('m/s'), np.array(v_profile)[valid_indices] * units('m/s'), np.array(h_profile)[valid_indices] * units.meter
         
         params_calc = {}
-        prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC'); cape, cin = mpcalc.cape_cin(p, T, Td, prof)
-        params_calc['CAPE_total'] = cape.to('J/kg').m; params_calc['CIN_total'] = cin.to('J/kg').m
+        prof = None 
         
-        try: params_calc['MU_CAPE'] = mpcalc.most_unstable_cape_cin(p, T, Td)[0].to('J/kg').m
-        except: params_calc['MU_CAPE'] = np.nan
-        try: params_calc['ML_CAPE'] = mpcalc.mixed_layer_cape_cin(p, T, Td)[0].to('J/kg').m
-        except: params_calc['ML_CAPE'] = np.nan
-        try: params_calc['PWAT'] = mpcalc.precipitable_water(p, Td).to('mm').m
-        except: params_calc['PWAT'] = np.nan
-        try: params_calc['DCAPE'] = mpcalc.dcape(p, T, Td)[0].to('J/kg').m
-        except: params_calc['DCAPE'] = np.nan
+        with parcel_lock:
+            prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
+            cape, cin = mpcalc.cape_cin(p, T, Td, prof)
+            params_calc['CAPE_total'] = cape.to('J/kg').m
+            params_calc['CIN_total'] = cin.to('J/kg').m
 
         heights_agl = heights - heights[0]
         try:
-            lcl_p, lcl_h = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50)
-            params_calc['LCL_p'] = lcl_p; params_calc['LCL_Hgt'] = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
-        except: params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan, np.nan
+            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50)
+            params_calc['LCL_p'] = lcl_p
+        except: params_calc['LCL_p'] = np.nan * units.hPa
         try:
-            lfc_p, _ = mpcalc.lfc(p, T, Td, prof)
-            params_calc['LFC_p'] = lfc_p; params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m if lfc_p else np.nan
-        except: params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan, np.nan
+            lfc_p, _ = mpcalc.lfc(p, T, Td, which='surface', parcel_profile=prof)
+            params_calc['LFC_p'] = lfc_p
+        except: params_calc['LFC_p'] = np.nan * units.hPa
         try:
-            el_p, _ = mpcalc.el(p, T, Td, prof)
-            params_calc['EL_p'] = el_p; params_calc['EL_Hgt'] = mpcalc.pressure_to_height_std(el_p).to('m').m if el_p else np.nan
-        except: params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan, np.nan
-            
+            el_p, _ = mpcalc.el(p, T, Td, which='surface', parcel_profile=prof)
+            params_calc['EL_p'] = el_p
+        except: params_calc['EL_p'] = np.nan * units.hPa
         try:
             p_frz = np.interp(0, T.to('degC').m[::-1], p.m[::-1]) * units.hPa
-            h_frz = mpcalc.pressure_to_height_std(p_frz).to('m').m
-            params_calc['FRZG_Lvl_p'] = p_frz; params_calc['FRZG_Lvl_Hgt'] = h_frz
-        except: params_calc['FRZG_Lvl_p'], params_calc['FRZG_Lvl_Hgt'] = np.nan, np.nan
-        
-        try: params_calc['KI'] = mpcalc.k_index(p, T, Td).m
-        except: params_calc['KI'] = np.nan
-        try: params_calc['TT'] = mpcalc.total_totals_index(p, T, Td).m
-        except: params_calc['TT'] = np.nan
-        try: params_calc['BWD_0_6km'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights, depth=6000*units.m)).to('kt').m
-        except: params_calc['BWD_0_6km'] = np.nan
-        
-        return ((p, T, Td, u, v, heights), params_calc), None
-    except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
+            params_calc['FRZG_Lvl_p'] = p_frz
+        except: params_calc['FRZG_Lvl_p'] = np.nan * units.hPa
 
+        try:
+            right_mover, left_mover, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
+            params_calc['RM'] = right_mover; params_calc['LM'] = left_mover; params_calc['Mean_Wind'] = mean_wind
+        except: 
+            params_calc.update({'RM': None, 'LM': None, 'Mean_Wind': None})
+        
+        depths = {'0-1km': 1000 * units.m, '0-3km': 3000 * units.m, '0-6km': 6000 * units.m}
+        for name, depth in depths.items():
+            try: 
+                params_calc[f'BWD_{name}'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights, depth=depth)).to('kt').m
+            except: 
+                params_calc[f'BWD_{name}'] = np.nan
+        
+        # --- LÍNIA CORREGIDA ---
+        if params_calc['RM'] is not None:
+            try:
+                u_storm, v_storm = params_calc['RM']
+                params_calc['Critical_Angle'] = mpcalc.critical_angle(p, u, v, heights, u_storm=u_storm, v_storm=v_storm).to('deg').m
+                params_calc['SR_Wind'] = mpcalc.wind_speed(u - u_storm, v - v_storm).to('kt')
+            except: 
+                params_calc['Critical_Angle'] = np.nan
+                params_calc['SR_Wind'] = None
+        else:
+            params_calc['Critical_Angle'] = np.nan
+            params_calc['SR_Wind'] = None
+
+        return ((p, T, Td, u, v, heights, prof), params_calc), None
+    except Exception as e: 
+        return None, f"Error en processar dades del sondeig: {e}"
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base(variables, hourly_index):
     try:
@@ -299,75 +314,94 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.7, density=2.5, arrowsize=0.6, zorder=3, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
-def crear_skewt(p, T, Td, u, v, params_calc, titol):
-    fig = plt.figure(dpi=150); fig.set_figheight(fig.get_figwidth() * 1.1)
+
+def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
+    fig = plt.figure(dpi=150, figsize=(6, 8))
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.8, 0.9))
-    skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2.5, label='Temperatura'); skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
-    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
-    skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
-    prof = mpcalc.parcel_profile(p, T[0], Td[0]); skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
-    skew.shade_cape(p, T, prof, color='red', alpha=0.3); skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
-    skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_title(titol, weight='bold', fontsize=14); skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
+    skew.ax.grid(True, linestyle='-', alpha=0.5)
     
-    levels_to_plot = {'LCL_p': 'LCL', 'FRZG_Lvl_p': '0°C', 'LFC_p': None, 'EL_p': None}
+    skew.plot_dry_adiabats(color='coral', linestyle='--', alpha=0.5)
+    skew.plot_moist_adiabats(color='cornflowerblue', linestyle='--', alpha=0.5)
+    skew.plot_mixing_lines(color='limegreen', linestyle='--', alpha=0.5)
+
+    if prof is not None:
+        skew.shade_cape(p, T, prof, color='red', alpha=0.3)
+        skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
+    
+    skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
+    skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
+    if prof is not None:
+        skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+    
+    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
+    
+    skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40)
+    skew.ax.set_title(titol, weight='bold', fontsize=14, pad=15)
+    skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
+    
+    levels_to_plot = {'LCL_p': 'LCL', 'FRZG_Lvl_p': '0°C', 'LFC_p': 'LFC', 'EL_p': 'EL'}
     for key, name in levels_to_plot.items():
         p_lvl = params_calc.get(key)
         if p_lvl is not None and hasattr(p_lvl, 'm') and not np.isnan(p_lvl.m):
             skew.ax.axhline(p_lvl.m, color='blue', linestyle='--', linewidth=1.5)
-            if name: skew.ax.text(skew.ax.get_xlim()[1], p_lvl.m, f' {name}', color='blue', ha='left', va='center', fontsize=10, weight='bold')
-    try:
-        for bottom_p, top_p in mpcalc.inversions(p, T, Td):
-            skew.ax.axhspan(bottom_p.m, top_p.m, color='blue', alpha=0.15, linewidth=0)
-            skew.ax.text(skew.ax.get_xlim()[0] + 2, (bottom_p.m + top_p.m) / 2, 'Subsidència', color='blue', ha='left', va='center', fontsize=9)
-    except: pass
-    skew.ax.legend(); return fig
-def crear_hodograf_avancat(p, u, v, heights, titol):
-    fig = plt.figure(dpi=150); fig.set_figheight(fig.get_figwidth() * 1.1)
-    gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[1.2, 1], top=0.92, bottom=0.05, left=0.05, right=0.95)
-    ax_hodo = fig.add_subplot(gs[0, 0]); ax_info = fig.add_subplot(gs[0, 1]); ax_info.axis('off')
-    fig.suptitle(titol, weight='bold', fontsize=16); h = Hodograph(ax_hodo, component_range=80.)
-    h.add_grid(increment=20, color='gray', linestyle='--'); h.plot_colormapped(u.to('kt'), v.to('kt'), heights.to('km'), intervals=np.array([0, 3, 6, 12]) * units.km, colors=['red', 'green', 'blue'], linewidth=4)
-    params = {'BWD (nusos)': {}}; motion = {}; right_mover, critical_angle, sr_wind_speed = None, np.nan, None
-    try:
-        right_mover, left_mover, mean_wind_vec = mpcalc.bunkers_storm_motion(p, u, v, heights)
-        motion['RM'] = right_mover; motion['LM'] = left_mover; motion['Vent Mitjà'] = mean_wind_vec
-        for name, vec in motion.items():
-            u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m; marker = 's' if 'Mitjà' in name else 'o'
-            ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
-    except (ValueError, IndexError): right_mover = None
-    depths = {'0-1 km': 1000 * units.m, '0-3 km': 3000 * units.m, '0-6 km': 6000 * units.m}
-    for name, depth in depths.items():
-        try: params['BWD (nusos)'][name] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights, depth=depth)).to('kt').m
-        except (ValueError, IndexError): params['BWD (nusos)'][name] = np.nan
-    if right_mover is not None:
-        try:
-            u_storm, v_storm = right_mover; critical_angle = mpcalc.critical_angle(p, u, v, heights, u_storm=u_storm, v_storm=v_storm).to('deg').m
-            sr_wind_speed = mpcalc.wind_speed(u - u_storm, v - v_storm).to('kt')
-        except (ValueError, IndexError, TypeError): pass
+            skew.ax.text(skew.ax.get_xlim()[1] - 2, p_lvl.m, f' {name}', color='blue', ha='right', va='center', fontsize=10, weight='bold')
 
-    y_pos = 0.95; x_label = 0.1; x_value = 0.6; y_step = 0.05
-    ax_info.text(0.5, y_pos, "Paràmetres", ha='center', weight='bold', fontsize=12); y_pos -= y_step*1.5
-    ax_info.text(x_value, y_pos, "BWD\n(nusos)", ha='center'); y_pos -= y_step*1.5
-    for key, val in params['BWD (nusos)'].items():
-        ax_info.text(x_label, y_pos, key); ax_info.text(x_value, y_pos, f"{val:.0f}" if not np.isnan(val) else "---", ha='center'); y_pos -= y_step
+    skew.ax.legend()
+    return fig
+
+def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
+    fig = plt.figure(dpi=150, figsize=(6, 8))
+    gs = fig.add_gridspec(nrows=1, ncols=1, top=0.9, bottom=0.05, left=0.05, right=0.95)
+    ax_hodo = fig.add_subplot(gs[0, 0])
+    fig.suptitle(titol, weight='bold', fontsize=14)
     
-    y_pos -= y_step; ax_info.text(0.5, y_pos, "Moviment Tempesta (dir/kts)", ha='center', weight='bold', fontsize=12); y_pos -= y_step*1.5
-    if motion:
+    h = Hodograph(ax_hodo, component_range=80.)
+    h.add_grid(increment=20, color='gray', linestyle='--')
+    h.plot_colormapped(u.to('kt'), v.to('kt'), heights.to('km'), intervals=np.array([0, 1, 3, 6, 9]) * units.km, 
+                       colors=['red', 'blue', 'green', 'purple'], linewidth=4)
+    
+    motion = {'RM': params_calc['RM'], 'LM': params_calc['LM'], 'Vent Mitjà': params_calc['Mean_Wind']}
+    if all(v is not None for v in motion.values()):
+        for name, vec in motion.items():
+            u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m
+            marker = 's' if 'Mitjà' in name else 'o'
+            ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
+            
+    # --- Paràmetres com a text ---
+    y_pos = 0.95; x_label = 0.05; x_value = 0.5; y_step = 0.06
+    fig.text(0.5, y_pos, "Paràmetres", ha='center', weight='bold', fontsize=12); y_pos -= (y_step*1.5)
+    fig.text(x_value, y_pos, "BWD (nusos)", ha='left'); y_pos -= (y_step*1.2)
+    for key in ['0-1km', '0-3km', '0-6km']:
+        val = params_calc.get(f'BWD_{key}', np.nan)
+        fig.text(x_label, y_pos, f"{key}:"); fig.text(x_value, y_pos, f"{val:.0f}" if not np.isnan(val) else "---", ha='left'); y_pos -= y_step
+    
+    y_pos -= y_step; fig.text(0.5, y_pos, "Moviment Tempesta (dir/kts)", ha='center', weight='bold', fontsize=12); y_pos -= (y_step*1.5)
+    if all(v is not None for v in motion.values()):
         for name, vec in motion.items():
             speed = mpcalc.wind_speed(*vec).to('kt').m; direction = mpcalc.wind_direction(*vec).to('deg').m
-            ax_info.text(x_label, y_pos, f"{name}:"); ax_info.text(x_value, y_pos, f"{direction:.0f}°/{speed:.0f} kts", ha='left'); y_pos -= y_step
-    else: ax_info.text(0.5, y_pos, "Càlcul no disponible", ha='center', fontsize=9, color='gray'); y_pos -= y_step
-    ax_info.text(x_label, y_pos, "Angle Crític:"); ax_info.text(x_value, y_pos, f"{critical_angle:.0f}°" if not np.isnan(critical_angle) else '---', ha='left'); y_pos -= y_step
+            fig.text(x_label, y_pos, f"{name}:"); fig.text(x_value, y_pos, f"{direction:.0f}°/{speed:.0f} kts", ha='left'); y_pos -= y_step
+    else: fig.text(0.5, y_pos, "Càlcul no disponible", ha='center', fontsize=9, color='gray'); y_pos -= y_step
+    
+    critical_angle = params_calc.get('Critical_Angle', np.nan)
+    fig.text(x_label, y_pos, "Angle Crític:"); fig.text(x_value, y_pos, f"{critical_angle:.0f}°" if not np.isnan(critical_angle) else '---', ha='left'); y_pos -= y_step
 
-    ax_sr_wind = fig.add_axes([0.62, 0.08, 0.3, 0.25])
-    ax_sr_wind.set_title("Vent Relatiu vs. Altura (RM)", fontsize=10);
-    if sr_wind_speed is not None:
-        ax_sr_wind.plot(sr_wind_speed, heights.to('km').m); ax_sr_wind.set_xlim(0, max(60, sr_wind_speed[~np.isnan(sr_wind_speed)].max().m + 5 if np.any(~np.isnan(sr_wind_speed)) else 60))
-        ax_sr_wind.fill_betweenx([0, 2], 40, 60, color='gray', alpha=0.2); ax_sr_wind.fill_betweenx([7, 11], 40, 60, color='gray', alpha=0.2)
+    # --- Gràfic de Vent Relatiu Inset ---
+    ax_sr_wind = fig.add_axes([0.15, 0.1, 0.7, 0.2])
+    ax_sr_wind.set_title("Vent Relatiu vs. Altura (RM)", fontsize=10)
+    sr_wind_speed = params_calc.get('SR_Wind')
+    if sr_wind_speed is not None and sr_wind_speed.size > 0:
+        ax_sr_wind.plot(sr_wind_speed, heights.to('km').m)
+        ax_sr_wind.set_xlim(0, max(60, sr_wind_speed[~np.isnan(sr_wind_speed)].max().m + 5 if np.any(~np.isnan(sr_wind_speed)) else 60))
+        ax_sr_wind.fill_betweenx([0, 2], 40, 60, color='gray', alpha=0.2)
+        ax_sr_wind.fill_betweenx([7, 11], 40, 60, color='gray', alpha=0.2)
     else: ax_sr_wind.text(0.5, 0.5, "No disponible", ha='center', va='center', transform=ax_sr_wind.transAxes, fontsize=9, color='gray')
-    ax_sr_wind.set_xlabel("Vent Relatiu (nusos)", fontsize=8); ax_sr_wind.set_ylabel("Altura (km)", fontsize=8); ax_sr_wind.set_ylim(0, 12); ax_sr_wind.grid(True, linestyle='--')
+    
+    ax_sr_wind.set_xlabel("Vent Relatiu (nusos)", fontsize=8)
+    ax_sr_wind.set_ylabel("Altura (km)", fontsize=8)
+    ax_sr_wind.set_ylim(0, 12); ax_sr_wind.grid(True, linestyle='--')
     ax_sr_wind.tick_params(axis='both', which='major', labelsize=8)
     return fig
+
 @st.cache_data(ttl=600)
 def carregar_imatge_satelit(url):
     try:
@@ -385,88 +419,6 @@ def mostrar_imatge_temps_real(tipus):
     if image_content: st.image(image_content, caption=caption, use_container_width=True)
     else: st.warning(error_msg)
 
-def get_color_for_param(value, param_type):
-    if value is None or np.isnan(value): return "white"
-    if param_type == 'cape':
-        if value < 100: return "white";
-        if value < 1000: return "yellow"
-        if value < 2500: return "orange"
-        return "red"
-    return "white"
-def analitzar_tipus_sondeig(params):
-    cape = params.get('CAPE_total', 0); cin = params.get('CIN_total', 0)
-    pwat = params.get('PWAT', 0); dcape = params.get('DCAPE', 0)
-
-    if cape > 2000 and cin < -75:
-        return ("SONDEIG CARREGAT (LOADED GUN)", 
-                "Potencial de tempestes explosives si es trenca la 'tapa' (CIN). Molt CAPE contingut per una forta inversió. Risc de temps sever si s'allibera la inestabilitat.")
-    elif dcape > 1000:
-        return ("SONDEIG EN V INVERTIDA",
-                "Perfil característic d'un alt risc de **rebentades seques** (*dry downbursts*). La presència d'aire sec a nivells mitjans afavoreix forts corrents descendents per evaporació.")
-    elif pwat > 40:
-        return ("SONDEIG TROPICAL / SATURAT",
-                "Perfil molt humit en tota la columna. Favorable per a pluges molt eficients i abundants, amb risc de **precipitacions intenses o estacionàries**.")
-    elif cape < 100 and cin > -25:
-        return ("SONDEIG ESTABLE",
-                "Atmosfera generalment estable. La convecció és molt improbable. No s'esperen fenòmens de temps sever.")
-    else:
-        return ("SONDEIG DE CONVECCIÓ ESTÀNDARD",
-                "Condicions típiques per a la formació de tempestes de tarda. La severitat dependrà d'altres factors com el cisallament del vent (veure hodògraf).")
-def analitzar_tipus_hodograf(params):
-    bwd = params.get('BWD_0_6km', 0)
-    if bwd > 50:
-        return("POTENCIAL DE SUPERCÈL·LULES",
-               "El cisallament del vent és molt fort. Aquest entorn és extremadament favorable per a l'organització de tempestes i la formació de supercèl·lules amb rotació (mesociclons).")
-    elif bwd > 35:
-        return("POTENCIAL DE TEMPESTES ORGANITZADES",
-               "El cisallament del vent és significatiu. Les tempestes poden organitzar-se en sistemes multicel·lulars (línies de torbonada, MCS) o fins i tot supercèl·lules aïllades.")
-    else:
-        return("POTENCIAL DE TEMPESTES DESORGANITZADES",
-               "El cisallament del vent és feble. Si es formen tempestes, probablement seran de cicle de vida únic, de curta durada i amb menys potencial de severitat.")
-def ui_caixa_parametres(params):
-    def fmt(val, unit): return f"{val:.1f} {unit}" if not np.isnan(val) else "---"
-    def fmt_int(val, unit): return f"{val:.0f} {unit}" if not np.isnan(val) else "---"
-    
-    titol_s, desc_s = analitzar_tipus_sondeig(params)
-    titol_h, desc_h = analitzar_tipus_hodograf(params)
-
-    html = f"""
-    <div style="border: 1px solid #555; border-radius: 10px; padding: 20px; display: flex; justify-content: space-around; align-items: flex-start;">
-        <div style="width: 30%; text-align: center;">
-            <h4 style="margin-top: 0; color: #FFD700;">{titol_s}</h4>
-            <p style="font-size: 0.9em; margin-bottom: 0;">{desc_s}</p>
-        </div>
-        <div style="width: 35%; font-family: monospace; font-size: 0.9em; line-height: 1.7; border-left: 1px solid #555; border-right: 1px solid #555; padding: 0 20px;">
-            <div style="display: flex; justify-content: space-between;">
-                <div style="width: 48%;">
-                    <span style="font-weight: bold;">Nivells Clau:</span><br>
-                    Congelació: {fmt_int(params.get('FRZG_Lvl_Hgt', np.nan), 'm')}<br>
-                    LCL: {fmt_int(params.get('LCL_Hgt', np.nan), 'm')}<br>
-                    LFC: {fmt_int(params.get('LFC_Hgt', np.nan), 'm')}<br>
-                    EL: {fmt_int(params.get('EL_Hgt', np.nan), 'm')}
-                </div>
-                <div style="width: 48%;">
-                    <span style="font-weight: bold;">Energia (CAPE/CIN):</span><br>
-                    <span style='color:{get_color_for_param(params.get('CAPE_total'), 'cape')};'>SB CAPE: {fmt_int(params.get('CAPE_total', np.nan), 'J/kg')}</span><br>
-                    <span style='color:{get_color_for_param(params.get('MU_CAPE'), 'cape')};'>MU CAPE: {fmt_int(params.get('MU_CAPE', np.nan), 'J/kg')}</span><br>
-                    <span style='color:{get_color_for_param(params.get('ML_CAPE'), 'cape')};'>ML CAPE: {fmt_int(params.get('ML_CAPE', np.nan), 'J/kg')}</span><br>
-                    CIN: {fmt_int(params.get('CIN_total', np.nan), 'J/kg')}
-                </div>
-            </div>
-            <br>
-            <div style="width: 100%;">
-                <span style="font-weight: bold;">Índexs d'Inestabilitat:</span><br>
-                KI: {fmt(params.get('KI', np.nan), '°C')}<br>
-                TT: {fmt(params.get('TT', np.nan), '°C')}
-            </div>
-        </div>
-        <div style="width: 30%; text-align: center;">
-            <h4 style="margin-top: 0; color: #FFD700;">{titol_h}</h4>
-            <p style="font-size: 0.9em; margin-bottom: 0;">{desc_h}</p>
-        </div>
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent Meteo-Col·lega (amb Google Gemini)")
     try: genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -488,41 +440,65 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
         st.markdown(f"""<div style="text-align: right; margin-top: -30px; margin-bottom: 10px;"><span style="font-size: 0.9em;">Preguntes restants: <strong style="color: {color}; font-size: 1.1em;">{preguntes_restants}/{LIMIT_PER_WINDOW}</strong></span></div>""", unsafe_allow_html=True)
     if "chat" not in st.session_state:
         model = genai.GenerativeModel('gemini-1.5-flash')
-        system_prompt = """Ets Meteo-Col·lega, un meteoròleg expert a Catalunya, amb un to directe, molt amigable i molt precís tècnicament. # LA TEVA MISSIÓ: ANÀLISI INTEGRAL I PRECÍS. Analitza el conjunt de dades (mapa, sondeig, hodògraf) per donar un diagnòstic meteorològic concís, correcte i útil. # GUIA D'ANÀLISI PAS A PAS. Segueix aquests passos. --- ### PAS 1: El Sondeig (Skew-T) - L'Energia i la Tapa. 1. **CAPE (LA BENZINA):** 0-500 J/kg: Marginal; 500-1500: Moderada; 1500-2500: Alta; >2500: Extrema. 2. **CIN (LA TAPA):** Un CIN alt (més negatiu, ex: -100) fa MÉS DIFÍCIL que comencin les tempestes. 0 a -25 J/kg: Tapa feble; -25 a -75: Moderada; < -75: FORta. 3. **Perfil d'Humitat:** Línies T i Td juntes = humit; Separades = sec. --- ### PAS 2: L'Hodògraf - L'Organització i la Rotació. 1. **Forma:** Recte = desorganitzades; Corba pronunciada = organitzades (multicèl·lules/supercèl·lules). 2. **Paràmetres Clau:** BWD > 40 kts (0-6km) afavoreix organització. --- ### PAS 3: El Mapa de Convergència - El Disparador. Són les zones acolorides. --- ### PAS 4: El Diagnòstic Final - La Síntesi. 1. Hi ha disparador? 2. Hi ha benzina (CAPE)? 3. La tapa (CIN) és feble? 4. Es pot organitzar (Hodògraf)? IMPORTANT! NOMES HAS DE DIR EL RESUM O CONCLUSIÓ SENSE DIR DADES"""
-        missatge_inicial_model = "Ei! Mestre com anem?. Fes-me una pregunta i analitzaré el mapa, el sondeig i l'hodògraf per a tu amb precisió."
+        system_prompt = """Ets 'Meteo-Col·lega', un expert en meteorologia de Catalunya. Ets directe, proper i parles de 'tu'. La teva única missió és donar LA CONCLUSIÓ FINAL.
+# REGLA D'OR: NO descriguis les dades. No diguis "el CAPE és X" o "l'hodògraf mostra Y". Això ja ho veu l'usuari. Tu has d'ajuntar totes les peces (mapa, sondeig, hodògraf) i donar el diagnòstic final: què passarà i on. Sigues breu i ves al gra.
+# EL TEU PROCÉS MENTAL:
+1. **On som?** L'usuari et preguntarà per un poble concret. Centra la teva resposta en aquella zona.
+2. **Hi ha disparador a prop?** Mira el mapa. Si hi ha una zona de convergència (línies de colors) a prop del poble, és un SÍ. Si no n'hi ha, és un NO.
+3. **Si es dispara, què passarà?** Mira el sondeig i l'hodògraf per saber el potencial.
+4. **Dóna la conclusió final:** Ajunta-ho tot en una resposta clara.
+# EXEMPLES DE RESPOSTES PERFECTES:
+- **(Pregunta per Lleida, amb convergència a prop i bon sondeig):** "Bona tarda! Avui a la teva zona de Ponent ho teniu tot de cara. Hi ha una bona línia de convergència a prop que actuarà de disparador, i el sondeig mostra prou 'benzina' i organització per a tempestes fortes. Compte a la tarda, que es pot posar interessant."
+- **(Pregunta per Mataró, sense convergència a prop):** "Què tal! Avui pel Maresme la cosa sembla tranquil·la. El problema és que no teniu cap disparador a prop; les línies de convergència queden molt a l'interior. Encara que el sondeig té potencial, si no hi ha qui encengui la metxa, no passarà gran cosa."
+- **(Pregunta per Berga, amb convergència llunyana):** "Ei! Per la teva zona del Berguedà avui sembla que calma. Ara bé, compte a les comarques de Girona! Allà sí que s'està formant una bona línia de convergència. Si vols veure el potencial real d'aquella zona, et recomano que canviïs al sondeig de **Girona** o **Figueres**."
+- **(Pregunta per Reus, amb convergència a prop però sondeig molt estable):** "Avui per la teva zona teniu un bon disparador amb aquesta convergència, però el sondeig està molt estable, gairebé no hi ha 'benzina' (CAPE). Així que, tot i la convergència, el més probable és que només es formin alguns núvols sense més conseqüències. Un dia tranquil."
+Recorda, l'usuari té accés a aquests pobles: """ + ', '.join(CIUTATS_CATALUNYA.keys())
+        missatge_inicial_model = "Ei! Sóc el teu Meteo-Col·lega. Tria un poble, fes-me una pregunta i et dono la conclusió del que pot passar avui."
         st.session_state.chat = model.start_chat(history=[{'role': 'user', 'parts': [system_prompt]}, {'role': 'model', 'parts': [missatge_inicial_model]}]); st.session_state.messages = [{"role": "assistant", "content": missatge_inicial_model}]
+    
     st.markdown(f"**Anàlisi per:** `{poble_sel.upper()}` | **Dia:** `{timestamp_str}`")
     nivell_mapa_ia = st.selectbox("Nivell d'anàlisi del mapa:", [1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat_final", disabled=limit_reached)
+    
     for message in st.session_state.messages:
         with st.chat_message(message["role"]): st.markdown(message["content"])
-    if prompt_usuari := st.chat_input("Fes la teva pregunta!", disabled=limit_reached):
+        
+    if prompt_usuari := st.chat_input("Què vols saber sobre el temps avui?", disabled=limit_reached):
         st.session_state.messages.append({"role": "user", "content": prompt_usuari})
         with st.chat_message("user"): st.markdown(prompt_usuari)
         with st.chat_message("assistant"):
-            with st.spinner("Analitzant mapa, sondeig i hodògraf..."):
+            with st.spinner("Connectant totes les peces..."):
                 if user_limit_data.get("window_start_time") is None: user_limit_data["window_start_time"] = datetime.now(pytz.utc).timestamp()
                 user_limit_data["count"] += 1; rate_limits[username] = user_limit_data; save_json_file(rate_limits, RATE_LIMIT_FILE)
+                
                 map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
                 if error_map_ia: st.error(f"Error en carregar dades del mapa: {error_map_ia}"); return
                 fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str, MAP_EXTENT)
                 buf_mapa = io.BytesIO(); fig_mapa.savefig(buf_mapa, format='png', dpi=150, bbox_inches='tight'); buf_mapa.seek(0); img_mapa = Image.open(buf_mapa); plt.close(fig_mapa)
-                contingut_per_ia = [img_mapa]; resum_sondeig = "No hi ha dades de sondeig."
+                
+                contingut_per_ia = [img_mapa]
+                
                 if data_tuple: 
-                    sounding_data, params_calculats = data_tuple; p, T, Td, u, v, heights = sounding_data
-                    fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig per a {poble_sel}")
+                    sounding_data, params_calculats = data_tuple
+                    p, T, Td, u, v, heights, prof = sounding_data
+                    
+                    fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
                     buf_skewt = io.BytesIO(); fig_skewt.savefig(buf_skewt, format='png', dpi=150); buf_skewt.seek(0); img_skewt = Image.open(buf_skewt); plt.close(fig_skewt); contingut_per_ia.append(img_skewt)
-                    fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat - {poble_sel}")
+                    
+                    fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
                     buf_hodo = io.BytesIO(); fig_hodo.savefig(buf_hodo, format='png', dpi=150); buf_hodo.seek(0); img_hodo = Image.open(buf_hodo); plt.close(fig_hodo); contingut_per_ia.append(img_hodo)
-                    resum_sondeig = f"SB CAPE: {params_calculats.get('CAPE_total', 0):.0f} J/kg, CIN: {params_calculats.get('CIN_total', 0):.0f} J/kg"
-                prompt_context = f"DADES ADDICIONALS:\n- Localització: {poble_sel}\n- Paràmetres clau: {resum_sondeig}\n\nPREGUNTA: '{prompt_usuari}'"
+
+                prompt_context = f"PREGUNTA DE L'USUARI: '{prompt_usuari}'"
                 contingut_per_ia.insert(0, prompt_context)
+                
                 try:
-                    resposta = st.session_state.chat.send_message(contingut_per_ia); full_response = resposta.text
+                    resposta = st.session_state.chat.send_message(contingut_per_ia)
+                    full_response = resposta.text
                 except Exception as e:
                     full_response = f"Vaja, hi ha hagut un error contactant la IA: {e}"
                     if "429" in str(e): full_response = "**Ep, hem superat el límit de consultes a l'API de Google per avui.**"
                 st.markdown(full_response)
-        st.session_state.messages.append({"role": "assistant", "content": full_response}); st.rerun()
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        st.rerun()
 def ui_pestanya_xat(chat_history):
     st.subheader("Xat en Línia per a Usuaris"); col1, col2 = st.columns([0.7, 0.3]);
     with col1: st.caption("Els missatges s'esborren automàticament després d'una hora.")
@@ -615,41 +591,26 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
             with tab_europa: mostrar_imatge_temps_real("Satèl·lit (Europa)")
             with tab_ne: mostrar_imatge_temps_real("Satèl·lit (NE Península)")
             st.markdown("---"); ui_info_desenvolupament_tempesta()
+
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
         sounding_data, params_calculats = data_tuple
-        _, contingut_principal, _ = st.columns([0.05, 0.9, 0.05])
-        with contingut_principal:
-            st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
-            p, T, Td, u, v, heights = sounding_data
-            
-            ui_caixa_parametres(params_calculats)
-            st.markdown("---")
+        p, T, Td, u, v, heights, prof = sounding_data
+        
+        col1, col2 = st.columns(2)
 
-            col1, col2 = st.columns(2)
-            with col1:
-                fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}")
-                st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
-            with col2:
-                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
-                st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
+        with col1:
+            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
+            st.pyplot(fig_skewt, use_container_width=True)
+            plt.close(fig_skewt)
+        
+        with col2:
+            fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
+            st.pyplot(fig_hodo, use_container_width=True)
+            plt.close(fig_hodo)
+    else:
+        st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 
-            with st.expander("❔ Com interpretar els paràmetres i gràfics"):
-                st.markdown("""
-                **Paràmetres del Sondeig:**
-                - **CAPE (SB/MU/ML):** Energia disponible per a una tempesta. >1500 J/kg es considera alt.
-                - **CIN:** "Tapa" que impedeix la convecció. Valors més negatius que -50 J/kg indiquen una tapa forta.
-                - **LCL/LFC/EL:** Altures (en metres sobre el terra) de la base del núvol, inici de l'ascens lliure i sostre teòric de la tempesta.
-                - **KI / TT:** Índexs clàssics d'inestabilitat. Com més alts, més potencial de tempesta.
-                - **PWAT (Aigua Precipitable):** Quantitat total de vapor d'aigua a la columna. Valors > 40 mm indiquen un alt contingut d'humitat, favorable per a pluges intenses.
-                - **DCAPE:** Energia potencial per a corrents descendents forts (rebentades). Valors > 1000 J/kg són un avís de risc.
-
-                **Hodògraf:**
-                - **Forma:** Una corba pronunciada indica cisallament direccional, favorable per a tempestes organitzades.
-                - **BWD (Cisallament):** Valors > 40 nusos (0-6 km) afavoreixen l'organització de les tempestes.
-                - **Vent Relatiu vs. Altura:** Mostra com de fort és el vent relatiu a la tempesta a diferents altures. Valors alts a nivells baixos afavoreixen la formació de tornados.
-                """)
-    else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteociel | IA per Google Gemini.</p>", unsafe_allow_html=True)
 
