@@ -304,8 +304,8 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 def crear_skewt(p, T, Td, u, v, params_calc, titol):
-    fig = plt.figure(dpi=150); fig.set_figheight(fig.get_figwidth() * 1.1)
-    skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.8, 0.9))
+    fig = plt.figure(figsize=(9, 10), dpi=150)
+    skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
     skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2.5, label='Temperatura'); skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
     skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
@@ -591,11 +591,17 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
 
             col1, col2 = st.columns(2)
             with col1:
-                fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical - {poble_sel}\n{titol_s}")
+                fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}")
                 st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
+                st.markdown(f"""<div style="border: 1px solid #555; border-radius: 10px; padding: 15px; text-align: center; margin-top: 10px;">
+                    <h4 style="margin-top: 0; color: #FFD700;">{titol_s}</h4>
+                </div>""", unsafe_allow_html=True)
             with col2:
-                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat - {poble_sel}\n{titol_h}")
+                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
                 st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
+                st.markdown(f"""<div style="border: 1px solid #555; border-radius: 10px; padding: 15px; text-align: center; margin-top: 10px;">
+                    <h4 style="margin-top: 0; color: #FFD700;">{titol_h}</h4>
+                </div>""", unsafe_allow_html=True)
 
             with st.expander("❔ Com interpretar els paràmetres i gràfics"):
                 st.markdown("""
