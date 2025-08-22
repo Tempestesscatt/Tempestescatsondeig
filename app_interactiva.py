@@ -25,12 +25,10 @@ import json
 import hashlib
 import os
 import base64
-import threading
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
 
-parcel_lock = threading.Lock()
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
@@ -117,7 +115,7 @@ def show_login_page():
                 elif new_username in users: st.error("Aquest nom d'usuari ja existeix.")
                 elif len(new_password) < 6: st.error("La contrasenya ha de tenir com a mínim 6 caràcters.")
                 else:
-                    users[new_username] = get_hashed_password(new_password); save_json_file(users, USER_FILE)
+                    users[new_username] = get_hashed_password(new_password); save_json_file(users, USERS_FILE)
                     st.success("Compte creat amb èxit! Ara pots iniciar sessió.")
     st.divider()
     if st.button("Entrar com a Convidat", use_container_width=True, type="secondary"):
@@ -150,9 +148,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         u, v, heights = np.array(u_profile)[valid_indices] * units('m/s'), np.array(v_profile)[valid_indices] * units('m/s'), np.array(h_profile)[valid_indices] * units.meter
         
         params_calc = {}
-        with parcel_lock:
-            prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
-        cape, cin = mpcalc.cape_cin(p, T, Td, prof)
+        prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC'); cape, cin = mpcalc.cape_cin(p, T, Td, prof)
         params_calc['CAPE_total'] = cape.to('J/kg').m; params_calc['CIN_total'] = cin.to('J/kg').m
         
         try: params_calc['MU_CAPE'] = mpcalc.most_unstable_cape_cin(p, T, Td)[0].to('J/kg').m
@@ -389,19 +385,88 @@ def mostrar_imatge_temps_real(tipus):
     if image_content: st.image(image_content, caption=caption, use_container_width=True)
     else: st.warning(error_msg)
 
+def get_color_for_param(value, param_type):
+    if value is None or np.isnan(value): return "white"
+    if param_type == 'cape':
+        if value < 100: return "white";
+        if value < 1000: return "yellow"
+        if value < 2500: return "orange"
+        return "red"
+    return "white"
 def analitzar_tipus_sondeig(params):
     cape = params.get('CAPE_total', 0); cin = params.get('CIN_total', 0)
     pwat = params.get('PWAT', 0); dcape = params.get('DCAPE', 0)
-    if cape > 2000 and cin < -75: return ("SONDEIG CARREGAT (LOADED GUN)", "Potencial de tempestes explosives si es trenca la 'tapa' (CIN). Molt CAPE contingut per una forta inversió. Risc de temps sever si s'allibera la inestabilitat.")
-    elif dcape > 1000: return ("SONDEIG EN V INVERTIDA", "Perfil característic d'un alt risc de **rebentades seques** (*dry downbursts*). La presència d'aire sec a nivells mitjans afavoreix forts corrents descendents per evaporació.")
-    elif pwat > 40: return ("SONDEIG TROPICAL / SATURAT", "Perfil molt humit en tota la columna. Favorable per a pluges molt eficients i abundants, amb risc de **precipitacions intenses o estacionàries**.")
-    elif cape < 100 and cin > -25: return ("SONDEIG ESTABLE", "Atmosfera generalment estable. La convecció és molt improbable. No s'esperen fenòmens de temps sever.")
-    else: return ("SONDEIG DE CONVECCIÓ ESTÀNDARD", "Condicions típiques per a la formació de tempestes de tarda. La severitat dependrà d'altres factors com el cisallament del vent (veure hodògraf).")
+
+    if cape > 2000 and cin < -75:
+        return ("SONDEIG CARREGAT (LOADED GUN)", 
+                "Potencial de tempestes explosives si es trenca la 'tapa' (CIN). Molt CAPE contingut per una forta inversió. Risc de temps sever si s'allibera la inestabilitat.")
+    elif dcape > 1000:
+        return ("SONDEIG EN V INVERTIDA",
+                "Perfil característic d'un alt risc de **rebentades seques** (*dry downbursts*). La presència d'aire sec a nivells mitjans afavoreix forts corrents descendents per evaporació.")
+    elif pwat > 40:
+        return ("SONDEIG TROPICAL / SATURAT",
+                "Perfil molt humit en tota la columna. Favorable per a pluges molt eficients i abundants, amb risc de **precipitacions intenses o estacionàries**.")
+    elif cape < 100 and cin > -25:
+        return ("SONDEIG ESTABLE",
+                "Atmosfera generalment estable. La convecció és molt improbable. No s'esperen fenòmens de temps sever.")
+    else:
+        return ("SONDEIG DE CONVECCIÓ ESTÀNDARD",
+                "Condicions típiques per a la formació de tempestes de tarda. La severitat dependrà d'altres factors com el cisallament del vent (veure hodògraf).")
 def analitzar_tipus_hodograf(params):
     bwd = params.get('BWD_0_6km', 0)
-    if bwd > 50: return("POTENCIAL DE SUPERCÈL·LULES", "El cisallament del vent és molt fort. Aquest entorn és extremadament favorable per a l'organització de tempestes i la formació de supercèl·lules amb rotació (mesociclons).")
-    elif bwd > 35: return("POTENCIAL DE TEMPESTES ORGANITZADES", "El cisallament del vent és significatiu. Les tempestes poden organitzar-se en sistemes multicel·lulars (línies de torbonada, MCS) o fins i tot supercèl·lules aïllades.")
-    else: return("POTENCIAL DE TEMPESTES DESORGANITZADES", "El cisallament del vent és feble. Si es formen tempestes, probablement seran de cicle de vida únic, de curta durada i amb menys potencial de severitat.")
+    if bwd > 50:
+        return("POTENCIAL DE SUPERCÈL·LULES",
+               "El cisallament del vent és molt fort. Aquest entorn és extremadament favorable per a l'organització de tempestes i la formació de supercèl·lules amb rotació (mesociclons).")
+    elif bwd > 35:
+        return("POTENCIAL DE TEMPESTES ORGANITZADES",
+               "El cisallament del vent és significatiu. Les tempestes poden organitzar-se en sistemes multicel·lulars (línies de torbonada, MCS) o fins i tot supercèl·lules aïllades.")
+    else:
+        return("POTENCIAL DE TEMPESTES DESORGANITZADES",
+               "El cisallament del vent és feble. Si es formen tempestes, probablement seran de cicle de vida únic, de curta durada i amb menys potencial de severitat.")
+def ui_caixa_parametres(params):
+    def fmt(val, unit): return f"{val:.1f} {unit}" if not np.isnan(val) else "---"
+    def fmt_int(val, unit): return f"{val:.0f} {unit}" if not np.isnan(val) else "---"
+    
+    titol_s, desc_s = analitzar_tipus_sondeig(params)
+    titol_h, desc_h = analitzar_tipus_hodograf(params)
+
+    html = f"""
+    <div style="border: 1px solid #555; border-radius: 10px; padding: 20px; display: flex; justify-content: space-around; align-items: flex-start;">
+        <div style="width: 30%; text-align: center;">
+            <h4 style="margin-top: 0; color: #FFD700;">{titol_s}</h4>
+            <p style="font-size: 0.9em; margin-bottom: 0;">{desc_s}</p>
+        </div>
+        <div style="width: 35%; font-family: monospace; font-size: 0.9em; line-height: 1.7; border-left: 1px solid #555; border-right: 1px solid #555; padding: 0 20px;">
+            <div style="display: flex; justify-content: space-between;">
+                <div style="width: 48%;">
+                    <span style="font-weight: bold;">Nivells Clau:</span><br>
+                    Congelació: {fmt_int(params.get('FRZG_Lvl_Hgt', np.nan), 'm')}<br>
+                    LCL: {fmt_int(params.get('LCL_Hgt', np.nan), 'm')}<br>
+                    LFC: {fmt_int(params.get('LFC_Hgt', np.nan), 'm')}<br>
+                    EL: {fmt_int(params.get('EL_Hgt', np.nan), 'm')}
+                </div>
+                <div style="width: 48%;">
+                    <span style="font-weight: bold;">Energia (CAPE/CIN):</span><br>
+                    <span style='color:{get_color_for_param(params.get('CAPE_total'), 'cape')};'>SB CAPE: {fmt_int(params.get('CAPE_total', np.nan), 'J/kg')}</span><br>
+                    <span style='color:{get_color_for_param(params.get('MU_CAPE'), 'cape')};'>MU CAPE: {fmt_int(params.get('MU_CAPE', np.nan), 'J/kg')}</span><br>
+                    <span style='color:{get_color_for_param(params.get('ML_CAPE'), 'cape')};'>ML CAPE: {fmt_int(params.get('ML_CAPE', np.nan), 'J/kg')}</span><br>
+                    CIN: {fmt_int(params.get('CIN_total', np.nan), 'J/kg')}
+                </div>
+            </div>
+            <br>
+            <div style="width: 100%;">
+                <span style="font-weight: bold;">Índexs d'Inestabilitat:</span><br>
+                KI: {fmt(params.get('KI', np.nan), '°C')}<br>
+                TT: {fmt(params.get('TT', np.nan), '°C')}
+            </div>
+        </div>
+        <div style="width: 30%; text-align: center;">
+            <h4 style="margin-top: 0; color: #FFD700;">{titol_h}</h4>
+            <p style="font-size: 0.9em; margin-bottom: 0;">{desc_h}</p>
+        </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent Meteo-Col·lega (amb Google Gemini)")
     try: genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -423,69 +488,41 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
         st.markdown(f"""<div style="text-align: right; margin-top: -30px; margin-bottom: 10px;"><span style="font-size: 0.9em;">Preguntes restants: <strong style="color: {color}; font-size: 1.1em;">{preguntes_restants}/{LIMIT_PER_WINDOW}</strong></span></div>""", unsafe_allow_html=True)
     if "chat" not in st.session_state:
         model = genai.GenerativeModel('gemini-1.5-flash')
-        system_prompt = """Ets 'Meteo-Col·lega', un expert en meteorologia de Catalunya. Ets directe, proper i parles de 'tu'. La teva única missió és donar LA CONCLUSIÓ FINAL.
-# REGLA D'OR: NO descriguis les dades. No diguis "el CAPE és X" o "l'hodògraf mostra Y". Això ja ho veu l'usuari. Tu has d'ajuntar totes les peces (mapa, sondeig, hodògraf) i donar el diagnòstic final: què passarà i on. Sigues breu i ves al gra.
-# EL TEU PROCÉS MENTAL:
-1. **On som?** L'usuari et preguntarà per un poble concret. Centra la teva resposta en aquella zona.
-2. **Hi ha disparador a prop?** Mira el mapa. Si hi ha una zona de convergència (línies de colors) a prop del poble, és un SÍ. Si no n'hi ha, és un NO.
-3. **Si es dispara, què passarà?** Mira el sondeig i l'hodògraf per saber el potencial.
-4. **Dóna la conclusió final:** Ajunta-ho tot en una resposta clara.
-# EXEMPLES DE RESPOSTES PERFECTES:
-- **(Pregunta per Lleida, amb convergència a prop i bon sondeig):** "Bona tarda! Avui a la teva zona de Ponent ho teniu tot de cara. Hi ha una bona línia de convergència a prop que actuarà de disparador, i el sondeig mostra prou 'benzina' i organització per a tempestes fortes. Compte a la tarda, que es pot posar interessant."
-- **(Pregunta per Mataró, sense convergència a prop):** "Què tal! Avui pel Maresme la cosa sembla tranquil·la. El problema és que no teniu cap disparador a prop; les línies de convergència queden molt a l'interior. Encara que el sondeig té potencial, si no hi ha qui encengui la metxa, no passarà gran cosa."
-- **(Pregunta per Berga, amb convergència llunyana):** "Ei! Per la teva zona del Berguedà avui sembla que calma. Ara bé, compte a les comarques de Girona! Allà sí que s'està formant una bona línia de convergència. Si vols veure el potencial real d'aquella zona, et recomano que canviïs al sondeig de **Girona** o **Figueres**."
-- **(Pregunta per Reus, amb convergència a prop però sondeig molt estable):** "Avui per la teva zona teniu un bon disparador amb aquesta convergència, però el sondeig està molt estable, gairebé no hi ha 'benzina' (CAPE). Així que, tot i la convergència, el més probable és que només es formin alguns núvols sense més conseqüències. Un dia tranquil."
-Recorda, l'usuari té accés a aquests pobles: """ + ', '.join(CIUTATS_CATALUNYA.keys())
-        missatge_inicial_model = "Ei! Sóc el teu Meteo-Col·lega. Tria un poble, fes-me una pregunta i et dono la conclusió del que pot passar avui."
+        system_prompt = """Ets Meteo-Col·lega, un meteoròleg expert a Catalunya, amb un to directe, molt amigable i molt precís tècnicament. # LA TEVA MISSIÓ: ANÀLISI INTEGRAL I PRECÍS. Analitza el conjunt de dades (mapa, sondeig, hodògraf) per donar un diagnòstic meteorològic concís, correcte i útil. # GUIA D'ANÀLISI PAS A PAS. Segueix aquests passos. --- ### PAS 1: El Sondeig (Skew-T) - L'Energia i la Tapa. 1. **CAPE (LA BENZINA):** 0-500 J/kg: Marginal; 500-1500: Moderada; 1500-2500: Alta; >2500: Extrema. 2. **CIN (LA TAPA):** Un CIN alt (més negatiu, ex: -100) fa MÉS DIFÍCIL que comencin les tempestes. 0 a -25 J/kg: Tapa feble; -25 a -75: Moderada; < -75: FORta. 3. **Perfil d'Humitat:** Línies T i Td juntes = humit; Separades = sec. --- ### PAS 2: L'Hodògraf - L'Organització i la Rotació. 1. **Forma:** Recte = desorganitzades; Corba pronunciada = organitzades (multicèl·lules/supercèl·lules). 2. **Paràmetres Clau:** BWD > 40 kts (0-6km) afavoreix organització. --- ### PAS 3: El Mapa de Convergència - El Disparador. Són les zones acolorides. --- ### PAS 4: El Diagnòstic Final - La Síntesi. 1. Hi ha disparador? 2. Hi ha benzina (CAPE)? 3. La tapa (CIN) és feble? 4. Es pot organitzar (Hodògraf)? IMPORTANT! NOMES HAS DE DIR EL RESUM O CONCLUSIÓ SENSE DIR DADES"""
+        missatge_inicial_model = "Ei! Mestre com anem?. Fes-me una pregunta i analitzaré el mapa, el sondeig i l'hodògraf per a tu amb precisió."
         st.session_state.chat = model.start_chat(history=[{'role': 'user', 'parts': [system_prompt]}, {'role': 'model', 'parts': [missatge_inicial_model]}]); st.session_state.messages = [{"role": "assistant", "content": missatge_inicial_model}]
-    
     st.markdown(f"**Anàlisi per:** `{poble_sel.upper()}` | **Dia:** `{timestamp_str}`")
     nivell_mapa_ia = st.selectbox("Nivell d'anàlisi del mapa:", [1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat_final", disabled=limit_reached)
-    
     for message in st.session_state.messages:
         with st.chat_message(message["role"]): st.markdown(message["content"])
-        
-    if prompt_usuari := st.chat_input("Què vols saber sobre el temps avui?", disabled=limit_reached):
+    if prompt_usuari := st.chat_input("Fes la teva pregunta!", disabled=limit_reached):
         st.session_state.messages.append({"role": "user", "content": prompt_usuari})
         with st.chat_message("user"): st.markdown(prompt_usuari)
         with st.chat_message("assistant"):
-            with st.spinner("Connectant totes les peces..."):
+            with st.spinner("Analitzant mapa, sondeig i hodògraf..."):
                 if user_limit_data.get("window_start_time") is None: user_limit_data["window_start_time"] = datetime.now(pytz.utc).timestamp()
                 user_limit_data["count"] += 1; rate_limits[username] = user_limit_data; save_json_file(rate_limits, RATE_LIMIT_FILE)
-                
                 map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
                 if error_map_ia: st.error(f"Error en carregar dades del mapa: {error_map_ia}"); return
                 fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str, MAP_EXTENT)
                 buf_mapa = io.BytesIO(); fig_mapa.savefig(buf_mapa, format='png', dpi=150, bbox_inches='tight'); buf_mapa.seek(0); img_mapa = Image.open(buf_mapa); plt.close(fig_mapa)
-                
-                contingut_per_ia = [img_mapa]; resum_sondeig_text = "No s'han pogut carregar les dades del sondeig."
-                
+                contingut_per_ia = [img_mapa]; resum_sondeig = "No hi ha dades de sondeig."
                 if data_tuple: 
                     sounding_data, params_calculats = data_tuple; p, T, Td, u, v, heights = sounding_data
                     fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig per a {poble_sel}")
                     buf_skewt = io.BytesIO(); fig_skewt.savefig(buf_skewt, format='png', dpi=150); buf_skewt.seek(0); img_skewt = Image.open(buf_skewt); plt.close(fig_skewt); contingut_per_ia.append(img_skewt)
-                    
                     fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat - {poble_sel}")
                     buf_hodo = io.BytesIO(); fig_hodo.savefig(buf_hodo, format='png', dpi=150); buf_hodo.seek(0); img_hodo = Image.open(buf_hodo); plt.close(fig_hodo); contingut_per_ia.append(img_hodo)
-
-                    titol_s, _ = analitzar_tipus_sondeig(params_calculats)
-                    titol_h, _ = analitzar_tipus_hodograf(params_calculats)
-                    resum_sondeig_text = (f"Poble seleccionat per l'usuari: {poble_sel}. "
-                                          f"Anàlisi automàtica del sondeig: {titol_s}. "
-                                          f"Anàlisi automàtica de l'hodògraf: {titol_h}.")
-                
-                prompt_context = f"INFO ADDICIONAL PER A TU:\n- {resum_sondeig_text}\n\nPREGUNTA DE L'USUARI: '{prompt_usuari}'"
+                    resum_sondeig = f"SB CAPE: {params_calculats.get('CAPE_total', 0):.0f} J/kg, CIN: {params_calculats.get('CIN_total', 0):.0f} J/kg"
+                prompt_context = f"DADES ADDICIONALS:\n- Localització: {poble_sel}\n- Paràmetres clau: {resum_sondeig}\n\nPREGUNTA: '{prompt_usuari}'"
                 contingut_per_ia.insert(0, prompt_context)
-                
                 try:
-                    resposta = st.session_state.chat.send_message(contingut_per_ia)
-                    full_response = resposta.text
+                    resposta = st.session_state.chat.send_message(contingut_per_ia); full_response = resposta.text
                 except Exception as e:
                     full_response = f"Vaja, hi ha hagut un error contactant la IA: {e}"
                     if "429" in str(e): full_response = "**Ep, hem superat el límit de consultes a l'API de Google per avui.**"
                 st.markdown(full_response)
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
-        st.rerun()
+        st.session_state.messages.append({"role": "assistant", "content": full_response}); st.rerun()
 def ui_pestanya_xat(chat_history):
     st.subheader("Xat en Línia per a Usuaris"); col1, col2 = st.columns([0.7, 0.3]);
     with col1: st.caption("Els missatges s'esborren automàticament després d'una hora.")
@@ -578,32 +615,6 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
             with tab_europa: mostrar_imatge_temps_real("Satèl·lit (Europa)")
             with tab_ne: mostrar_imatge_temps_real("Satèl·lit (NE Península)")
             st.markdown("---"); ui_info_desenvolupament_tempesta()
-
-# --- INICI DE LA FUNCIÓ AFEGIDA ---
-def ui_caixa_analisi_final(params_calculats):
-    st.subheader("Diagnòstic Final del Sondeig")
-    titol_s, desc_s = analitzar_tipus_sondeig(params_calculats)
-    titol_h, desc_h = analitzar_tipus_hodograf(params_calculats)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        with st.container(border=True):
-            st.markdown(f"##### Tipus de Sondeig: **{titol_s}**")
-            st.write(desc_s)
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("CAPE", f"{params_calculats.get('CAPE_total', 0):.0f} J/kg")
-            c2.metric("CIN", f"{params_calculats.get('CIN_total', 0):.0f} J/kg")
-            c3.metric("PWAT", f"{params_calculats.get('PWAT', 0):.1f} mm")
-            c4.metric("DCAPE", f"{params_calculats.get('DCAPE', 0):.0f} J/kg")
-
-    with col2:
-        with st.container(border=True):
-            st.markdown(f"##### Potencial d'Organització: **{titol_h}**")
-            st.write(desc_h)
-            c1, _ = st.columns(2)
-            c1.metric("Cisallament 0-6km", f"{params_calculats.get('BWD_0_6km', 0):.0f} nusos")
-# --- FINAL DE LA FUNCIÓ AFEGIDA ---
-
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
         sounding_data, params_calculats = data_tuple
@@ -612,7 +623,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
             
-            ui_caixa_analisi_final(params_calculats) # Aquesta línia ara funciona correctament
+            ui_caixa_parametres(params_calculats)
             st.markdown("---")
 
             col1, col2 = st.columns(2)
