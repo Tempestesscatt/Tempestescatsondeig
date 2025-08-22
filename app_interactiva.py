@@ -507,7 +507,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
 
     # --- Radar Catalunya (ejemplo RainViewer) ---
     try:
-        url = "https://tilecache.rainviewer.com/v2/radar/nowcast_0/512/7/66/44/2/1_1.png"
+        url = "<iframe src="https://www.rainviewer.com/map.html?loc=41.3379,2.2155,10.144539557736273&oCS=1&c=3&o=83&lm=1&layer=radar&sm=1&sn=1&ts=2" width="100%" frameborder="0" style="border:0;height:50vh;" allowfullscreen></iframe>"
 
         resp = requests.get(url, timeout=10)
         img = Image.open(BytesIO(resp.content))
