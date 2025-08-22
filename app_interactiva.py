@@ -117,7 +117,7 @@ def show_login_page():
                 elif new_username in users: st.error("Aquest nom d'usuari ja existeix.")
                 elif len(new_password) < 6: st.error("La contrasenya ha de tenir com a mínim 6 caràcters.")
                 else:
-                    users[new_username] = get_hashed_password(new_password); save_json_file(users, USERS_FILE)
+                    users[new_username] = get_hashed_password(new_password); save_json_file(users, USER_FILE)
                     st.success("Compte creat amb èxit! Ara pots iniciar sessió.")
     st.divider()
     if st.button("Entrar com a Convidat", use_container_width=True, type="secondary"):
@@ -578,6 +578,32 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
             with tab_europa: mostrar_imatge_temps_real("Satèl·lit (Europa)")
             with tab_ne: mostrar_imatge_temps_real("Satèl·lit (NE Península)")
             st.markdown("---"); ui_info_desenvolupament_tempesta()
+
+# --- INICI DE LA FUNCIÓ AFEGIDA ---
+def ui_caixa_analisi_final(params_calculats):
+    st.subheader("Diagnòstic Final del Sondeig")
+    titol_s, desc_s = analitzar_tipus_sondeig(params_calculats)
+    titol_h, desc_h = analitzar_tipus_hodograf(params_calculats)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        with st.container(border=True):
+            st.markdown(f"##### Tipus de Sondeig: **{titol_s}**")
+            st.write(desc_s)
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("CAPE", f"{params_calculats.get('CAPE_total', 0):.0f} J/kg")
+            c2.metric("CIN", f"{params_calculats.get('CIN_total', 0):.0f} J/kg")
+            c3.metric("PWAT", f"{params_calculats.get('PWAT', 0):.1f} mm")
+            c4.metric("DCAPE", f"{params_calculats.get('DCAPE', 0):.0f} J/kg")
+
+    with col2:
+        with st.container(border=True):
+            st.markdown(f"##### Potencial d'Organització: **{titol_h}**")
+            st.write(desc_h)
+            c1, _ = st.columns(2)
+            c1.metric("Cisallament 0-6km", f"{params_calculats.get('BWD_0_6km', 0):.0f} nusos")
+# --- FINAL DE LA FUNCIÓ AFEGIDA ---
+
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
         sounding_data, params_calculats = data_tuple
@@ -586,7 +612,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
             
-            ui_caixa_analisi_final(params_calculats)
+            ui_caixa_analisi_final(params_calculats) # Aquesta línia ara funciona correctament
             st.markdown("---")
 
             col1, col2 = st.columns(2)
