@@ -431,37 +431,32 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     h = Hodograph(ax_hodo, component_range=80.)
     h.add_grid(increment=20, color='gray', linestyle='--')
     
-    # Dibuixar la línia de l'hodògraf amb colors per altitud
     intervals = np.array([0, 1, 3, 6, 9, 12]) * units.km
     colors = ['red', 'blue', 'green', 'purple', 'gold']
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors, linewidth=2)
 
-    # Ressaltar la capa efectiva (si existeix)
     if not np.isnan(params_calc.get('ESRH', np.nan)):
         try:
             heights_agl = heights - heights[0]
-            eff_p_bottom, eff_p_top = mpcalc.effective_inflow_layer(p, T, Td, prof)
-            mask = (p >= eff_p_top) & (p <= eff_p_bottom)
-            h.plot(u[mask].to('kt'), v[mask].to('kt'), color='cyan', linewidth=6, alpha=0.6, label='Capa Efectiva')
-        except: pass # Si falla, simplement no es dibuixa
+            # NOTA: Les variables p, T, Td, prof no estan disponibles aquí. Caldria passar-les o recalcular-les si es volen usar.
+            # Per ara, aquesta funcionalitat es manté desactivada per evitar errors.
+            pass
+        except: pass
 
-    # Marcadors d'altitud
     for alt_km in [1, 3, 6, 9]:
         try:
             idx = np.argmin(np.abs(heights - alt_km * 1000 * units.m))
             ax_hodo.text(u[idx].to('kt').m + 1, v[idx].to('kt').m + 1, f'{alt_km}km', fontsize=9, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
         except: continue
     
-    # Vectors de moviment de tempesta i vent mitjà
     motion = {'RM': params_calc.get('RM'), 'LM': params_calc.get('LM'), 'Vent Mitjà': params_calc.get('Mean_Wind')}
     if all(v is not None for v in motion.values()):
         for name, vec in motion.items():
             u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m
             marker = 's' if 'Mitjà' in name else 'o'
+            # Dibuixem només el marcador, sense el text
             ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
-            ax_hodo.text(u_comp + 2, v_comp + 2, name, ha='left', va='bottom', weight='bold', fontsize=10)
 
-    # Vector de cisallament 0-6km
     try:
         shear_vec = mpcalc.bulk_shear(p, u, v, height=heights - heights[0], depth=6000 * units.m)
         ax_hodo.arrow(0, 0, shear_vec[0].to('kt').m, shear_vec[1].to('kt').m,
@@ -473,8 +468,9 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     # --- Taula de Paràmetres a la dreta ---
     ax_params.axis('off')
     def get_color(value, thresholds):
-        if pd.isna(value): return "#808080"
-        colors = ["#808080", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
+        if pd.isna(value): return "grey"
+        # Ajustat per a fons blanc: colors més foscos
+        colors = ["grey", "green", "#E69F00", "orange", "red"]
         thresholds = sorted(thresholds)
         for i, threshold in enumerate(thresholds):
             if value < threshold: return colors[i]
@@ -483,33 +479,32 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
     
     y = 0.95
-    ax_params.text(0, y, "Moviment (dir/kts)", ha='left', weight='bold', fontsize=11); y-=0.07
+    ax_params.text(0, y, "Moviment (dir/kts)", ha='left', weight='bold', fontsize=11); y-=0.08
     for name, vec in motion.items():
         if vec is not None:
             speed = mpcalc.wind_speed(*vec).to('kt').m; direction = mpcalc.wind_direction(*vec).to('deg').m
             ax_params.text(0.05, y, f"{name}:"); ax_params.text(0.95, y, f"{direction:.0f}°/{speed:.0f} kts", ha='right')
         else:
             ax_params.text(0.05, y, f"{name}:"); ax_params.text(0.95, y, "---", ha='right')
-        y-=0.06
+        y-=0.07
 
-    y-=0.03
-    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.07
+    y-=0.05
+    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.08
     for key, label in [('0-1km', '0-1 km'), ('0-6km', '0-6 km'), ('EBWD', 'Efectiu')]:
         val = params_calc.get(key if key == 'EBWD' else f'BWD_{key}', np.nan)
         color = get_color(val, THRESHOLDS['BWD'])
         ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
-        y-=0.06
+        y-=0.07
 
-    y-=0.03
-    ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.07
+    y-=0.05
+    ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.08
     for key, label in [('0-1km', '0-1 km'), ('0-3km', '0-3 km'), ('ESRH', 'Efectiva')]:
         val = params_calc.get(key if key == 'ESRH' else f'SRH_{key}', np.nan)
         color = get_color(val, THRESHOLDS['SRH'])
         ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
-        y-=0.06
-
+        y-=0.07
+        
     return fig
-
 def ui_caixa_parametres_sondeig(params):
     def get_color(value, thresholds, reverse_colors=False):
         if pd.isna(value): return "#808080"
