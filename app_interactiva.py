@@ -754,14 +754,16 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
     
     with col_sat:
         st.markdown("##### Satèl·lit - Topalls de Núvols (Meteociel)")
-        # Codi HTML/CSS per retallar i centrar la imatge a Catalunya
+        # Codi HTML/CSS ajustat per centrar millor a Catalunya
         html_code_sat = f"""
         <div style="width: 100%; height: 500px; overflow: hidden; border-radius: 10px; position: relative;">
             <img src="https://modeles20.meteociel.fr/satellite/animsatsandvisirmtgsp.gif?ver={int(time.time())}" 
-                 style="position: absolute; top: -5%; left: -110%; width: 200%; max-width: none;">
+                 style="position: absolute; top: -25%; left: -95%; width: 210%; max-width: none;">
         </div>
         """
         st.components.v1.html(html_code_sat, height=510)
+
+
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteologix & Rainviewer | IA per Google Gemini.</p>", unsafe_allow_html=True)
 
