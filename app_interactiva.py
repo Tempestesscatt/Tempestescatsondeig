@@ -27,7 +27,6 @@ import os
 import base64
 import threading
 import pandas as pd
-from io import BytesIO
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
@@ -125,24 +124,6 @@ def show_login_page():
     st.divider()
     if st.button("Entrar com a Convidat", use_container_width=True, type="secondary"):
         st.session_state.update({'guest_mode': True, 'logged_in': False}); st.rerun()
-
-@st.cache_data(ttl=600)
-def carregar_imatge_satelit(url):
-    try:
-        response = requests.get(f"{url}?ver={int(time.time() // 600)}", headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-        return (response.content, None) if response.status_code == 200 else (None, f"No s'ha pogut carregar la imatge. (Codi: {response.status_code})")
-    except Exception as e: return None, "Error de xarxa en carregar la imatge."
-
-def mostrar_imatge_temps_real(tipus):
-    if tipus == "Satèl·lit (Europa)": url, caption = "https://modeles20.meteociel.fr/satellite/animsatsandvisirmtgeu.gif", "Satèl·lit Sandvitx (Visible + Infraroig). Font: Meteociel"
-    elif tipus == "Satèl·lit (NE Península)":
-        now_local = datetime.now(TIMEZONE)
-        if 7 <= now_local.hour < 21: url, caption = "https://modeles20.meteociel.fr/satellite/animsatviscolmtgsp.gif", "Satèl·lit Visible (Nord-est). Font: Meteociel"
-        else: url, caption = "https://modeles20.meteociel.fr/satellite/animsatirmtgsp.gif", "Satèl·lit Infraroig (Nord-est). Font: Meteociel"
-    else: st.error("Tipus d'imatge no reconegut."); return
-    image_content, error_msg = carregar_imatge_satelit(url)
-    if image_content: st.image(image_content, caption=caption, use_container_width=True)
-    else: st.warning(error_msg)
 
 # --- Funcions de càrrega de dades ---
 @st.cache_data(ttl=3600)
@@ -428,7 +409,6 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     ax_params = fig.add_subplot(gs[1])
     fig.suptitle(titol, weight='bold', fontsize=16)
 
-    # --- Configuració del gràfic principal de l'Hodògraf ---
     h = Hodograph(ax_hodo, component_range=80.)
     h.add_grid(increment=20, color='gray', linestyle='--')
     
@@ -457,7 +437,6 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     ax_hodo.set_xlabel('U-Component (nusos)')
     ax_hodo.set_ylabel('V-Component (nusos)')
 
-    # --- Taula de Paràmetres a la dreta ---
     ax_params.axis('off')
     def get_color(value, thresholds):
         if pd.isna(value): return "grey"
@@ -510,9 +489,7 @@ def ui_caixa_parametres_sondeig(params):
 
     THRESHOLDS = {'SBCAPE': (100, 500, 1500, 2500), 'MUCAPE': (100, 500, 1500, 2500),
                   'MLCAPE': (50, 250, 1000, 2000), 'CAPE_0-3km': (25, 75, 150, 250),
-                  'SBCIN': (0, -25, -75, -150), 'LI': (0, -2, -5, -8),
-                  'BWD_0-6km': (10, 20, 30, 40), 'SRH_0-3km': (100, 150, 250, 400),
-                  'ESRH': (100, 150, 250, 400)}
+                  'SBCIN': (0, -25, -75, -150), 'LI': (0, -2, -5, -8)}
 
     def styled_metric(label, value, unit, param_key, precision=0, reverse_colors=False):
         color = get_color(value, THRESHOLDS.get(param_key, []), reverse_colors)
@@ -535,13 +512,6 @@ def ui_caixa_parametres_sondeig(params):
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True)
     with cols[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', precision=1, reverse_colors=True)
     with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
-
-    st.divider()
-    st.markdown("##### Paràmetres de Cisallament i Helicitat")
-    cols = st.columns(3)
-    with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
-    with cols[1]: styled_metric("SRH 0-3km", params.get('SRH_0-3km', np.nan), "m²/s²", 'SRH_0-3km')
-    with cols[2]: styled_metric("ESRH", params.get('ESRH', np.nan), "m²/s²", 'ESRH')
 
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
@@ -566,7 +536,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             plt.close(fig_hodo)
 
             st.markdown("##### Radar de Precipitació en Temps Real")
-            # --- LÍNIA MODIFICADA: Afegit el paràmetre '&play=1' per activar l'animació ---
             radar_url = f"https://www.rainviewer.com/map.html?loc={lat_sel},{lon_sel},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
             
             html_code = f"""
@@ -585,7 +554,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
 
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
-        
         
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent Meteo-Col·lega (amb Google Gemini)")
@@ -723,41 +691,38 @@ def ui_info_desenvolupament_tempesta():
 - **Més lent (> 45 min):** Convergència feble, **CIN alt** o aire sec a nivells mitjans.""")
 def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
     is_guest = st.session_state.get('guest_mode', False)
-    _, contingut_principal, _ = st.columns([0.05, 0.9, 0.05])
-    with contingut_principal:
-        col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large")
-        with col_map_1:
-            col_capa, col_zoom = st.columns(2)
-            with col_capa:
-                map_options = {"Anàlisi de Vent i Convergència": "forecast_estatic", "Vent a 700hPa": "vent_700", "Vent a 300hPa": "vent_300"}
-                mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
-            with col_zoom: zoom_sel = st.selectbox("Nivell de Zoom:", options=list(MAP_ZOOM_LEVELS.keys()))
-            selected_extent = MAP_ZOOM_LEVELS[zoom_sel]; map_key = map_options[mapa_sel]
-            if map_key == "forecast_estatic":
-                nivell_sel = 925 if is_guest else st.selectbox("Nivell d'anàlisi:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa")
-                if is_guest: st.info("ℹ️ L'anàlisi de vent i convergència està fixada a **925 hPa**.")
-                with progress_placeholder.container():
-                    progress_bar = st.progress(0, text="Carregant dades del model...")
-                    map_data, error_map = carregar_dades_mapa(nivell_sel, hourly_index_sel)
-                    if not error_map: progress_bar.progress(50, text="Generant visualització...")
-                if error_map: st.error(f"Error en carregar el mapa: {error_map}"); progress_placeholder.empty()
-                elif map_data:
-                    fig = crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str, selected_extent)
-                    st.pyplot(fig); plt.close(fig); ui_explicacio_alertes()
-                    with progress_placeholder.container(): progress_bar.progress(100, text="Completat!"); time.sleep(1); progress_placeholder.empty()
-            elif map_key in ["vent_700", "vent_300"]:
-                nivell = 700 if map_key == "vent_700" else 300
-                variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-                map_data, error_map = carregar_dades_mapa_base(variables, hourly_index_sel)
-                if error_map: st.error(f"Error en carregar el mapa: {error_map}")
-                elif map_data: 
-                    fig = crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str, selected_extent)
-                    st.pyplot(fig); plt.close(fig)
-        with col_map_2:
-            st.subheader("Imatges en Temps Real"); tab_europa, tab_ne = st.tabs(["Europa", "NE Peninsula"])
-            with tab_europa: mostrar_imatge_temps_real("Satèl·lit (Europa)")
-            with tab_ne: mostrar_imatge_temps_real("Satèl·lit (NE Península)")
-            st.markdown("---"); ui_info_desenvolupament_tempesta()
+    
+    st.markdown("---");
+    col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large")
+    with col_map_1:
+        col_capa, col_zoom = st.columns(2)
+        with col_capa:
+            map_options = {"Anàlisi de Vent i Convergència": "forecast_estatic", "Vent a 700hPa": "vent_700", "Vent a 300hPa": "vent_300"}
+            mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
+        with col_zoom: zoom_sel = st.selectbox("Nivell de Zoom:", options=list(MAP_ZOOM_LEVELS.keys()))
+        selected_extent = MAP_ZOOM_LEVELS[zoom_sel]; map_key = map_options[mapa_sel]
+        if map_key == "forecast_estatic":
+            nivell_sel = 925 if is_guest else st.selectbox("Nivell d'anàlisi:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa")
+            if is_guest: st.info("ℹ️ L'anàlisi de vent i convergència està fixada a **925 hPa**.")
+            with progress_placeholder.container():
+                progress_bar = st.progress(0, text="Carregant dades del model...")
+                map_data, error_map = carregar_dades_mapa(nivell_sel, hourly_index_sel)
+                if not error_map: progress_bar.progress(50, text="Generant visualització...")
+            if error_map: st.error(f"Error en carregar el mapa: {error_map}"); progress_placeholder.empty()
+            elif map_data:
+                fig = crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str, selected_extent)
+                st.pyplot(fig); plt.close(fig); ui_explicacio_alertes()
+                with progress_placeholder.container(): progress_bar.progress(100, text="Completat!"); time.sleep(1); progress_placeholder.empty()
+        elif map_key in ["vent_700", "vent_300"]:
+            nivell = 700 if map_key == "vent_700" else 300
+            variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            map_data, error_map = carregar_dades_mapa_base(variables, hourly_index_sel)
+            if error_map: st.error(f"Error en carregar el mapa: {error_map}")
+            elif map_data: 
+                fig = crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str, selected_extent)
+                st.pyplot(fig); plt.close(fig)
+    with col_map_2:
+        ui_info_desenvolupament_tempesta()
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteociel | IA per Google Gemini.</p>", unsafe_allow_html=True)
 
@@ -782,7 +747,8 @@ def main():
         lat_sel, lon_sel = ciutats_per_selector[poble_sel]['lat'], ciutats_per_selector[poble_sel]['lon']
         data_tuple, error_msg = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
         if error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
-        st.markdown("---"); global progress_placeholder; progress_placeholder = st.empty()
+        
+        global progress_placeholder; progress_placeholder = st.empty()
         if is_guest:
             tab_mapes, tab_vertical = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical"])
             with tab_mapes: ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
