@@ -172,63 +172,56 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             params_calc['LI'] = li_result[0].to('delta_degC').m if isinstance(li_result, tuple) else np.nan
 
         try:
-            h_agl_m = heights_agl.m
-            p_m = p.m
+            h_agl_m = heights_agl.m; p_m = p.m
             if 3000 <= h_agl_m[-1]:
                 p_3km_agl = np.interp(3000, h_agl_m, p_m) * units.hPa
                 cape_0_3, _ = mpcalc.cape_cin(p, T, Td, prof, top=p_3km_agl)
                 params_calc['CAPE_0-3km'] = cape_0_3.to('J/kg').m
-            else:
-                params_calc['CAPE_0-3km'] = np.nan
-        except: 
-            params_calc['CAPE_0-3km'] = np.nan
+            else: params_calc['CAPE_0-3km'] = np.nan
+        except: params_calc['CAPE_0-3km'] = np.nan
+
+        try: params_calc['PWAT'] = mpcalc.precipitable_water(p, Td).to('mm').m
+        except: params_calc['PWAT'] = np.nan
+        try: dcape, _ = mpcalc.dcape(p,T,Td); params_calc['DCAPE'] = dcape.to('J/kg').m
+        except: params_calc['DCAPE'] = np.nan
             
         try:
             lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50)
             params_calc['LCL_p'] = lcl_p; params_calc['LCL_Hgt'] = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
-        except: 
-            params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan * units.hPa, np.nan
+        except: params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan * units.hPa, np.nan
         
         try:
             lfc_result = mpcalc.lfc(p, T, Td, which='surface', parcel_profile=prof)
-            if isinstance(lfc_result, tuple) and len(lfc_result) == 2:
+            if isinstance(lfc_result, tuple):
                 lfc_p = lfc_result[0]
                 params_calc['LFC_p'] = lfc_p
                 params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m if hasattr(lfc_p, 'm') else np.nan
-            else: 
-                params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
-        except: 
-            params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
+            else: params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
+        except: params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
         
         try:
             el_result = mpcalc.el(p, T, Td, which='surface', parcel_profile=prof)
-            if isinstance(el_result, tuple) and len(el_result) == 2:
+            if isinstance(el_result, tuple):
                 el_p = el_result[0]
                 params_calc['EL_p'] = el_p
                 params_calc['EL_Hgt'] = mpcalc.pressure_to_height_std(el_p).to('m').m if hasattr(el_p, 'm') else np.nan
-            else: 
-                params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan * units.hPa, np.nan
-        except: 
-            params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan * units.hPa, np.nan
+            else: params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan * units.hPa, np.nan
+        except: params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan * units.hPa, np.nan
         
         try:
             p_frz = np.interp(0, T.to('degC').m[::-1], p.m[::-1]) * units.hPa
             params_calc['FRZG_Lvl_p'] = p_frz
-        except: 
-            params_calc['FRZG_Lvl_p'] = np.nan * units.hPa
+        except: params_calc['FRZG_Lvl_p'] = np.nan * units.hPa
 
         try:
             right_mover, left_mover, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
             params_calc['RM'] = right_mover; params_calc['LM'] = left_mover; params_calc['Mean_Wind'] = mean_wind
-        except: 
-            params_calc.update({'RM': None, 'LM': None, 'Mean_Wind': None})
+        except: params_calc.update({'RM': None, 'LM': None, 'Mean_Wind': None})
         
         depths = {'0-1km': 1000 * units.m, '0-6km': 6000 * units.m}
         for name, depth in depths.items():
-            try: 
-                params_calc[f'BWD_{name}'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights_agl, depth=depth)).to('kt').m
-            except: 
-                params_calc[f'BWD_{name}'] = np.nan
+            try: params_calc[f'BWD_{name}'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights_agl, depth=depth)).to('kt').m
+            except: params_calc[f'BWD_{name}'] = np.nan
         
         if params_calc.get('RM') is not None:
             try:
@@ -247,12 +240,9 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                     params_calc['EBWD'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights_agl, bottom=eff_h_bottom, depth=eff_depth)).to('kt').m
                     esrh, _, _ = mpcalc.storm_relative_helicity(heights_agl, u, v, bottom=eff_h_bottom, depth=eff_depth, storm_u=u_storm, storm_v=v_storm)
                     params_calc['ESRH'] = esrh.to('m**2/s**2').m
-                else: 
-                    params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
-            except: 
-                params_calc.update({'SR_Wind':None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
-        else: 
-            params_calc.update({'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
+                else: params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
+            except: params_calc.update({'SR_Wind':None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
+        else: params_calc.update({'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
             
         return ((p, T, Td, u, v, heights, prof), params_calc), None
     except Exception as e: 
@@ -492,6 +482,7 @@ def ui_caixa_parametres_sondeig(params):
         'MLCAPE': (50, 250, 1000, 2000), 'CAPE_0-3km': (25, 75, 150, 250),
         'DCAPE': (200, 500, 800, 1200),
         'SBCIN': (0, -25, -75, -150), 'LI': (0, -2, -5, -8),
+        'PWAT': (20, 30, 40, 50),
         'BWD_0-1km': (5, 10, 15, 20), 'BWD_0-6km': (10, 20, 30, 40), 
         'SRH_0-1km': (50, 100, 150, 250), 'SRH_0-3km': (100, 150, 250, 400),
         'ESRH': (100, 150, 250, 400)
@@ -517,29 +508,28 @@ def ui_caixa_parametres_sondeig(params):
 
     st.markdown("##### Paràmetres del Sondeig")
     
-    # Fila 1
+    # Fila 1 - Energia
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE')
     with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE')
     with cols[2]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE')
     
-    # Fila 2
+    # Fila 2 - Estabilitat i Humitat
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True)
     with cols[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', precision=1, reverse_colors=True)
-    with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
+    with cols[2]: styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1)
     
-    # Fila 3
+    # Fila 3 - Nivells i Potencial Descendent
     cols = st.columns(3)
     with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
     with cols[1]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
     with cols[2]: styled_metric("DCAPE", params.get('DCAPE', np.nan), "J/kg", 'DCAPE')
     
-    # Fila 4
+    # Fila 4 - Cisallament i Rotació
     cols = st.columns(4)
-    with cols[0]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km')
-    with cols[1]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
-    with cols[2]: styled_metric("SRH 0-1km", params.get('SRH_0-1km', np.nan), "m²/s²", 'SRH_0-1km')
+    with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
+    with cols[1]: styled_metric("SRH 0-1km", params.get('SRH_0-1km', np.nan), "m²/s²", 'SRH_0-1km')
     
     rm_vec = params.get('RM')
     if rm_vec:
@@ -548,7 +538,8 @@ def ui_caixa_parametres_sondeig(params):
         rm_str = f"{direction:.0f}°/{speed:.0f} kts"
     else:
         rm_str = "---"
-    with cols[3]: styled_text("Moviment RM", rm_str)
+    with cols[2]: styled_text("Moviment RM", rm_str)
+    with cols[3]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
         
         
 
