@@ -586,14 +586,19 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
             
-            ui_caixa_parametres(params_calculats)
-            st.markdown("---")
+            # ===> CORRECCIÓ: La funció es diu 'ui_llegenda_sondeig', no 'ui_caixa_parametres' <===
+            # Aquesta caixa de paràmetres ara va a dalt de tot.
+            ui_llegenda_sondeig(params_calculats)
+
+            st.markdown("---") # Separador visual
 
             col1, col2 = st.columns(2)
             with col1:
+                titol_s, _ = analitzar_tipus_sondeig(params_calculats)
                 fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}")
                 st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
             with col2:
+                titol_h, _ = analitzar_tipus_hodograf(params_calculats)
                 fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
                 st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
 
@@ -612,7 +617,9 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                 - **BWD (Cisallament):** Valors > 40 nusos (0-6 km) afavoreixen l'organització de les tempestes.
                 - **Vent Relatiu vs. Altura:** Mostra com de fort és el vent relatiu a la tempesta a diferents altures. Valors alts a nivells baixos afavoreixen la formació de tornados.
                 """)
-    else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
+    else:
+        st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
+        
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteociel | IA per Google Gemini.</p>", unsafe_allow_html=True)
 
