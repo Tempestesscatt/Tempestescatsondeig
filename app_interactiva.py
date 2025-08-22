@@ -377,6 +377,24 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     skew.ax.legend()
     return fig
 
+@st.cache_data(ttl=600)
+def carregar_imatge_satelit(url):
+    try:
+        response = requests.get(f"{url}?ver={int(time.time() // 600)}", headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+        return (response.content, None) if response.status_code == 200 else (None, f"No s'ha pogut carregar la imatge. (Codi: {response.status_code})")
+    except Exception as e: return None, "Error de xarxa en carregar la imatge."
+
+def mostrar_imatge_temps_real(tipus):
+    if tipus == "Satèl·lit (Europa)": url, caption = "https://modeles20.meteociel.fr/satellite/animsatsandvisirmtgeu.gif", "Satèl·lit Sandvitx (Visible + Infraroig). Font: Meteociel"
+    elif tipus == "Satèl·lit (NE Península)":
+        now_local = datetime.now(TIMEZONE)
+        if 7 <= now_local.hour < 21: url, caption = "https://modeles20.meteociel.fr/satellite/animsatviscolmtgsp.gif", "Satèl·lit Visible (Nord-est). Font: Meteociel"
+        else: url, caption = "https://modeles20.meteociel.fr/satellite/animsatirmtgsp.gif", "Satèl·lit Infraroig (Nord-est). Font: Meteociel"
+    else: st.error("Tipus d'imatge no reconegut."); return
+    image_content, error_msg = carregar_imatge_satelit(url)
+    if image_content: st.image(image_content, caption=caption, use_container_width=True)
+    else: st.warning(error_msg)
+
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(7, 9))
     gs = fig.add_gridspec(nrows=2, ncols=1, height_ratios=[2, 1], hspace=0.3, top=0.92, bottom=0.05, left=0.05, right=0.95)
