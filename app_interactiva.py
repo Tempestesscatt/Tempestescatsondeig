@@ -176,6 +176,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         
         params_calc = {}
         prof = None 
+        heights_agl = heights - heights[0] # Calculem l'altura sobre el terra (AGL)
         
         with parcel_lock:
             prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
@@ -191,8 +192,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             
             li_result = mpcalc.lifted_index(p, T, Td)
             params_calc['LI'] = li_result[0].to('delta_degC').m if isinstance(li_result, tuple) else np.nan
-
-        heights_agl = heights - heights[0]
+        
         try:
             p_3km_agl = np.interp(3000, heights_agl.m, p.m) * units.hPa
             cape_0_3, _ = mpcalc.cape_cin(p, T, Td, prof, top=p_3km_agl)
@@ -228,21 +228,26 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         except: params_calc['FRZG_Lvl_p'] = np.nan * units.hPa
 
         try:
+            # Bunkers utilitza l'altura geopotencial, per això passem 'heights'
             right_mover, left_mover, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
             params_calc['RM'] = right_mover; params_calc['LM'] = left_mover; params_calc['Mean_Wind'] = mean_wind
         except: params_calc.update({'RM': None, 'LM': None, 'Mean_Wind': None})
         
         depths = {'0-1km': 1000 * units.m, '0-6km': 6000 * units.m}
         for name, depth in depths.items():
-            try: params_calc[f'BWD_{name}'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights, depth=depth)).to('kt').m
-            except: params_calc[f'BWD_{name}'] = np.nan
+            try: 
+                # Per a cisallament basat en capes des de superfície, fem servir AGL
+                params_calc[f'BWD_{name}'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights_agl, depth=depth)).to('kt').m
+            except: 
+                params_calc[f'BWD_{name}'] = np.nan
         
         if params_calc.get('RM') is not None:
             try:
                 u_storm, v_storm = params_calc['RM']
                 params_calc['SR_Wind'] = mpcalc.wind_speed(u - u_storm, v - v_storm).to('kt')
-                srh_0_1, _, _ = mpcalc.storm_relative_helicity(heights, u, v, depth=1000 * units.m, storm_u=u_storm, storm_v=v_storm)
-                srh_0_3, _, _ = mpcalc.storm_relative_helicity(heights, u, v, depth=3000 * units.m, storm_u=u_storm, storm_v=v_storm)
+                # Per a helicitat basada en capes des de superfície, fem servir AGL
+                srh_0_1, _, _ = mpcalc.storm_relative_helicity(heights_agl, u, v, depth=1000 * units.m, storm_u=u_storm, storm_v=v_storm)
+                srh_0_3, _, _ = mpcalc.storm_relative_helicity(heights_agl, u, v, depth=3000 * units.m, storm_u=u_storm, storm_v=v_storm)
                 params_calc['SRH_0-1km'] = srh_0_1.to('m**2/s**2').m
                 params_calc['SRH_0-3km'] = srh_0_3.to('m**2/s**2').m
                 
@@ -261,6 +266,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         return ((p, T, Td, u, v, heights, prof), params_calc), None
     except Exception as e: 
         return None, f"Error en processar dades del sondeig: {e}"
+        
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base(variables, hourly_index):
