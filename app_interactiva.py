@@ -508,7 +508,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     # --- Radar Catalunya (ejemplo RainViewer) ---
     try:
         url = "https://tilecache.rainviewer.com/v2/radar/nowcast_0/512/7/66/44/2/1_1.png"
-"
+
         resp = requests.get(url, timeout=10)
         img = Image.open(BytesIO(resp.content))
         ax_radar.imshow(img)
