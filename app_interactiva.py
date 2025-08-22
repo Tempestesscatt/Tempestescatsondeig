@@ -727,7 +727,7 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
         st.markdown("##### Visualització en Temps Real")
         tab_sat, tab_radar = st.tabs(["Satèl·lit (Topalls de núvols)", "Radar de Precipitació"])
         with tab_sat:
-            st.components.v1.html('<iframe src="https://meteologix.com/es/satellite/spain-portugal/satellite-cloud-tops-alert-10m-superhd.html" style="border:0; width:100%; height:450px;"></iframe>', height=460)
+            st.components.v1.html('<iframe src="https://modeles20.meteociel.fr/satellite/animsatsandvisirmtgsp.gif" style="border:0; width:100%; height:450px;"></iframe>', height=460)
         with tab_radar:
             radar_url = f"https://www.rainviewer.com/map.html?loc=41.8,1.8,6&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
             html_code = f"""
