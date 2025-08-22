@@ -480,66 +480,46 @@ def ui_caixa_parametres_sondeig(params):
     THRESHOLDS = {
         'SBCAPE': (100, 500, 1500, 2500), 'MUCAPE': (100, 500, 1500, 2500),
         'MLCAPE': (50, 250, 1000, 2000), 'CAPE_0-3km': (25, 75, 150, 250),
-        'DCAPE': (200, 500, 800, 1200),
-        'SBCIN': (0, -25, -75, -150), 'LI': (0, -2, -5, -8),
-        'PWAT': (20, 30, 40, 50),
-        'BWD_0-1km': (5, 10, 15, 20), 'BWD_0-6km': (10, 20, 30, 40), 
-        'SRH_0-1km': (50, 100, 150, 250), 'SRH_0-3km': (100, 150, 250, 400),
-        'ESRH': (100, 150, 250, 400)
+        'DCAPE': (200, 500, 800, 1200), 'SBCIN': (0, -25, -75, -150), 
+        'LI': (0, -2, -5, -8), 'PWAT': (20, 30, 40, 50),
+        'BWD_0-6km': (10, 20, 30, 40), 'SRH_0-1km': (50, 100, 150, 250)
     }
 
     def styled_metric(label, value, unit, param_key, precision=0, reverse_colors=False):
         color = get_color(value, THRESHOLDS.get(param_key, []), reverse_colors)
         val_str = f"{value:.{precision}f}" if not pd.isna(value) else "---"
         st.markdown(f"""
-            <div style="text-align: center; padding: 2px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 5px;">
-                <span style="font-size: 0.75em; color: #FAFAFA;">{label} ({unit})</span><br>
-                <strong style="font-size: 1.5em; color: {color};">{val_str}</strong>
-            </div>
-            """, unsafe_allow_html=True)
-
-    def styled_text(label, value_str):
-        st.markdown(f"""
-            <div style="text-align: center; padding: 2px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 5px;">
-                <span style="font-size: 0.75em; color: #FAFAFA;">{label}</span><br>
-                <strong style="font-size: 1.5em; color: #FAFAFA;">{value_str}</strong>
+            <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
+                <span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit})</span><br>
+                <strong style="font-size: 1.6em; color: {color};">{val_str}</strong>
             </div>
             """, unsafe_allow_html=True)
 
     st.markdown("##### Paràmetres del Sondeig")
     
-    # Fila 1 - Energia
+    # Fila 1: Energia Principal
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE')
     with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE')
     with cols[2]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE')
     
-    # Fila 2 - Estabilitat i Humitat
+    # Fila 2: Estabilitat i Humitat
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True)
     with cols[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', precision=1, reverse_colors=True)
     with cols[2]: styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1)
     
-    # Fila 3 - Nivells i Potencial Descendent
+    # Fila 3: Nivells i Potencial Descendent
     cols = st.columns(3)
     with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
     with cols[1]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
     with cols[2]: styled_metric("DCAPE", params.get('DCAPE', np.nan), "J/kg", 'DCAPE')
     
-    # Fila 4 - Cisallament i Rotació
-    cols = st.columns(4)
+    # Fila 4: Paràmetres de Cisallament / Rotació
+    cols = st.columns(3)
     with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
     with cols[1]: styled_metric("SRH 0-1km", params.get('SRH_0-1km', np.nan), "m²/s²", 'SRH_0-1km')
-    
-    rm_vec = params.get('RM')
-    if rm_vec:
-        speed = mpcalc.wind_speed(*rm_vec).to('kt').m
-        direction = mpcalc.wind_direction(*rm_vec).to('deg').m
-        rm_str = f"{direction:.0f}°/{speed:.0f} kts"
-    else:
-        rm_str = "---"
-    with cols[2]: styled_text("Moviment RM", rm_str)
-    with cols[3]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
+    with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
         
         
 
