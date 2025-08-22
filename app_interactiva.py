@@ -578,6 +578,8 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
             with tab_europa: mostrar_imatge_temps_real("Satèl·lit (Europa)")
             with tab_ne: mostrar_imatge_temps_real("Satèl·lit (NE Península)")
             st.markdown("---"); ui_info_desenvolupament_tempesta()
+# Substitueix la teva funció ui_pestanya_vertical() sencera per aquesta:
+
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
         sounding_data, params_calculats = data_tuple
@@ -586,16 +588,19 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
             
-            ui_caixa_parametres(params_calculats)
-            st.markdown("---")
+            # La línia que donava l'error (ui_caixa_parametres(params_calculats)) ha estat eliminada d'aquí.
 
             col1, col2 = st.columns(2)
             with col1:
-                fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}")
-                st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
+                titol_s, _ = analitzar_tipus_sondeig(params_calculats)
+                fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical - {poble_sel}\n{titol_s}")
+                st.pyplot(fig_skewt, use_container_width=True)
+                plt.close(fig_skewt)
             with col2:
-                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
-                st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
+                titol_h, _ = analitzar_tipus_hodograf(params_calculats)
+                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat - {poble_sel}\n{titol_h}")
+                st.pyplot(fig_hodo, use_container_width=True)
+                plt.close(fig_hodo)
 
             with st.expander("❔ Com interpretar els paràmetres i gràfics"):
                 st.markdown("""
@@ -612,7 +617,8 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                 - **BWD (Cisallament):** Valors > 40 nusos (0-6 km) afavoreixen l'organització de les tempestes.
                 - **Vent Relatiu vs. Altura:** Mostra com de fort és el vent relatiu a la tempesta a diferents altures. Valors alts a nivells baixos afavoreixen la formació de tornados.
                 """)
-    else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
+    else:
+        st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteociel | IA per Google Gemini.</p>", unsafe_allow_html=True)
 
