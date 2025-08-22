@@ -125,6 +125,24 @@ def show_login_page():
     if st.button("Entrar com a Convidat", use_container_width=True, type="secondary"):
         st.session_state.update({'guest_mode': True, 'logged_in': False}); st.rerun()
 
+@st.cache_data(ttl=600)
+def carregar_imatge_satelit(url):
+    try:
+        response = requests.get(f"{url}?ver={int(time.time() // 600)}", headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+        return (response.content, None) if response.status_code == 200 else (None, f"No s'ha pogut carregar la imatge. (Codi: {response.status_code})")
+    except Exception as e: return None, "Error de xarxa en carregar la imatge."
+
+def mostrar_imatge_temps_real(tipus):
+    if tipus == "Satèl·lit (Europa)": url, caption = "https://modeles20.meteociel.fr/satellite/animsatsandvisirmtgeu.gif", "Satèl·lit Sandvitx (Visible + Infraroig). Font: Meteociel"
+    elif tipus == "Satèl·lit (NE Península)":
+        now_local = datetime.now(TIMEZONE)
+        if 7 <= now_local.hour < 21: url, caption = "https://modeles20.meteociel.fr/satellite/animsatviscolmtgsp.gif", "Satèl·lit Visible (Nord-est). Font: Meteociel"
+        else: url, caption = "https://modeles20.meteociel.fr/satellite/animsatirmtgsp.gif", "Satèl·lit Infraroig (Nord-est). Font: Meteociel"
+    else: st.error("Tipus d'imatge no reconegut."); return
+    image_content, error_msg = carregar_imatge_satelit(url)
+    if image_content: st.image(image_content, caption=caption, use_container_width=True)
+    else: st.warning(error_msg)
+
 # --- Funcions de càrrega de dades ---
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
