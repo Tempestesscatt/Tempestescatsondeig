@@ -309,27 +309,43 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 def crear_skewt(p, T, Td, u, v, params_calc, titol):
     fig = plt.figure(figsize=(9, 10), dpi=150)
-    gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[2, 1.2], top=0.92, bottom=0.1, left=0.1, right=0.95)
-    ax_skew = fig.add_subplot(gs[0, 0]); ax_text = fig.add_subplot(gs[0, 1]); ax_text.axis('off')
-    skew = SkewT(fig, ax=ax_skew, rotation=45)
     
-    skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2.5, label='Temperatura'); skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
-    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
-    skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
-    prof = mpcalc.parcel_profile(p, T[0], Td[0]); skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
-    skew.shade_cape(p, T, prof, color='red', alpha=0.3); skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
-    skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40); fig.suptitle(titol, weight='bold', fontsize=14); skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
+    # ===> CORRECCIÓ: Creem el SkewT passant la figura i el rectangle (rect), no l'eix (ax) <====
+    skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.65, 0.8)) 
+    
+    ax_text = fig.add_axes([0.75, 0.1, 0.25, 0.8])
+    ax_text.axis('off')
+
+    skew.ax.grid(True, linestyle='-', alpha=0.5)
+    skew.plot(p, T, 'r', lw=2.5, label='Temperatura')
+    skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
+    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
+    skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
+    skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6)
+    skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
+    
+    prof = mpcalc.parcel_profile(p, T[0], Td[0])
+    skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+    skew.shade_cape(p, T, prof, color='red', alpha=0.3)
+    skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
+    
+    skew.ax.set_ylim(1000, 100)
+    skew.ax.set_xlim(-40, 40)
+    fig.suptitle(titol, weight='bold', fontsize=14)
+    skew.ax.set_xlabel("Temperatura (°C)")
+    skew.ax.set_ylabel("Pressió (hPa)")
     
     levels_to_plot = {'LCL_p': 'LCL', 'FRZG_Lvl_p': '0°C', 'LFC_p': None, 'EL_p': None}
     for key, name in levels_to_plot.items():
         p_lvl = params_calc.get(key)
         if p_lvl is not None and hasattr(p_lvl, 'm') and not np.isnan(p_lvl.m):
             skew.ax.axhline(p_lvl.m, color='blue', linestyle='--', linewidth=1.5)
-            if name: skew.ax.text(skew.ax.get_xlim()[1], p_lvl.m, f' {name}', color='blue', ha='left', va='center', fontsize=10, weight='bold')
+            if name:
+                skew.ax.text(skew.ax.get_xlim()[1], p_lvl.m, f' {name}', color='blue', ha='left', va='center', fontsize=10, weight='bold')
+
     skew.ax.legend()
     
-    def fmt(val, unit): return f"{val:.1f} {unit}" if not np.isnan(val) else "---"
-    def fmt_int(val, unit): return f"{val:.0f} {unit}" if not np.isnan(val) else "---"
+    def fmt_int(val, unit): return f"{val:.0f} {unit}" if val is not None and not np.isnan(val) else "---"
     
     y = 0.95; x_lab = 0.05; x_val = 0.95
     ax_text.text(x_lab, y, "Nivells Clau:", weight='bold'); y-=0.06
@@ -342,11 +358,7 @@ def crear_skewt(p, T, Td, u, v, params_calc, titol):
     ax_text.text(x_lab, y, "SB CAPE:", color=get_color_for_param(params_calc.get('CAPE_total'), 'cape')); ax_text.text(x_val, y, fmt_int(params_calc.get('CAPE_total', np.nan), 'J/kg'), ha='right', color=get_color_for_param(params_calc.get('CAPE_total'), 'cape')); y-=0.05
     ax_text.text(x_lab, y, "MU CAPE:", color=get_color_for_param(params_calc.get('MU_CAPE'), 'cape')); ax_text.text(x_val, y, fmt_int(params_calc.get('MU_CAPE', np.nan), 'J/kg'), ha='right', color=get_color_for_param(params_calc.get('MU_CAPE'), 'cape')); y-=0.05
     ax_text.text(x_lab, y, "ML CAPE:", color=get_color_for_param(params_calc.get('ML_CAPE'), 'cape')); ax_text.text(x_val, y, fmt_int(params_calc.get('ML_CAPE', np.nan), 'J/kg'), ha='right', color=get_color_for_param(params_calc.get('ML_CAPE'), 'cape')); y-=0.05
-    ax_text.text(x_lab, y, "CIN:"); ax_text.text(x_val, y, fmt_int(params_calc.get('CIN_total', np.nan), 'J/kg'), ha='right'); y-=0.08
-    
-    ax_text.text(x_lab, y, "Índexs d'Inestabilitat:", weight='bold'); y-=0.06
-    ax_text.text(x_lab, y, "KI:"); ax_text.text(x_val, y, fmt(params_calc.get('KI', np.nan), '°C'), ha='right'); y-=0.05
-    ax_text.text(x_lab, y, "TT:"); ax_text.text(x_val, y, fmt(params_calc.get('TT', np.nan), '°C'), ha='right')
+    ax_text.text(x_lab, y, "CIN:"); ax_text.text(x_val, y, fmt_int(params_calc.get('CIN_total', np.nan), 'J/kg'), ha='right')
 
     return fig
 def crear_hodograf_avancat(p, u, v, heights, titol):
