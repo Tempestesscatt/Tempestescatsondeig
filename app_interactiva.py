@@ -695,8 +695,8 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
     
     st.markdown("---")
     
-    # --- Secció de Mapes de Pronòstic i Visualització en Temps Real en dues columnes ---
-    col1, col2 = st.columns(2, gap="large")
+    # --- LÍNIA MODIFICADA: Canviem la proporció de les columnes ---
+    col1, col2 = st.columns([0.7, 0.3], gap="large") # El mapa ocuparà el 70% i el satèl·lit el 30%
 
     with col1:
         st.markdown("#### Mapes de Pronòstic (Model AROME)")
@@ -740,14 +740,11 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
     with col2:
         st.markdown("#### Visualització en Temps Real (Meteociel)")
         
-        # --- ENLLAÇ MODIFICAT PER UN QUE ESTÀ MÉS CENTRAT AL NORD-EST ---
         now_local = datetime.now(TIMEZONE)
         if 7 <= now_local.hour < 21:
-            # Durant el dia, utilitzem l'animació del visible
             sat_url = f"https://modeles20.meteociel.fr/satellite/animsatviscolmtgsp.gif?ver={int(time.time())}"
             caption = "Satèl·lit Visible (NE Peninsular)"
         else:
-            # Durant la nit, l'infraroig
             sat_url = f"https://modeles20.meteociel.fr/satellite/animsatirmtgsp.gif?ver={int(time.time())}"
             caption = "Satèl·lit Infraroig (NE Peninsular)"
         
@@ -755,6 +752,7 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
         
         with st.container(border=True):
             ui_info_desenvolupament_tempesta()
+            
 
 
 def ui_peu_de_pagina():
