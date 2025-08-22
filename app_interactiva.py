@@ -422,16 +422,13 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     return fig
 
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
-    fig = plt.figure(dpi=150, figsize=(10, 9))
-    gs = fig.add_gridspec(nrows=2, ncols=2, height_ratios=[3, 1], width_ratios=[1.5, 1], hspace=0.3, wspace=0.3)
-
-    ax_hodo   = fig.add_subplot(gs[0, 0])
-    ax_params = fig.add_subplot(gs[0, 1])
-    ax_radar  = fig.add_subplot(gs[1, :])  # radar ocupa toda la fila inferior
-    
+    fig = plt.figure(dpi=150, figsize=(8, 7))
+    gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[1.5, 1], wspace=0.3)
+    ax_hodo = fig.add_subplot(gs[0])
+    ax_params = fig.add_subplot(gs[1])
     fig.suptitle(titol, weight='bold', fontsize=16)
 
-    # --- Hodógrafo ---
+    # --- Configuració del gràfic principal de l'Hodògraf ---
     h = Hodograph(ax_hodo, component_range=80.)
     h.add_grid(increment=20, color='gray', linestyle='--')
     
@@ -442,30 +439,25 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     for alt_km in [1, 3, 6, 9]:
         try:
             idx = np.argmin(np.abs(heights - alt_km * 1000 * units.m))
-            ax_hodo.text(u[idx].to('kt').m + 1, v[idx].to('kt').m + 1, 
-                         f'{alt_km}km', fontsize=9, 
-                         path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
-        except:
-            continue
+            ax_hodo.text(u[idx].to('kt').m + 1, v[idx].to('kt').m + 1, f'{alt_km}km', fontsize=9, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+        except: continue
     
     motion = {'RM': params_calc.get('RM'), 'LM': params_calc.get('LM'), 'Vent Mitjà': params_calc.get('Mean_Wind')}
     if all(v is not None for v in motion.values()):
         for name, vec in motion.items():
             u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m
             marker = 's' if 'Mitjà' in name else 'o'
-            ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, 
-                         fillstyle='none', mew=1.5)
+            ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
 
     try:
         shear_vec = mpcalc.bulk_shear(p, u, v, height=heights - heights[0], depth=6000 * units.m)
         ax_hodo.arrow(0, 0, shear_vec[0].to('kt').m, shear_vec[1].to('kt').m,
                       color='black', linestyle='--', alpha=0.7, head_width=2, length_includes_head=True)
-    except:
-        pass
+    except: pass
     ax_hodo.set_xlabel('U-Component (nusos)')
     ax_hodo.set_ylabel('V-Component (nusos)')
 
-    # --- Taula de Paràmetres ---
+    # --- Taula de Paràmetres a la dreta ---
     ax_params.axis('off')
     def get_color(value, thresholds):
         if pd.isna(value): return "grey"
@@ -492,8 +484,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     for key, label in [('0-1km', '0-1 km'), ('0-6km', '0-6 km'), ('EBWD', 'Efectiu')]:
         val = params_calc.get(key if key == 'EBWD' else f'BWD_{key}', np.nan)
         color = get_color(val, THRESHOLDS['BWD'])
-        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", 
-                         ha='right', weight='bold', color=color)
+        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
         y-=0.07
 
     y-=0.05
@@ -501,23 +492,9 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     for key, label in [('0-1km', '0-1 km'), ('0-3km', '0-3 km'), ('ESRH', 'Efectiva')]:
         val = params_calc.get(key if key == 'ESRH' else f'SRH_{key}', np.nan)
         color = get_color(val, THRESHOLDS['SRH'])
-        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", 
-                         ha='right', weight='bold', color=color)
+        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
         y-=0.07
-
-    # --- Radar Catalunya seguro ---
-    try:
-        # Tile PNG de RainViewer centrado en Catalunya (zoom 7)
-        url = "https://tilecache.rainviewer.com/v2/radar/nowcast_0/512/7/66/44/2/1_1.png"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        resp = requests.get(url, headers=headers, timeout=10)
-        img = Image.open(BytesIO(resp.content))
-        ax_radar.imshow(img)
-        ax_radar.axis("off")
-        ax_radar.set_title("Radar Catalunya (RainViewer)", fontsize=12)
-    except Exception as e:
-        ax_radar.text(0.5, 0.5, f"Radar no disponible\n{e}", ha="center", va="center")
-
+        
     return fig
 
 def ui_caixa_parametres_sondeig(params):
@@ -568,6 +545,9 @@ def ui_caixa_parametres_sondeig(params):
 
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
+        lat_sel = CIUTATS_CATALUNYA[poble_sel]['lat']
+        lon_sel = CIUTATS_CATALUNYA[poble_sel]['lon']
+        
         sounding_data, params_calculats = data_tuple
         p, T, Td, u, v, heights, prof = sounding_data
         
@@ -584,6 +564,11 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
+
+            st.markdown("##### Radar de Precipitació en Temps Real")
+            radar_url = f"https://www.rainviewer.com/map.html?loc={lat_sel},{lon_sel},8&oCS=1&c=3&o=83&lm=1&layer=radar&sm=1&sn=1&ts=2"
+            st.components.v1.html(f'<iframe src="{radar_url}" width="100%" frameborder="0" style="border:0; border-radius: 10px; height:400px;" allowfullscreen></iframe>', height=410)
+
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 
