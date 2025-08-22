@@ -586,17 +586,14 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
             
-            # La caixa de paràmetres ara va a dalt de tot
             ui_caixa_parametres(params_calculats)
-            st.markdown("---") # Separador visual
+            st.markdown("---")
 
             col1, col2 = st.columns(2)
             with col1:
-                # El títol del gràfic ara és més simple
                 fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}")
                 st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
             with col2:
-                # El títol del gràfic ara és més simple
                 fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
                 st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
 
@@ -622,73 +619,43 @@ def ui_peu_de_pagina():
 def main():
     if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
     if 'guest_mode' not in st.session_state: st.session_state['guest_mode'] = False
-    if not st.session_state['logged_in'] and not st.session_state['guest_mode']:
-        show_login_page()
+    if not st.session_state['logged_in'] and not st.session_state['guest_mode']: show_login_page()
     else:
-        is_guest = st.session_state.get('guest_mode', False)
-        now_local = datetime.now(TIMEZONE)
+        is_guest = st.session_state.get('guest_mode', False); now_local = datetime.now(TIMEZONE)
         hora_sel_str = f"{now_local.hour:02d}:00h" if is_guest else st.session_state.get('hora_selector', f"{now_local.hour:02d}:00h")
         dia_sel_str = "Avui" if is_guest else st.session_state.get('dia_selector', "Avui")
         target_date = now_local.date() + timedelta(days=1) if dia_sel_str == "Demà" else now_local.date()
         local_dt = TIMEZONE.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
         start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         hourly_index_sel = max(0, int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600))
-        
-        if is_guest:
-            ciutats_per_selector, info_msg = obtenir_ciutats_actives(hourly_index_sel)
-        else:
-            ciutats_per_selector = CIUTATS_CATALUNYA
-            info_msg = None
-
+        ciutats_per_selector, info_msg = obtenir_ciutats_actives(hourly_index_sel) if is_guest else (CIUTATS_CATALUNYA, None)
         ui_capcalera_selectors(ciutats_per_selector, info_msg)
-        
         poble_sel = st.session_state.poble_selector
-        if poble_sel not in ciutats_per_selector:
-            st.session_state.poble_selector = sorted(ciutats_per_selector.keys())[0]
-            st.rerun()
-        
+        if poble_sel not in ciutats_per_selector: st.session_state.poble_selector = sorted(ciutats_per_selector.keys())[0]; st.rerun()
         dia_sel, hora_sel = st.session_state.dia_selector, st.session_state.hora_selector
         timestamp_str = f"{dia_sel} a les {hora_sel} (Hora Local)"
         lat_sel, lon_sel = ciutats_per_selector[poble_sel]['lat'], ciutats_per_selector[poble_sel]['lon']
         data_tuple, error_msg = carregar_dades_sondeig(lat_sel, lon_sel, hourly_index_sel)
-        
-        if error_msg:
-            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
-        
-        st.markdown("---")
-        global progress_placeholder
-        progress_placeholder = st.empty()
-        
+        if error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        st.markdown("---"); global progress_placeholder; progress_placeholder = st.empty()
         if is_guest:
             tab_mapes, tab_vertical = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical"])
-            with tab_mapes:
-                ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
-            with tab_vertical:
-                ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
+            with tab_mapes: ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
+            with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
         else:
             current_selection = f"{poble_sel}-{dia_sel}-{hora_sel}"
             if current_selection != st.session_state.get('last_selection'):
                 if 'messages' in st.session_state: del st.session_state.messages
                 if 'chat' in st.session_state: del st.session_state.chat
                 st.session_state.last_selection = current_selection
-            
             chat_history = load_and_clean_chat_history()
-            if 'last_seen_timestamp' not in st.session_state:
-                st.session_state.last_seen_timestamp = chat_history[-1]['timestamp'] if chat_history else 0
-            
+            if 'last_seen_timestamp' not in st.session_state: st.session_state.last_seen_timestamp = chat_history[-1]['timestamp'] if chat_history else 0
             unread_count = count_unread_messages(chat_history)
             chat_tab_label = f"💬 Xat ({unread_count})" if unread_count > 0 else "💬 Xat"
-
             tab_ia, tab_xat, tab_mapes, tab_vertical = st.tabs(["Assistent MeteoIA", chat_tab_label, "Anàlisi de Mapes", "Anàlisi Vertical"])
-            
-            with tab_ia:
-                ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
-            with tab_xat:
-                ui_pestanya_xat(chat_history)
-            with tab_mapes:
-                ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
-            with tab_vertical:
-                ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
-            
+            with tab_ia: ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
+            with tab_xat: ui_pestanya_xat(chat_history)
+            with tab_mapes: ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
+            with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
         ui_peu_de_pagina()
 if __name__ == "__main__": main()
