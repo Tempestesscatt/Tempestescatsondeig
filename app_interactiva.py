@@ -547,7 +547,7 @@ def ui_caixa_parametres_sondeig(params):
         rm_str = f"{direction:.0f}°/{speed:.0f} kts"
     else:
         rm_str = "---"
-    with cols[2]: styled_text("Moviment RM", rm_str)```
+    with cols[2]: styled_text("Moviment RM", rm_str)
         
 
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
