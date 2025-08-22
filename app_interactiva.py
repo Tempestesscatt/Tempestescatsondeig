@@ -689,54 +689,73 @@ def ui_info_desenvolupament_tempesta():
         st.markdown("""Un cop s'activa un nucli de convergència, el temps estimat per al desenvolupament d'un Cumulonimbus sol ser d'entre **20 a 60 minuts**.
 - **Més ràpid (< 30 min):** Convergència intensa, **CAPE alt** i **CIN baix**.
 - **Més lent (> 45 min):** Convergència feble, **CIN alt** o aire sec a nivells mitjans.""")
+
 def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
     is_guest = st.session_state.get('guest_mode', False)
     
-    st.markdown("---");
-    col_map_1, col_map_2 = st.columns([0.6, 0.4], gap="large")
-    with col_map_1:
-        col_capa, col_zoom = st.columns(2)
-        with col_capa:
-            map_options = {"Anàlisi de Vent i Convergència": "forecast_estatic", "Vent a 700hPa": "vent_700", "Vent a 300hPa": "vent_300"}
-            mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
-        with col_zoom: zoom_sel = st.selectbox("Nivell de Zoom:", options=list(MAP_ZOOM_LEVELS.keys()))
-        selected_extent = MAP_ZOOM_LEVELS[zoom_sel]; map_key = map_options[mapa_sel]
-        
-        if map_key == "forecast_estatic":
-            nivell_sel = 925 if is_guest else st.selectbox("Nivell d'anàlisi:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa")
-            if is_guest: st.info("ℹ️ L'anàlisi de vent i convergència està fixada a **925 hPa**.")
-            with progress_placeholder.container():
-                progress_bar = st.progress(0, text="Carregant dades del model...")
-                map_data, error_map = carregar_dades_mapa(nivell_sel, hourly_index_sel)
-                if not error_map: progress_bar.progress(50, text="Generant visualització...")
-            if error_map: st.error(f"Error en carregar el mapa: {error_map}"); progress_placeholder.empty()
-            elif map_data:
-                fig = crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str, selected_extent)
-                st.pyplot(fig); plt.close(fig); ui_explicacio_alertes()
-                with progress_placeholder.container(): progress_bar.progress(100, text="Completat!"); time.sleep(1); progress_placeholder.empty()
-        elif map_key in ["vent_700", "vent_300"]:
-            nivell = 700 if map_key == "vent_700" else 300
-            variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-            map_data, error_map = carregar_dades_mapa_base(variables, hourly_index_sel)
-            if error_map: st.error(f"Error en carregar el mapa: {error_map}")
-            elif map_data: 
-                fig = crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str, selected_extent)
-                st.pyplot(fig); plt.close(fig)
+    st.markdown("---")
+    
+    # --- Secció de Mapes de Pronòstic ---
+    st.markdown("#### Mapes de Pronòstic (Model AROME)")
+    col_capa, col_zoom = st.columns(2)
+    with col_capa:
+        map_options = {"Anàlisi de Vent i Convergència": "forecast_estatic", "Vent a 700hPa": "vent_700", "Vent a 300hPa": "vent_300"}
+        mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
+    with col_zoom: 
+        zoom_sel = st.selectbox("Nivell de Zoom:", options=list(MAP_ZOOM_LEVELS.keys()))
+    
+    selected_extent = MAP_ZOOM_LEVELS[zoom_sel]
+    map_key = map_options[mapa_sel]
+    
+    if map_key == "forecast_estatic":
+        nivell_sel = 925 if is_guest else st.selectbox("Nivell d'anàlisi:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa")
+        if is_guest: st.info("ℹ️ L'anàlisi de vent i convergència està fixada a **925 hPa**.")
+        with progress_placeholder.container():
+            progress_bar = st.progress(0, text="Carregant dades del model...")
+            map_data, error_map = carregar_dades_mapa(nivell_sel, hourly_index_sel)
+            if not error_map: progress_bar.progress(50, text="Generant visualització...")
+        if error_map: 
+            st.error(f"Error en carregar el mapa: {error_map}")
+            progress_placeholder.empty()
+        elif map_data:
+            fig = crear_mapa_forecast_combinat(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str, selected_extent)
+            st.pyplot(fig); plt.close(fig)
+            with st.container(border=True):
+                ui_explicacio_alertes()
+                ui_info_desenvolupament_tempesta()
+            with progress_placeholder.container(): 
+                progress_bar.progress(100, text="Completat!"); time.sleep(1); progress_placeholder.empty()
 
-    with col_map_2:
-        st.markdown("##### Visualització en Temps Real")
-        tab_sat, tab_radar = st.tabs(["Satèl·lit (Topalls de núvols)", "Radar de Precipitació"])
-        with tab_sat:
-            st.components.v1.html('<iframe src="https://modeles20.meteociel.fr/satellite/animsatsandvisirmtgsp.gif" style="border:0; width:100%; height:450px;"></iframe>', height=460)
-        with tab_radar:
-            radar_url = f"https://www.rainviewer.com/map.html?loc=41.8,1.8,6&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
-            html_code = f"""
-            <div style="position: relative; width: 100%; height: 450px; border-radius: 10px; overflow: hidden;">
-                <iframe src="{radar_url}" width="100%" height="450" frameborder="0" style="border:0;"></iframe>
-                <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div>
-            </div>
-            """
-            st.components.v1.html(html_code, height=460)
+    elif map_key in ["vent_700", "vent_300"]:
+        nivell = 700 if map_key == "vent_700" else 300
+        variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+        map_data, error_map = carregar_dades_mapa_base(variables, hourly_index_sel)
+        if error_map: 
+            st.error(f"Error en carregar el mapa: {error_map}")
+        elif map_data: 
+            fig = crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str, selected_extent)
+            st.pyplot(fig); plt.close(fig)
+
+    # --- Secció de Visualització en Temps Real ---
+    st.divider()
+    st.markdown("#### Visualització en Temps Real")
+    
+    # Radar de Precipitació
+    st.markdown("##### Radar de Precipitació (Rainviewer)")
+    radar_url = f"https://www.rainviewer.com/map.html?loc=41.8,1.8,6&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
+    html_code_radar = f"""
+    <div style="position: relative; width: 100%; height: 450px; border-radius: 10px; overflow: hidden;">
+        <iframe src="{radar_url}" width="100%" height="450" frameborder="0" style="border:0;"></iframe>
+        <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div>
+    </div>
+    """
+    st.components.v1.html(html_code_radar, height=460)
+
+    # Satèl·lit
+    st.markdown("##### Satèl·lit - Topalls de Núvols (Meteologix)")
+    # ENLLAÇ CORREGIT per a la Península Ibèrica
+    satellite_url = "https://modeles20.meteociel.fr/satellite/animsatsandvisirmtgsp.gif"
+    st.components.v1.html(f'<iframe src="{satellite_url}" style="border:0; width:100%; height:450px;"></iframe>', height=460)
 
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteologix & Rainviewer | IA per Google Gemini.</p>", unsafe_allow_html=True)
