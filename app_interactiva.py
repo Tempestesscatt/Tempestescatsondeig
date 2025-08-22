@@ -190,7 +190,16 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                 params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m if hasattr(lfc_p, 'm') else np.nan
             else: params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
         except: params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
-
+        
+        try:
+            el_result = mpcalc.el(p, T, Td, which='surface', parcel_profile=prof)
+            if isinstance(el_result, tuple) and len(el_result) == 2:
+                el_p = el_result[0]
+                params_calc['EL_p'] = el_p
+                params_calc['EL_Hgt'] = mpcalc.pressure_to_height_std(el_p).to('m').m if hasattr(el_p, 'm') else np.nan
+            else: params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan * units.hPa, np.nan
+        except: params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan * units.hPa, np.nan
+        
         try:
             p_frz = np.interp(0, T.to('degC').m[::-1], p.m[::-1]) * units.hPa
             params_calc['FRZG_Lvl_p'] = p_frz
@@ -297,13 +306,11 @@ def obtenir_ciutats_actives(hourly_index):
         return {name: CIUTATS_CATALUNYA[name] for name in closest_cities_names}, f"Selecció de {len(closest_cities_names)} poblacions properes a nuclis d'activitat."
     except Exception as e: return CIUTATS_CONVIDAT, f"Error calculant zones actives: {e}."
 
-# --- Funcions de creació de gràfics i UI ---
 def crear_mapa_base(map_extent):
     fig, ax = plt.subplots(figsize=(8, 8), dpi=90, subplot_kw={'projection': ccrs.PlateCarree()})
     ax.set_extent(map_extent, crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0); ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5); return fig, ax
-
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     fig, ax = crear_mapa_base(map_extent)
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 400), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 400))
@@ -377,24 +384,6 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     skew.ax.legend()
     return fig
 
-@st.cache_data(ttl=600)
-def carregar_imatge_satelit(url):
-    try:
-        response = requests.get(f"{url}?ver={int(time.time() // 600)}", headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-        return (response.content, None) if response.status_code == 200 else (None, f"No s'ha pogut carregar la imatge. (Codi: {response.status_code})")
-    except Exception as e: return None, "Error de xarxa en carregar la imatge."
-
-def mostrar_imatge_temps_real(tipus):
-    if tipus == "Satèl·lit (Europa)": url, caption = "https://modeles20.meteociel.fr/satellite/animsatsandvisirmtgeu.gif", "Satèl·lit Sandvitx (Visible + Infraroig). Font: Meteociel"
-    elif tipus == "Satèl·lit (NE Península)":
-        now_local = datetime.now(TIMEZONE)
-        if 7 <= now_local.hour < 21: url, caption = "https://modeles20.meteociel.fr/satellite/animsatviscolmtgsp.gif", "Satèl·lit Visible (Nord-est). Font: Meteociel"
-        else: url, caption = "https://modeles20.meteociel.fr/satellite/animsatirmtgsp.gif", "Satèl·lit Infraroig (Nord-est). Font: Meteociel"
-    else: st.error("Tipus d'imatge no reconegut."); return
-    image_content, error_msg = carregar_imatge_satelit(url)
-    if image_content: st.image(image_content, caption=caption, use_container_width=True)
-    else: st.warning(error_msg)
-
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(7, 9))
     gs = fig.add_gridspec(nrows=2, ncols=1, height_ratios=[2, 1], hspace=0.3, top=0.92, bottom=0.05, left=0.05, right=0.95)
@@ -420,42 +409,34 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             ax_hodo.plot(u_comp, v_comp, 'o', color='black', markersize=8, fillstyle='none', mew=1.5)
             ax_hodo.text(u_comp + 2, v_comp + 2, name, ha='center', weight='bold', fontsize=10)
     
-    def get_color(value, thresholds):
-        if pd.isna(value): return "#808080"
-        colors = ["#808080", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
-        thresholds = sorted(thresholds)
-        for i, threshold in enumerate(thresholds):
-            if value < threshold: return colors[i]
-        return colors[-1]
-
-    THRESHOLDS = {'BWD_0-6km': (10, 20, 30, 40), 'SRH_0-3km': (100, 150, 250, 400), 'ESRH': (100, 150, 250, 400)}
-
-    y_pos, x_label, x_val = 0.98, 0.78, 0.98
-    fig.text(x_label, y_pos, "Cisallament (nusos)", ha='right', weight='bold'); y_pos -= 0.05
-    val = params_calc.get('BWD_0-6km', np.nan)
-    fig.text(x_label, y_pos, "0-6km:", ha='right'); fig.text(x_val, y_pos, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=get_color(val, THRESHOLDS['BWD_0-6km']))
-    y_pos -= 0.08
-    
-    fig.text(x_label, y_pos, "Helicitat (m²/s²)", ha='right', weight='bold'); y_pos -= 0.05
-    val = params_calc.get('SRH_0-3km', np.nan)
-    fig.text(x_label, y_pos, "0-3km:", ha='right'); fig.text(x_val, y_pos, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=get_color(val, THRESHOLDS['SRH_0-3km']))
-    y_pos -= 0.05
-    val = params_calc.get('ESRH', np.nan)
-    fig.text(x_label, y_pos, "Efectiva:", ha='right'); fig.text(x_val, y_pos, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=get_color(val, THRESHOLDS['ESRH']))
-    
     ax_srw.set_title("Vent Relatiu vs. Altura (RM)", fontsize=10)
     sr_wind_speed = params_calc.get('SR_Wind')
     if sr_wind_speed is not None and sr_wind_speed.size > 0:
-        ax_srw.plot(sr_wind_speed, heights.to('km').m); ax_srw.set_xlim(left=0)
-    else: ax_srw.text(0.5, 0.5, "No disponible", ha='center', va='center', transform=ax_srw.transAxes, fontsize=9, color='gray')
+        heights_km = heights.to('km').m
+        srw_kts = sr_wind_speed.m
+        
+        lcl_hgt_km = params_calc.get('LCL_Hgt', np.nan) / 1000
+        el_hgt_km = params_calc.get('EL_Hgt', np.nan) / 1000
+        
+        ax_srw.plot(srw_kts, heights_km, color='black', linewidth=1)
+        
+        if not np.isnan(lcl_hgt_km) and not np.isnan(el_hgt_km):
+            cloud_mask = (heights_km >= lcl_hgt_km) & (heights_km <= el_hgt_km)
+            ax_srw.fill_betweenx(heights_km, 0, srw_kts, where=cloud_mask, facecolor='lightblue', alpha=0.6)
+            ax_srw.axhline(lcl_hgt_km, color='green', linestyle='--', linewidth=1)
+            ax_srw.text(ax_srw.get_xlim()[1] * 0.95, lcl_hgt_km, ' Base Plana', ha='right', va='bottom', fontsize=8, color='green')
+
+        ax_srw.set_xlim(left=0)
+    else: 
+        ax_srw.text(0.5, 0.5, "No disponible", ha='center', va='center', transform=ax_srw.transAxes, fontsize=9, color='gray')
+    
     ax_srw.set_xlabel("Vent Relatiu (nusos)", fontsize=9); ax_srw.set_ylabel("Altura (km)", fontsize=9)
-    ax_srw.set_ylim(0, 12); ax_srw.grid(True, linestyle='--'); ax_srw.tick_params(axis='both', which='major', labelsize=8)
+    ax_srw.set_ylim(0, 14); ax_srw.grid(True, linestyle='--'); ax_srw.tick_params(axis='both', which='major', labelsize=8)
     return fig
 
 def ui_caixa_parametres_sondeig(params):
     def get_color(value, thresholds, reverse_colors=False):
-        # S'ha corregit pd.isna per np.isnan per a consistència
-        if np.isnan(value): return "#808080"
+        if pd.isna(value): return "#808080"
         colors = ["#808080", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
         if reverse_colors:
             thresholds = sorted(thresholds, reverse=True); colors = list(reversed(colors))
@@ -466,12 +447,13 @@ def ui_caixa_parametres_sondeig(params):
 
     THRESHOLDS = {'SBCAPE': (100, 500, 1500, 2500), 'MUCAPE': (100, 500, 1500, 2500),
                   'MLCAPE': (50, 250, 1000, 2000), 'CAPE_0-3km': (25, 75, 150, 250),
-                  'SBCIN': (0, -25, -75, -150), 'LI': (0, -2, -5, -8)}
+                  'SBCIN': (0, -25, -75, -150), 'LI': (0, -2, -5, -8),
+                  'BWD_0-6km': (10, 20, 30, 40), 'SRH_0-3km': (100, 150, 250, 400),
+                  'ESRH': (100, 150, 250, 400)}
 
     def styled_metric(label, value, unit, param_key, precision=0, reverse_colors=False):
         color = get_color(value, THRESHOLDS.get(param_key, []), reverse_colors)
-        # S'ha corregit pd.isna per np.isnan per a consistència
-        val_str = f"{value:.{precision}f}" if not np.isnan(value) else "---"
+        val_str = f"{value:.{precision}f}" if not pd.isna(value) else "---"
         st.markdown(f"""
             <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34;">
                 <span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit})</span><br>
@@ -490,8 +472,15 @@ def ui_caixa_parametres_sondeig(params):
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True)
     with cols[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', precision=1, reverse_colors=True)
     with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
-        
 
+    st.divider()
+    st.markdown("##### Paràmetres de Cisallament i Helicitat")
+    cols = st.columns(3)
+    with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
+    with cols[1]: styled_metric("SRH 0-3km", params.get('SRH_0-3km', np.nan), "m²/s²", 'SRH_0-3km')
+    with cols[2]: styled_metric("ESRH", params.get('ESRH', np.nan), "m²/s²", 'ESRH')
+
+# --- La resta de l'aplicació ---
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
         sounding_data, params_calculats = data_tuple
@@ -545,7 +534,7 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
 - **(Pregunta per Lleida, amb convergència a prop i bon sondeig):** "Bona tarda! Avui a la teva zona de Ponent ho teniu tot de cara. Hi ha una bona línia de convergència a prop que actuarà de disparador, i el sondeig mostra prou 'benzina' i organització per a tempestes fortes. Compte a la tarda, que es pot posar interessant."
 - **(Pregunta per Mataró, sense convergència a prop):** "Què tal! Avui pel Maresme la cosa sembla tranquil·la. El problema és que no teniu cap disparador a prop; les línies de convergència queden molt a l'interior. Encara que el sondeig té potencial, si no hi ha qui encengui la metxa, no passarà gran cosa."
 - **(Pregunta per Berga, amb convergència llunyana):** "Ei! Per la teva zona del Berguedà avui sembla que calma. Ara bé, compte a les comarques de Girona! Allà sí que s'està formant una bona línia de convergència. Si vols veure el potencial real d'aquella zona, et recomano que canviïs al sondeig de **Girona** o **Figueres**."
-- **(Pregunta per Reus, amb convergència a prop però sondeig molt estable):** "Avui per la teva zona teniu un bon disparador amb aquesta convergència, però el sondeig està molt estable, gairebé no hi ha 'benzina' (CAPE). Així que, tot i la convergència, el més probable és que només es formin alguns núvols sense més conseqüències. Un dia tranquil."
+- **(Pregunta per Reus, amb convergència a prop però sondeig molt estable):** "Avui per la teva zona teniu un bon disparador amb aquesta convergència, però el sondeig està molt estable, gairebé no hi ha 'benzina' (CAPE). Així que, tot i la convergència, el més probable és que només es formin alguns núvols sin més conseqüències. Un dia tranquil."
 Recorda, l'usuari té accés a aquests pobles: """ + ', '.join(CIUTATS_CATALUNYA.keys())
         missatge_inicial_model = "Ei! Sóc el teu Meteo-Col·lega. Tria un poble, fes-me una pregunta i et dono la conclusió del que pot passar avui."
         st.session_state.chat = model.start_chat(history=[{'role': 'user', 'parts': [system_prompt]}, {'role': 'model', 'parts': [missatge_inicial_model]}]); st.session_state.messages = [{"role": "assistant", "content": missatge_inicial_model}]
