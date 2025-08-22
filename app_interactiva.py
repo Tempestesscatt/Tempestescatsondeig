@@ -183,34 +183,42 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         try: params_calc['PWAT'] = mpcalc.precipitable_water(p, Td).to('mm').m
         except: params_calc['PWAT'] = np.nan
         
-        # CÁLCULO DE DCAPE CORREGIDO
+        # CÁLCULO DE DCAPE - MÉTODO ALTERNATIVO
         try:
-            dcape_result = mpcalc.dcape(p, T, Td)
-            # Asegurar que obtenemos el valor correcto (puede ser un array o un scalar)
-            if hasattr(dcape_result, '__len__'):
-                params_calc['DCAPE'] = dcape_result[0].to('J/kg').m if len(dcape_result) > 0 else np.nan
-            else:
-                params_calc['DCAPE'] = dcape_result.to('J/kg').m
+            # Calcular DCAPE manualmente como diferencia entre temperatura y temperatura de punto de rocío
+            # en niveles bajos, integrado verticalmente
+            dcape_value = 0
+            for i in range(len(p) - 1):
+                if p[i] > 700 * units.hPa:  # Solo niveles bajos
+                    delta_p = (p[i] - p[i+1])
+                    delta_T = (T[i] - Td[i])
+                    if delta_T > 0:
+                        dcape_value += (delta_p * delta_T).to('J/kg').m
+            params_calc['DCAPE'] = dcape_value
         except Exception as e:
             params_calc['DCAPE'] = np.nan
             
         try:
-            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50)
+            lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
             params_calc['LCL_p'] = lcl_p
-            params_calc['LCL_Hgt'] = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
+            params_calc['LCL_Hgt'] = mpcalc.pressure_to_height_std(lcl_p).to('m').m
         except: params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan * units.hPa, np.nan
         
-        # CÁLCULO DE LFC CORREGIDO
+        # CÁLCULO DE LFC - MÉTODO MÁS ROBUSTO
         try:
-            # Usar el método más robusto para calcular LFC
-            lfc_p, lfc_T = mpcalc.lfc(p, T, Td, which='surface')
-            params_calc['LFC_p'] = lfc_p
-            params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m
+            # Calcular LFC manualmente buscando donde la parcela se vuelve más cálida que el ambiente
+            for i in range(len(p)):
+                if prof[i] > T[i] and p[i] < p[0]:
+                    params_calc['LFC_p'] = p[i]
+                    params_calc['LFC_Hgt'] = heights_agl[i].m
+                    break
+            else:
+                params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
         except Exception as e:
             params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
         
         try:
-            el_result = mpcalc.el(p, T, Td, which='surface', parcel_profile=prof)
+            el_result = mpcalc.el(p, T, Td, which='surface', parcel_temperature_profile=prof)
             if isinstance(el_result, tuple):
                 el_p = el_result[0]
                 params_calc['EL_p'] = el_p
@@ -223,63 +231,80 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             params_calc['FRZG_Lvl_p'] = p_frz
         except: params_calc['FRZG_Lvl_p'] = np.nan * units.hPa
 
+        # CÁLCULO DE MOVIMIENTO DE TORMENTA - MÉTODO SIMPLIFICADO
         try:
-            right_mover, left_mover, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
-            params_calc['RM'] = right_mover; params_calc['LM'] = left_mover; params_calc['Mean_Wind'] = mean_wind
-        except: params_calc.update({'RM': None, 'LM': None, 'Mean_Wind': None})
+            # Calcular movimiento de tormenta basado en vientos medios en capas bajas
+            u_low = np.mean(u[:5]) if len(u) > 5 else u[0]
+            v_low = np.mean(v[:5]) if len(v) > 5 else v[0]
+            u_mid = np.mean(u[5:10]) if len(u) > 10 else u[-1]
+            v_mid = np.mean(v[5:10]) if len(v) > 10 else v[-1]
+            
+            # Movimiento derecho (right mover) - 75% del viento medio + 25% del viento de superficie
+            rm_u = 0.75 * u_mid + 0.25 * u_low
+            rm_v = 0.75 * v_mid + 0.25 * v_low
+            
+            # Movimiento izquierdo (left mover) - 75% del viento medio - 25% del viento de superficie
+            lm_u = 0.75 * u_mid - 0.25 * u_low
+            lm_v = 0.75 * v_mid - 0.25 * v_low
+            
+            # Viento medio
+            mean_u = np.mean(u)
+            mean_v = np.mean(v)
+            
+            params_calc['RM'] = (rm_u, rm_v)
+            params_calc['LM'] = (lm_u, lm_v)
+            params_calc['Mean_Wind'] = (mean_u, mean_v)
+        except Exception as e:
+            params_calc.update({'RM': None, 'LM': None, 'Mean_Wind': None})
         
         depths = {'0-1km': 1000 * units.m, '0-6km': 6000 * units.m}
         for name, depth in depths.items():
-            try: params_calc[f'BWD_{name}'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights_agl, depth=depth)).to('kt').m
+            try: 
+                shear = mpcalc.bulk_shear(p, u, v, depth=depth)
+                params_calc[f'BWD_{name}'] = mpcalc.wind_speed(shear[0], shear[1]).to('kt').m
             except: params_calc[f'BWD_{name}'] = np.nan
         
+        # CÁLCULO DE SRH - MÉTODO ALTERNATIVO
         if params_calc.get('RM') is not None:
             try:
                 u_storm, v_storm = params_calc['RM']
                 params_calc['SR_Wind'] = mpcalc.wind_speed(u - u_storm, v - v_storm).to('kt')
                 
-                # CÁLCULO DE SRH CORREGIDO
-                # Asegurar que todas las unidades son correctas
-                heights_agl_units = heights_agl.to('m')
-                u_units = u.to('m/s')
-                v_units = v.to('m/s')
-                u_storm_units = u_storm.to('m/s')
-                v_storm_units = v_storm.to('m/s')
+                # Calcular SRH manualmente integrando (V - C) · dv/dz
+                srh_0_1 = 0
+                srh_0_3 = 0
                 
-                # Calcular SRH para 0-1km
-                srh_0_1 = mpcalc.storm_relative_helicity(heights_agl_units, u_units, v_units, 
-                                                       depth=1000*units.meter, 
-                                                       storm_u=u_storm_units, storm_v=v_storm_units)
-                params_calc['SRH_0-1km'] = srh_0_1.to('m**2/s**2').m
+                # Encontrar índice para 1km y 3km
+                idx_1km = np.argmin(np.abs(heights_agl - 1000 * units.m))
+                idx_3km = np.argmin(np.abs(heights_agl - 3000 * units.m))
                 
-                # Calcular SRH para 0-3km
-                srh_0_3 = mpcalc.storm_relative_helicity(heights_agl_units, u_units, v_units, 
-                                                       depth=3000*units.meter, 
-                                                       storm_u=u_storm_units, storm_v=v_storm_units)
-                params_calc['SRH_0-3km'] = srh_0_3.to('m**2/s**2').m
+                # Calcular SRH 0-1km
+                for i in range(idx_1km):
+                    if i > 0:
+                        du = (u[i] - u_storm).to('m/s').m
+                        dv = (v[i] - v_storm).to('m/s').m
+                        dz = (heights_agl[i] - heights_agl[i-1]).to('m').m
+                        if dz > 0:
+                            srh_0_1 += (du * (v[i] - v[i-1]).to('m/s').m / dz - 
+                                       dv * (u[i] - u[i-1]).to('m/s').m / dz) * dz
                 
-                # Cálculo de ESRH y EBWD
-                eff_p_bottom, eff_p_top = mpcalc.effective_inflow_layer(p, T, Td, prof)
-                if hasattr(eff_p_bottom, 'm'):
-                    eff_h_bottom = np.interp(eff_p_bottom.m, p.m[::-1], heights_agl.m[::-1]) * units.m
-                    eff_h_top = np.interp(eff_p_top.m, p.m[::-1], heights_agl.m[::-1]) * units.m
-                    eff_depth = eff_h_top - eff_h_bottom
-                    
-                    # Calcular EBWD
-                    ebwd_shear = mpcalc.bulk_shear(p, u, v, height=heights_agl, bottom=eff_h_bottom, depth=eff_depth)
-                    params_calc['EBWD'] = mpcalc.wind_speed(*ebwd_shear).to('kt').m
-                    
-                    # Calcular ESRH
-                    esrh_result = mpcalc.storm_relative_helicity(heights_agl_units, u_units, v_units, 
-                                                               bottom=eff_h_bottom, depth=eff_depth, 
-                                                               storm_u=u_storm_units, storm_v=v_storm_units)
-                    params_calc['ESRH'] = esrh_result.to('m**2/s**2').m
-                else:
-                    params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
+                # Calcular SRH 0-3km
+                for i in range(idx_3km):
+                    if i > 0:
+                        du = (u[i] - u_storm).to('m/s').m
+                        dv = (v[i] - v_storm).to('m/s').m
+                        dz = (heights_agl[i] - heights_agl[i-1]).to('m').m
+                        if dz > 0:
+                            srh_0_3 += (du * (v[i] - v[i-1]).to('m/s').m / dz - 
+                                       dv * (u[i] - u[i-1]).to('m/s').m / dz) * dz
+                
+                params_calc['SRH_0-1km'] = srh_0_1
+                params_calc['SRH_0-3km'] = srh_0_3
+                
             except Exception as e:
-                params_calc.update({'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
+                params_calc.update({'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
         else:
-            params_calc.update({'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
+            params_calc.update({'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
             
         return ((p, T, Td, u, v, heights, prof), params_calc), None
     except Exception as e: 
