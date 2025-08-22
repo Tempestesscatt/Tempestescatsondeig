@@ -157,39 +157,59 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         with parcel_lock:
             prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
             sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
-            mucape, _ = mpcalc.most_unstable_cape_cin(p, T, Td)
-            # --- LÍNIA CORREGIDA: Eliminat l'argument 'parcel_profile' ---
-            li, _ = mpcalc.lifted_index(p, T, Td)
             params_calc['SBCAPE'] = sbcape.to('J/kg').m
             params_calc['SBCIN'] = sbcin.to('J/kg').m
-            params_calc['MUCAPE'] = mucape.to('J/kg').m
-            params_calc['LI'] = li.to('delta_degC').m
+
+            mucape_cin_result = mpcalc.most_unstable_cape_cin(p, T, Td)
+            if isinstance(mucape_cin_result, tuple) and len(mucape_cin_result) == 2:
+                params_calc['MUCAPE'] = mucape_cin_result[0].to('J/kg').m
+            else:
+                params_calc['MUCAPE'] = np.nan
+
+            li_result = mpcalc.lifted_index(p, T, Td)
+            if isinstance(li_result, tuple) and len(li_result) == 2:
+                params_calc['LI'] = li_result[0].to('delta_degC').m
+            else:
+                params_calc['LI'] = np.nan
 
         heights_agl = heights - heights[0]
         try:
-            lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50)
+            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50)
             params_calc['LCL_p'] = lcl_p; params_calc['LCL_Hgt'] = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
-        except: params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan * units.hPa, np.nan
+        except: 
+            params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan * units.hPa, np.nan
+        
         try:
-            lfc_p, _ = mpcalc.lfc(p, T, Td, which='surface', parcel_profile=prof)
-            params_calc['LFC_p'] = lfc_p; params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m if hasattr(lfc_p, 'm') else np.nan
-        except: params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
+            lfc_result = mpcalc.lfc(p, T, Td, which='surface', parcel_profile=prof)
+            if isinstance(lfc_result, tuple) and len(lfc_result) == 2:
+                lfc_p = lfc_result[0]
+                params_calc['LFC_p'] = lfc_p
+                params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m if hasattr(lfc_p, 'm') else np.nan
+            else:
+                params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
+        except: 
+            params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
+
         try:
             p_frz = np.interp(0, T.to('degC').m[::-1], p.m[::-1]) * units.hPa
             params_calc['FRZG_Lvl_p'] = p_frz
-        except: params_calc['FRZG_Lvl_p'] = np.nan * units.hPa
+        except: 
+            params_calc['FRZG_Lvl_p'] = np.nan * units.hPa
 
         try:
             right_mover, left_mover, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
             params_calc['RM'] = right_mover; params_calc['LM'] = left_mover; params_calc['Mean_Wind'] = mean_wind
-        except: params_calc.update({'RM': None, 'LM': None, 'Mean_Wind': None})
+        except: 
+            params_calc.update({'RM': None, 'LM': None, 'Mean_Wind': None})
         
         depths = {'0-1km': 1000 * units.m, '0-6km': 6000 * units.m}
         for name, depth in depths.items():
-            try: params_calc[f'BWD_{name}'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights, depth=depth)).to('kt').m
-            except: params_calc[f'BWD_{name}'] = np.nan
+            try: 
+                params_calc[f'BWD_{name}'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights, depth=depth)).to('kt').m
+            except: 
+                params_calc[f'BWD_{name}'] = np.nan
         
-        if params_calc['RM'] is not None:
+        if params_calc.get('RM') is not None:
             try:
                 u_storm, v_storm = params_calc['RM']
                 srh_0_1, _, _ = mpcalc.storm_relative_helicity(heights, u, v, depth=1000 * units.m, storm_u=u_storm, storm_v=v_storm)
@@ -205,14 +225,16 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                     params_calc['EBWD'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights_agl, bottom=eff_h_bottom, depth=eff_depth)).to('kt').m
                     esrh, _, _ = mpcalc.storm_relative_helicity(heights_agl, u, v, bottom=eff_h_bottom, depth=eff_depth, storm_u=u_storm, storm_v=v_storm)
                     params_calc['ESRH'] = esrh.to('m**2/s**2').m
-                else: params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
-            except: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
-        else: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
+                else: 
+                    params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
+            except: 
+                params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
+        else: 
+            params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
             
         return ((p, T, Td, u, v, heights, prof), params_calc), None
     except Exception as e: 
         return None, f"Error en processar dades del sondeig: {e}"
-# --- Funcions de mapes (sense canvis) ---
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base(variables, hourly_index):
     try:
