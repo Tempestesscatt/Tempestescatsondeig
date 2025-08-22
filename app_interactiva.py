@@ -182,22 +182,32 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 
         try: params_calc['PWAT'] = mpcalc.precipitable_water(p, Td).to('mm').m
         except: params_calc['PWAT'] = np.nan
-        try: dcape, _ = mpcalc.dcape(p,T,Td); params_calc['DCAPE'] = dcape.to('J/kg').m
-        except: params_calc['DCAPE'] = np.nan
+        
+        # CÁLCULO DE DCAPE CORREGIDO
+        try:
+            dcape_result = mpcalc.dcape(p, T, Td)
+            # Asegurar que obtenemos el valor correcto (puede ser un array o un scalar)
+            if hasattr(dcape_result, '__len__'):
+                params_calc['DCAPE'] = dcape_result[0].to('J/kg').m if len(dcape_result) > 0 else np.nan
+            else:
+                params_calc['DCAPE'] = dcape_result.to('J/kg').m
+        except Exception as e:
+            params_calc['DCAPE'] = np.nan
             
         try:
             lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50)
-            params_calc['LCL_p'] = lcl_p; params_calc['LCL_Hgt'] = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
+            params_calc['LCL_p'] = lcl_p
+            params_calc['LCL_Hgt'] = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
         except: params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan * units.hPa, np.nan
         
+        # CÁLCULO DE LFC CORREGIDO
         try:
-            lfc_result = mpcalc.lfc(p, T, Td, which='surface', parcel_profile=prof)
-            if isinstance(lfc_result, tuple):
-                lfc_p = lfc_result[0]
-                params_calc['LFC_p'] = lfc_p
-                params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m if hasattr(lfc_p, 'm') else np.nan
-            else: params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
-        except: params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
+            # Usar el método más robusto para calcular LFC
+            lfc_p, lfc_T = mpcalc.lfc(p, T, Td, which='surface')
+            params_calc['LFC_p'] = lfc_p
+            params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m
+        except Exception as e:
+            params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
         
         try:
             el_result = mpcalc.el(p, T, Td, which='surface', parcel_profile=prof)
@@ -227,22 +237,49 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             try:
                 u_storm, v_storm = params_calc['RM']
                 params_calc['SR_Wind'] = mpcalc.wind_speed(u - u_storm, v - v_storm).to('kt')
-                srh_0_1, _, _ = mpcalc.storm_relative_helicity(heights_agl, u, v, depth=1000 * units.m, storm_u=u_storm, storm_v=v_storm)
-                srh_0_3, _, _ = mpcalc.storm_relative_helicity(heights_agl, u, v, depth=3000 * units.m, storm_u=u_storm, storm_v=v_storm)
+                
+                # CÁLCULO DE SRH CORREGIDO
+                # Asegurar que todas las unidades son correctas
+                heights_agl_units = heights_agl.to('m')
+                u_units = u.to('m/s')
+                v_units = v.to('m/s')
+                u_storm_units = u_storm.to('m/s')
+                v_storm_units = v_storm.to('m/s')
+                
+                # Calcular SRH para 0-1km
+                srh_0_1 = mpcalc.storm_relative_helicity(heights_agl_units, u_units, v_units, 
+                                                       depth=1000*units.meter, 
+                                                       storm_u=u_storm_units, storm_v=v_storm_units)
                 params_calc['SRH_0-1km'] = srh_0_1.to('m**2/s**2').m
+                
+                # Calcular SRH para 0-3km
+                srh_0_3 = mpcalc.storm_relative_helicity(heights_agl_units, u_units, v_units, 
+                                                       depth=3000*units.meter, 
+                                                       storm_u=u_storm_units, storm_v=v_storm_units)
                 params_calc['SRH_0-3km'] = srh_0_3.to('m**2/s**2').m
                 
+                # Cálculo de ESRH y EBWD
                 eff_p_bottom, eff_p_top = mpcalc.effective_inflow_layer(p, T, Td, prof)
                 if hasattr(eff_p_bottom, 'm'):
                     eff_h_bottom = np.interp(eff_p_bottom.m, p.m[::-1], heights_agl.m[::-1]) * units.m
                     eff_h_top = np.interp(eff_p_top.m, p.m[::-1], heights_agl.m[::-1]) * units.m
                     eff_depth = eff_h_top - eff_h_bottom
-                    params_calc['EBWD'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights_agl, bottom=eff_h_bottom, depth=eff_depth)).to('kt').m
-                    esrh, _, _ = mpcalc.storm_relative_helicity(heights_agl, u, v, bottom=eff_h_bottom, depth=eff_depth, storm_u=u_storm, storm_v=v_storm)
-                    params_calc['ESRH'] = esrh.to('m**2/s**2').m
-                else: params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
-            except: params_calc.update({'SR_Wind':None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
-        else: params_calc.update({'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
+                    
+                    # Calcular EBWD
+                    ebwd_shear = mpcalc.bulk_shear(p, u, v, height=heights_agl, bottom=eff_h_bottom, depth=eff_depth)
+                    params_calc['EBWD'] = mpcalc.wind_speed(*ebwd_shear).to('kt').m
+                    
+                    # Calcular ESRH
+                    esrh_result = mpcalc.storm_relative_helicity(heights_agl_units, u_units, v_units, 
+                                                               bottom=eff_h_bottom, depth=eff_depth, 
+                                                               storm_u=u_storm_units, storm_v=v_storm_units)
+                    params_calc['ESRH'] = esrh_result.to('m**2/s**2').m
+                else:
+                    params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
+            except Exception as e:
+                params_calc.update({'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
+        else:
+            params_calc.update({'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
             
         return ((p, T, Td, u, v, heights, prof), params_calc), None
     except Exception as e: 
