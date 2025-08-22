@@ -158,7 +158,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
             sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
             mucape, _ = mpcalc.most_unstable_cape_cin(p, T, Td)
-            li, _ = mpcalc.lifted_index(p, T, Td, parcel_profile=prof)
+            # --- LÍNIA CORREGIDA: Eliminat l'argument 'parcel_profile' ---
+            li, _ = mpcalc.lifted_index(p, T, Td)
             params_calc['SBCAPE'] = sbcape.to('J/kg').m
             params_calc['SBCIN'] = sbcin.to('J/kg').m
             params_calc['MUCAPE'] = mucape.to('J/kg').m
@@ -171,7 +172,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         except: params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan * units.hPa, np.nan
         try:
             lfc_p, _ = mpcalc.lfc(p, T, Td, which='surface', parcel_profile=prof)
-            params_calc['LFC_p'] = lfc_p; params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m
+            params_calc['LFC_p'] = lfc_p; params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m if hasattr(lfc_p, 'm') else np.nan
         except: params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
         try:
             p_frz = np.interp(0, T.to('degC').m[::-1], p.m[::-1]) * units.hPa
@@ -211,7 +212,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         return ((p, T, Td, u, v, heights, prof), params_calc), None
     except Exception as e: 
         return None, f"Error en processar dades del sondeig: {e}"
-
 # --- Funcions de mapes (sense canvis) ---
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base(variables, hourly_index):
