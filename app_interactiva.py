@@ -566,9 +566,9 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             plt.close(fig_hodo)
 
             st.markdown("##### Radar de Precipitació en Temps Real")
-            radar_url = f"https://www.rainviewer.com/map.html?loc={lat_sel},{lon_sel},8&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2"
+            # --- LÍNIA MODIFICADA: Canviat el zoom de 8 a 10 ---
+            radar_url = f"https://www.rainviewer.com/map.html?loc={lat_sel},{lon_sel},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2"
             
-            # Codi HTML amb una capa transparent a sobre per bloquejar la interacció
             html_code = f"""
             <div style="position: relative; width: 100%; height: 410px; border-radius: 10px; overflow: hidden;">
                 <iframe
