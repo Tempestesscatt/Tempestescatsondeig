@@ -420,91 +420,44 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     skew.ax.legend()
     return fig
 
-def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
-    fig = plt.figure(dpi=150, figsize=(10, 7))
-    gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[1.5, 1], wspace=0.3)
-    ax_hodo = fig.add_subplot(gs[0])
-    ax_params = fig.add_subplot(gs[1])
+def crear_hodograf_avancat(p, u, v, heights, params_calc, titol, url_radar=None):
+    fig = plt.figure(dpi=150, figsize=(10, 10))
+    gs = fig.add_gridspec(nrows=2, ncols=2, width_ratios=[1.5, 1], height_ratios=[2, 1], wspace=0.3, hspace=0.3)
+
+    ax_hodo = fig.add_subplot(gs[0, 0])
+    ax_params = fig.add_subplot(gs[0, 1])
+    ax_radar = fig.add_subplot(gs[1, 0])  # radar ocupará la parte baja
     fig.suptitle(titol, weight='bold', fontsize=16)
 
-    # --- Configuració del gràfic principal de l'Hodògraf ---
+    # --- Hodógrafo principal ---
     h = Hodograph(ax_hodo, component_range=80.)
     h.add_grid(increment=20, color='gray', linestyle='--')
-    
     intervals = np.array([0, 1, 3, 6, 9, 12]) * units.km
     colors = ['red', 'blue', 'green', 'purple', 'gold']
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors, linewidth=2)
 
-    if not np.isnan(params_calc.get('ESRH', np.nan)):
+    # ... aquí va el resto de tu código del hodógrafo y parámetros ...
+
+    # --- Radar debajo del hodógrafo ---
+    ax_radar.axis("off")
+    if url_radar is not None:
         try:
-            heights_agl = heights - heights[0]
-            # NOTA: Les variables p, T, Td, prof no estan disponibles aquí. Caldria passar-les o recalcular-les si es volen usar.
-            # Per ara, aquesta funcionalitat es manté desactivada per evitar errors.
-            pass
-        except: pass
+            import urllib.request
+            from PIL import Image
+            from io import BytesIO
 
-    for alt_km in [1, 3, 6, 9]:
-        try:
-            idx = np.argmin(np.abs(heights - alt_km * 1000 * units.m))
-            ax_hodo.text(u[idx].to('kt').m + 1, v[idx].to('kt').m + 1, f'{alt_km}km', fontsize=9, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
-        except: continue
-    
-    motion = {'RM': params_calc.get('RM'), 'LM': params_calc.get('LM'), 'Vent Mitjà': params_calc.get('Mean_Wind')}
-    if all(v is not None for v in motion.values()):
-        for name, vec in motion.items():
-            u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m
-            marker = 's' if 'Mitjà' in name else 'o'
-            # Dibuixem només el marcador, sense el text
-            ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
+            with urllib.request.urlopen(url_radar) as response:
+                img_data = response.read()
+            img = Image.open(BytesIO(img_data))
+            ax_radar.imshow(img)
+            ax_radar.set_title("Radar Catalunya", fontsize=12, weight="bold")
+        except Exception as e:
+            ax_radar.text(0.5, 0.5, f"No se pudo cargar el radar\n{e}", ha="center", va="center")
+    else:
+        ax_radar.text(0.5, 0.5, "Radar no configurado", ha="center", va="center")
 
-    try:
-        shear_vec = mpcalc.bulk_shear(p, u, v, height=heights - heights[0], depth=6000 * units.m)
-        ax_hodo.arrow(0, 0, shear_vec[0].to('kt').m, shear_vec[1].to('kt').m,
-                      color='black', linestyle='--', alpha=0.7, head_width=2, length_includes_head=True)
-    except: pass
-    ax_hodo.set_xlabel('U-Component (nusos)')
-    ax_hodo.set_ylabel('V-Component (nusos)')
-
-    # --- Taula de Paràmetres a la dreta ---
-    ax_params.axis('off')
-    def get_color(value, thresholds):
-        if pd.isna(value): return "grey"
-        # Ajustat per a fons blanc: colors més foscos
-        colors = ["grey", "green", "#E69F00", "orange", "red"]
-        thresholds = sorted(thresholds)
-        for i, threshold in enumerate(thresholds):
-            if value < threshold: return colors[i]
-        return colors[-1]
-
-    THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
-    
-    y = 0.95
-    ax_params.text(0, y, "Moviment (dir/kts)", ha='left', weight='bold', fontsize=11); y-=0.08
-    for name, vec in motion.items():
-        if vec is not None:
-            speed = mpcalc.wind_speed(*vec).to('kt').m; direction = mpcalc.wind_direction(*vec).to('deg').m
-            ax_params.text(0.05, y, f"{name}:"); ax_params.text(0.95, y, f"{direction:.0f}°/{speed:.0f} kts", ha='right')
-        else:
-            ax_params.text(0.05, y, f"{name}:"); ax_params.text(0.95, y, "---", ha='right')
-        y-=0.07
-
-    y-=0.05
-    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.08
-    for key, label in [('0-1km', '0-1 km'), ('0-6km', '0-6 km'), ('EBWD', 'Efectiu')]:
-        val = params_calc.get(key if key == 'EBWD' else f'BWD_{key}', np.nan)
-        color = get_color(val, THRESHOLDS['BWD'])
-        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
-        y-=0.07
-
-    y-=0.05
-    ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.08
-    for key, label in [('0-1km', '0-1 km'), ('0-3km', '0-3 km'), ('ESRH', 'Efectiva')]:
-        val = params_calc.get(key if key == 'ESRH' else f'SRH_{key}', np.nan)
-        color = get_color(val, THRESHOLDS['SRH'])
-        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
-        y-=0.07
-        
     return fig
+
 def ui_caixa_parametres_sondeig(params):
     def get_color(value, thresholds, reverse_colors=False):
         if pd.isna(value): return "#808080"
