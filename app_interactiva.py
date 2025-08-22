@@ -454,7 +454,8 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
 
 def ui_caixa_parametres_sondeig(params):
     def get_color(value, thresholds, reverse_colors=False):
-        if pd.isna(value): return "#808080"
+        # S'ha corregit pd.isna per np.isnan per a consistència
+        if np.isnan(value): return "#808080"
         colors = ["#808080", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
         if reverse_colors:
             thresholds = sorted(thresholds, reverse=True); colors = list(reversed(colors))
@@ -469,7 +470,8 @@ def ui_caixa_parametres_sondeig(params):
 
     def styled_metric(label, value, unit, param_key, precision=0, reverse_colors=False):
         color = get_color(value, THRESHOLDS.get(param_key, []), reverse_colors)
-        val_str = f"{value:.{precision}f}" if not pd.isna(value) else "---"
+        # S'ha corregit pd.isna per np.isnan per a consistència
+        val_str = f"{value:.{precision}f}" if not np.isnan(value) else "---"
         st.markdown(f"""
             <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34;">
                 <span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit})</span><br>
@@ -488,7 +490,7 @@ def ui_caixa_parametres_sondeig(params):
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True)
     with cols[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', precision=1, reverse_colors=True)
     with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
-
+        
 
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
