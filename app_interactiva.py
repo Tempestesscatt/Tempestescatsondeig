@@ -693,7 +693,7 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
     is_guest = st.session_state.get('guest_mode', False)
     
     st.markdown("---");
-    col_map_1, col_map_2 = st.columns([0.7, 0.3], gap="large")
+    col_map_1, col_map_2 = st.columns([0.6, 0.4], gap="large")
     with col_map_1:
         col_capa, col_zoom = st.columns(2)
         with col_capa:
@@ -701,6 +701,7 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
             mapa_sel = st.selectbox("Selecciona la capa del mapa:", map_options.keys())
         with col_zoom: zoom_sel = st.selectbox("Nivell de Zoom:", options=list(MAP_ZOOM_LEVELS.keys()))
         selected_extent = MAP_ZOOM_LEVELS[zoom_sel]; map_key = map_options[mapa_sel]
+        
         if map_key == "forecast_estatic":
             nivell_sel = 925 if is_guest else st.selectbox("Nivell d'anàlisi:", options=[1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa")
             if is_guest: st.info("ℹ️ L'anàlisi de vent i convergència està fixada a **925 hPa**.")
@@ -721,10 +722,24 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
             elif map_data: 
                 fig = crear_mapa_vents(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str, selected_extent)
                 st.pyplot(fig); plt.close(fig)
+
     with col_map_2:
-        ui_info_desenvolupament_tempesta()
+        st.markdown("##### Visualització en Temps Real")
+        tab_sat, tab_radar = st.tabs(["Satèl·lit (Topalls de núvols)", "Radar de Precipitació"])
+        with tab_sat:
+            st.components.v1.html('<iframe src="https://meteologix.com/es/satellite/spain-portugal/satellite-cloud-tops-alert-10m-superhd.html" style="border:0; width:100%; height:450px;"></iframe>', height=460)
+        with tab_radar:
+            radar_url = f"https://www.rainviewer.com/map.html?loc=41.8,1.8,6&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
+            html_code = f"""
+            <div style="position: relative; width: 100%; height: 450px; border-radius: 10px; overflow: hidden;">
+                <iframe src="{radar_url}" width="100%" height="450" frameborder="0" style="border:0;"></iframe>
+                <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div>
+            </div>
+            """
+            st.components.v1.html(html_code, height=460)
+
 def ui_peu_de_pagina():
-    st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteociel | IA per Google Gemini.</p>", unsafe_allow_html=True)
+    st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteologix & Rainviewer | IA per Google Gemini.</p>", unsafe_allow_html=True)
 
 def main():
     if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
