@@ -536,9 +536,10 @@ def ui_caixa_parametres_sondeig(params):
     with cols[2]: styled_metric("DCAPE", params.get('DCAPE', np.nan), "J/kg", 'DCAPE')
     
     # Fila 4
-    cols = st.columns(3)
+    cols = st.columns(4)
     with cols[0]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km')
-    with cols[1]: styled_metric("SRH 0-1km", params.get('SRH_0-1km', np.nan), "m²/s²", 'SRH_0-1km')
+    with cols[1]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
+    with cols[2]: styled_metric("SRH 0-1km", params.get('SRH_0-1km', np.nan), "m²/s²", 'SRH_0-1km')
     
     rm_vec = params.get('RM')
     if rm_vec:
@@ -547,7 +548,8 @@ def ui_caixa_parametres_sondeig(params):
         rm_str = f"{direction:.0f}°/{speed:.0f} kts"
     else:
         rm_str = "---"
-    with cols[2]: styled_text("Moviment RM", rm_str)
+    with cols[3]: styled_text("Moviment RM", rm_str)
+        
         
 
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
