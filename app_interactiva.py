@@ -27,6 +27,7 @@ import os
 import base64
 import threading
 import pandas as pd
+from io import BytesIO
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
