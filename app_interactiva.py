@@ -505,15 +505,16 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
                          ha='right', weight='bold', color=color)
         y-=0.07
 
-    # --- Radar Catalunya (ejemplo RainViewer) ---
+    # --- Radar Catalunya seguro ---
     try:
-        url = "<iframe src="https://www.rainviewer.com/map.html?loc=41.3379,2.2155,10.144539557736273&oCS=1&c=3&o=83&lm=1&layer=radar&sm=1&sn=1&ts=2" width="100%" frameborder="0" style="border:0;height:50vh;" allowfullscreen></iframe>"
-
-        resp = requests.get(url, timeout=10)
+        # Tile PNG de RainViewer centrado en Catalunya (zoom 7)
+        url = "https://tilecache.rainviewer.com/v2/radar/nowcast_0/512/7/66/44/2/1_1.png"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(url, headers=headers, timeout=10)
         img = Image.open(BytesIO(resp.content))
         ax_radar.imshow(img)
-        ax_radar.set_title("Radar Catalunya (RainViewer)", fontsize=12)
         ax_radar.axis("off")
+        ax_radar.set_title("Radar Catalunya (RainViewer)", fontsize=12)
     except Exception as e:
         ax_radar.text(0.5, 0.5, f"Radar no disponible\n{e}", ha="center", va="center")
 
