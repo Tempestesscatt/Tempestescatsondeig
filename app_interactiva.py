@@ -26,6 +26,7 @@ import hashlib
 import os
 import base64
 import threading
+import pandas as pd
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
@@ -302,6 +303,7 @@ def crear_mapa_base(map_extent):
     ax.set_extent(map_extent, crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0); ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5); return fig, ax
+
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     fig, ax = crear_mapa_base(map_extent)
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 400), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 400))
@@ -393,7 +395,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             ax_hodo.text(u[idx].to('kt').m, v[idx].to('kt').m, f'{alt_km}km', fontsize=9, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
         except: continue
 
-    motion = {'RM': params_calc['RM'], 'LM': params_calc['LM']}
+    motion = {'RM': params_calc.get('RM'), 'LM': params_calc.get('LM')}
     if all(v is not None for v in motion.values()):
         for name, vec in motion.items():
             u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m
@@ -401,7 +403,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             ax_hodo.text(u_comp + 2, v_comp + 2, name, ha='center', weight='bold', fontsize=10)
     
     def get_color(value, thresholds):
-        if np.isnan(value): return "#808080"
+        if pd.isna(value): return "#808080"
         colors = ["#808080", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
         thresholds = sorted(thresholds)
         for i, threshold in enumerate(thresholds):
@@ -413,15 +415,15 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     y_pos, x_label, x_val = 0.98, 0.78, 0.98
     fig.text(x_label, y_pos, "Cisallament (nusos)", ha='right', weight='bold'); y_pos -= 0.05
     val = params_calc.get('BWD_0-6km', np.nan)
-    fig.text(x_label, y_pos, "0-6km:", ha='right'); fig.text(x_val, y_pos, f"{val:.0f}" if not np.isnan(val) else "---", ha='right', weight='bold', color=get_color(val, THRESHOLDS['BWD_0-6km']))
+    fig.text(x_label, y_pos, "0-6km:", ha='right'); fig.text(x_val, y_pos, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=get_color(val, THRESHOLDS['BWD_0-6km']))
     y_pos -= 0.08
     
     fig.text(x_label, y_pos, "Helicitat (m²/s²)", ha='right', weight='bold'); y_pos -= 0.05
     val = params_calc.get('SRH_0-3km', np.nan)
-    fig.text(x_label, y_pos, "0-3km:", ha='right'); fig.text(x_val, y_pos, f"{val:.0f}" if not np.isnan(val) else "---", ha='right', weight='bold', color=get_color(val, THRESHOLDS['SRH_0-3km']))
+    fig.text(x_label, y_pos, "0-3km:", ha='right'); fig.text(x_val, y_pos, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=get_color(val, THRESHOLDS['SRH_0-3km']))
     y_pos -= 0.05
     val = params_calc.get('ESRH', np.nan)
-    fig.text(x_label, y_pos, "Efectiva:", ha='right'); fig.text(x_val, y_pos, f"{val:.0f}" if not np.isnan(val) else "---", ha='right', weight='bold', color=get_color(val, THRESHOLDS['ESRH']))
+    fig.text(x_label, y_pos, "Efectiva:", ha='right'); fig.text(x_val, y_pos, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=get_color(val, THRESHOLDS['ESRH']))
     
     ax_srw.set_title("Vent Relatiu vs. Altura (RM)", fontsize=10)
     sr_wind_speed = params_calc.get('SR_Wind')
