@@ -566,12 +566,14 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             plt.close(fig_hodo)
 
             st.markdown("##### Radar de Precipitació en Temps Real")
-            radar_url = f"https://www.rainviewer.com/map.html?loc={lat_sel},{lon_sel},8&oCS=1&c=3&o=83&lm=1&layer=radar&sm=1&sn=1&ts=2"
-            st.components.v1.html(f'<iframe src="{radar_url}" width="100%" frameborder="0" style="border:0; border-radius: 10px; height:400px;" allowfullscreen></iframe>', height=410)
+            # Hem afegit 'lm=0' per treure els controls de moviment del mapa
+            radar_url = f"https://www.rainviewer.com/map.html?loc={lat_sel},{lon_sel},8&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2"
+            # L'atribut 'scrolling="no"' bloqueja el moviment del mapa
+            st.components.v1.html(f'<iframe src="{radar_url}" width="100%" height="400" frameborder="0" style="border:0; border-radius: 10px;" scrolling="no"></iframe>', height=410)
 
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
-
+        
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent Meteo-Col·lega (amb Google Gemini)")
     try: genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
