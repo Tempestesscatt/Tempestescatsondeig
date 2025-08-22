@@ -190,10 +190,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         except: params_calc['TT'] = np.nan
         try: params_calc['BWD_0_6km'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights, depth=6000*units.m)).to('kt').m
         except: params_calc['BWD_0_6km'] = np.nan
-        try:
-            updraft_speed = mpcalc.cape_to_speed(cape).to('m/s').m
-            params_calc['hail_size_cm'] = 0.05 * (updraft_speed**2)
-        except: params_calc['hail_size_cm'] = np.nan
         
         return ((p, T, Td, u, v, heights), params_calc), None
     except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
@@ -307,89 +303,36 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.7, density=2.5, arrowsize=0.6, zorder=3, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
-
-
 def get_color_for_param(value, param_type):
     if value is None or np.isnan(value): return "white"
     if param_type == 'cape':
-        if value < 100: return "white"
+        if value < 100: return "white";
         if value < 1000: return "yellow"
         if value < 2500: return "orange"
         return "red"
     return "white"
-
-
-
 def crear_skewt(p, T, Td, u, v, params_calc, titol):
     fig = plt.figure(figsize=(9, 10), dpi=150)
-    # Defineix la geometria del gràfic principal (skewt) i de la llegenda de text
-    gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[2, 1.2], top=0.92, bottom=0.1, left=0.1, right=0.95)
-    ax_skew = fig.add_subplot(gs[0, 0])
-    ax_text = fig.add_subplot(gs[0, 1])
-    ax_text.axis('off') # Amaguem els eixos de la part de text
-
-    skew = SkewT(fig, ax=ax_skew, rotation=45)
-    
-    skew.ax.grid(True, linestyle='-', alpha=0.5)
-    skew.plot(p, T, 'r', lw=2.5, label='Temperatura')
-    skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
-    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
-    skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
-    skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6)
-    skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
-    
-    prof = mpcalc.parcel_profile(p, T[0], Td[0])
-    skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
-    skew.shade_cape(p, T, prof, color='red', alpha=0.3)
-    skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
-    
-    skew.ax.set_ylim(1000, 100)
-    skew.ax.set_xlim(-40, 40)
-    fig.suptitle(titol, weight='bold', fontsize=14)
-    skew.ax.set_xlabel("Temperatura (°C)")
-    skew.ax.set_ylabel("Pressió (hPa)")
+    skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
+    skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2.5, label='Temperatura'); skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
+    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
+    skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
+    prof = mpcalc.parcel_profile(p, T[0], Td[0]); skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+    skew.shade_cape(p, T, prof, color='red', alpha=0.3); skew.shade_cin(p, T, prof, color='blue', alpha=0.3)
+    skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40); skew.ax.set_title(titol, weight='bold', fontsize=14); skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
     
     levels_to_plot = {'LCL_p': 'LCL', 'FRZG_Lvl_p': '0°C', 'LFC_p': None, 'EL_p': None}
     for key, name in levels_to_plot.items():
         p_lvl = params_calc.get(key)
         if p_lvl is not None and hasattr(p_lvl, 'm') and not np.isnan(p_lvl.m):
             skew.ax.axhline(p_lvl.m, color='blue', linestyle='--', linewidth=1.5)
-            if name:
-                skew.ax.text(skew.ax.get_xlim()[1], p_lvl.m, f' {name}', color='blue', ha='left', va='center', fontsize=10, weight='bold')
-    
-    skew.ax.legend()
-    
-    # Dibuixar la llegenda de paràmetres a la dreta
-    def fmt(val, unit): return f"{val:.1f} {unit}" if val is not None and not np.isnan(val) else "---"
-    def fmt_int(val, unit): return f"{val:.0f} {unit}" if val is not None and not np.isnan(val) else "---"
-    
-    y = 0.95
-    x_lab = 0.05
-    x_val = 0.95
-    
-    ax_text.text(x_lab, y, "Nivells Clau:", weight='bold'); y -= 0.06
-    ax_text.text(x_lab, y, "Congelació:"); ax_text.text(x_val, y, fmt_int(params_calc.get('FRZG_Lvl_Hgt'), 'm'), ha='right'); y -= 0.05
-    ax_text.text(x_lab, y, "LCL:"); ax_text.text(x_val, y, fmt_int(params_calc.get('LCL_Hgt'), 'm'), ha='right'); y -= 0.05
-    ax_text.text(x_lab, y, "LFC:"); ax_text.text(x_val, y, fmt_int(params_calc.get('LFC_Hgt'), 'm'), ha='right'); y -= 0.05
-    ax_text.text(x_lab, y, "EL:"); ax_text.text(x_val, y, fmt_int(params_calc.get('EL_Hgt'), 'm'), ha='right'); y -= 0.08
-    
-    ax_text.text(x_lab, y, "Energia (CAPE/CIN):", weight='bold'); y -= 0.06
-    cape_total = params_calc.get('CAPE_total')
-    mu_cape = params_calc.get('MU_CAPE')
-    ml_cape = params_calc.get('ML_CAPE')
-    cin_total = params_calc.get('CIN_total')
-    
-    ax_text.text(x_lab, y, "SB CAPE:", color=get_color_for_param(cape_total, 'cape')); ax_text.text(x_val, y, fmt_int(cape_total, 'J/kg'), ha='right', color=get_color_for_param(cape_total, 'cape')); y -= 0.05
-    ax_text.text(x_lab, y, "MU CAPE:", color=get_color_for_param(mu_cape, 'cape')); ax_text.text(x_val, y, fmt_int(mu_cape, 'J/kg'), ha='right', color=get_color_for_param(mu_cape, 'cape')); y -= 0.05
-    ax_text.text(x_lab, y, "ML CAPE:", color=get_color_for_param(ml_cape, 'cape')); ax_text.text(x_val, y, fmt_int(ml_cape, 'J/kg'), ha='right', color=get_color_for_param(ml_cape, 'cape')); y -= 0.05
-    ax_text.text(x_lab, y, "CIN:"); ax_text.text(x_val, y, fmt_int(cin_total, 'J/kg'), ha='right'); y -= 0.08
-    
-    ax_text.text(x_lab, y, "Índexs d'Inestabilitat:", weight='bold'); y -= 0.06
-    ax_text.text(x_lab, y, "KI:"); ax_text.text(x_val, y, fmt(params_calc.get('KI'), '°C'), ha='right'); y -= 0.05
-    ax_text.text(x_lab, y, "TT:"); ax_text.text(x_val, y, fmt(params_calc.get('TT'), '°C'), ha='right')
-
-    return fig
-    
+            if name: skew.ax.text(skew.ax.get_xlim()[1], p_lvl.m, f' {name}', color='blue', ha='left', va='center', fontsize=10, weight='bold')
+    try:
+        for bottom_p, top_p in mpcalc.inversions(p, T, Td):
+            skew.ax.axhspan(bottom_p.m, top_p.m, color='blue', alpha=0.15, linewidth=0)
+            skew.ax.text(skew.ax.get_xlim()[0] + 2, (bottom_p.m + top_p.m) / 2, 'Subsidència', color='blue', ha='left', va='center', fontsize=9)
+    except: pass
+    skew.ax.legend(); return fig
 def crear_hodograf_avancat(p, u, v, heights, titol):
     fig = plt.figure(dpi=150); fig.set_figheight(fig.get_figwidth() * 1.1)
     gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[1.2, 1], top=0.92, bottom=0.05, left=0.05, right=0.95)
@@ -651,15 +594,16 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
             
+            ui_caixa_parametres(params_calculats)
+            st.markdown("---")
+
             col1, col2 = st.columns(2)
             with col1:
-                fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical - {poble_sel}")
+                fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}")
                 st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
             with col2:
-                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat - {poble_sel}")
+                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
                 st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
-
-            ui_caixa_analisi_final(params_calculats)
 
             with st.expander("❔ Com interpretar els paràmetres i gràfics"):
                 st.markdown("""
