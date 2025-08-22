@@ -126,6 +126,7 @@ def show_login_page():
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
+        # ... (la part inicial de la funció es queda igual) ...
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS]
         params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
@@ -189,19 +190,35 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             except: 
                 params_calc[f'BWD_{name}'] = np.nan
         
-        # --- LÍNIA CORREGIDA ---
         if params_calc['RM'] is not None:
             try:
                 u_storm, v_storm = params_calc['RM']
                 params_calc['Critical_Angle'] = mpcalc.critical_angle(p, u, v, heights, u_storm=u_storm, v_storm=v_storm).to('deg').m
                 params_calc['SR_Wind'] = mpcalc.wind_speed(u - u_storm, v - v_storm).to('kt')
-            except: 
-                params_calc['Critical_Angle'] = np.nan
-                params_calc['SR_Wind'] = None
-        else:
-            params_calc['Critical_Angle'] = np.nan
-            params_calc['SR_Wind'] = None
+                
+                srh_0_1, _, _ = mpcalc.storm_relative_helicity(heights, u, v, depth=1000 * units.m, storm_u=u_storm, storm_v=v_storm)
+                params_calc['SRH_0-1km'] = srh_0_1.to('m**2/s**2').m
+                srh_0_3, _, _ = mpcalc.storm_relative_helicity(heights, u, v, depth=3000 * units.m, storm_u=u_storm, storm_v=v_storm)
+                params_calc['SRH_0-3km'] = srh_0_3.to('m**2/s**2').m
 
+                # Càlcul de la capa efectiva
+                eff_p_bottom, eff_p_top = mpcalc.effective_inflow_layer(p, T, Td, prof)
+                if hasattr(eff_p_bottom, 'm'):
+                    eff_h_bottom = np.interp(eff_p_bottom.m, p.m[::-1], heights_agl.m[::-1]) * units.m
+                    eff_h_top = np.interp(eff_p_top.m, p.m[::-1], heights_agl.m[::-1]) * units.m
+                    eff_depth = eff_h_top - eff_h_bottom
+                    
+                    params_calc['EBWD'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights_agl, bottom=eff_h_bottom, depth=eff_depth)).to('kt').m
+                    esrh, _, _ = mpcalc.storm_relative_helicity(heights_agl, u, v, bottom=eff_h_bottom, depth=eff_depth, storm_u=u_storm, storm_v=v_storm)
+                    params_calc['ESRH'] = esrh.to('m**2/s**2').m
+                else:
+                    params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
+
+            except: 
+                params_calc.update({'Critical_Angle': np.nan, 'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
+        else:
+            params_calc.update({'Critical_Angle': np.nan, 'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
+            
         return ((p, T, Td, u, v, heights, prof), params_calc), None
     except Exception as e: 
         return None, f"Error en processar dades del sondeig: {e}"
@@ -350,56 +367,82 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     return fig
 
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
-    fig = plt.figure(dpi=150, figsize=(6, 8))
-    gs = fig.add_gridspec(nrows=1, ncols=1, top=0.9, bottom=0.05, left=0.05, right=0.95)
-    ax_hodo = fig.add_subplot(gs[0, 0])
+    fig = plt.figure(dpi=150, figsize=(7, 9))
+    gs = fig.add_gridspec(nrows=2, ncols=1, height_ratios=[2.5, 1], hspace=0.3)
+    ax_hodo = fig.add_subplot(gs[0])
+    ax_srw = fig.add_subplot(gs[1])
     fig.suptitle(titol, weight='bold', fontsize=14)
     
+    # --- Gràfic principal de l'Hodògraf ---
     h = Hodograph(ax_hodo, component_range=80.)
     h.add_grid(increment=20, color='gray', linestyle='--')
-    h.plot_colormapped(u.to('kt'), v.to('kt'), heights.to('km'), intervals=np.array([0, 1, 3, 6, 9]) * units.km, 
-                       colors=['red', 'blue', 'green', 'purple'], linewidth=4)
     
-    motion = {'RM': params_calc['RM'], 'LM': params_calc['LM'], 'Vent Mitjà': params_calc['Mean_Wind']}
+    colors = ['red', 'blue', 'green', 'purple']
+    intervals = np.array([0, 1, 3, 6, 9]) * units.km
+    h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors, linewidth=3)
+    
+    # Marcadors d'altitud
+    for alt_km in [1, 3, 6, 9]:
+        try:
+            alt_m = alt_km * 1000 * units.m
+            idx = np.argmin(np.abs(heights - alt_m))
+            ax_hodo.text(u[idx].to('kt').m, v[idx].to('kt').m, f'{alt_km}km', fontsize=9, 
+                       path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+        except: continue
+
+    # Dibuixar el vector de cisallament 0-6km
+    try:
+        u_sfc, v_sfc = mpcalc.get_layer(p, u, v, height=heights, depth=100*units.m)[1:]
+        u_6km, v_6km = mpcalc.get_layer(p, u, v, height=heights, depth=6000*units.m)[1:]
+        ax_hodo.arrow(u_sfc[0].to('kt').m, v_sfc[0].to('kt').m, 
+                      (u_6km[-1] - u_sfc[0]).to('kt').m, (v_6km[-1] - v_sfc[0]).to('kt').m,
+                      color='black', linestyle='--', alpha=0.7, head_width=2)
+    except: pass
+
+    # Dibuixar moviment de la tempesta
+    motion = {'RM': params_calc['RM'], 'LM': params_calc['LM']}
     if all(v is not None for v in motion.values()):
         for name, vec in motion.items():
             u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m
-            marker = 's' if 'Mitjà' in name else 'o'
-            ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
-            
-    # --- Paràmetres com a text ---
-    y_pos = 0.95; x_label = 0.05; x_value = 0.5; y_step = 0.06
-    fig.text(0.5, y_pos, "Paràmetres", ha='center', weight='bold', fontsize=12); y_pos -= (y_step*1.5)
-    fig.text(x_value, y_pos, "BWD (nusos)", ha='left'); y_pos -= (y_step*1.2)
-    for key in ['0-1km', '0-3km', '0-6km']:
+            ax_hodo.plot(u_comp, v_comp, 'o', color='black', markersize=8, fillstyle='none', mew=1.5)
+            ax_hodo.text(u_comp + 2, v_comp + 2, name, ha='center', weight='bold', fontsize=10)
+
+    # --- Taula de Paràmetres (com a text a la figura) ---
+    y_pos = 0.9; x_label = 0.75
+    fig.text(x_label, y_pos, "Cisallament (nusos)", ha='left', weight='bold'); y_pos -= 0.04
+    for key in ['0-1km', '0-6km']:
         val = params_calc.get(f'BWD_{key}', np.nan)
-        fig.text(x_label, y_pos, f"{key}:"); fig.text(x_value, y_pos, f"{val:.0f}" if not np.isnan(val) else "---", ha='left'); y_pos -= y_step
+        fig.text(x_label, y_pos, f"{key}: {val:.0f}" if not np.isnan(val) else f"{key}: ---"); y_pos -= 0.04
+    val = params_calc.get('EBWD', np.nan)
+    fig.text(x_label, y_pos, f"Efectiu: {val:.0f}" if not np.isnan(val) else "Efectiu: ---"); y_pos -= 0.06
+
+    fig.text(x_label, y_pos, "Helicitat (m²/s²)", ha='left', weight='bold'); y_pos -= 0.04
+    for key in ['0-1km', '0-3km']:
+        val = params_calc.get(f'SRH_{key}', np.nan)
+        fig.text(x_label, y_pos, f"{key}: {val:.0f}" if not np.isnan(val) else f"{key}: ---"); y_pos -= 0.04
+    val = params_calc.get('ESRH', np.nan)
+    fig.text(x_label, y_pos, f"Efectiva: {val:.0f}" if not np.isnan(val) else "Efectiva: ---"); y_pos -= 0.06
     
-    y_pos -= y_step; fig.text(0.5, y_pos, "Moviment Tempesta (dir/kts)", ha='center', weight='bold', fontsize=12); y_pos -= (y_step*1.5)
+    fig.text(x_label, y_pos, "Moviment (dir/kts)", ha='left', weight='bold'); y_pos -= 0.04
     if all(v is not None for v in motion.values()):
         for name, vec in motion.items():
             speed = mpcalc.wind_speed(*vec).to('kt').m; direction = mpcalc.wind_direction(*vec).to('deg').m
-            fig.text(x_label, y_pos, f"{name}:"); fig.text(x_value, y_pos, f"{direction:.0f}°/{speed:.0f} kts", ha='left'); y_pos -= y_step
-    else: fig.text(0.5, y_pos, "Càlcul no disponible", ha='center', fontsize=9, color='gray'); y_pos -= y_step
+            fig.text(x_label, y_pos, f"{name}: {direction:.0f}°/{speed:.0f}"); y_pos -= 0.04
     
-    critical_angle = params_calc.get('Critical_Angle', np.nan)
-    fig.text(x_label, y_pos, "Angle Crític:"); fig.text(x_value, y_pos, f"{critical_angle:.0f}°" if not np.isnan(critical_angle) else '---', ha='left'); y_pos -= y_step
-
-    # --- Gràfic de Vent Relatiu Inset ---
-    ax_sr_wind = fig.add_axes([0.15, 0.1, 0.7, 0.2])
-    ax_sr_wind.set_title("Vent Relatiu vs. Altura (RM)", fontsize=10)
+    # --- Gràfic de Vent Relatiu ---
+    ax_srw.set_title("Vent Relatiu vs. Altura (RM)", fontsize=10)
     sr_wind_speed = params_calc.get('SR_Wind')
     if sr_wind_speed is not None and sr_wind_speed.size > 0:
-        ax_sr_wind.plot(sr_wind_speed, heights.to('km').m)
-        ax_sr_wind.set_xlim(0, max(60, sr_wind_speed[~np.isnan(sr_wind_speed)].max().m + 5 if np.any(~np.isnan(sr_wind_speed)) else 60))
-        ax_sr_wind.fill_betweenx([0, 2], 40, 60, color='gray', alpha=0.2)
-        ax_sr_wind.fill_betweenx([7, 11], 40, 60, color='gray', alpha=0.2)
-    else: ax_sr_wind.text(0.5, 0.5, "No disponible", ha='center', va='center', transform=ax_sr_wind.transAxes, fontsize=9, color='gray')
+        ax_srw.plot(sr_wind_speed, heights.to('km').m)
+        ax_srw.set_xlim(0, max(60, sr_wind_speed[~np.isnan(sr_wind_speed)].max().m + 5 if np.any(~np.isnan(sr_wind_speed)) else 60))
+        ax_srw.fill_betweenx([0, 2], 40, 60, color='gray', alpha=0.2)
+        ax_srw.fill_betweenx([7, 11], 40, 60, color='gray', alpha=0.2)
+    else: ax_srw.text(0.5, 0.5, "No disponible", ha='center', va='center', transform=ax_srw.transAxes, fontsize=9, color='gray')
     
-    ax_sr_wind.set_xlabel("Vent Relatiu (nusos)", fontsize=8)
-    ax_sr_wind.set_ylabel("Altura (km)", fontsize=8)
-    ax_sr_wind.set_ylim(0, 12); ax_sr_wind.grid(True, linestyle='--')
-    ax_sr_wind.tick_params(axis='both', which='major', labelsize=8)
+    ax_srw.set_xlabel("Vent Relatiu (nusos)", fontsize=9)
+    ax_srw.set_ylabel("Altura (km)", fontsize=9)
+    ax_srw.set_ylim(0, 12); ax_srw.grid(True, linestyle='--')
+    ax_srw.tick_params(axis='both', which='major', labelsize=8)
     return fig
 
 @st.cache_data(ttl=600)
