@@ -761,7 +761,7 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
                  style="position: absolute; top: -5%; left: -110%; width: 200%; max-width: none;">
         </div>
         """
-        st.components.v1.html(html_code_sat, height=510)```
+        st.components.v1.html(html_code_sat, height=510)
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteologix & Rainviewer | IA per Google Gemini.</p>", unsafe_allow_html=True)
 
