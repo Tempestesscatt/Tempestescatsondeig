@@ -25,9 +25,13 @@ import json
 import hashlib
 import os
 import base64
+import threading # <--- IMPORT NECESSARI
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever | Catalunya")
+
+# Bloqueig per a càlculs no segurs per a fils
+parcel_lock = threading.Lock()
 
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
@@ -148,8 +152,9 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         u, v, heights = np.array(u_profile)[valid_indices] * units('m/s'), np.array(v_profile)[valid_indices] * units('m/s'), np.array(h_profile)[valid_indices] * units.meter
         
         params_calc = {}
-        # ===> LÍNIA CORREGIDA <===
-        prof = mpcalc.parcel_profile(p, T[0], Td[0], integrator='vode').to('degC'); cape, cin = mpcalc.cape_cin(p, T, Td, prof)
+        with parcel_lock:
+            prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
+        cape, cin = mpcalc.cape_cin(p, T, Td, prof)
         params_calc['CAPE_total'] = cape.to('J/kg').m; params_calc['CIN_total'] = cin.to('J/kg').m
         
         try: params_calc['MU_CAPE'] = mpcalc.most_unstable_cape_cin(p, T, Td)[0].to('J/kg').m
@@ -301,7 +306,7 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 def crear_skewt(p, T, Td, u, v, params_calc, titol):
-    fig = plt.figure(figsize=(9, 10), dpi=150)
+    fig = plt.figure(figsize=(9, 9), dpi=150)
     gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[2, 1.2], top=0.92, bottom=0.1, left=0.1, right=0.95)
     ax_skew = fig.add_subplot(gs[0, 0]); ax_text = fig.add_subplot(gs[0, 1]); ax_text.axis('off')
     skew = SkewT(fig, ax=ax_skew, rotation=45)
@@ -321,9 +326,7 @@ def crear_skewt(p, T, Td, u, v, params_calc, titol):
             if name: skew.ax.text(skew.ax.get_xlim()[1], p_lvl.m, f' {name}', color='blue', ha='left', va='center', fontsize=10, weight='bold')
     skew.ax.legend()
     
-    def fmt(val, unit): return f"{val:.1f} {unit}" if not np.isnan(val) else "---"
     def fmt_int(val, unit): return f"{val:.0f} {unit}" if not np.isnan(val) else "---"
-    
     y = 0.95; x_lab = 0.05; x_val = 0.95
     ax_text.text(x_lab, y, "Nivells Clau:", weight='bold'); y-=0.06
     ax_text.text(x_lab, y, "Congelació:"); ax_text.text(x_val, y, fmt_int(params_calc.get('FRZG_Lvl_Hgt', np.nan), 'm'), ha='right'); y-=0.05
@@ -335,11 +338,7 @@ def crear_skewt(p, T, Td, u, v, params_calc, titol):
     ax_text.text(x_lab, y, "SB CAPE:", color=get_color_for_param(params_calc.get('CAPE_total'), 'cape')); ax_text.text(x_val, y, fmt_int(params_calc.get('CAPE_total', np.nan), 'J/kg'), ha='right', color=get_color_for_param(params_calc.get('CAPE_total'), 'cape')); y-=0.05
     ax_text.text(x_lab, y, "MU CAPE:", color=get_color_for_param(params_calc.get('MU_CAPE'), 'cape')); ax_text.text(x_val, y, fmt_int(params_calc.get('MU_CAPE', np.nan), 'J/kg'), ha='right', color=get_color_for_param(params_calc.get('MU_CAPE'), 'cape')); y-=0.05
     ax_text.text(x_lab, y, "ML CAPE:", color=get_color_for_param(params_calc.get('ML_CAPE'), 'cape')); ax_text.text(x_val, y, fmt_int(params_calc.get('ML_CAPE', np.nan), 'J/kg'), ha='right', color=get_color_for_param(params_calc.get('ML_CAPE'), 'cape')); y-=0.05
-    ax_text.text(x_lab, y, "CIN:"); ax_text.text(x_val, y, fmt_int(params_calc.get('CIN_total', np.nan), 'J/kg'), ha='right'); y-=0.08
-    
-    ax_text.text(x_lab, y, "Índexs d'Inestabilitat:", weight='bold'); y-=0.06
-    ax_text.text(x_lab, y, "KI:"); ax_text.text(x_val, y, fmt(params_calc.get('KI', np.nan), '°C'), ha='right'); y-=0.05
-    ax_text.text(x_lab, y, "TT:"); ax_text.text(x_val, y, fmt(params_calc.get('TT', np.nan), '°C'), ha='right')
+    ax_text.text(x_lab, y, "CIN:"); ax_text.text(x_val, y, fmt_int(params_calc.get('CIN_total', np.nan), 'J/kg'), ha='right')
 
     return fig
 def crear_hodograf_avancat(p, u, v, heights, titol):
@@ -406,88 +405,19 @@ def mostrar_imatge_temps_real(tipus):
     if image_content: st.image(image_content, caption=caption, use_container_width=True)
     else: st.warning(error_msg)
 
-def get_color_for_param(value, param_type):
-    if value is None or np.isnan(value): return "white"
-    if param_type == 'cape':
-        if value < 100: return "white";
-        if value < 1000: return "yellow"
-        if value < 2500: return "orange"
-        return "red"
-    return "white"
 def analitzar_tipus_sondeig(params):
     cape = params.get('CAPE_total', 0); cin = params.get('CIN_total', 0)
     pwat = params.get('PWAT', 0); dcape = params.get('DCAPE', 0)
-
-    if cape > 2000 and cin < -75:
-        return ("SONDEIG CARREGAT (LOADED GUN)", 
-                "Potencial de tempestes explosives si es trenca la 'tapa' (CIN). Molt CAPE contingut per una forta inversió. Risc de temps sever si s'allibera la inestabilitat.")
-    elif dcape > 1000:
-        return ("SONDEIG EN V INVERTIDA",
-                "Perfil característic d'un alt risc de **rebentades seques** (*dry downbursts*). La presència d'aire sec a nivells mitjans afavoreix forts corrents descendents per evaporació.")
-    elif pwat > 40:
-        return ("SONDEIG TROPICAL / SATURAT",
-                "Perfil molt humit en tota la columna. Favorable per a pluges molt eficients i abundants, amb risc de **precipitacions intenses o estacionàries**.")
-    elif cape < 100 and cin > -25:
-        return ("SONDEIG ESTABLE",
-                "Atmosfera generalment estable. La convecció és molt improbable. No s'esperen fenòmens de temps sever.")
-    else:
-        return ("SONDEIG DE CONVECCIÓ ESTÀNDARD",
-                "Condicions típiques per a la formació de tempestes de tarda. La severitat dependrà d'altres factors com el cisallament del vent (veure hodògraf).")
+    if cape > 2000 and cin < -75: return ("SONDEIG CARREGAT (LOADED GUN)", "Potencial de tempestes explosives si es trenca la 'tapa' (CIN). Molt CAPE contingut per una forta inversió. Risc de temps sever si s'allibera la inestabilitat.")
+    elif dcape > 1000: return ("SONDEIG EN V INVERTIDA", "Perfil característic d'un alt risc de **rebentades seques** (*dry downbursts*). La presència d'aire sec a nivells mitjans afavoreix forts corrents descendents per evaporació.")
+    elif pwat > 40: return ("SONDEIG TROPICAL / SATURAT", "Perfil molt humit en tota la columna. Favorable per a pluges molt eficients i abundants, amb risc de **precipitacions intenses o estacionàries**.")
+    elif cape < 100 and cin > -25: return ("SONDEIG ESTABLE", "Atmosfera generalment estable. La convecció és molt improbable. No s'esperen fenòmens de temps sever.")
+    else: return ("SONDEIG DE CONVECCIÓ ESTÀNDARD", "Condicions típiques per a la formació de tempestes de tarda. La severitat dependrà d'altres factors com el cisallament del vent (veure hodògraf).")
 def analitzar_tipus_hodograf(params):
     bwd = params.get('BWD_0_6km', 0)
-    if bwd > 50:
-        return("POTENCIAL DE SUPERCÈL·LULES",
-               "El cisallament del vent és molt fort. Aquest entorn és extremadament favorable per a l'organització de tempestes i la formació de supercèl·lules amb rotació (mesociclons).")
-    elif bwd > 35:
-        return("POTENCIAL DE TEMPESTES ORGANITZADES",
-               "El cisallament del vent és significatiu. Les tempestes poden organitzar-se en sistemes multicel·lulars (línies de torbonada, MCS) o fins i tot supercèl·lules aïllades.")
-    else:
-        return("POTENCIAL DE TEMPESTES DESORGANITZADES",
-               "El cisallament del vent és feble. Si es formen tempestes, probablement seran de cicle de vida únic, de curta durada i amb menys potencial de severitat.")
-def ui_caixa_parametres(params):
-    def fmt(val, unit): return f"{val:.1f} {unit}" if not np.isnan(val) else "---"
-    def fmt_int(val, unit): return f"{val:.0f} {unit}" if not np.isnan(val) else "---"
-    
-    titol_s, desc_s = analitzar_tipus_sondeig(params)
-    titol_h, desc_h = analitzar_tipus_hodograf(params)
-
-    html = f"""
-    <div style="border: 1px solid #555; border-radius: 10px; padding: 20px; display: flex; justify-content: space-around; align-items: flex-start;">
-        <div style="width: 30%; text-align: center;">
-            <h4 style="margin-top: 0; color: #FFD700;">{titol_s}</h4>
-            <p style="font-size: 0.9em; margin-bottom: 0;">{desc_s}</p>
-        </div>
-        <div style="width: 35%; font-family: monospace; font-size: 0.9em; line-height: 1.7; border-left: 1px solid #555; border-right: 1px solid #555; padding: 0 20px;">
-            <div style="display: flex; justify-content: space-between;">
-                <div style="width: 48%;">
-                    <span style="font-weight: bold;">Nivells Clau:</span><br>
-                    Congelació: {fmt_int(params.get('FRZG_Lvl_Hgt', np.nan), 'm')}<br>
-                    LCL: {fmt_int(params.get('LCL_Hgt', np.nan), 'm')}<br>
-                    LFC: {fmt_int(params.get('LFC_Hgt', np.nan), 'm')}<br>
-                    EL: {fmt_int(params.get('EL_Hgt', np.nan), 'm')}
-                </div>
-                <div style="width: 48%;">
-                    <span style="font-weight: bold;">Energia (CAPE/CIN):</span><br>
-                    <span style='color:{get_color_for_param(params.get('CAPE_total'), 'cape')};'>SB CAPE: {fmt_int(params.get('CAPE_total', np.nan), 'J/kg')}</span><br>
-                    <span style='color:{get_color_for_param(params.get('MU_CAPE'), 'cape')};'>MU CAPE: {fmt_int(params.get('MU_CAPE', np.nan), 'J/kg')}</span><br>
-                    <span style='color:{get_color_for_param(params.get('ML_CAPE'), 'cape')};'>ML CAPE: {fmt_int(params.get('ML_CAPE', np.nan), 'J/kg')}</span><br>
-                    CIN: {fmt_int(params.get('CIN_total', np.nan), 'J/kg')}
-                </div>
-            </div>
-            <br>
-            <div style="width: 100%;">
-                <span style="font-weight: bold;">Índexs d'Inestabilitat:</span><br>
-                KI: {fmt(params.get('KI', np.nan), '°C')}<br>
-                TT: {fmt(params.get('TT', np.nan), '°C')}
-            </div>
-        </div>
-        <div style="width: 30%; text-align: center;">
-            <h4 style="margin-top: 0; color: #FFD700;">{titol_h}</h4>
-            <p style="font-size: 0.9em; margin-bottom: 0;">{desc_h}</p>
-        </div>
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
+    if bwd > 50: return("POTENCIAL DE SUPERCÈL·LULES", "El cisallament del vent és molt fort. Aquest entorn és extremadament favorable per a l'organització de tempestes i la formació de supercèl·lules amb rotació (mesociclons).")
+    elif bwd > 35: return("POTENCIAL DE TEMPESTES ORGANITZADES", "El cisallament del vent és significatiu. Les tempestes poden organitzar-se en sistemes multicel·lulars (línies de torbonada, MCS) o fins i tot supercèl·lules aïllades.")
+    else: return("POTENCIAL DE TEMPESTES DESORGANITZADES", "El cisallament del vent és feble. Si es formen tempestes, probablement seran de cicle de vida únic, de curta durada i amb menys potencial de severitat.")
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent Meteo-Col·lega (amb Google Gemini)")
     try: genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -672,15 +602,15 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
             
-            titol_s, _ = analitzar_tipus_sondeig(params_calculats)
-            titol_h, _ = analitzar_tipus_hodograf(params_calculats)
+            ui_caixa_parametres(params_calculats)
+            st.markdown("---")
 
             col1, col2 = st.columns(2)
             with col1:
-                fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical - {poble_sel}\n{titol_s}")
+                fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}")
                 st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
             with col2:
-                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat - {poble_sel}\n{titol_h}")
+                fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
                 st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
 
             with st.expander("❔ Com interpretar els paràmetres i gràfics"):
