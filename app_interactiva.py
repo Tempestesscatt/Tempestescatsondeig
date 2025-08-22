@@ -304,8 +304,8 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 def crear_skewt(p, T, Td, u, v, params_calc, titol):
-    fig = plt.figure(figsize=(9, 10), dpi=150)
-    skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.8, 0.85))
+    fig = plt.figure(dpi=150); fig.set_figheight(fig.get_figwidth() * 1.1)
+    skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.8, 0.9))
     skew.ax.grid(True, linestyle='-', alpha=0.5); skew.plot(p, T, 'r', lw=2.5, label='Temperatura'); skew.plot(p, Td, 'g', lw=2.5, label='Punt de Rosada')
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03); skew.plot_dry_adiabats(color='brown', linestyle='--', alpha=0.6)
     skew.plot_moist_adiabats(color='blue', linestyle='--', alpha=0.6); skew.plot_mixing_lines(color='green', linestyle='--', alpha=0.6)
@@ -586,22 +586,19 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             st.subheader(f"Anàlisi Vertical per a {poble_sel} - {dia_sel} {hora_sel}")
             p, T, Td, u, v, heights = sounding_data
             
-            titol_s, _ = analitzar_tipus_sondeig(params_calculats)
-            titol_h, _ = analitzar_tipus_hodograf(params_calculats)
+            # La caixa de paràmetres ara va a dalt de tot
+            ui_caixa_parametres(params_calculats)
+            st.markdown("---") # Separador visual
 
             col1, col2 = st.columns(2)
             with col1:
+                # El títol del gràfic ara és més simple
                 fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}")
                 st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
-                st.markdown(f"""<div style="border: 1px solid #555; border-radius: 10px; padding: 15px; text-align: center; margin-top: 10px;">
-                    <h4 style="margin-top: 0; color: #FFD700;">{titol_s}</h4>
-                </div>""", unsafe_allow_html=True)
             with col2:
+                # El títol del gràfic ara és més simple
                 fig_hodo = crear_hodograf_avancat(p, u, v, heights, f"Hodògraf Avançat\n{poble_sel}")
                 st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
-                st.markdown(f"""<div style="border: 1px solid #555; border-radius: 10px; padding: 15px; text-align: center; margin-top: 10px;">
-                    <h4 style="margin-top: 0; color: #FFD700;">{titol_h}</h4>
-                </div>""", unsafe_allow_html=True)
 
             with st.expander("❔ Com interpretar els paràmetres i gràfics"):
                 st.markdown("""
@@ -635,7 +632,7 @@ def main():
         start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         hourly_index_sel = max(0, int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600))
         ciutats_per_selector, info_msg = obtenir_ciutats_actives(hourly_index_sel) if is_guest else (CIUTATS_CATALUNYA, None)
-        ui_capcalera_selectors(ciutats_per_selector, info_msg)
+        ui_capcalera_selectors(ciutats_a_mostrar, info_msg)
         poble_sel = st.session_state.poble_selector
         if poble_sel not in ciutats_per_selector: st.session_state.poble_selector = sorted(ciutats_per_selector.keys())[0]; st.rerun()
         dia_sel, hora_sel = st.session_state.dia_selector, st.session_state.hora_selector
