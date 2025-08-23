@@ -551,7 +551,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
     
     gs = fig.add_gridspec(nrows=2, ncols=2,
-                          height_ratios=[1, 6],
+                          height_ratios=[1.5, 6], # Donem una mica més d'espai a les barbes
                           width_ratios=[1.5, 1],
                           hspace=0.4, wspace=0.3)
 
@@ -562,45 +562,73 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig.suptitle(titol, weight='bold', fontsize=16)
 
     # --- Dibuixem les barbes de vent a l'eix superior (ax_barbs) ---
-    ax_barbs.set_title("Vent a Nivells Clau", fontsize=11, pad=10)
+    ax_barbs.set_title("Vent a Nivells Clau", fontsize=11, pad=15)
     heights_agl = heights - heights[0]
     barb_altitudes_km = [1, 3, 6, 9]
     barb_altitudes_m = [h * 1000 for h in barb_altitudes_km] * units.m
-    u_barbs, v_barbs = [], []
+    u_barbs_list, v_barbs_list = [], []
 
-    # --- INICI DE LA CORRECCIÓ ---
-    # Primer, recollim només els valors numèrics (magnituds) a les llistes.
     for h_m in barb_altitudes_m:
         if h_m <= heights_agl.max():
-            # Usem np.interp amb les magnituds (.m) de les variables
             u_interp_val = np.interp(h_m.m, heights_agl.m, u.m)
             v_interp_val = np.interp(h_m.m, heights_agl.m, v.m)
-            u_barbs.append(u_interp_val)
-            v_barbs.append(v_interp_val)
+            u_barbs_list.append(u_interp_val)
+            v_barbs_list.append(v_interp_val)
         else:
-            u_barbs.append(np.nan)
-            v_barbs.append(np.nan)
+            u_barbs_list.append(np.nan)
+            v_barbs_list.append(np.nan)
 
-    # Ara, convertim la llista de nombres a un array Quantity amb unitats, i després a nusos.
-    # Això evita l'error de "setting an array element with a sequence".
-    u_barbs_kt = units.Quantity(u_barbs, u.units).to('kt')
-    v_barbs_kt = units.Quantity(v_barbs, v.units).to('kt')
-    # --- FI DE LA CORRECCIÓ ---
+    u_barbs = units.Quantity(u_barbs_list, u.units)
+    v_barbs = units.Quantity(v_barbs_list, v.units)
+    
+    # --- INICI DE LA MILLORA: Codi de colors i etiquetes de velocitat ---
+    
+    # Calculem la velocitat en km/h per a cada barba
+    speed_kmh = np.sqrt(u_barbs**2 + v_barbs**2).to('km/h').m
+
+    # Definim els llindars de velocitat (en km/h) i els colors corresponents
+    thresholds = [10, 40, 70, 100, 130]
+    colors = ['grey', '#6495ed', '#90ee90', '#f0e68c', '#cd5c5c', '#9370db'] # Gris, Blau, Verd, Groc, Vermell, Lila
 
     x_pos = np.arange(len(barb_altitudes_km))
-    ax_barbs.barbs(x_pos, np.zeros_like(x_pos), u_barbs_kt, v_barbs_kt, length=8, pivot='middle')
+    u_barbs_kt = u_barbs.to('kt')
+    v_barbs_kt = v_barbs.to('kt')
 
-    ax_barbs.set_xticks(x_pos); ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km])
-    ax_barbs.set_yticks([]); ax_barbs.spines[:].set_visible(False)
-    ax_barbs.tick_params(axis='x', length=0, pad=5); ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5)
+    # Dibuixem cada barba individualment per assignar-li color i text
+    for i, spd_kmh in enumerate(speed_kmh):
+        if not np.isnan(spd_kmh):
+            # Trobem l'índex del color correcte basat en la velocitat
+            color_index = np.searchsorted(thresholds, spd_kmh)
+            color = colors[color_index]
+            
+            # Dibuixem la barba amb el color determinat
+            ax_barbs.barbs(x_pos[i], 0, u_barbs_kt[i], v_barbs_kt[i], 
+                           length=8, pivot='middle', color=color)
+            
+            # Afegim l'etiqueta de text amb la velocitat i el mateix color
+            ax_barbs.text(x_pos[i], -0.8, f"{spd_kmh:.0f} km/h", 
+                          ha='center', va='top', fontsize=9, color=color, weight='bold')
+        else:
+            # Si no hi ha dades, mostrem "N/A"
+            ax_barbs.text(x_pos[i], 0, "N/A", ha='center', va='center', fontsize=9, color='grey')
+
+    # Ajustem la visualització de l'eix de les barbes
+    ax_barbs.set_xticks(x_pos)
+    ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km])
+    ax_barbs.set_yticks([])
+    ax_barbs.spines[:].set_visible(False)
+    ax_barbs.tick_params(axis='x', length=0, pad=5)
+    ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5)
+    ax_barbs.set_ylim(-1.5, 1.5) # Assegurem espai per al text
+    # --- FI DE LA MILLORA ---
 
     # --- Dibuix de l'hodògraf (ara a ax_hodo) ---
     h = Hodograph(ax_hodo, component_range=80.)
     h.add_grid(increment=20, color='gray', linestyle='--')
     
     intervals = np.array([0, 1, 3, 6, 9, 12]) * units.km
-    colors = ['red', 'blue', 'green', 'purple', 'gold']
-    h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors, linewidth=2)
+    colors_hodo = ['red', 'blue', 'green', 'purple', 'gold']
+    h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
     
     try:
         mean_wind_vec = params_calc.get('Mean_Wind')
@@ -663,7 +691,6 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         y-=0.07
         
     return fig
-
     
 
 def ui_caixa_parametres_sondeig(params):
