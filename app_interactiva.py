@@ -476,60 +476,74 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
 
 def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     """
-    Dibuixa un diagrama Skew-T, garantint que totes les línies comencin
-    visualment a la base del gràfic (1000 hPa), extrapolant les dades
-    si la pressió de superfície és menor.
+    Construeix i dibuixa la trajectòria de la parcel·la manualment,
+    ignorant el perfil pre-calculat, per garantir un control total
+    sobre el seu origen i comportament visual.
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.85, 0.85))
 
-    # Dibuixa les línies de fons (adiabàtiques, etc.) com a referència general
+    # Dibuixa les línies de fons com a referència
     skew.plot_dry_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     skew.plot_moist_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     skew.plot_mixing_lines(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
 
-    # --- LÒGICA D'EXTRAPOLACIÓ PER FORÇAR L'INICI A 1000 HPA ---
-    # Definim les variables que farem servir per al gràfic
-    p_plot, T_plot, Td_plot, prof_plot = p, T, Td, prof
+    # --- 1. PREPARACIÓ DE LES DADES INICIALS (AMB EXTRAPOLACIÓ) ---
+    p_sfc, T_sfc, Td_sfc = p[0], T[0], Td[0]
+    p_plot, T_plot, Td_plot = p, T, Td
 
-    # Si la pressió de superfície és menor de 1000 hPa (el terreny és alt)
-    if p[0] < 1000 * units.hPa and prof is not None:
+    # Si el terreny és alt, extrapolem cap avall fins a 1000 hPa per al dibuix
+    if p_sfc < 1000 * units.hPa:
         p_1000 = 1000 * units.hPa
+        T_1000 = mpcalc.dry_lapse(p_1000, T_sfc)
+        mixing_ratio = mpcalc.mixing_ratio(mpcalc.saturation_vapor_pressure(Td_sfc), p_sfc)
+        Td_1000 = mpcalc.dewpoint(mpcalc.vapor_pressure(p_1000, mixing_ratio))
         
-        # Extrapola la temperatura ambiental fins a 1000 hPa seguint l'adiabàtica seca
-        T_1000 = mpcalc.dry_lapse(p_1000, T[0])
-        
-        # Extrapola el punt de rosada fins a 1000 hPa mantenint la relació de barreja constant
-        mixing_ratio_sfc = mpcalc.mixing_ratio(mpcalc.saturation_vapor_pressure(Td[0]), p[0])
-        Td_1000 = mpcalc.dewpoint(mpcalc.vapor_pressure(p_1000, mixing_ratio_sfc))
-        
-        # Extrapola la trajectòria de la parcel·la (que també segueix l'adiabàtica seca per sota del LCL)
-        prof_1000 = T_1000 # La temperatura de la parcel·la a 1000 hPa és la mateixa que la de l'ambient extrapolada
-        
-        # Inserim els nous punts al principi dels arrays que es dibuixaran
+        # Actualitzem les dades inicials i les dades a dibuixar
+        p_sfc, T_sfc, Td_sfc = p_1000, T_1000, Td_1000
         p_plot = np.insert(p, 0, p_1000)
         T_plot = np.insert(T, 0, T_1000)
         Td_plot = np.insert(Td, 0, Td_1000)
-        prof_plot = np.insert(prof, 0, prof_1000)
 
-    # --- FI DE LA LÒGICA D'EXTRAPOLACIÓ ---
+    # --- 2. CONSTRUCCIÓ MANUAL DE LA TRAJECTÒRIA ("LA FAREM NOSALTRES") ---
+    # Calculem el LCL a partir de les nostres dades inicials
+    lcl_p, lcl_t = mpcalc.lcl(p_sfc, T_sfc, Td_sfc)
 
-    # Ombrejat de les àrees de CAPE i CIN (utilitzant les dades originals per al càlcul)
-    if prof is not None:
-        skew.ax.fill_betweenx(p.magnitude, T.magnitude, prof.magnitude, where=prof.magnitude > T.magnitude,
-                              facecolor='yellow', alpha=0.4, interpolate=True, zorder=5)
-        skew.ax.fill_betweenx(p.magnitude, T.magnitude, prof.magnitude, where=prof.magnitude < T.magnitude,
-                              facecolor='dimgray', alpha=0.4, interpolate=True, zorder=5)
+    # Part 1: Trajectòria per sota del núvol (Adiabàtica Seca)
+    p_dry = p_plot[p_plot >= lcl_p]
+    T_dry_path = mpcalc.dry_lapse(p_dry, T_sfc)
 
-    # Dibuixem els perfils amb les dades possiblement extrapolades
+    # Part 2: Trajectòria dins del núvol (Adiabàtica Humida)
+    p_moist = p_plot[p_plot < lcl_p]
+    # Afegim el punt del LCL per assegurar la continuïtat
+    p_moist = np.insert(p_moist, 0, lcl_p)
+    T_moist_path = mpcalc.moist_lapse(p_moist, lcl_t)
+
+    # Unim les dues parts per crear la nostra trajectòria manual completa
+    p_manual_prof = np.concatenate((p_dry, p_moist))
+    T_manual_prof = np.concatenate((T_dry_path, T_moist_path))
+
+    # Construïm la línia del punt de rosada de la parcel·la (verda)
+    mixing_ratio_sfc = mpcalc.mixing_ratio(mpcalc.saturation_vapor_pressure(Td_sfc), p_sfc)
+    Td_parcel_path = mpcalc.dewpoint(mpcalc.vapor_pressure(p_dry, mixing_ratio_sfc))
+
+    # --- 3. DIBUIX I OMBREJAT ---
+    # Interpolem el perfil manual als nivells de pressió del sondeig per a l'ombrejat
+    prof_interp = np.interp(p.magnitude, p_manual_prof.magnitude[::-1], T_manual_prof.magnitude[::-1]) * units.degC
+    skew.ax.fill_betweenx(p.magnitude, T.magnitude, prof_interp.magnitude, where=prof_interp.magnitude > T.magnitude,
+                          facecolor='yellow', alpha=0.4, interpolate=True, zorder=5)
+    skew.ax.fill_betweenx(p.magnitude, T.magnitude, prof_interp.magnitude, where=prof_interp.magnitude < T.magnitude,
+                          facecolor='dimgray', alpha=0.4, interpolate=True, zorder=5)
+
+    # Dibuixem els perfils i la nostra trajectòria manual
     skew.plot(p_plot, T_plot, 'red', lw=2.5, label='Temperatura')
     skew.plot(p_plot, Td_plot, 'purple', lw=2.5, label='Punt de Rosada')
-    if prof_plot is not None:
-        skew.plot(p_plot, prof_plot, 'k', linewidth=3, label='Trajectòria Parcel·la',
-                  path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
-
-    # Configuració final del gràfic
-    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03) # Les barbes sí amb dades originals
+    skew.plot(p_dry, Td_parcel_path, color='darkgreen', linestyle='--', linewidth=2.5, zorder=10)
+    skew.plot(p_manual_prof, T_manual_prof, 'k', linewidth=3, label='Trajectòria Parcel·la',
+              path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+    
+    # --- 4. CONFIGURACIÓ FINAL ---
+    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
     skew.ax.set_ylim(1000, 100)
     skew.ax.set_xlim(-40, 40)
     skew.ax.set_title(titol, weight='bold', fontsize=14, pad=20)
