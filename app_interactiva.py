@@ -136,124 +136,119 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         hourly = response.Hourly()
         sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i, v in enumerate(h_base)}
         if any(np.isnan(val) for val in sfc_data.values()): return None, "Dades de superfície invàlides."
+        
         p_data = {}
         var_count = len(h_base)
         for i, var in enumerate(["T", "RH", "WS", "WD", "H"]):
             p_data[var] = [hourly.Variables(var_count + i * len(PRESS_LEVELS) + j).ValuesAsNumpy()[hourly_index] for j in range(len(PRESS_LEVELS))]
+        
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
+        
         p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
+        
         for i, p_val in enumerate(PRESS_LEVELS):
             if p_val < sfc_data["surface_pressure"] and all(not np.isnan(p_data[v][i]) for v in ["T", "RH", "WS", "WD", "H"]):
-                p_profile.append(p_val); T_profile.append(p_data["T"][i]); Td_profile.append(mpcalc.dewpoint_from_relative_humidity(p_data["T"][i] * units.degC, p_data["RH"][i] * units.percent).m)
+                p_profile.append(p_val)
+                T_profile.append(p_data["T"][i])
+                Td_profile.append(mpcalc.dewpoint_from_relative_humidity(p_data["T"][i] * units.degC, p_data["RH"][i] * units.percent).m)
                 u, v = mpcalc.wind_components(p_data["WS"][i] * units('km/h'), p_data["WD"][i] * units.degrees)
-                u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m); h_profile.append(p_data["H"][i])
+                u_profile.append(u.to('m/s').m)
+                v_profile.append(v.to('m/s').m)
+                h_profile.append(p_data["H"][i])
+        
         if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
-        valid_indices = ~np.isnan(p_profile) & ~np.isnan(T_profile) & ~np.isnan(Td_profile) & ~np.isnan(u_profile) & ~np.isnan(v_profile) & ~np.isnan(h_profile)
+        
+        valid_indices = ~np.isnan(p_profile) & ~np.isnan(T_profile) & ~np.isnan(Td_profile) & ~np.isnan(u_profile) & ~np.isnan(v_profile)
         p, T, Td = np.array(p_profile)[valid_indices] * units.hPa, np.array(T_profile)[valid_indices] * units.degC, np.array(Td_profile)[valid_indices] * units.degC
         u, v, heights = np.array(u_profile)[valid_indices] * units('m/s'), np.array(v_profile)[valid_indices] * units('m/s'), np.array(h_profile)[valid_indices] * units.meter
         
         params_calc = {}
-        prof = None 
+        prof = None
         heights_agl = heights - heights[0]
-        
+
         with parcel_lock:
             prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
-            
+
+            # --- CÀLCULS D'ENERGIA ---
             try:
                 sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
-                params_calc['SBCAPE'] = sbcape.m if hasattr(sbcape, 'm') else float(sbcape)
-                params_calc['SBCIN'] = sbcin.m if hasattr(sbcin, 'm') else float(sbcin)
-                
-                # --- BLOC MODIFICAT: S'afegeix el càlcul del corrent ascendent ---
-                if sbcape.m > 0:
-                    w_max = np.sqrt(2 * sbcape.m)
-                    params_calc['MAX_UPDRAFT'] = w_max
-                else:
-                    params_calc['MAX_UPDRAFT'] = 0.0
-                # --- FI DEL BLOC MODIFICAT ---
-
-            except:
-                params_calc['SBCAPE'] = np.nan
-                params_calc['SBCIN'] = np.nan
-                params_calc['MAX_UPDRAFT'] = np.nan # NOVA LÍNIA
+                params_calc['SBCAPE'] = sbcape.m
+                params_calc['SBCIN'] = sbcin.m
+                params_calc['MAX_UPDRAFT'] = np.sqrt(2 * sbcape.m) if sbcape.m > 0 else 0.0
+            except Exception:
+                params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
 
             try:
-                mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td)
-                params_calc['MUCAPE'] = mucape.m if hasattr(mucape, 'm') else float(mucape)
-                params_calc['MUCIN'] = mucin.m if hasattr(mucin, 'm') else float(mucin)
-            except:
-                params_calc['MUCAPE'] = np.nan
-                params_calc['MUCIN'] = np.nan
-            
+                mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td, as_pentads=False)
+                params_calc['MUCAPE'] = mucape.m
+                params_calc['MUCIN'] = mucin.m
+            except Exception:
+                params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
+
             try:
-                mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td)
-                params_calc['MLCAPE'] = mlcape.m if hasattr(mlcape, 'm') else float(mlcape)
-                params_calc['MLCIN'] = mlcin.m if hasattr(mlcin, 'm') else float(mlcin)
-            except:
-                params_calc['MLCAPE'] = np.nan
-                params_calc['MLCIN'] = np.nan
+                mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td, depth=100 * units.hPa)
+                params_calc['MLCAPE'] = mlcape.m
+                params_calc['MLCIN'] = mlcin.m
+            except Exception:
+                params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
             
+            # --- CÀLCULS DE NIVELLS I ÍNDEXS ---
             try:
+                # CORREGIT: Es passa 'prof' a la funció
                 li, _ = mpcalc.lifted_index(p, T, prof)
-                params_calc['LI'] = li.m if hasattr(li, 'm') else float(li)
-            except:
+                params_calc['LI'] = li.m
+            except Exception:
                 params_calc['LI'] = np.nan
+            
+            try:
+                # CORREGIT: Es passa 'prof' a la funció
+                dcape, _ = mpcalc.dcape(p, T, Td, prof)
+                params_calc['DCAPE'] = dcape.m
+            except Exception:
+                params_calc['DCAPE'] = np.nan
 
-        try:
-            idx_3km = np.argmin(np.abs(heights_agl - 3000 * units.m))
-            cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
-            params_calc['CAPE_0-3km'] = cape_0_3.m if hasattr(cape_0_3, 'm') else float(cape_0_3)
-        except:
-            params_calc['CAPE_0-3km'] = np.nan
-
-        try: 
-            pwat_value = mpcalc.precipitable_water(p, Td)
-            params_calc['PWAT'] = pwat_value.to('mm').m
-        except:
-            params_calc['PWAT'] = np.nan
-        
-        try:
-            dcape_val, _ = mpcalc.dcape(p, T, Td)
-            params_calc['DCAPE'] = dcape_val.m if hasattr(dcape_val, 'm') else float(dcape_val)
-        except:
-            params_calc['DCAPE'] = np.nan
+            try:
+                # CORREGIT: Es passa 'prof' a la funció
+                lfc_p, _ = mpcalc.lfc(p, T, Td, prof)
+                params_calc['LFC_p'] = lfc_p.m
+                params_calc['LFC_Hgt'] = np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1])
+            except Exception:
+                params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
                 
-        try:
-            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0])
-            params_calc['LCL_p'] = lcl_p.m
-            lcl_h_interp = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
-            params_calc['LCL_Hgt'] = lcl_h_interp
-        except:
-            params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan, np.nan
-        
-        try:
-            lfc_p, _ = mpcalc.lfc(p, T, Td, prof)
-            params_calc['LFC_p'] = lfc_p.m
-            lfc_h_interp = np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1])
-            params_calc['LFC_Hgt'] = lfc_h_interp
-        except:
-            params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan, np.nan
-        
-        try:
-            el_p, _ = mpcalc.el(p, T, Td, prof)
-            params_calc['EL_p'] = el_p.m
-            el_h_interp = np.interp(el_p.m, p.m[::-1], heights_agl.m[::-1])
-            params_calc['EL_Hgt'] = el_h_interp
-        except:
-            params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan, np.nan
-        
-        try:
-            p_frz, _ = mpcalc.freezing_level(p, T)
-            params_calc['FRZG_Lvl_p'] = p_frz.m
-        except:
-            params_calc['FRZG_Lvl_p'] = np.nan
+            try:
+                # CORREGIT: Es passa 'prof' a la funció
+                el_p, _ = mpcalc.el(p, T, Td, prof)
+                params_calc['EL_p'] = el_p.m
+                params_calc['EL_Hgt'] = np.interp(el_p.m, p.m[::-1], heights_agl.m[::-1])
+            except Exception:
+                params_calc.update({'EL_p': np.nan, 'EL_Hgt': np.nan})
+            
+            try:
+                lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0])
+                params_calc['LCL_p'] = lcl_p.m
+                params_calc['LCL_Hgt'] = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
+            except Exception:
+                params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
 
+            try:
+                pwat = mpcalc.precipitable_water(p, Td)
+                params_calc['PWAT'] = pwat.to('mm').m
+            except Exception:
+                params_calc['PWAT'] = np.nan
+                
+            try:
+                frz_lvl, _ = mpcalc.freezing_level(p, T)
+                params_calc['FRZG_Lvl_p'] = frz_lvl.m
+            except Exception:
+                params_calc['FRZG_Lvl_p'] = np.nan
+
+        # --- CÀLCULS DE CINEMÀTICA (VENT) ---
         try:
             rm, lm, mean_wind = mpcalc.storm_motion(p, u, v, heights)
             params_calc['RM'] = (rm[0].m, rm[1].m)
             params_calc['LM'] = (lm[0].m, lm[1].m)
             params_calc['Mean_Wind'] = (mean_wind[0].m, mean_wind[1].m)
-        except:
+        except Exception:
             params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan), 'Mean_Wind': (np.nan, np.nan)})
         
         for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
@@ -261,22 +256,31 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                 bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights_agl, depth=depth_m * units.m)
                 shear_speed = mpcalc.wind_speed(bwd_u, bwd_v)
                 params_calc[f'BWD_{name}'] = shear_speed.to('kt').m
-            except:
+            except Exception:
                 params_calc[f'BWD_{name}'] = np.nan
         
-        if not np.isnan(params_calc['RM'][0]):
+        if not np.isnan(params_calc.get('RM', [(np.nan, np.nan)])[0]):
             try:
                 u_storm, v_storm = params_calc['RM'] * units('m/s')
                 for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
                     srh, _, _ = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.m, storm_u=u_storm, storm_v=v_storm)
                     params_calc[f'SRH_{name}'] = srh.m
-            except:
+            except Exception:
                 params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
         else:
             params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-            
+
+        try:
+            # CAPE a la capa 0-3km
+            idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
+            cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
+            params_calc['CAPE_0-3km'] = cape_0_3.m
+        except Exception:
+            params_calc['CAPE_0-3km'] = np.nan
+
         return ((p, T, Td, u, v, heights, prof), params_calc), None
-    except Exception as e: 
+    except Exception as e:
+        st.error(f"Error crític en carregar les dades del sondeig: {e}")
         return None, f"Error en processar dades del sondeig: {e}"
         
 @st.cache_data(ttl=3600)
