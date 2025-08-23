@@ -224,100 +224,101 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except Exception as e:
             return None, f"Error calculant el perfil de la parcel·la: {e}"
         
-        # Cálculo de CAPE/CIN para superficie
+        # Cálculo de CAPE/CIN para superficie - EXTRAER VALORES ESCALARES
         try:
             sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
-            params_calc['SBCAPE'] = sbcape.m if not np.isnan(sbcape.m) else np.nan
-            params_calc['SBCIN'] = sbcin.m if not np.isnan(sbcin.m) else np.nan
-            params_calc['MAX_UPDRAFT'] = np.sqrt(2 * sbcape.m) if sbcape.m > 0 else 0.0
+            # Asegurarse de obtener valores escalares, no arrays
+            params_calc['SBCAPE'] = float(sbcape.m) if hasattr(sbcape, 'm') and not isinstance(sbcape.m, np.ndarray) else np.nan
+            params_calc['SBCIN'] = float(sbcin.m) if hasattr(sbcin, 'm') and not isinstance(sbcin.m, np.ndarray) else np.nan
+            params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if hasattr(sbcape, 'm') and not isinstance(sbcape.m, np.ndarray) and float(sbcape.m) > 0 else 0.0
         except Exception:
             params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
         
-        # Cálculo de CAPE/CIN más inestable
+        # Cálculo de CAPE/CIN más inestable - EXTRAER VALORES ESCALARES
         try:
             mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td, depth=300 * units.hPa)
-            params_calc['MUCAPE'] = mucape.m if not np.isnan(mucape.m) else np.nan
-            params_calc['MUCIN'] = mucin.m if not np.isnan(mucin.m) else np.nan
+            params_calc['MUCAPE'] = float(mucape.m) if hasattr(mucape, 'm') and not isinstance(mucape.m, np.ndarray) else np.nan
+            params_calc['MUCIN'] = float(mucin.m) if hasattr(mucin, 'm') and not isinstance(mucin.m, np.ndarray) else np.nan
         except Exception:
             params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
         
-        # Cálculo de CAPE/CIN de capa mezclada
+        # Cálculo de CAPE/CIN de capa mezclada - EXTRAER VALORES ESCALARES
         try:
             mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td, depth=100 * units.hPa)
-            params_calc['MLCAPE'] = mlcape.m if not np.isnan(mlcape.m) else np.nan
-            params_calc['MLCIN'] = mlcin.m if not np.isnan(mlcin.m) else np.nan
+            params_calc['MLCAPE'] = float(mlcape.m) if hasattr(mlcape, 'm') and not isinstance(mlcape.m, np.ndarray) else np.nan
+            params_calc['MLCIN'] = float(mlcin.m) if hasattr(mlcin, 'm') and not isinstance(mlcin.m, np.ndarray) else np.nan
         except Exception:
             params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
         
-        # Cálculo del Lifted Index
+        # Cálculo del Lifted Index - EXTRAER VALOR ESCALAR
         try:
             li = mpcalc.lifted_index(p, T, prof)
-            params_calc['LI'] = li.m if not np.isnan(li.m) else np.nan
+            params_calc['LI'] = float(li.m) if hasattr(li, 'm') and not isinstance(li.m, np.ndarray) else np.nan
         except Exception:
             params_calc['LI'] = np.nan
         
-        # Cálculo de DCAPE
+        # Cálculo de DCAPE - EXTRAER VALOR ESCALAR
         try:
             dcape = mpcalc.dcape(p, T, Td)
-            params_calc['DCAPE'] = dcape.m if not np.isnan(dcape.m) else np.nan
+            params_calc['DCAPE'] = float(dcape.m) if hasattr(dcape, 'm') and not isinstance(dcape.m, np.ndarray) else np.nan
         except Exception:
             params_calc['DCAPE'] = np.nan
         
-        # Cálculo de LFC
+        # Cálculo de LFC - EXTRAER VALORES ESCALARES
         try:
             lfc_p, lfc_t = mpcalc.lfc(p, T, Td, prof)
-            params_calc['LFC_p'] = lfc_p.m if not np.isnan(lfc_p.m) else np.nan
-            if not np.isnan(lfc_p.m):
-                params_calc['LFC_Hgt'] = np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1])
+            params_calc['LFC_p'] = float(lfc_p.m) if hasattr(lfc_p, 'm') and not isinstance(lfc_p.m, np.ndarray) else np.nan
+            if not np.isnan(params_calc['LFC_p']):
+                params_calc['LFC_Hgt'] = float(np.interp(params_calc['LFC_p'], p.m[::-1], heights_agl.m[::-1]))
             else:
                 params_calc['LFC_Hgt'] = np.nan
         except Exception:
             params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
         
-        # Cálculo de LCL
+        # Cálculo de LCL - EXTRAER VALORES ESCALARES
         try:
             lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
-            params_calc['LCL_p'] = lcl_p.m if not np.isnan(lcl_p.m) else np.nan
-            if not np.isnan(lcl_p.m):
-                params_calc['LCL_Hgt'] = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
+            params_calc['LCL_p'] = float(lcl_p.m) if hasattr(lcl_p, 'm') and not isinstance(lcl_p.m, np.ndarray) else np.nan
+            if not np.isnan(params_calc['LCL_p']):
+                params_calc['LCL_Hgt'] = float(np.interp(params_calc['LCL_p'], p.m[::-1], heights_agl.m[::-1]))
             else:
                 params_calc['LCL_Hgt'] = np.nan
         except Exception:
             params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
         
-        # Cálculo de agua precipitable
+        # Cálculo de agua precipitable - EXTRAER VALOR ESCALAR
         try:
             pwat = mpcalc.precipitable_water(p, Td)
-            params_calc['PWAT'] = pwat.to('mm').m if not np.isnan(pwat.m) else np.nan
+            params_calc['PWAT'] = float(pwat.to('mm').m) if hasattr(pwat, 'm') and not isinstance(pwat.m, np.ndarray) else np.nan
         except Exception:
             params_calc['PWAT'] = np.nan
         
-        # Cálculo de nivel de congelación
+        # Cálculo de nivel de congelación - EXTRAER VALOR ESCALAR
         try:
             frz_lvl = mpcalc.freezing_level_height(p, T)
-            params_calc['FRZG_Lvl_p'] = frz_lvl.m if not np.isnan(frz_lvl.m) else np.nan
+            params_calc['FRZG_Lvl_p'] = float(frz_lvl.m) if hasattr(frz_lvl, 'm') and not isinstance(frz_lvl.m, np.ndarray) else np.nan
         except Exception:
             params_calc['FRZG_Lvl_p'] = np.nan
     
-    # Cálculo de movimiento de tormenta
+    # Cálculo de movimiento de tormenta - EXTRAER VALORES ESCALARES
     try:
         rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
-        params_calc['RM'] = (rm[0].m, rm[1].m)
-        params_calc['LM'] = (lm[0].m, lm[1].m)
-        params_calc['Mean_Wind'] = (mean_wind[0].m, mean_wind[1].m)
+        params_calc['RM'] = (float(rm[0].m), float(rm[1].m)) if not isinstance(rm[0].m, np.ndarray) else (np.nan, np.nan)
+        params_calc['LM'] = (float(lm[0].m), float(lm[1].m)) if not isinstance(lm[0].m, np.ndarray) else (np.nan, np.nan)
+        params_calc['Mean_Wind'] = (float(mean_wind[0].m), float(mean_wind[1].m)) if not isinstance(mean_wind[0].m, np.ndarray) else (np.nan, np.nan)
     except Exception:
         params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan), 'Mean_Wind': (np.nan, np.nan)})
     
-    # Cálculo de cizalladura del viento (BWD)
+    # Cálculo de cizalladura del viento (BWD) - EXTRAER VALORES ESCALARES
     for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
         try:
             bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter)
             bwd_speed = mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m
-            params_calc[f'BWD_{name}'] = bwd_speed if not np.isnan(bwd_speed) else np.nan
+            params_calc[f'BWD_{name}'] = float(bwd_speed) if not isinstance(bwd_speed, np.ndarray) else np.nan
         except Exception:
             params_calc[f'BWD_{name}'] = np.nan
     
-    # Cálculo de helicidad relativa a la tormenta (SRH)
+    # Cálculo de helicidad relativa a la tormenta (SRH) - EXTRAER VALORES ESCALARES
     if not np.isnan(params_calc.get('RM', (np.nan, np.nan))[0]):
         try:
             u_storm, v_storm = params_calc['RM']
@@ -327,19 +328,21 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
                 srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.meter, 
                                                     storm_u=u_storm, storm_v=v_storm)
-                params_calc[f'SRH_{name}'] = srh.m if not np.isnan(srh.m) else np.nan
+                params_calc[f'SRH_{name}'] = float(srh.m) if hasattr(srh, 'm') and not isinstance(srh.m, np.ndarray) else np.nan
         except Exception:
             params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
     else:
         params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
     
-    # Cálculo de CAPE en capa 0-3km
+    # Cálculo de CAPE en capa 0-3km - EXTRAER VALOR ESCALAR
     try:
         idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
         cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
-        params_calc['CAPE_0-3km'] = cape_0_3.m if not np.isnan(cape_0_3.m) else np.nan
+        params_calc['CAPE_0-3km'] = float(cape_0_3.m) if hasattr(cape_0_3, 'm') and not isinstance(cape_0_3.m, np.ndarray) else np.nan
     except Exception:
         params_calc['CAPE_0-3km'] = np.nan
+    
+    return ((p, T, Td, u, v, heights, prof), params_calc), None
     
     return ((p, T, Td, u, v, heights, prof), params_calc), None
 def crear_mapa_base(map_extent, projection=ccrs.PlateCarree()):
@@ -536,6 +539,13 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
 
 def ui_caixa_parametres_sondeig(params):
     def get_color(value, thresholds, reverse_colors=False):
+        # Asegurarse de que el valor es escalar, no un array
+        if hasattr(value, '__len__') and not isinstance(value, str):
+            if len(value) > 0:
+                value = value[0]  # Tomar el primer elemento si es un array
+            else:
+                return "#808080"
+                
         if pd.isna(value): return "#808080"
         colors = ["#808080", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
         if reverse_colors: 
@@ -565,6 +575,13 @@ def ui_caixa_parametres_sondeig(params):
     }
     
     def styled_metric(label, value, unit, param_key, precision=0, reverse_colors=False):
+        # Asegurarse de que el valor es escalar para formateo
+        if hasattr(value, '__len__') and not isinstance(value, str):
+            if len(value) > 0:
+                value = value[0]  # Tomar el primer elemento si es un array
+            else:
+                value = np.nan
+                
         color = get_color(value, THRESHOLDS.get(param_key, []), reverse_colors)
         val_str = f"{value:.{precision}f}" if not pd.isna(value) else "---"
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;"><span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit})</span><br><strong style="font-size: 1.6em; color: {color};">{val_str}</strong></div>""", unsafe_allow_html=True)
