@@ -338,26 +338,6 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except Exception:
             params_calc['PWAT'] = np.nan
 
-        # Càlcul del Nivell de Congelació (0°C) - Lògica robusta.
-        try:
-            # MetPy pot retornar una llista si la temperatura creua 0°C múltiples vegades.
-            # Normalment ens interessa el primer nivell (el més baix).
-            frz_pressure_levels, _ = mpcalc.freezing_level(p, T)
-            frz_pressure = frz_pressure_levels[0] if hasattr(frz_pressure_levels, '__len__') else frz_pressure_levels
-            p_frzg_scalar = float(frz_pressure.m)
-            params_calc['FRZG_Lvl_p'] = p_frzg_scalar
-
-            # Calculem l'altitud (m) interpolant a partir de la pressió trobada.
-            frzg_alt_m = np.interp(p_frzg_scalar, p.m[::-1], heights.m[::-1])
-            params_calc['FRZG_Lvl_m'] = float(frzg_alt_m)
-
-        except (ValueError, IndexError, TypeError) as e:
-            # Aquesta excepció salta si mpcalc.freezing_level no troba cap nivell,
-            # la qual cosa és una condició meteorològica vàlida (massa fred o massa calor).
-            print(f"AVÍS: No s'ha trobat nivell de congelació en aquest perfil. ({e})")
-            params_calc['FRZG_Lvl_p'] = np.nan
-            params_calc['FRZG_Lvl_m'] = np.nan
-
     # --- 3. CÀLCULS CINEMÀTICS (VENT) ---
 
     # Moviment de la tempesta (Bunkers). És necessari per al càlcul de l'helicitat.
@@ -480,7 +460,7 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
     skew.ax.grid(True, linestyle='-', alpha=0.5)
     
-    # Dibuixem la isoterma de 0°C més gruixuda per a referència visual
+    # Podem mantenir la línia de referència de 0°C, ja que és útil
     skew.ax.axvline(0, color='cyan', linestyle='--', linewidth=1.5, alpha=0.7)
 
     skew.plot_dry_adiabats(color='coral', linestyle='--', alpha=0.5)
@@ -502,9 +482,7 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     skew.ax.set_title(titol, weight='bold', fontsize=14, pad=15)
     skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
 
-    # --- LÒGICA MILLORADA PER ALS NIVELLS ---
-
-    # 1. Dibuixar LCL i LFC com a línies completes (com abans)
+    # Dibuixar LCL i LFC
     levels_to_plot = {'LCL_p': 'LCL', 'LFC_p': 'LFC'}
     for key, name in levels_to_plot.items():
         p_lvl = params_calc.get(key)
@@ -513,35 +491,10 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
             skew.ax.axhline(p_val, color='blue', linestyle='--', linewidth=1.5)
             skew.ax.text(skew.ax.get_xlim()[1] - 2, p_val, f' {name}', color='blue', ha='right', va='center', fontsize=10, weight='bold')
 
-    # 2. Dibuixar el Freezing Level (0°C) com una línia PARCIAL i INTEL·LIGENT
-    frzg_lvl_p_val = params_calc.get('FRZG_Lvl_p')
-    if frzg_lvl_p_val is not None and not np.isnan(frzg_lvl_p_val):
-        # Assegurar que el valor de pressió és un número simple per poder-lo utilitzar
-        p_frzg_scalar = frzg_lvl_p_val.m if hasattr(frzg_lvl_p_val, 'm') else frzg_lvl_p_val
-        
-        # Com que la pressió del nivell de 0°C pot no coincidir exactament amb un punt de les dades,
-        # hem d'interpolar per trobar la temperatura AMBIENTAL a aquest nivell de pressió exacte.
-        try:
-            # Important: np.interp necessita que els valors de 'x' (pressió) estiguin en ordre ascendent.
-            # Com que els nostres perfils van de 1000 a 100 hPa (descendent), invertim els arrays amb [::-1].
-            temp_at_frzg_lvl = np.interp(p_frzg_scalar, p.m[::-1], T.m[::-1])
-            
-            # Dibuixar la línia horitzontal des de la isoterma 0°C fins a la línia de temperatura
-            skew.ax.plot([0, temp_at_frzg_lvl], [p_frzg_scalar, p_frzg_scalar],
-                          color='cyan', linestyle='-', linewidth=2.5,
-                          marker='o', markersize=6, markerfacecolor='cyan', markeredgecolor='black')
-                          
-            # Afegir l'etiqueta de text al final de la línia per a més claredat
-            skew.ax.text(temp_at_frzg_lvl + 1.5, p_frzg_scalar, '0°C', color='cyan',
-                          ha='left', va='center', weight='bold',
-                          path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
-        except Exception as e:
-            # Aquesta excepció és per si hi ha algun problema amb la interpolació
-            print(f"No s'ha pogut dibuixar la línia de 0°C: {e}")
+    # ***** LÍNIES DE CODI PER DIBUIXAR LA LÍNIA HORITZONTAL ELIMINADES D'AQUÍ *****
 
     skew.ax.legend()
     return fig
-
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
     
