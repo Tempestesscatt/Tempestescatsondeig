@@ -175,27 +175,27 @@ def carregar_dades_mapa_base(variables, hourly_index):
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
     try:
-        # Determinar les variables necessàries segons el nivell de pressió
-        if nivell >= 950:
-            variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-        else:
-            variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+        # Siempre usar temperatura y humedad relativa para calcular el punto de rocío
+        variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", 
+                    f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
 
-        # Reducir significativamente el número de puntos (5x5 grid)
-        lats = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 5)
-        lons = np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 5)
+        # Reducir significativamente el número de puntos (solo puntos clave)
+        puntos_clave = [
+            (41.0, 1.0), (41.0, 2.0), (41.0, 3.0),  # Puntos sur
+            (41.5, 1.0), (41.5, 2.0), (41.5, 3.0),  # Puntos centro
+            (42.0, 1.0), (42.0, 2.0), (42.0, 3.0),  # Puntos norte
+            (42.5, 0.5), (42.5, 1.5), (42.5, 2.5)   # Puntos Pirineos
+        ]
         
-        # Crear todas las combinaciones de lat/lon
-        lons_grid, lats_grid = np.meshgrid(lons, lats)
-        lats_list = lats_grid.ravel()
-        lons_list = lons_grid.ravel()
+        lats_list = [p[0] for p in puntos_clave]
+        lons_list = [p[1] for p in puntos_clave]
         
-        # Hacer solicitudes individuales para cada punto en lugar de una solicitud masiva
+        # Hacer solicitudes individuales para cada punto
         all_lats = []
         all_lons = []
         all_data = {var: [] for var in variables}
         
-        for lat, lon in zip(lats_list, lons_list):
+        for i, (lat, lon) in enumerate(puntos_clave):
             params = {
                 "latitude": lat,
                 "longitude": lon,
@@ -211,17 +211,18 @@ def carregar_dades_mapa(nivell, hourly_index):
                 all_lats.append(lat)
                 all_lons.append(lon)
                 
-                for i, var in enumerate(variables):
-                    data_array = hourly.Variables(i).ValuesAsNumpy()
+                for j, var in enumerate(variables):
+                    data_array = hourly.Variables(j).ValuesAsNumpy()
                     if hourly_index < len(data_array):
                         all_data[var].append(data_array[hourly_index])
                     else:
-                        # Si hay un error con un punto, usar NaN
-                        all_data[var].append(np.nan)
-                        
-                # Pequeña pausa para no sobrecargar la API
-                time.sleep(0.1)
+                        # Si hay un error, usar el último valor disponible o NaN
+                        all_data[var].append(data_array[-1] if len(data_array) > 0 else np.nan)
                 
+                # Pequeña pausa para no sobrecargar la API
+                if i < len(puntos_clave) - 1:
+                    time.sleep(0.2)
+                    
             except Exception as e:
                 print(f"Error obteniendo datos para lat {lat}, lon {lon}: {e}")
                 # Añadir NaN para este punto
@@ -239,16 +240,26 @@ def carregar_dades_mapa(nivell, hourly_index):
         for var in variables:
             map_data_raw[var] = np.array(all_data[var])
         
-        # Processament de les dades rebudes
-        if nivell >= 950:
-            map_data_raw['dewpoint_data'] = map_data_raw.pop('dew_point_2m')
-        else:
-            temp_data = map_data_raw.pop(f'temperature_{nivell}hPa') * units.degC
-            rh_data = map_data_raw.pop(f'relative_humidity_{nivell}hPa') * units.percent
-            map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
-            
+        # Calcular el punto de rocío a partir de temperatura y humedad relativa
+        temp_data = map_data_raw[f'temperature_{nivell}hPa'] * units.degC
+        rh_data = map_data_raw[f'relative_humidity_{nivell}hPa'] * units.percent
+        
+        # Asegurarse de que no hay valores NaN antes del cálculo
+        valid_indices = ~np.isnan(temp_data) & ~np.isnan(rh_data)
+        dewpoint_data = np.full_like(temp_data, np.nan)
+        
+        if np.any(valid_indices):
+            dewpoint_data[valid_indices] = mpcalc.dewpoint_from_relative_humidity(
+                temp_data[valid_indices], rh_data[valid_indices]).m
+        
+        map_data_raw['dewpoint_data'] = dewpoint_data
         map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
         map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
+        
+        # Eliminar las variables temporales
+        for var in [f'temperature_{nivell}hPa', f'relative_humidity_{nivell}hPa']:
+            if var in map_data_raw:
+                del map_data_raw[var]
         
         return map_data_raw, None
 
