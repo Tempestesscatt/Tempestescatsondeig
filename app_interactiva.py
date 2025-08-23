@@ -633,6 +633,17 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
     return fig
 # --- Seccions UI i Lògica Principal ---
 
+def hide_streamlit_style():
+    """Injecta CSS per amagar el peu de pàgina i el menú de Streamlit."""
+    hide_style = """
+        <style>
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+        </style>
+        """
+    st.markdown(hide_style, unsafe_allow_html=True)
+
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya"):
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
@@ -828,8 +839,6 @@ def run_catalunya_app():
         # Lògica per a usuaris registrats (amb IA i Xat)
         st.warning("La funcionalitat completa per a usuaris registrats encara s'ha d'implementar en aquest refactor.")
 
-    ui_peu_de_pagina()
-
 def run_valley_halley_app():
     ui_capcalera_selectors(None, zona_activa="tornado_alley")
     
@@ -853,8 +862,6 @@ def run_valley_halley_app():
     with tab_mapes: ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str)
     with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel)
     with tab_satelit: ui_pestanya_satelit_usa()
-        
-    ui_peu_de_pagina()
 
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Selecciona la Zona d'Anàlisi</h1>", unsafe_allow_html=True)
@@ -896,6 +903,9 @@ def ui_zone_selection():
                 st.session_state['zone_selected'] = 'valley_halley'
                 st.rerun()
 def main():
+    # Crida la funció per amagar els estils just a l'inici
+    hide_streamlit_style()
+    
     if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
     if 'guest_mode' not in st.session_state: st.session_state['guest_mode'] = False
     if 'zone_selected' not in st.session_state: st.session_state['zone_selected'] = None
