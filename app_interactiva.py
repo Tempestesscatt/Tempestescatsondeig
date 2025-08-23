@@ -1188,36 +1188,36 @@ METEOCLIMATIC_STATION_CODES = {
     'Vilanova i la Geltrú': 'ESCAT0800000008310A'  # Vilanova i la Geltrú
 }
 
-@st.cache_data(ttl=600) # Guardem en cau les dades durant 10 minuts
+@st.cache_data(ttl=600)
 def obtenir_dades_estacio_meteoclimatic(station_code):
     """
-    Obté i processa les dades meteorològiques en temps real per a una estació
-    de la xarxa Meteoclimatic a partir del seu fitxer XML.
-    Versió millorada per gestionar respostes buides.
+    Versió final i robusta que inclou un User-Agent per evitar bloquejos.
     """
     if not station_code:
         return None
         
     url = f"https://www.meteoclimatic.net/feed/station/{station_code}"
+    
+    # CAPÇALERA PER SIMULAR UN NAVEGADOR I EVITAR BLOQUEJOS
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+
     try:
-        response = requests.get(url, timeout=10)
+        # AFEGIM LA CAPÇALERA A LA PETICIÓ
+        response = requests.get(url, timeout=10, headers=headers)
         response.raise_for_status()
 
-        # MILLORA CLAU: Comprovem si la resposta té contingut abans de processar-la
         if not response.content or not response.content.strip():
-            # No mostrem un error tècnic, simplement informem que no hi ha dades
             print(f"Advertència: L'estació {station_code} ha retornat una resposta buida.")
             return None
 
-        # Processar el contingut XML
         root = ET.fromstring(response.content)
 
-        # Funció auxiliar per trobar text de forma segura
         def find_text_safe(tag, default='--'):
             element = root.find(tag)
             return element.text if element is not None and element.text is not None else default
 
-        # Extreure les dades que ens interessen
         data = {
             "nom_estacio": find_text_safe('station/name'),
             "temperatura": find_text_safe('weather/temperature'),
@@ -1231,17 +1231,12 @@ def obtenir_dades_estacio_meteoclimatic(station_code):
         }
         return data
 
-    except ET.ParseError as e:
-        # Aquest error ara és menys probable, però el mantenim per seguretat
-        print(f"Error en processar l'XML de l'estació {station_code}: {e}")
-        return None
     except requests.exceptions.RequestException as e:
-        # Aquest error és per problemes de connexió
-        print(f"Error de xarxa contactant amb l'estació {station_code}: {e}")
+        # Aquest error ara només apareixerà si realment hi ha un problema de xarxa
+        st.error(f"Error de xarxa en contactar amb l'estació {station_code}. Detalls: {e}")
         return None
-
-    except (requests.exceptions.RequestException, ET.ParseError) as e:
-        st.error(f"No s'ha pogut contactar amb l'estació {station_code}. Error: {e}")
+    except ET.ParseError as e:
+        st.error(f"L'estació {station_code} ha retornat dades invàlides (XML mal format). Detalls: {e}")
         return None
 
 def ui_pestanya_estacions_meteorologiques():
