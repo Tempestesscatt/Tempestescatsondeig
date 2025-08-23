@@ -492,33 +492,41 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
         T_np = T.magnitude
         prof_np = prof.magnitude
         skew.ax.fill_betweenx(p_np, T_np, prof_np, where=prof_np > T_np,
-                              facecolor='red', alpha=0.4, interpolate=True, zorder=5, label='CAPE')
+                              facecolor='yellow', alpha=0.4, interpolate=True, zorder=5)
         skew.ax.fill_betweenx(p_np, T_np, prof_np, where=prof_np < T_np,
-                              facecolor='blue', alpha=0.4, interpolate=True, zorder=5, label='CIN')
+                              facecolor='dimgray', alpha=0.4, interpolate=True, zorder=5)
 
     # Perfils principals de l'atmosfera
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
     skew.plot(p, Td, 'purple', lw=2.5, label='Punt de Rosada')
     
-    # --- INICI DE LA VISUALITZACIÓ EXPLÍCITA DE LA TRAJECTÒRIA ---
+    # --- INICI DE LA VISUALITZACIÓ EXPLÍCITA I CORRECTA DE LA TRAJECTÒRIA ---
     if prof is not None:
-        # 1. Dibuixa la trajectòria completa de la parcel·la (ja calculada per MetPy)
-        #    Aquesta línia ja segueix l'adiabàtica seca i després la humida.
+        # Calculem el LCL per saber fins on dibuixar les línies inicials
+        lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
+        pressures_below_lcl = np.linspace(p[0].m, lcl_p.m, 100) * units.hPa
+
+        # 1. Trajectòria des del PUNT DE ROSADA (Línia de Relació de Barreja constant)
+        # Primer, calculem la pressió de vapor a la superfície a partir del punt de rosada
+        vapor_pressure_sfc = mpcalc.saturation_vapor_pressure(Td[0])
+        # Després, calculem la relació de barreja a la superfície
+        mixing_ratio_sfc = mpcalc.mixing_ratio(vapor_pressure_sfc, p[0])
+        # Dibuixem aquesta línia de relació de barreja constant fins al LCL
+        skew.plot_mixing_lines([mixing_ratio_sfc], pressures_below_lcl,
+                               color='darkgreen', linestyle='--', linewidth=2)
+
+        # 2. Trajectòria des de la TEMPERATURA (Adiabàtica Seca)
+        # Calculem la temperatura potencial a la superfície
+        potential_temp_sfc = mpcalc.potential_temperature(p[0], T[0])
+        # Dibuixem la línia adiabàtica seca corresponent fins al LCL
+        skew.plot_dry_adiabats([potential_temp_sfc], pressures_below_lcl,
+                               color='darkorange', linestyle='--', linewidth=2)
+        
+        # 3. Dibuixem la trajectòria completa de la parcel·la (línia negra)
+        # Aquesta línia se superposarà perfectament a les dues anteriors i continuarà per l'adiabàtica humida
         skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la',
                   path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
-        
-        # 2. Per a més claredat, superposem les línies inicials que l'usuari vol veure.
-        #    Això no canvia la trajectòria, només la ressalta.
-        lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
-        
-        # Puja per la línia de relació de barreja (mixing ratio) des del punt de rosada
-        skew.plot_mixing_lines(mpcalc.mixing_ratio(lcl_p, lcl_t), p, 
-                               color='green', linestyle='--', linewidth=1.5)
-
-        # Puja per l'adiabàtica seca des de la temperatura
-        skew.plot_dry_adiabats(mpcalc.potential_temperature(p[0], T[0]), p,
-                               color='orange', linestyle='--', linewidth=1.5)
-    # --- FI DE LA VISUALITZACIÓ EXPLÍCITA ---
+    # --- FI DE LA VISUALITZACIÓ ---
 
     # Configuració final del gràfic
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
@@ -528,14 +536,9 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     skew.ax.set_xlabel("Temperatura (°C)")
     skew.ax.set_ylabel("Pressió (hPa)")
     skew.ax.grid(False)
-    
-    # Gestionar la llegenda per evitar duplicats
-    handles, labels = skew.ax.get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    skew.ax.legend(by_label.values(), by_label.keys())
+    skew.ax.legend()
     
     return fig
-
 
 
 
