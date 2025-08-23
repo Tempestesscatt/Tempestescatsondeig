@@ -490,18 +490,6 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
         skew.shade_cape(p, T, prof, color='red', alpha=0.25)
         skew.shade_cin(p, T, prof, color='blue', alpha=0.25)
 
-    # Líneas de ascenso específicas
-    if prof is not None and len(p) > 0:
-        try:
-            p_sfc, T_sfc, Td_sfc = p[0], T[0], Td[0]
-            lcl_p_calc, lcl_T_calc = mpcalc.lcl(p_sfc, T_sfc, Td_sfc)
-            p_dry = np.arange(p_sfc.m, lcl_p_calc.m - 1, -10) * units.hPa
-            t_dry = mpcalc.dry_lapse(p_dry, T_sfc)
-            skew.plot(p_dry, t_dry, color='orange', linestyle=':', linewidth=2, label='Ascens Sec')
-            skew.plot_mixing_lines(w=mpcalc.mixing_ratio(p_sfc, Td_sfc), pressure=[p_sfc, lcl_p_calc],
-                                   color='lime', linestyle=':', linewidth=2, label='Línia de Mescla')
-        except Exception: pass
-
     # Perfiles principales
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
     skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
@@ -509,46 +497,62 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
         skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la',
                   path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
 
-    # --- INICIO DE LA MEJORA: Marcadores de Nivel Intercalados ---
+    # --- INICIO DE LA MEJORA FINAL: Marcadores de Nivel Intercalados ---
 
-    # 1. Nivel de Condensación por Ascenso (LCL) - Línea completa
+    # 1. LCL (Nivel de Condensación) - Línea completa para marcar la base de la nube
     lcl_p = params_calc.get('LCL_p')
     if lcl_p is not None and not pd.isna(lcl_p) and 100 < lcl_p < 1000:
-        skew.ax.axhline(lcl_p, color='blue', linestyle='--', linewidth=1.5)
+        skew.ax.axhline(lcl_p, color='blue', linestyle='--', linewidth=1.5, zorder=9)
         skew.ax.text(skew.ax.get_xlim()[1], lcl_p, f" LCL ({lcl_p:.0f} hPa)",
                     color='blue', ha='right', va='center', fontsize=9, weight='bold',
                     bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2'))
 
-    # 2. Nivel de Convección Libre (LFC) - Segmento de línea
+    # 2. LFC (Nivel de Convección Libre) - Marcador corto en el punto de cruce
     lfc_p = params_calc.get('LFC_p')
     if prof is not None and lfc_p is not None and not pd.isna(lfc_p):
         p_level = lfc_p * units.hPa
         if p.min() <= p_level <= p.max():
             try:
+                # En el LFC, T y prof se cruzan. Interpolamos la T para saber dónde dibujar.
                 T_at_lfc = mpcalc.interp(p_level, p, T)[0]
-                prof_at_lfc = mpcalc.interp(p_level, p, prof)[0]
-                skew.plot([T_at_lfc, prof_at_lfc], [p_level, p_level],
-                          color='purple', linestyle='--', linewidth=2, marker='o', markersize=4, zorder=10)
+                # Dibujamos un segmento corto y centrado para marcar el nivel. Ancho total de 5°C.
+                line_half_width = 2.5 * units.delta_degC
+                skew.plot([T_at_lfc - line_half_width, T_at_lfc + line_half_width], [p_level, p_level],
+                          color='purple', linestyle='-', linewidth=2.5, zorder=10)
                 skew.ax.text(skew.ax.get_xlim()[1], lfc_p, f" LFC ({lfc_p:.0f} hPa)",
                             color='purple', ha='right', va='center', fontsize=9, weight='bold',
                             bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2'))
-            except Exception as e:
-                print(f"Error en marcar LFC: {e}")
+            except Exception: pass # Ignorar si la interpolación falla
 
-    # 3. Nivel de Congelación (0°C) - Segmento de línea
+    # 3. EL (Nivel de Equilibrio) - Marcador corto en el punto de cruce superior
+    el_p = params_calc.get('EL_p')
+    if prof is not None and el_p is not None and not pd.isna(el_p):
+        p_level = el_p * units.hPa
+        if p.min() <= p_level <= p.max():
+            try:
+                T_at_el = mpcalc.interp(p_level, p, T)[0]
+                line_half_width = 2.5 * units.delta_degC
+                skew.plot([T_at_el - line_half_width, T_at_el + line_half_width], [p_level, p_level],
+                          color='darkred', linestyle='-', linewidth=2.5, zorder=10)
+                skew.ax.text(skew.ax.get_xlim()[1], el_p, f" EL ({el_p:.0f} hPa)",
+                            color='darkred', ha='right', va='center', fontsize=9, weight='bold',
+                            bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2'))
+            except Exception: pass
+
+    # 4. Nivel de Congelación (0°C) - Segmento desde 0°C hasta la curva de Temperatura
     frz_p = params_calc.get('FRZG_Lvl_p')
-    if prof is not None and frz_p is not None and not pd.isna(frz_p):
+    if frz_p is not None and not pd.isna(frz_p):
         p_level = frz_p * units.hPa
         if p.min() <= p_level <= p.max():
             try:
-                prof_at_frz = mpcalc.interp(p_level, p, prof)[0]
-                skew.plot([0 * units.degC, prof_at_frz], [p_level, p_level],
-                          color='cyan', linestyle='--', linewidth=2, marker='o', markersize=4, zorder=10)
+                # Interpolamos la T ambiental para dibujar la línea HASTA ella
+                T_at_frz = mpcalc.interp(p_level, p, T)[0]
+                skew.plot([0 * units.degC, T_at_frz], [p_level, p_level],
+                          color='#008B8B', linestyle='-', linewidth=2.5, zorder=10)
                 skew.ax.text(skew.ax.get_xlim()[1], frz_p, f" 0°C ({frz_p:.0f} hPa)",
-                            color='#006666', ha='right', va='center', fontsize=9, weight='bold',
+                            color='#008B8B', ha='right', va='center', fontsize=9, weight='bold',
                             bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', boxstyle='round,pad=0.2'))
-            except Exception as e:
-                print(f"Error en marcar nivell de congelació: {e}")
+            except Exception: pass
     # --- FIN DE LA MEJORA ---
     
     # Configuración final
