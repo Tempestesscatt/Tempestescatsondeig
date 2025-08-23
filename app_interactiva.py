@@ -571,57 +571,65 @@ def carregar_dades_mapa_usa(nivell, hourly_index):
     except Exception as e: return None, f"Error en processar dades del mapa GFS: {e}"
         
 def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
-    # Crear mapa base simple sin proyecciones complejas
-    fig, ax = plt.subplots(figsize=(12, 8), dpi=100)
+    # 1. Crear el mapa base amb la projecció correcta per als EUA
+    fig, ax = crear_mapa_base(MAP_EXTENT_USA, projection=ccrs.LambertConformal(central_longitude=-95, central_latitude=35))
     
-    # Configurar límites del mapa
-    ax.set_xlim(MAP_EXTENT_USA[0], MAP_EXTENT_USA[1])
-    ax.set_ylim(MAP_EXTENT_USA[2], MAP_EXTENT_USA[3])
-    
+    # Assegurem que tenim prous dades per a la interpolació
     if len(lons) < 4:
         st.warning("No hi ha prou dades per generar un mapa interpolat.")
+        # Dibuixa un mapa base buit per evitar un error
+        ax.set_title(f"Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
         return fig
-    
-    # Interpolar datos de velocidad del viento
-    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_USA[0], MAP_EXTENT_USA[1], 50), 
-                                    np.linspace(MAP_EXTENT_USA[2], MAP_EXTENT_USA[3], 50))
-    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'linear')
-    
-    # Configurar colores y niveles
-    colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', 
-                  '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
+
+    # 2. Crear una graella fina i interpolar les dades del model (com a Catalunya)
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_USA[0], MAP_EXTENT_USA[1], 200), np.linspace(MAP_EXTENT_USA[2], MAP_EXTENT_USA[3], 200))
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic')
+    grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
+    u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+
+    # 3. Dibuixar la velocitat del vent amb pcolormesh
+    colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
     speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]
     custom_cmap = ListedColormap(colors_wind)
     norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
-    
-    # Mostrar velocidad del viento (SIMPLIFICADO)
-    contour = ax.contourf(grid_lon, grid_lat, grid_speed, levels=speed_levels, cmap=custom_cmap, alpha=0.7)
-    cbar = fig.colorbar(contour, ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
+    mesh = ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
+
+    # 4. Dibuixar les línies de corrent del vent (streamplot)
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=2.5, zorder=4, transform=ccrs.PlateCarree())
     
-    # Mostrar flechas de viento (simplificado)
-    u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+    # 5. Calcular i dibuixar la convergència
+    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+    dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1)
+    dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
+    convergence_scaled = -(dudx + dvdy).to('1/s').magnitude * 1e5
     
-    # Mostrar algunas flechas representativas
-    step = max(1, len(lons) // 20)  # Mostrar aproximadamente 20 flechas
-    for i in range(0, len(lons), step):
-        if i < len(lons):
-            ax.arrow(lons[i], lats[i], 
-                    u_comp[i].to('m/s').m * 0.2, v_comp[i].to('m/s').m * 0.2,
-                    head_width=0.3, head_length=0.5, fc='black', ec='black')
+    # Llindar de punt de rosada adaptat per a la Tornado Alley (~60°F)
+    DEWPOINT_THRESHOLD_USA = 16 
+    convergence_in_humid_areas = np.where(grid_dewpoint >= DEWPOINT_THRESHOLD_USA, convergence_scaled, 0)
     
-    # Añadir ciudades importantes
+    # Nivells de convergència lleugerament diferents, més sensibles per a GFS
+    fill_levels = [5, 10, 15, 25]
+    fill_colors = ['#ffc107', '#ff9800', '#f44336']
+    line_levels = [5, 10, 15]
+    line_colors = ['#e65100', '#bf360c', '#b71c1c']
+    
+    ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=fill_colors, alpha=0.5, zorder=5, transform=ccrs.PlateCarree())
+    contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors=line_colors, linestyles='--', linewidths=1.2, zorder=6, transform=ccrs.PlateCarree())
+    labels = ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
+    for label in labels:
+        label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.7))
+    
+    # Afegir ciutats per a referència
     for city, coords in USA_CITIES.items():
-        ax.plot(coords['lon'], coords['lat'], 'ro', markersize=8)
-        ax.text(coords['lon'] + 0.3, coords['lat'], city, fontsize=9, 
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
-    
-    # Añadir características básicas del mapa
-    ax.set_xlabel('Longitud')
-    ax.set_ylabel('Latitud')
-    ax.grid(True, alpha=0.3)
-    ax.set_title(f"Vent a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
-    
+        ax.plot(coords['lon'], coords['lat'], 'o', color='red', markersize=6, markeredgecolor='black', transform=ccrs.PlateCarree(), zorder=10)
+        ax.text(coords['lon'] + 0.2, coords['lat'] + 0.2, city, fontsize=9, transform=ccrs.PlateCarree(), zorder=10,
+                path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+
+    ax.set_title(f"Vent i Nuclis de convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
     
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya"):
