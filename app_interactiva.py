@@ -119,16 +119,17 @@ def show_login_page():
     st.markdown("<h1 style='text-align: center;'>Tempestes.cat</h1>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # Creem dues columnes per als formularis
-    col1, col2 = st.columns(2, gap="large")
+    # Controlem quina vista es mostra (login o registre) amb st.session_state
+    if 'view' not in st.session_state:
+        st.session_state.view = 'login'
 
-    with col1:
+    # --- VISTA D'INICI DE SESSIÓ (PER DEFECTE) ---
+    if st.session_state.view == 'login':
         st.subheader("Inicia Sessió")
         with st.form("login_form"):
             username = st.text_input("Nom d'usuari", key="login_user")
             password = st.text_input("Contrasenya", type="password", key="login_pass")
             
-            # Botó d'inici de sessió
             if st.form_submit_button("Entra", use_container_width=True, type="primary"):
                 users = load_json_file(USERS_FILE)
                 if username in users and users[username] == get_hashed_password(password):
@@ -136,14 +137,19 @@ def show_login_page():
                     st.rerun()
                 else:
                     st.error("Nom d'usuari o contrasenya incorrectes.")
+        
+        # Botó per canviar a la vista de registre
+        if st.button("No tens un compte? Registra't aquí"):
+            st.session_state.view = 'register'
+            st.rerun()
 
-    with col2:
+    # --- VISTA DE REGISTRE ---
+    elif st.session_state.view == 'register':
         st.subheader("Crea un nou compte")
         with st.form("register_form"):
             new_username = st.text_input("Tria un nom d'usuari", key="reg_user")
             new_password = st.text_input("Tria una contrasenya", type="password", key="reg_pass")
             
-            # Botó de registre
             if st.form_submit_button("Registra'm", use_container_width=True):
                 users = load_json_file(USERS_FILE)
                 if not new_username or not new_password:
@@ -155,13 +161,18 @@ def show_login_page():
                 else:
                     users[new_username] = get_hashed_password(new_password)
                     save_json_file(users, USERS_FILE)
-                    st.success("Compte creat amb èxit! Ara pots iniciar sessió a l'esquerra.")
+                    st.success("Compte creat amb èxit! Ara pots iniciar sessió.")
+        
+        # Botó per tornar a la vista d'inici de sessió
+        if st.button("Ja tens un compte? Inicia sessió"):
+            st.session_state.view = 'login'
+            st.rerun()
     
     st.divider()
     st.markdown("<p style='text-align: center;'>O si ho prefereixes...</p>", unsafe_allow_html=True)
 
     # Botó per entrar com a convidat
-    if st.button("Entrar com a Convidat(simple i ràpid)", use_container_width=True, type="secondary"):
+    if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary"):
         st.session_state.update({'guest_mode': True, 'logged_in': True})
         st.rerun()
 
