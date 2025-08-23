@@ -518,8 +518,10 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
         # 3. Trajectòria des del PUNT DE ROSADA (Relació de Barreja Constant)
         # Calculem la relació de barreja a la superfície, que es mantindrà constant
         mixing_ratio_sfc = mpcalc.mixing_ratio(mpcalc.saturation_vapor_pressure(Td[0]), p[0])
-        # Calculem el punt de rosada de la parcel·la a cada nivell de pressió
-        Td_path = mpcalc.dewpoint_from_mixing_ratio(p_path, mixing_ratio_sfc)
+        
+        # --- LÍNIA CORREGIDA ---
+        # Calculem el punt de rosada de la parcel·la a cada nivell de pressió utilitzant la nova funció 'dewpoint'
+        Td_path = mpcalc.dewpoint(mpcalc.vapor_pressure(p_path, mixing_ratio_sfc))
         # Dibuixem aquesta trajectòria manualment
         skew.plot(p_path, Td_path, color='darkgreen', linestyle='--', linewidth=2.5, zorder=10)
         
@@ -540,7 +542,7 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     skew.ax.legend()
     
     return fig
-
+    
 
     
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
