@@ -473,6 +473,7 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
 # --- BLOQUE DE CÓDIGO ACTUALIZADO ---
 
 
+
 def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     """
     Dibuixa un diagrama Skew-T, mostrant explícitament l'ascens de la parcel·la
@@ -507,23 +508,25 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
         pressures_below_lcl = np.linspace(p[0].m, lcl_p.m, 100) * units.hPa
 
         # 1. Trajectòria des del PUNT DE ROSADA (Línia de Relació de Barreja constant)
-        # Primer, calculem la pressió de vapor a la superfície a partir del punt de rosada
         vapor_pressure_sfc = mpcalc.saturation_vapor_pressure(Td[0])
-        # Després, calculem la relació de barreja a la superfície
         mixing_ratio_sfc = mpcalc.mixing_ratio(vapor_pressure_sfc, p[0])
-        # Dibuixem aquesta línia de relació de barreja constant fins al LCL
-        skew.plot_mixing_lines([mixing_ratio_sfc], pressures_below_lcl,
+        
+        # --- CORRECCIÓ FINAL ---
+        # Embolcallem el valor escalar en un objecte `units.Quantity` que contingui una llista
+        mixing_ratio_for_plot = units.Quantity([mixing_ratio_sfc.m], mixing_ratio_sfc.units)
+        skew.plot_mixing_lines(mixing_ratio_for_plot, pressures_below_lcl,
                                color='darkgreen', linestyle='--', linewidth=2)
 
         # 2. Trajectòria des de la TEMPERATURA (Adiabàtica Seca)
-        # Calculem la temperatura potencial a la superfície
         potential_temp_sfc = mpcalc.potential_temperature(p[0], T[0])
-        # Dibuixem la línia adiabàtica seca corresponent fins al LCL
-        skew.plot_dry_adiabats([potential_temp_sfc], pressures_below_lcl,
+        
+        # --- CORRECCIÓ FINAL ---
+        # Embolcallem el valor escalar en un objecte `units.Quantity` que contingui una llista
+        potential_temp_for_plot = units.Quantity([potential_temp_sfc.m], potential_temp_sfc.units)
+        skew.plot_dry_adiabats(potential_temp_for_plot, pressures_below_lcl,
                                color='darkorange', linestyle='--', linewidth=2)
         
         # 3. Dibuixem la trajectòria completa de la parcel·la (línia negra)
-        # Aquesta línia se superposarà perfectament a les dues anteriors i continuarà per l'adiabàtica humida
         skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la',
                   path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
     # --- FI DE LA VISUALITZACIÓ ---
@@ -539,8 +542,6 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     skew.ax.legend()
     
     return fig
-
-
 
 
 
