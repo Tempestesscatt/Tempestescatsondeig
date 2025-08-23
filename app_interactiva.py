@@ -292,7 +292,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             u_low = np.mean(u[:5]) if len(u) > 5 else u[0]
             v_low = np.mean(v[:5]) if len(v) > 5 else v[0]
             u_mid = np.mean(u[5:10]) if len(u) > 10 else u[-1]
-            v_mid = np.mean(v[5:10]) if len(v) > 10 else v[-1]
+            v_mid = np.mean(v[5:10]) if len(u) > 10 else v[-1]
             
             # Movimiento derecho
             rm_u = 0.75 * u_mid + 0.25 * u_low
@@ -1138,6 +1138,26 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
         with st.container(border=True):
             ui_info_desenvolupament_tempesta()
             
+def ui_pestanya_estacions_meteorologiques():
+    st.markdown("#### Ubicació de les Estacions de Referència")
+    st.caption("Aquest mapa mostra la localització de les capitals de comarca utilitzades en aquesta aplicació com a punts de referència per als sondejos i anàlisis.")
+
+    # Crear el mapa base utilitzant la funció existent
+    fig, ax = crear_mapa_base(MAP_EXTENT)
+    ax.set_title("Estacions de Referència (Capitals de Comarca)", weight='bold', fontsize=16)
+
+    # Iterar sobre el diccionari de ciutats per a plotejar-les
+    for ciutat, coords in CIUTATS_CATALUNYA.items():
+        lon, lat = coords['lon'], coords['lat']
+        # Dibuixar un punt per a l'estació
+        ax.plot(lon, lat, 'o', color='blue', markersize=5, transform=ccrs.PlateCarree(), zorder=10, label='Estació')
+        # Afegir el nom de la ciutat
+        ax.text(lon + 0.03, lat, ciutat, fontsize=7, transform=ccrs.PlateCarree(), zorder=11,
+                      path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+
+    # Mostrar el mapa a Streamlit
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
 
 
 def ui_peu_de_pagina():
@@ -1167,8 +1187,9 @@ def main():
         
         global progress_placeholder; progress_placeholder = st.empty()
         if is_guest:
-            tab_mapes, tab_vertical = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical"])
+            tab_mapes, tab_estacions, tab_vertical = st.tabs(["Anàlisi de Mapes", "Estacions Meteorològiques", "Anàlisi Vertical"])
             with tab_mapes: ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
+            with tab_estacions: ui_pestanya_estacions_meteorologiques()
             with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
         else:
             current_selection = f"{poble_sel}-{dia_sel}-{hora_sel}"
@@ -1180,13 +1201,13 @@ def main():
             if 'last_seen_timestamp' not in st.session_state: st.session_state.last_seen_timestamp = chat_history[-1]['timestamp'] if chat_history else 0
             unread_count = count_unread_messages(chat_history)
             chat_tab_label = f"💬 Xat ({unread_count})" if unread_count > 0 else "💬 Xat"
-            tab_ia, tab_xat, tab_mapes, tab_vertical = st.tabs(["Assistent MeteoIA", chat_tab_label, "Anàlisi de Mapes", "Anàlisi Vertical"])
+            tab_ia, tab_xat, tab_mapes, tab_estacions, tab_vertical = st.tabs(["Assistent MeteoIA", chat_tab_label, "Anàlisi de Mapes", "Estacions Meteorològiques", "Anàlisi Vertical"])
             with tab_ia: ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
             with tab_xat: ui_pestanya_xat(chat_history)
             with tab_mapes: ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple)
+            with tab_estacions: ui_pestanya_estacions_meteorologiques()
             with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel)
         ui_peu_de_pagina()
 
 if __name__ == "__main__":
     main()
-
