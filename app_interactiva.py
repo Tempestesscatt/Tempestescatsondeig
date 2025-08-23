@@ -566,20 +566,21 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             ax_hodo.text(u[idx].to('kt').m + 1, v[idx].to('kt').m + 1, f'{alt_km}km', fontsize=9, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
         except: continue
     
-    # --- INICIO DE LA MEJORA: Flecha de Viento Medio más fina y sin texto ---
+    # --- INICIO DE LA MEJORA: Flecha de Viento Medio más larga ---
     try:
         mean_wind_vec = params_calc.get('Mean_Wind')
         if mean_wind_vec is not None:
             u_mean_kt = (mean_wind_vec[0] * units('m/s')).to('kt').m
             v_mean_kt = (mean_wind_vec[1] * units('m/s')).to('kt').m
-
-            # 1. Dibuixem la fletxa amb una línia més fina (linewidth=1.5)
-            ax_hodo.arrow(0, 0, u_mean_kt, v_mean_kt,
+            
+            # 1. Definim un factor d'escala per allargar la fletxa (ex: 1.5 = 50% més llarga)
+            arrow_scale = 1.5
+            
+            # 2. Multipliquem les components del vector per l'escala
+            ax_hodo.arrow(0, 0, u_mean_kt * arrow_scale, v_mean_kt * arrow_scale,
                           color='black', linewidth=1.5,
                           head_width=3, length_includes_head=True, zorder=10)
                           
-            # 2. La línia de text per a l'etiqueta ha estat eliminada.
-            
     except Exception as e:
         print(f"Error en dibuixar la fletxa de vent mitjà: {e}")
     # --- FIN DE LA MEJORA ---
@@ -629,7 +630,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     for key, label in [('0-1km', '0-1 km'), ('0-3km', '0-3 km'), ('ESRH', 'Efectiva')]:
         val = params_calc.get(key if key == 'ESRH' else f'SRH_{key}', np.nan)
         color = get_color(val, THRESHOLDS['SRH'])
-        ax_params.text(0.05, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
+        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
         y-=0.07
         
     return fig
