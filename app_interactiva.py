@@ -685,7 +685,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     with col_text:
         if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username')}**!")
     with col_change:
-        if st.button("Canviar Zona", use_container_width=True):
+        if st.button("Canviar Anàlisi", use_container_width=True):
             del st.session_state['zone_selected']
             st.rerun()
     with col_logout:
@@ -897,7 +897,7 @@ def run_valley_halley_app():
     with tab_satelit: ui_pestanya_satelit_usa()
 
 def ui_zone_selection():
-    st.markdown("<h1 style='text-align: center;'>Selecciona la Zona d'Anàlisi</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
 
     # Camins a les imatges locals
@@ -915,7 +915,7 @@ def ui_zone_selection():
     col1, col2 = st.columns(2)
     with col1:
         with st.container(border=True):
-            st.image(path_img_cat, caption="Tempesta a prop de la costa catalana.")
+            st.image(path_img_cat, caption="Tempestes catalanas tradicionals.")
             st.subheader("Catalunya")
             st.write("Anàlisi detallada d'alta resolució (Model AROME) per al territori català. Ideal per a seguiment de tempestes locals, fenòmens de costa i muntanya.")
             
