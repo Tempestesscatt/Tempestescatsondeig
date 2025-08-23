@@ -204,7 +204,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         # Cálculo del CAPE 0-3km - Método Simplificado
         try:
             # Encontrar el índice donde la altura es aproximadamente 3000 m
-            idx_3km = np.argmin(np.abs(heights_agl - 3000 * units.meter))
+            idx_3km = np.argmin(np.abs(heights_agl - 3000 * units.m))
             # Calcular CAPE desde la superficie hasta 3 km
             cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
             params_calc['CAPE_0-3km'] = cape_0_3.m if hasattr(cape_0_3, 'm') else float(cape_0_3)
@@ -330,52 +330,45 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             except:
                 params_calc[f'BWD_{name}'] = np.nan
         
-        # Cálculo de SRH
+        # Cálculo de SRH - VERSIÓN CORREGIDA
         if params_calc.get('RM') is not None:
             try:
                 u_storm, v_storm = params_calc['RM']
-                # Calcular velocidad del viento relativo a la tormenta
-                sr_wind_u = u[0] - u_storm
-                sr_wind_v = v[0] - v_storm
-                if hasattr(sr_wind_u, 'to'):
-                    params_calc['SR_Wind'] = mpcalc.wind_speed(sr_wind_u, sr_wind_v).to('kt').m
-                else:
-                    params_calc['SR_Wind'] = np.sqrt(sr_wind_u**2 + sr_wind_v**2) * 1.94384
                 
+                # Convertir u y v a arrays numpy sin unidades para cálculos más sencillos
+                u_ms = u.to('m/s').m
+                v_ms = v.to('m/s').m
+                
+                # Calcular velocidad del viento relativo a la tormenta
+                sr_wind_u = u_ms[0] - u_storm
+                sr_wind_v = v_ms[0] - v_storm
+                params_calc['SR_Wind'] = np.sqrt(sr_wind_u**2 + sr_wind_v**2) * 1.94384  # m/s to kt
+
                 # Calcular SRH 0-1km
                 idx_1km = np.argmin(np.abs(heights_agl - 1000 * units.m))
                 srh_0_1 = 0
                 for i in range(1, idx_1km+1):
-                    du = (u[i] - u_storm)
-                    dv = (v[i] - v_storm)
-                    du_prev = (u[i-1] - u_storm)
-                    dv_prev = (v[i-1] - v_storm)
-                    # Asegurarnos de obtener valores numéricos
-                    du_val = du.m if hasattr(du, 'm') else float(du)
-                    dv_val = dv.m if hasattr(dv, 'm') else float(dv)
-                    du_prev_val = du_prev.m if hasattr(du_prev, 'm') else float(du_prev)
-                    dv_prev_val = dv_prev.m if hasattr(dv_prev, 'm') else float(dv_prev)
-                    srh_0_1 += (du_val * dv_prev_val - dv_val * du_prev_val)
+                    du = (u_ms[i] - u_storm)
+                    dv = (v_ms[i] - v_storm)
+                    du_prev = (u_ms[i-1] - u_storm)
+                    dv_prev = (v_ms[i-1] - v_storm)
+                    srh_0_1 += (du * dv_prev - dv * du_prev)
                 
                 # Calcular SRH 0-3km
                 idx_3km = np.argmin(np.abs(heights_agl - 3000 * units.m))
                 srh_0_3 = 0
                 for i in range(1, idx_3km+1):
-                    du = (u[i] - u_storm)
-                    dv = (v[i] - v_storm)
-                    du_prev = (u[i-1] - u_storm)
-                    dv_prev = (v[i-1] - v_storm)
-                    # Asegurarnos de obtener valores numéricos
-                    du_val = du.m if hasattr(du, 'm') else float(du)
-                    dv_val = dv.m if hasattr(dv, 'm') else float(dv)
-                    du_prev_val = du_prev.m if hasattr(du_prev, 'm') else float(du_prev)
-                    dv_prev_val = dv_prev.m if hasattr(dv_prev, 'm') else float(dv_prev)
-                    srh_0_3 += (du_val * dv_prev_val - dv_val * du_prev_val)
+                    du = (u_ms[i] - u_storm)
+                    dv = (v_ms[i] - v_storm)
+                    du_prev = (u_ms[i-1] - u_storm)
+                    dv_prev = (v_ms[i-1] - v_storm)
+                    srh_0_3 += (du * dv_prev - dv * du_prev)
                 
                 params_calc['SRH_0-1km'] = srh_0_1
                 params_calc['SRH_0-3km'] = srh_0_3
                 
-            except:
+            except Exception as e:
+                print(f"Error en cálculo de SRH: {e}")
                 params_calc.update({'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
         else:
             params_calc.update({'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
@@ -383,6 +376,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         return ((p, T, Td, u, v, heights, prof), params_calc), None
     except Exception as e: 
         return None, f"Error en processar dades del sondeig: {e}"
+        
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
     try:
