@@ -116,32 +116,54 @@ def format_time_left(time_delta):
     return f"{hours}h {minutes}min" if hours > 0 else f"{minutes} min"
 
 def show_login_page():
-    st.markdown("<h1 style='text-align: center;'>Benvingut/da al Terminal de Temps Sever</h1>", unsafe_allow_html=True)
-    selected = st.sidebar.radio("Menú", ["Inicia Sessió", "Registra't"])
-    if selected == "Inicia Sessió":
+    st.markdown("<h1 style='text-align: center;'>Benvingut/da a Tempestes.cat WEB</h1>", unsafe_allow_html=True)
+    st.markdown("---")
+
+    # Creem dues columnes per als formularis
+    col1, col2 = st.columns(2, gap="large")
+
+    with col1:
         st.subheader("Inicia Sessió")
         with st.form("login_form"):
-            username = st.text_input("Nom d'usuari"); password = st.text_input("Contrasenya", type="password")
-            if st.form_submit_button("Entra"):
+            username = st.text_input("Nom d'usuari", key="login_user")
+            password = st.text_input("Contrasenya", type="password", key="login_pass")
+            
+            # Botó d'inici de sessió
+            if st.form_submit_button("Entra", use_container_width=True, type="primary"):
                 users = load_json_file(USERS_FILE)
                 if username in users and users[username] == get_hashed_password(password):
-                    st.session_state.update({'logged_in': True, 'username': username, 'guest_mode': False}); st.rerun()
-                else: st.error("Nom d'usuari o contrasenya incorrectes.")
-    elif selected == "Registra't":
+                    st.session_state.update({'logged_in': True, 'username': username, 'guest_mode': False})
+                    st.rerun()
+                else:
+                    st.error("Nom d'usuari o contrasenya incorrectes.")
+
+    with col2:
         st.subheader("Crea un nou compte")
         with st.form("register_form"):
-            new_username = st.text_input("Tria un nom d'usuari"); new_password = st.text_input("Tria una contrasenya", type="password")
-            if st.form_submit_button("Registra'm"):
+            new_username = st.text_input("Tria un nom d'usuari", key="reg_user")
+            new_password = st.text_input("Tria una contrasenya", type="password", key="reg_pass")
+            
+            # Botó de registre
+            if st.form_submit_button("Registra'm", use_container_width=True):
                 users = load_json_file(USERS_FILE)
-                if not new_username or not new_password: st.error("El nom d'usuari i la contrasenya no poden estar buits.")
-                elif new_username in users: st.error("Aquest nom d'usuari ja existeix.")
-                elif len(new_password) < 6: st.error("La contrasenya ha de tenir com a mínim 6 caràcters.")
+                if not new_username or not new_password:
+                    st.error("El nom d'usuari i la contrasenya no poden estar buits.")
+                elif new_username in users:
+                    st.error("Aquest nom d'usuari ja existeix.")
+                elif len(new_password) < 6:
+                    st.error("La contrasenya ha de tenir com a mínim 6 caràcters.")
                 else:
-                    users[new_username] = get_hashed_password(new_password); save_json_file(users, USERS_FILE)
-                    st.success("Compte creat amb èxit! Ara pots iniciar sessió.")
+                    users[new_username] = get_hashed_password(new_password)
+                    save_json_file(users, USERS_FILE)
+                    st.success("Compte creat amb èxit! Ara pots iniciar sessió a l'esquerra.")
+    
     st.divider()
-    if st.button("Entrar com a Convidat", use_container_width=True, type="secondary"):
-        st.session_state.update({'guest_mode': True, 'logged_in': True}); st.rerun()
+    st.markdown("<p style='text-align: center;'>O si ho prefereixes...</p>", unsafe_allow_html=True)
+
+    # Botó per entrar com a convidat
+    if st.button("Entrar com a Convidat(simple i ràpid)", use_container_width=True, type="secondary"):
+        st.session_state.update({'guest_mode': True, 'logged_in': True})
+        st.rerun()
 
 # --- Funcions Base de Càlcul i Gràfics (Compartides) ---
 
