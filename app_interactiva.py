@@ -127,15 +127,9 @@ def show_login_page():
 
 # --- BLOC DE CODI CORREGIT I EN L'ORDRE CORRECTE ---
 @st.cache_data(ttl=3600)
-def carregar_dades_mapa(nivell, hourly_index):
+def carregar_dades_mapa_base(variables, hourly_index):
+    """Función auxiliar para cargar datos base del mapa"""
     try:
-        # Determinar les variables necessàries segons el nivell de pressió
-        if nivell >= 950:
-            variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-        else:
-            variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-
-        # --- INICI DE LA LÒGICA DE CÀRREGA (abans a 'carregar_dades_mapa_base') ---
         # Paràmetres per a la crida a l'API
         lats = list(np.arange(MAP_EXTENT[2], MAP_EXTENT[3], 0.025))
         lons = list(np.arange(MAP_EXTENT[0], MAP_EXTENT[1], 0.025))
@@ -168,24 +162,33 @@ def carregar_dades_mapa(nivell, hourly_index):
         
         if any(np.isnan(v).all() for k, v in map_data_raw.items() if k not in ['lats', 'lons']):
              return None, "Les dades del mapa contenen valors invàlids (NaN)."
-        # --- FI DE LA LÒGICA DE CÀRREGA ---
+        
+        return map_data_raw, None
+    except Exception as e: 
+        return None, f"Error en processar dades del mapa base: {e}"
 
-        # Processament de les dades rebudes
+@st.cache_data(ttl=3600)
+def carregar_dades_mapa(nivell, hourly_index):
+    try:
         if nivell >= 950:
+            variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            map_data_raw, error = carregar_dades_mapa_base(variables, hourly_index)
+            if error: return None, error
             map_data_raw['dewpoint_data'] = map_data_raw.pop('dew_point_2m')
         else:
+            variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            map_data_raw, error = carregar_dades_mapa_base(variables, hourly_index)
+            if error: return None, error
             temp_data = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
             rh_data = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
             map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
-            
+        
         map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
         map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
         
         return map_data_raw, None
-
     except Exception as e: 
         return None, f"Error en processar dades del mapa: {e}"
-
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
     try:
