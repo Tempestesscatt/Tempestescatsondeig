@@ -787,31 +787,7 @@ def ui_caixa_parametres_sondeig(params):
             - **SRH 0-1km:** Helicitat relativa a la tempesta. Mesura el potencial de rotació a nivells baixos, clau per a la formació de tornados.
             - **CAPE 0-3km:** Energia a nivells baixos. Combinat amb SRH alt, augmenta el risc de tornados.
             """)
-    # --- FI DE LA MODIFICACIÓ ---
-    
-    # Fila 1: Energia Principal
-    cols = st.columns(3)
-    with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE')
-    with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE')
-    with cols[2]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE')
-    
-    # Fila 2: Estabilitat i Humitat
-    cols = st.columns(3)
-    with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True)
-    with cols[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', precision=1, reverse_colors=True)
-    with cols[2]: styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1)
-    
-    # Fila 3: Nivells i Potencial Descendent
-    cols = st.columns(3)
-    with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
-    with cols[1]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
-    with cols[2]: styled_metric("DCAPE", params.get('DCAPE', np.nan), "J/kg", 'DCAPE')
-    
-    # Fila 4: Paràmetres de Cisallament / Rotació
-    cols = st.columns(3)
-    with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
-    with cols[1]: styled_metric("SRH 0-1km", params.get('SRH_0-1km', np.nan), "m²/s²", 'SRH_0-1km')
-    with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
+
         
         
 
