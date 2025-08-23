@@ -240,141 +240,85 @@ def calcular_li_manual(p, T, prof):
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
     Processa les dades de sondeig brutes per calcular un conjunt complet de paràmetres
-    termodinàmics i cinemàtics. Aquesta funció està dissenyada per ser robusta,
-    gestionant dades absents (NaN) i condicions meteorològiques extremes
-    (p. ex., absència de nivell de 0°C).
-
-    Retorna:
-        Una tupla amb les dades processades per als gràfics i un diccionari amb
-        els paràmetres calculats, o (None, missatge_error) si el processament falla.
+    termodinàmics i cinemàtics. Aquesta funció està dissenyada per ser robusta.
     """
     # --- 1. PREPARACIÓ I NETEJA DE DADES ---
-
     if len(p_profile) < 4:
-        return None, "Perfil atmosfəric massa curt per a un càlcul fiable."
-
-    # Conversió a arrays de numpy amb unitats de MetPy.
-    p = np.array(p_profile) * units.hPa
-    T = np.array(T_profile) * units.degC
-    Td = np.array(Td_profile) * units.degC
-    u = np.array(u_profile) * units('m/s')
-    v = np.array(v_profile) * units('m/s')
-    heights = np.array(h_profile) * units.meter
-
-    # Neteja de valors no vàlids (NaN) que poden corrompre els càlculs.
+        return None, "Perfil atmosfèric massa curt per a un càlcul fiable."
+    p = np.array(p_profile) * units.hPa; T = np.array(T_profile) * units.degC
+    Td = np.array(Td_profile) * units.degC; u = np.array(u_profile) * units('m/s')
+    v = np.array(v_profile) * units('m/s'); heights = np.array(h_profile) * units.meter
     valid_indices = ~np.isnan(p.m) & ~np.isnan(T.m) & ~np.isnan(Td.m) & ~np.isnan(u.m) & ~np.isnan(v.m)
     p, T, Td, u, v, heights = p[valid_indices], T[valid_indices], Td[valid_indices], u[valid_indices], v[valid_indices], heights[valid_indices]
-
     if len(p) < 3:
         return None, "No hi ha prou dades vàlides després d'eliminar valors anòmals."
-
-    # Assegurem que les dades estan ordenades per pressió descendent (de superfície a altura).
     sort_idx = np.argsort(p.m)[::-1]
     p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
-
-    # Inicialització del diccionari de resultats i variables.
-    params_calc = {}
-    prof = None
-    heights_agl = heights - heights[0] # Altura sobre el nivell del terra
+    params_calc = {}; prof = None; heights_agl = heights - heights[0]
 
     # --- 2. CÀLCULS TERMODINÀMICS ---
-    # Aquest bloc s'executa amb un lock per garantir la seguretat en entorns multithread.
     with parcel_lock:
-        # Perfil de la bombolla d'aire ascendent (parcel·la). És la base per a molts càlculs.
         try:
             prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
         except Exception as e:
             return None, f"Error crític calculant el perfil de la parcel·la: {e}"
-
-        # Càlculs de CAPE/CIN (Surface-Based, Most-Unstable, Mixed-Layer)
         try:
             sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
-            params_calc['SBCAPE'] = float(sbcape.m)
-            params_calc['SBCIN'] = float(sbcin.m)
+            params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m)
             params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if sbcape.m > 0 else 0.0
-        except Exception:
-            params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
-        
+        except Exception: params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
         try:
             mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td, depth=300 * units.hPa)
-            params_calc['MUCAPE'] = float(mucape.m)
-            params_calc['MUCIN'] = float(mucin.m)
-        except Exception:
-            params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
-
+            params_calc['MUCAPE'] = float(mucape.m); params_calc['MUCIN'] = float(mucin.m)
+        except Exception: params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
         try:
             mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td, depth=100 * units.hPa)
-            params_calc['MLCAPE'] = float(mlcape.m)
-            params_calc['MLCIN'] = float(mlcin.m)
-        except Exception:
-            params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
-
-        # Càlcul del Lifted Index (LI).
+            params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
+        except Exception: params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
         try:
             li = mpcalc.lifted_index(p, T, prof)
             params_calc['LI'] = float(li.m)
-        except Exception:
-            params_calc['LI'] = np.nan
-
-        # Càlculs de nivells característics (LCL, LFC) i la seva altura en metres.
+        except Exception: params_calc['LI'] = np.nan
         try:
             lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0])
             params_calc['LCL_p'] = float(lcl_p.m)
             params_calc['LCL_Hgt'] = float(np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1]))
-        except Exception:
-            params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
-
+        except Exception: params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
         try:
             lfc_p, _ = mpcalc.lfc(p, T, Td, prof)
             params_calc['LFC_p'] = float(lfc_p.m)
             params_calc['LFC_Hgt'] = float(np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1]))
-        except Exception:
-            params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
-
-        # Càlcul d'Aigua Precipitable (PWAT).
+        except Exception: params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
         try:
             pwat = mpcalc.precipitable_water(p, Td)
             params_calc['PWAT'] = float(pwat.to('mm').m)
-        except Exception:
-            params_calc['PWAT'] = np.nan
-
+        except Exception: params_calc['PWAT'] = np.nan
+        
     # --- 3. CÀLCULS CINEMÀTICS (VENT) ---
-
-    # Moviment de la tempesta (Bunkers). És necessari per al càlcul de l'helicitat.
     try:
         rm, _, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
         params_calc['RM'] = (float(rm[0].m), float(rm[1].m))
-    except Exception:
-        params_calc['RM'] = (np.nan, np.nan)
-
-    # Cisallament del vent (Bulk Wind Shear) a capes clau.
+    except Exception: params_calc['RM'] = (np.nan, np.nan)
     for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
         try:
             bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter)
             bwd_speed = mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m
             params_calc[f'BWD_{name}'] = float(bwd_speed)
-        except Exception:
-            params_calc[f'BWD_{name}'] = np.nan
-
-    # Helicitat Relativa a la Tempesta (SRH). Només es pot calcular si tenim el moviment de la tempesta.
+        except Exception: params_calc[f'BWD_{name}'] = np.nan
     if not np.isnan(params_calc.get('RM', (np.nan,))[0]):
         u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
         for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
             try:
                 srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.meter, storm_u=u_storm, storm_v=v_storm)[0]
                 params_calc[f'SRH_{name}'] = float(srh.m)
-            except Exception:
-                params_calc[f'SRH_{name}'] = np.nan
+            except Exception: params_calc[f'SRH_{name}'] = np.nan
     else:
         params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-
-    # CAPE en la capa 0-3 km, un bon indicador del potencial de rotació a nivells baixos.
     try:
         idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
         cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
         params_calc['CAPE_0-3km'] = float(cape_0_3.m)
-    except Exception:
-        params_calc['CAPE_0-3km'] = np.nan
+    except Exception: params_calc['CAPE_0-3km'] = np.nan
 
     # --- 4. RETORN DELS RESULTATS ---
     return ((p, T, Td, u, v, heights, prof), params_calc), None
@@ -1219,16 +1163,14 @@ def run_catalunya_app():
     lat_sel, lon_sel = ciutats_per_selector[poble_sel]['lat'], ciutats_per_selector[poble_sel]['lon']
     
     # --- LÒGICA DE CÀLCUL CENTRALITZADA ---
-
-    # 1. Carreguem el sondeig com sempre
     data_tuple, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
-    if error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+    if error_msg: 
+        st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        # Aturem l'execució si el sondeig falla per evitar més errors
+        return
 
-    # 2. **NOU:** El selector de nivell d'anàlisi es posa aquí, fora de les pestanyes.
-    # Això permet que el seu valor estigui disponible per a tots els càlculs.
-    nivell_sel = 925 # Valor per defecte
+    nivell_sel = 925 # Valor per defecte per a convidats
     if not is_guest:
-        # Troba l'índex de 925hPa per a la selecció per defecte
         nivells_disponibles = [1000, 950, 925, 850, 800, 700]
         index_default = nivells_disponibles.index(925) if 925 in nivells_disponibles else 0
         nivell_sel = st.selectbox(
@@ -1241,29 +1183,23 @@ def run_catalunya_app():
     else:
         st.info("ℹ️ L'anàlisi de vent i convergència està fixada a **925 hPa** en el mode convidat.")
 
-    # 3. Carreguem les dades del mapa per al nivell seleccionat
     map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
 
-    # 4. Si tenim dades, calculem la convergència i l'afegim als paràmetres amb una clau dinàmica
     if data_tuple and map_data_conv:
         _, params_calc = data_tuple
         conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
-        params_calc[f'CONV_{nivell_sel}hPa'] = conv_value # Clau dinàmica, ex: 'CONV_850hPa'
+        params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
     
-    # --- VISUALITZACIÓ EN PESTANYES ---
-    if is_guest:
-        tab_mapes, tab_vertical, tab_estacions = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Estacions Meteorològiques"])
-        with tab_mapes: 
-            # MODIFICAT: Passem el nivell seleccionat a la funció de mapes
-            ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
-        with tab_vertical: 
-            # MODIFICAT: Passem el nivell seleccionat a la funció de l'anàlisi vertical
-            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
-        with tab_estacions: 
-            ui_pestanya_estacions_meteorologiques()
-    else:
-        # Lògica per a usuaris registrats
-        st.warning("La funcionalitat completa per a usuaris registrats encara s'ha d'implementar en aquest refactor.")
+    # --- VISUALITZACIÓ EN PESTANYES (ARA IGUAL PER A TOTS) ---
+    # Hem eliminat el 'if is_guest' que et bloquejava l'accés.
+    tab_mapes, tab_vertical, tab_estacions = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Estacions Meteorològiques"])
+    with tab_mapes: 
+        ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
+    with tab_vertical: 
+        ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
+    with tab_estacions: 
+        ui_pestanya_estacions_meteorologiques()
+        
 
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
