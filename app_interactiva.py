@@ -125,7 +125,6 @@ def show_login_page():
     if st.button("Entrar com a Convidat", use_container_width=True, type="secondary"):
         st.session_state.update({'guest_mode': True, 'logged_in': False}); st.rerun()
 
-# --- Funcions de càrrega de dades ---
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
@@ -161,144 +160,133 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
             
             # Calcular CAPE y CIN de superficie
-            sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
-            params_calc['SBCAPE'] = sbcape.to('J/kg').m if not np.isnan(sbcape.magnitude) else np.nan
-            params_calc['SBCIN'] = sbcin.to('J/kg').m if not np.isnan(sbcin.magnitude) else np.nan
+            try:
+                sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
+                params_calc['SBCAPE'] = sbcape.m if hasattr(sbcape, 'm') else sbcape
+                params_calc['SBCIN'] = sbcin.m if hasattr(sbcin, 'm') else sbcin
+            except:
+                params_calc['SBCAPE'] = np.nan
+                params_calc['SBCIN'] = np.nan
 
             # Calcular CAPE y CIN más inestable
-            mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td)
-            params_calc['MUCAPE'] = mucape.to('J/kg').m if not np.isnan(mucape.magnitude) else np.nan
-            params_calc['MUCIN'] = mucin.to('J/kg').m if not np.isnan(mucin.magnitude) else np.nan
+            try:
+                mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td)
+                params_calc['MUCAPE'] = mucape.m if hasattr(mucape, 'm') else mucape
+                params_calc['MUCIN'] = mucin.m if hasattr(mucin, 'm') else mucin
+            except:
+                params_calc['MUCAPE'] = np.nan
+                params_calc['MUCIN'] = np.nan
             
             # Calcular CAPE y CIN de capa mezclada
-            mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td)
-            params_calc['MLCAPE'] = mlcape.to('J/kg').m if not np.isnan(mlcape.magnitude) else np.nan
-            params_calc['MLCIN'] = mlcin.to('J/kg').m if not np.isnan(mlcin.magnitude) else np.nan
-            
-            # Cálculo del LI (Lifted Index) - Método Mejorado
             try:
-                # Calcular el lifted index usando la parcela de superficie
-                li_value = mpcalc.lifted_index(p, T, Td, prof)
-                
-                # Manejar diferentes tipos de retorno de metpy
-                if hasattr(li_value, 'magnitude'):
-                    # Es una Quantity de metpy
-                    params_calc['LI'] = li_value.magnitude
-                elif hasattr(li_value, '__len__') and len(li_value) > 0:
-                    # Es un array, tomar el primer valor
-                    params_calc['LI'] = li_value[0].magnitude if hasattr(li_value[0], 'magnitude') else li_value[0]
-                else:
-                    # Es un escalar
-                    params_calc['LI'] = li_value.magnitude if hasattr(li_value, 'magnitude') else li_value
-            except Exception as e:
+                mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td)
+                params_calc['MLCAPE'] = mlcape.m if hasattr(mlcape, 'm') else mlcape
+                params_calc['MLCIN'] = mlcin.m if hasattr(mlcin, 'm') else mlcin
+            except:
+                params_calc['MLCAPE'] = np.nan
+                params_calc['MLCIN'] = np.nan
+            
+            # Cálculo del LI (Lifted Index) - Método Simplificado
+            try:
+                # Calcular manualmente el Lifted Index
+                p_500 = 500 * units.hPa
+                # Encontrar T a 500 hPa
+                idx_500 = np.argmin(np.abs(p - p_500))
+                T_500 = T[idx_500]
+                # Encontrar temperatura de la parcela a 500 hPa
+                T_parcel_500 = prof[idx_500]
+                # LI = T_ambiente - T_parcela a 500 hPa
+                params_calc['LI'] = (T_500 - T_parcel_500).m if hasattr(T_500, 'm') else (T_500 - T_parcel_500)
+            except:
                 params_calc['LI'] = np.nan
 
-        # Cálculo del CAPE 0-3km - Método Mejorado
+        # Cálculo del CAPE 0-3km - Método Simplificado
         try:
-            # Encontrar la presión a 3 km sobre el nivel del suelo
-            if heights_agl[-1] >= 3000 * units.meter:
-                # Si el perfil llega a 3 km, usar interpolación
-                p_3km = np.interp(3000, heights_agl.m, p.m) * units.hPa
-            else:
-                # Si no llega, usar la presión al nivel más alto disponible
-                p_3km = p[-1]
-            
-            # Calcular el CAPE desde la superficie hasta p_3km
-            cape_0_3, cin_0_3 = mpcalc.cape_cin(p, T, Td, prof, which='surface', bottom=p[0], top=p_3km)
-            params_calc['CAPE_0-3km'] = cape_0_3.to('J/kg').m if not np.isnan(cape_0_3.magnitude) else np.nan
-        except Exception as e:
+            # Encontrar el índice donde la altura es aproximadamente 3000 m
+            idx_3km = np.argmin(np.abs(heights_agl - 3000 * units.meter))
+            # Calcular CAPE desde la superficie hasta 3 km
+            cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
+            params_calc['CAPE_0-3km'] = cape_0_3.m if hasattr(cape_0_3, 'm') else cape_0_3
+        except:
             params_calc['CAPE_0-3km'] = np.nan
 
-        # Cálculo de PWAT (Precipitable Water) - Método Mejorado
+        # Cálculo de PWAT
         try: 
-            params_calc['PWAT'] = mpcalc.precipitable_water(p, Td).to('mm').m
-        except Exception as e:
-            # Fallback: cálculo manual simplificado de PWAT
-            try:
-                pwat_manual = 0
-                for i in range(len(p) - 1):
-                    # Calcular el contenido de humedad en la capa
-                    mixing_ratio = mpcalc.mixing_ratio_from_dewpoint(p[i], Td[i])
-                    density = mpcalc.density(p[i], T[i], mixing_ratio)
-                    dp = (p[i] - p[i+1]).to('Pa').m
-                    pwat_manual += (mixing_ratio.m * density.m * dp) / 9.8
-                
-                params_calc['PWAT'] = pwat_manual
-            except:
-                params_calc['PWAT'] = np.nan
+            params_calc['PWAT'] = mpcalc.precipitable_water(p, Td).m if hasattr(mpcalc.precipitable_water(p, Td), 'm') else mpcalc.precipitable_water(p, Td)
+        except:
+            params_calc['PWAT'] = np.nan
         
-        # Cálculo del DCAPE - Método Mejorado
+        # Cálculo del DCAPE - Método Simplificado
         try:
-            # Calcular DCAPE usando la función de metpy con manejo de errores
-            dcape_value = mpcalc.dcape(p, T, Td)
-            
-            # Manejar diferentes tipos de retorno
-            if hasattr(dcape_value, 'magnitude'):
-                params_calc['DCAPE'] = dcape_value.magnitude
-            elif hasattr(dcape_value, '__len__') and len(dcape_value) > 0:
-                params_calc['DCAPE'] = dcape_value[0].magnitude if hasattr(dcape_value[0], 'magnitude') else dcape_value[0]
-            else:
-                params_calc['DCAPE'] = dcape_value.magnitude if hasattr(dcape_value, 'magnitude') else dcape_value
-        except Exception as e:
-            # Fallback: cálculo manual simplificado de DCAPE
-            try:
-                dcape_manual = 0
-                for i in range(len(p) - 1):
-                    if p[i] > 500 * units.hPa:  # Solo niveles medios-bajos
-                        T_env = T[i]
-                        T_parcel = prof[i]
-                        if T_parcel < T_env:  # Solo donde la parcela es más fría
-                            dcape_manual += (T_env - T_parcel) * (p[i] - p[i+1]) * 100 / p[i]
-                params_calc['DCAPE'] = dcape_manual.to('J/kg').m if hasattr(dcape_manual, 'to') else dcape_manual
-            except:
-                params_calc['DCAPE'] = np.nan
+            # Calcular DCAPE manualmente
+            dcape_value = 0
+            for i in range(len(p) - 1):
+                if p[i] > 500 * units.hPa:  # Solo niveles medios-bajos
+                    T_env = T[i]
+                    T_parcel = prof[i]
+                    if T_parcel < T_env:  # Solo donde la parcela es más fría
+                        # Aproximación simple: g * ΔT * Δz / T
+                        delta_z = (heights[i+1] - heights[i]).to('m')
+                        delta_T = (T_env - T_parcel).to('K')
+                        dcape_value += (9.8 * delta_T * delta_z / T_env).m
+            params_calc['DCAPE'] = dcape_value
+        except:
+            params_calc['DCAPE'] = np.nan
                 
+        # Cálculo de LCL
         try:
             lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
-            params_calc['LCL_p'] = lcl_p
-            params_calc['LCL_Hgt'] = mpcalc.pressure_to_height_std(lcl_p).to('m').m
-        except: params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan * units.hPa, np.nan
+            params_calc['LCL_p'] = lcl_p.m if hasattr(lcl_p, 'm') else lcl_p
+            params_calc['LCL_Hgt'] = mpcalc.pressure_to_height_std(lcl_p).m if hasattr(mpcalc.pressure_to_height_std(lcl_p), 'm') else mpcalc.pressure_to_height_std(lcl_p)
+        except:
+            params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan, np.nan
         
-        # CÁLCULO DE LFC - MÉTODO MÁS ROBUSTO
+        # Cálculo de LFC
         try:
-            # Calcular LFC manualmente buscando donde la parcela se vuelve más cálida que el ambiente
+            # Buscar donde la parcela se vuelve más cálida que el ambiente
             for i in range(len(p)):
-                if prof[i] > T[i] and p[i] < p[0]:
-                    params_calc['LFC_p'] = p[i]
-                    params_calc['LFC_Hgt'] = heights_agl[i].m
+                if prof[i] > T[i]:
+                    params_calc['LFC_p'] = p[i].m if hasattr(p[i], 'm') else p[i]
+                    params_calc['LFC_Hgt'] = heights_agl[i].m if hasattr(heights_agl[i], 'm') else heights_agl[i]
                     break
             else:
-                params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
-        except Exception as e:
-            params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
+                params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan, np.nan
+        except:
+            params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan, np.nan
         
+        # Cálculo de EL
         try:
-            el_result = mpcalc.el(p, T, Td, which='surface', parcel_temperature_profile=prof)
-            if isinstance(el_result, tuple):
-                el_p = el_result[0]
-                params_calc['EL_p'] = el_p
-                params_calc['EL_Hgt'] = mpcalc.pressure_to_height_std(el_p).to('m').m if hasattr(el_p, 'm') else np.nan
-            else: params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan * units.hPa, np.nan
-        except: params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan * units.hPa, np.nan
+            # Buscar donde la parcela se vuelve más fría que el ambiente otra vez
+            for i in range(len(p)):
+                if prof[i] < T[i] and i > 0:
+                    params_calc['EL_p'] = p[i].m if hasattr(p[i], 'm') else p[i]
+                    params_calc['EL_Hgt'] = heights_agl[i].m if hasattr(heights_agl[i], 'm') else heights_agl[i]
+                    break
+            else:
+                params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan, np.nan
+        except:
+            params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan, np.nan
         
+        # Cálculo del nivel de congelación
         try:
-            p_frz = np.interp(0, T.to('degC').m[::-1], p.m[::-1]) * units.hPa
-            params_calc['FRZG_Lvl_p'] = p_frz
-        except: params_calc['FRZG_Lvl_p'] = np.nan * units.hPa
+            p_frz = np.interp(0, T.to('degC').m, p.m) * units.hPa
+            params_calc['FRZG_Lvl_p'] = p_frz.m if hasattr(p_frz, 'm') else p_frz
+        except:
+            params_calc['FRZG_Lvl_p'] = np.nan
 
-        # CÁLCULO DE MOVIMIENTO DE TORMENTA - MÉTODO SIMPLIFICADO
+        # Cálculo de movimientos de tormenta
         try:
-            # Calcular movimiento de tormenta basado en vientos medios en capas bajas
+            # Calcular viento medio en baja y media tropósfera
             u_low = np.mean(u[:5]) if len(u) > 5 else u[0]
             v_low = np.mean(v[:5]) if len(v) > 5 else v[0]
             u_mid = np.mean(u[5:10]) if len(u) > 10 else u[-1]
             v_mid = np.mean(v[5:10]) if len(v) > 10 else v[-1]
             
-            # Movimiento derecho (right mover) - 75% del viento medio + 25% del viento de superficie
+            # Movimiento derecho
             rm_u = 0.75 * u_mid + 0.25 * u_low
             rm_v = 0.75 * v_mid + 0.25 * v_low
             
-            # Movimiento izquierdo (left mover) - 75% del viento medio - 25% del viento de superficie
+            # Movimiento izquierdo
             lm_u = 0.75 * u_mid - 0.25 * u_low
             lm_v = 0.75 * v_mid - 0.25 * v_low
             
@@ -306,57 +294,58 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             mean_u = np.mean(u)
             mean_v = np.mean(v)
             
-            params_calc['RM'] = (rm_u, rm_v)
-            params_calc['LM'] = (lm_u, lm_v)
-            params_calc['Mean_Wind'] = (mean_u, mean_v)
-        except Exception as e:
+            params_calc['RM'] = (rm_u.m if hasattr(rm_u, 'm') else rm_u, rm_v.m if hasattr(rm_v, 'm') else rm_v)
+            params_calc['LM'] = (lm_u.m if hasattr(lm_u, 'm') else lm_u, lm_v.m if hasattr(lm_v, 'm') else lm_v)
+            params_calc['Mean_Wind'] = (mean_u.m if hasattr(mean_u, 'm') else mean_u, mean_v.m if hasattr(mean_v, 'm') else mean_v)
+        except:
             params_calc.update({'RM': None, 'LM': None, 'Mean_Wind': None})
         
+        # Cálculo de cortantes de viento
         depths = {'0-1km': 1000 * units.m, '0-6km': 6000 * units.m}
         for name, depth in depths.items():
             try: 
-                shear = mpcalc.bulk_shear(p, u, v, depth=depth)
-                params_calc[f'BWD_{name}'] = mpcalc.wind_speed(shear[0], shear[1]).to('kt').m
-            except: params_calc[f'BWD_{name}'] = np.nan
+                # Encontrar el índice para la profundidad deseada
+                idx_depth = np.argmin(np.abs(heights_agl - depth))
+                if idx_depth > 0:
+                    shear_u = u[idx_depth] - u[0]
+                    shear_v = v[idx_depth] - v[0]
+                    shear_speed = np.sqrt(shear_u**2 + shear_v**2)
+                    params_calc[f'BWD_{name}'] = shear_speed.to('kt').m if hasattr(shear_speed, 'to') else shear_speed
+                else:
+                    params_calc[f'BWD_{name}'] = np.nan
+            except:
+                params_calc[f'BWD_{name}'] = np.nan
         
-        # CÁLCULO DE SRH - MÉTODO ALTERNATIVO
+        # Cálculo de SRH
         if params_calc.get('RM') is not None:
             try:
                 u_storm, v_storm = params_calc['RM']
-                params_calc['SR_Wind'] = mpcalc.wind_speed(u - u_storm, v - v_storm).to('kt')
-                
-                # Calcular SRH manualmente integrando (V - C) · dv/dz
-                srh_0_1 = 0
-                srh_0_3 = 0
-                
-                # Encontrar índice para 1km y 3km
-                idx_1km = np.argmin(np.abs(heights_agl - 1000 * units.m))
-                idx_3km = np.argmin(np.abs(heights_agl - 3000 * units.m))
+                params_calc['SR_Wind'] = np.sqrt((u[0] - u_storm)**2 + (v[0] - v_storm)**2)
                 
                 # Calcular SRH 0-1km
-                for i in range(idx_1km):
-                    if i > 0:
-                        du = (u[i] - u_storm).to('m/s').m
-                        dv = (v[i] - v_storm).to('m/s').m
-                        dz = (heights_agl[i] - heights_agl[i-1]).to('m').m
-                        if dz > 0:
-                            srh_0_1 += (du * (v[i] - v[i-1]).to('m/s').m / dz - 
-                                       dv * (u[i] - u[i-1]).to('m/s').m / dz) * dz
+                idx_1km = np.argmin(np.abs(heights_agl - 1000 * units.m))
+                srh_0_1 = 0
+                for i in range(1, idx_1km+1):
+                    du = (u[i] - u_storm).m if hasattr(u[i], 'm') else (u[i] - u_storm)
+                    dv = (v[i] - v_storm).m if hasattr(v[i], 'm') else (v[i] - v_storm)
+                    du_prev = (u[i-1] - u_storm).m if hasattr(u[i-1], 'm') else (u[i-1] - u_storm)
+                    dv_prev = (v[i-1] - v_storm).m if hasattr(v[i-1], 'm') else (v[i-1] - v_storm)
+                    srh_0_1 += (du * dv_prev - dv * du_prev)
                 
                 # Calcular SRH 0-3km
-                for i in range(idx_3km):
-                    if i > 0:
-                        du = (u[i] - u_storm).to('m/s').m
-                        dv = (v[i] - v_storm).to('m/s').m
-                        dz = (heights_agl[i] - heights_agl[i-1]).to('m').m
-                        if dz > 0:
-                            srh_0_3 += (du * (v[i] - v[i-1]).to('m/s').m / dz - 
-                                       dv * (u[i] - u[i-1]).to('m/s').m / dz) * dz
+                idx_3km = np.argmin(np.abs(heights_agl - 3000 * units.m))
+                srh_0_3 = 0
+                for i in range(1, idx_3km+1):
+                    du = (u[i] - u_storm).m if hasattr(u[i], 'm') else (u[i] - u_storm)
+                    dv = (v[i] - v_storm).m if hasattr(v[i], 'm') else (v[i] - v_storm)
+                    du_prev = (u[i-1] - u_storm).m if hasattr(u[i-1], 'm') else (u[i-1] - u_storm)
+                    dv_prev = (v[i-1] - v_storm).m if hasattr(v[i-1], 'm') else (v[i-1] - v_storm)
+                    srh_0_3 += (du * dv_prev - dv * du_prev)
                 
                 params_calc['SRH_0-1km'] = srh_0_1
                 params_calc['SRH_0-3km'] = srh_0_3
                 
-            except Exception as e:
+            except:
                 params_calc.update({'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
         else:
             params_calc.update({'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
