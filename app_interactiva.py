@@ -568,22 +568,25 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     barb_altitudes_m = [h * 1000 for h in barb_altitudes_km] * units.m
     u_barbs, v_barbs = [], []
 
-    # --- INICIO DE LA CORRECCIÓN: Usamos np.interp en lugar de mpcalc.interp ---
+    # --- INICI DE LA CORRECCIÓ ---
+    # Primer, recollim només els valors numèrics (magnituds) a les llistes.
     for h_m in barb_altitudes_m:
         if h_m <= heights_agl.max():
             # Usem np.interp amb les magnituds (.m) de les variables
             u_interp_val = np.interp(h_m.m, heights_agl.m, u.m)
             v_interp_val = np.interp(h_m.m, heights_agl.m, v.m)
-            
-            # Tornem a afegir les unitats al resultat
-            u_barbs.append(u_interp_val * u.units)
-            v_barbs.append(v_interp_val * v.units)
+            u_barbs.append(u_interp_val)
+            v_barbs.append(v_interp_val)
         else:
-            u_barbs.append(np.nan * units('m/s'))
-            v_barbs.append(np.nan * units('m/s'))
-    # --- FIN DE LA CORRECCIÓN ---
+            u_barbs.append(np.nan)
+            v_barbs.append(np.nan)
 
-    u_barbs_kt = (units.Quantity(u_barbs)).to('kt'); v_barbs_kt = (units.Quantity(v_barbs)).to('kt')
+    # Ara, convertim la llista de nombres a un array Quantity amb unitats, i després a nusos.
+    # Això evita l'error de "setting an array element with a sequence".
+    u_barbs_kt = units.Quantity(u_barbs, u.units).to('kt')
+    v_barbs_kt = units.Quantity(v_barbs, v.units).to('kt')
+    # --- FI DE LA CORRECCIÓ ---
+
     x_pos = np.arange(len(barb_altitudes_km))
     ax_barbs.barbs(x_pos, np.zeros_like(x_pos), u_barbs_kt, v_barbs_kt, length=8, pivot='middle')
 
@@ -660,7 +663,6 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         y-=0.07
         
     return fig
-    
 
     
 
