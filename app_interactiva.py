@@ -237,14 +237,19 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         except:
             params_calc['DCAPE'] = np.nan
                 
+        # --- INICI DEL BLOC CORREGIT ---
         # Cálculo de LCL
         try:
             lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
             params_calc['LCL_p'] = lcl_p.m if hasattr(lcl_p, 'm') else float(lcl_p)
-            lcl_height = mpcalc.pressure_to_height_std(lcl_p)
-            params_calc['LCL_Hgt'] = lcl_height.m if hasattr(lcl_height, 'm') else float(lcl_height)
+            
+            # Càlcul de l'alçada del LCL sobre el terra (AGL)
+            # Fórmula: Altura (m) ≈ 125 * (Temperatura (°C) - Punt de Rosada (°C))
+            lcl_height_agl = 125 * (T[0].m - Td[0].m)
+            params_calc['LCL_Hgt'] = lcl_height_agl
         except:
             params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan, np.nan
+        # --- FI DEL BLOC CORREGIT ---
         
         # Cálculo de LFC
         try:
@@ -376,6 +381,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         return ((p, T, Td, u, v, heights, prof), params_calc), None
     except Exception as e: 
         return None, f"Error en processar dades del sondeig: {e}"
+
+
         
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
