@@ -569,7 +569,6 @@ def carregar_dades_mapa_usa(nivell, hourly_index):
         map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
         return map_data_raw, None
     except Exception as e: return None, f"Error en processar dades del mapa GFS: {e}"
-
 def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     fig, ax = crear_mapa_base(MAP_EXTENT_USA, projection=ccrs.LambertConformal(central_longitude=-95, central_latitude=35))
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_USA[0], MAP_EXTENT_USA[1], 200), np.linspace(MAP_EXTENT_USA[2], MAP_EXTENT_USA[3], 200))
@@ -595,11 +594,11 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=2, zorder=4, transform=ccrs.PlateCarree())
     
     # --- LÍNIA CORREGIDA ---
-    # Aquí s'ha eliminat l'argument 'projection' que causava l'error.
+    # Se ha eliminado el parámetro 'projection' que causaba el error
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     
-    dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1, x_dim=-1, y_dim=-2)
-    dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0, x_dim=-1, y_dim=-2)
+    dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1)
+    dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
     convergence_scaled = -(dudx + dvdy).to('1/s').magnitude * 1e5
     
     DEWPOINT_THRESHOLD_USA = 16  # Llindar de punt de rosada més alt per a temps sever a les planes (~60°F)
@@ -617,6 +616,7 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
     
     ax.set_title(f"Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
+    
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya"):
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
