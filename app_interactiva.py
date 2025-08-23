@@ -1191,22 +1191,24 @@ METEOCLIMATIC_STATION_CODES = {
 @st.cache_data(ttl=600)
 def obtenir_dades_estacio_meteoclimatic(station_code):
     """
-    Versió final i robusta que inclou un User-Agent per evitar bloquejos.
+    Versió de diagnòstic final per mostrar el contingut exacte rebut del servidor.
     """
     if not station_code:
         return None
         
     url = f"https://www.meteoclimatic.net/feed/station/{station_code}"
     
-    # CAPÇALERA PER SIMULAR UN NAVEGADOR I EVITAR BLOQUEJOS
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
 
     try:
-        # AFEGIM LA CAPÇALERA A LA PETICIÓ
         response = requests.get(url, timeout=10, headers=headers)
         response.raise_for_status()
+
+        # Abans de fer res, mostrem el que hem rebut
+        # AQUESTA ÉS LA PART NOVA I MÉS IMPORTANT
+        st.code(f"--- Contingut rebut per a {station_code} ---\n\n{response.text}")
 
         if not response.content or not response.content.strip():
             print(f"Advertència: L'estació {station_code} ha retornat una resposta buida.")
@@ -1232,10 +1234,10 @@ def obtenir_dades_estacio_meteoclimatic(station_code):
         return data
 
     except requests.exceptions.RequestException as e:
-        # Aquest error ara només apareixerà si realment hi ha un problema de xarxa
         st.error(f"Error de xarxa en contactar amb l'estació {station_code}. Detalls: {e}")
         return None
     except ET.ParseError as e:
+        # Aquest missatge d'error és el que estem veient
         st.error(f"L'estació {station_code} ha retornat dades invàlides (XML mal format). Detalls: {e}")
         return None
 
