@@ -116,7 +116,7 @@ def format_time_left(time_delta):
     return f"{hours}h {minutes}min" if hours > 0 else f"{minutes} min"
 
 def show_login_page():
-    st.markdown("<h1 style='text-align: center;'>Benvingut/da a Tempestes.cat WEB</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>Tempestes.cat</h1>", unsafe_allow_html=True)
     st.markdown("---")
 
     # Creem dues columnes per als formularis
