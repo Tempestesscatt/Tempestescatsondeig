@@ -134,8 +134,8 @@ def carregar_dades_mapa_base(variables, hourly_index):
     try:
         # Paràmetres per a la crida a l'API de Open-Meteo per a dades de mapa
         params = {
-            "latitude": {"start": MAP_EXTENT[2], "end": MAP_EXTENT[3], "step": 0.025},
-            "longitude": {"start": MAP_EXTENT[0], "end": MAP_EXTENT[1], "step": 0.025},
+            "latitude": list(np.arange(MAP_EXTENT[2], MAP_EXTENT[3], 0.025)),
+            "longitude": list(np.arange(MAP_EXTENT[0], MAP_EXTENT[1], 0.025)),
             "hourly": variables,
             "models": "arome_seamless",
             "forecast_days": FORECAST_DAYS
@@ -157,8 +157,8 @@ def carregar_dades_mapa_base(variables, hourly_index):
         for i, var in enumerate(variables):
             data_array = hourly.Variables(i).ValuesAsNumpy()
             # Assegurem que l'índex no estigui fora de rang
-            if hourly_index < len(data_array):
-                map_data[var] = data_array[hourly_index]
+            if hourly_index < data_array.shape[1]:
+                map_data[var] = data_array[:, hourly_index]
             else:
                 # Si l'índex és invàlid, retornem un error
                 return None, f"Índex horari ({hourly_index}) fora de rang."
@@ -172,7 +172,6 @@ def carregar_dades_mapa_base(variables, hourly_index):
     except Exception as e:
         # En cas de qualsevol altre error, el capturem i el retornem
         return None, f"Error en la càrrega de dades base del mapa: {e}"
-        
 
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
@@ -452,6 +451,7 @@ def carregar_dades_mapa(nivell, hourly_index):
         map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
         return map_data_raw, None
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
+        
 
 @st.cache_data(ttl=3600)
 def obtenir_ciutats_actives(hourly_index):
