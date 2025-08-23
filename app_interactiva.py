@@ -178,6 +178,30 @@ def show_login_page():
 
 # --- Funcions Base de Càlcul i Gràfics (Compartides) ---
 
+def calcular_li_manual(p, T, prof):
+    """Cálculo manual del Lifted Index"""
+    try:
+        # Encontrar la presión de 500 hPa
+        idx_500 = np.argmin(np.abs(p.m - 500))
+        if idx_500 < len(T) and idx_500 < len(prof):
+            T_500_ambient = T[idx_500].m
+            T_500_parcel = prof[idx_500]
+            li = T_500_ambient - T_500_parcel
+            return li
+        return np.nan
+    except:
+        return np.nan
+
+def calcular_dcape_manual(p, T, Td, heights):
+    """Cálculo manual de DCAPE"""
+    try:
+        # Simplificación - cálculo aproximado de DCAPE
+        # DCAPE se relaciona con la diferencia de temperatura entre el aire y el punto de rocío
+        dcape = np.trapz(9.8 * (T.m - Td.m), x=heights.m) if len(T) > 0 else np.nan
+        return max(0, dcape)
+    except:
+        return np.nan
+
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """Funció genèrica que processa dades de sondeig amb MetPy."""
     if len(p_profile) < 4:
@@ -271,7 +295,9 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         # Fallback para LI si el cálculo principal falló
         if np.isnan(params_calc.get('LI', np.nan)):
             try:
-                params_calc['LI'] = calcular_li_manual(p, T, prof)
+                li_manual = calcular_li_manual(p, T, prof)
+                params_calc['LI'] = li_manual
+                print(f"Usando cálculo manual LI: {li_manual}")
             except Exception as e:
                 print(f"Error cálculo manual LI: {e}")
                 params_calc['LI'] = np.nan
@@ -294,7 +320,9 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         # Fallback para DCAPE si el cálculo principal falló
         if np.isnan(params_calc.get('DCAPE', np.nan)):
             try:
-                params_calc['DCAPE'] = calcular_dcape_manual(p, T, Td)
+                dcape_manual = calcular_dcape_manual(p, T, Td, heights)
+                params_calc['DCAPE'] = dcape_manual
+                print(f"Usando cálculo manual DCAPE: {dcape_manual}")
             except Exception as e:
                 print(f"Error cálculo manual DCAPE: {e}")
                 params_calc['DCAPE'] = np.nan
@@ -321,7 +349,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                 params_calc['LCL_Hgt'] = np.nan
         except Exception as e:
             print(f"Error LCL: {e}")
-            params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
+            params_calc.update({'LCL_p': np.nan, 'LFC_Hgt': np.nan})
         
         # Cálculo de agua precipitable
         try:
@@ -442,43 +470,9 @@ def debug_calculos(p, T, Td, u, v, heights, prof):
     
     print("=====================================")
 
-# Cálculo manual de LI
-def calcular_li_manual(p, T, prof):
-    """Cálculo manual del Lifted Index"""
-    try:
-        # Encontrar la presión de 500 hPa
-        idx_500 = np.argmin(np.abs(p.m - 500))
-        if idx_500 < len(T) and idx_500 < len(prof):
-            T_500_ambient = T[idx_500].m
-            T_500_parcel = prof[idx_500]
-            li = T_500_ambient - T_500_parcel
-            return li
-        return np.nan
-    except:
-        return np.nan
 
-# Cálculo manual de DCAPE        
-def calcular_dcape_manual(p, T, Td):
-    """Cálculo manual de DCAPE"""
-    try:
-        # Encontrar nivel de equilibrio
-        theta_e = mpcalc.equivalent_potential_temperature(p, T, Td)
-        # Simplificación - esto es una aproximación
-        dcape = np.trapz(9.8 * (T.m - Td.m), x=heights.m) if len(T) > 0 else np.nan
-        return max(0, dcape)
-    except:
-        return np.nan
 
-# Usar estas funciones en processar_dades_sondeig
-try:
-    params_calc['LI'] = calcular_li_manual(p, T, prof)
-except:
-    params_calc['LI'] = np.nan
 
-try:
-    params_calc['DCAPE'] = calcular_dcape_manual(p, T, Td)
-except:
-    params_calc['DCAPE'] = np.nan
     
 def crear_mapa_base(map_extent, projection=ccrs.PlateCarree()):
     fig, ax = plt.subplots(figsize=(8, 8), dpi=100, subplot_kw={'projection': projection})
