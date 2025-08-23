@@ -181,42 +181,54 @@ def carregar_dades_mapa(nivell, hourly_index):
         else:
             variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
 
-        # Crear una cuadrícula más pequeña para evitar problemas con la API
-        lats = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 20)  # Solo 20 puntos en latitud
-        lons = np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 20)  # Solo 20 puntos en longitud
+        # Reducir significativamente el número de puntos (5x5 grid)
+        lats = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 5)
+        lons = np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 5)
         
         # Crear todas las combinaciones de lat/lon
         lons_grid, lats_grid = np.meshgrid(lons, lats)
         lats_list = lats_grid.ravel()
         lons_list = lons_grid.ravel()
         
-        params = {
-            "latitude": lats_list.tolist(),
-            "longitude": lons_list.tolist(),
-            "hourly": variables,
-            "models": "arome_seamless",
-            "forecast_days": FORECAST_DAYS
-        }
-        
-        # Realitzem la crida a l'API
-        responses = openmeteo.weather_api(API_URL, params=params)
-        
-        # Processar les respostes
+        # Hacer solicitudes individuales para cada punto en lugar de una solicitud masiva
         all_lats = []
         all_lons = []
         all_data = {var: [] for var in variables}
         
-        for response in responses:
-            hourly = response.Hourly()
-            all_lats.extend(hourly.Latitude())
-            all_lons.extend(hourly.Longitude())
+        for lat, lon in zip(lats_list, lons_list):
+            params = {
+                "latitude": lat,
+                "longitude": lon,
+                "hourly": variables,
+                "models": "arome_seamless",
+                "forecast_days": FORECAST_DAYS
+            }
             
-            for i, var in enumerate(variables):
-                data_array = hourly.Variables(i).ValuesAsNumpy()
-                if hourly_index < len(data_array):
-                    all_data[var].append(data_array[hourly_index])
-                else:
-                    return None, f"Índex horari ({hourly_index}) fora de rang."
+            try:
+                response = openmeteo.weather_api(API_URL, params=params)[0]
+                hourly = response.Hourly()
+                
+                all_lats.append(lat)
+                all_lons.append(lon)
+                
+                for i, var in enumerate(variables):
+                    data_array = hourly.Variables(i).ValuesAsNumpy()
+                    if hourly_index < len(data_array):
+                        all_data[var].append(data_array[hourly_index])
+                    else:
+                        # Si hay un error con un punto, usar NaN
+                        all_data[var].append(np.nan)
+                        
+                # Pequeña pausa para no sobrecargar la API
+                time.sleep(0.1)
+                
+            except Exception as e:
+                print(f"Error obteniendo datos para lat {lat}, lon {lon}: {e}")
+                # Añadir NaN para este punto
+                all_lats.append(lat)
+                all_lons.append(lon)
+                for var in variables:
+                    all_data[var].append(np.nan)
         
         # Crear el diccionari de resultats
         map_data_raw = {
