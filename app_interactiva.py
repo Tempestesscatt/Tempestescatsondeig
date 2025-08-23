@@ -1138,26 +1138,149 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
         with st.container(border=True):
             ui_info_desenvolupament_tempesta()
             
+# ================= INICI DEL NOU BLOC DE CODI =================
+
+# Diccionari complet amb els codis d'estació de Meteoclimatic per a cada capital de comarca
+METEOCLIMATIC_STATION_CODES = {
+    'Amposta': 'ESCAT4300000043014B',          # Amposta - Centre
+    'Balaguer': 'ESCAT2500000025026B',         # Balaguer
+    'Banyoles': 'ESCAT1700000017015A',         # Banyoles - Can Puig
+    'Barcelona': 'ESCAT0800000008602A',        # Barcelona - Sants
+    'Berga': 'ESCAT0800000008018A',            # Berga
+    'Cervera': 'ESCAT2500000025071A',          # Cervera - Observatori
+    'El Pont de Suert': 'ESCAT2500000025267A', # Vilaller (propera a El Pont de Suert)
+    'El Vendrell': 'ESCAT4300000043169A',      # El Vendrell
+    'Falset': 'ESCAT4300000043059C',           # Falset
+    'Figueres': 'ESCAT1700000017073B',         # Figueres - Centre
+    'Gandesa': 'ESCAT4300000043064A',          # Gandesa
+    'Girona': 'ESCAT1700000017214B',           # Girona - Eixample
+    'Granollers': 'ESCAT0800000008168B',       # Granollers - Centre
+    'Igualada': 'ESCAT0800000008102A',         # Igualada
+    'La Bisbal d\'Empordà': 'ESCAT1700000017053A',# Corçà (propera a La Bisbal)
+    'La Seu d\'Urgell': 'ESCAT2500000025198A',  # La Seu d'Urgell
+    'Les Borges Blanques': 'ESCAT2500000025055B',# Les Borges Blanques
+    'Lleida': 'ESCAT2500000025131A',           # Lleida - Ciutat Jardí
+    'Manresa': 'ESCAT0800000008121D',          # Manresa - Centre
+    'Mataró': 'ESCAT0800000008124A',           # Mataró - Cirera
+    'Moià': 'ESCAT0800000008126A',             # Moià
+    'Mollerussa': 'ESCAT2500000025141A',       # Mollerussa
+    'Montblanc': 'ESCAT4300000043086A',        # Montblanc
+    'Móra d\'Ebre': 'ESCAT4300000043089A',     # Móra d'Ebre
+    'Olot': 'ESCAT1700000017124A',             # Olot - Observatori
+    'Prats de Lluçanès': 'ESCAT0800000008149A',# Olost (propera a Prats de Lluçanès)
+    'Puigcerdà': 'ESCAT1700000017141A',        # Puigcerdà
+    'Reus': 'ESCAT4300000043123B',             # Reus - Oest
+    'Ripoll': 'ESCAT1700000017147A',           # Ripoll
+    'Sant Feliu de Llobregat': 'ESCAT0800000008211A', # Sant Feliu de Llobregat
+    'Santa Coloma de Farners': 'ESCAT1700000017180A', # Santa Coloma de Farners
+    'Solsona': 'ESCAT2500000025203A',          # Solsona
+    'Sort': 'ESCAT2500000025209A',             # Sort
+    'Tarragona': 'ESCAT4300000043148A',        # Tarragona - Centre
+    'Tàrrega': 'ESCAT2500000025213A',          # Tàrrega - Centre
+    'Terrassa': 'ESCAT0800000008279C',         # Terrassa - Can Boada
+    'Tortosa': 'ESCAT4300000043165B',          # Tortosa - Centre
+    'Tremp': 'ESCAT2500000025234A',            # Tremp
+    'Valls': 'ESCAT4300000043161A',            # Valls
+    'Vic': 'ESCAT0800000008304A',              # Gurb - St. Sebastià (representativa per a Vic)
+    'Vielha': 'ESCAT2500000025243A',           # Vielha
+    'Vilafranca del Penedès': 'ESCAT0800000008305A', # Vilafranca del Penedès
+    'Vilanova i la Geltrú': 'ESCAT0800000008310A'  # Vilanova i la Geltrú
+}
+
+@st.cache_data(ttl=600) # Guardem en cau les dades durant 10 minuts
+def obtenir_dades_estacio_meteoclimatic(station_code):
+    """
+    Obté i processa les dades meteorològiques en temps real per a una estació
+    de la xarxa Meteoclimatic a partir del seu fitxer XML.
+    """
+    if not station_code:
+        return None
+        
+    url = f"https://www.meteoclimatic.net/feed/station/{station_code}"
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()  # Llançarà un error si la petició falla (ex: 404)
+
+        # Processar el contingut XML
+        root = ET.fromstring(response.content)
+
+        # Funció auxiliar per trobar text de forma segura
+        def find_text_safe(tag, default='--'):
+            element = root.find(tag)
+            return element.text if element is not None and element.text is not None else default
+
+        # Extreure les dades que ens interessen
+        data = {
+            "nom_estacio": find_text_safe('station/name'),
+            "temperatura": find_text_safe('weather/temperature'),
+            "humitat": find_text_safe('weather/humidity'),
+            "pressio": find_text_safe('weather/pressure'),
+            "vent_vel": find_text_safe('wind/speed'),
+            "vent_rafega": find_text_safe('wind/gust'),
+            "vent_dir": find_text_safe('wind/direction_string'),
+            "pluja_avui": find_text_safe('rain/today'),
+            "actualitzacio": find_text_safe('weather/update_time'),
+        }
+        return data
+
+    except (requests.exceptions.RequestException, ET.ParseError) as e:
+        st.error(f"No s'ha pogut contactar amb l'estació {station_code}. Error: {e}")
+        return None
+
 def ui_pestanya_estacions_meteorologiques():
-    st.markdown("#### Ubicació de les Estacions de Referència")
-    st.caption("Aquest mapa mostra la localització de les capitals de comarca utilitzades en aquesta aplicació com a punts de referència per als sondejos i anàlisis.")
+    st.markdown("#### Dades en Temps Real de les Estacions de Referència")
+    st.caption("Aquesta pestanya mostra dades en viu d'estacions de la xarxa Meteoclimatic properes a les capitals de comarca.")
 
-    # Crear el mapa base utilitzant la funció existent
-    fig, ax = crear_mapa_base(MAP_EXTENT)
-    ax.set_title("Estacions de Referència (Capitals de Comarca)", weight='bold', fontsize=16)
+    col1, col2 = st.columns([0.6, 0.4], gap="large")
 
-    # Iterar sobre el diccionari de ciutats per a plotejar-les
-    for ciutat, coords in CIUTATS_CATALUNYA.items():
-        lon, lat = coords['lon'], coords['lat']
-        # Dibuixar un punt per a l'estació
-        ax.plot(lon, lat, 'o', color='blue', markersize=5, transform=ccrs.PlateCarree(), zorder=10, label='Estació')
-        # Afegir el nom de la ciutat
-        ax.text(lon + 0.03, lat, ciutat, fontsize=7, transform=ccrs.PlateCarree(), zorder=11,
-                      path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+    with col1:
+        st.markdown("##### Mapa d'Ubicacions")
+        fig, ax = crear_mapa_base(MAP_EXTENT)
+        
+        # Dibuixar totes les estacions del nostre diccionari
+        for ciutat, coords in CIUTATS_CATALUNYA.items():
+            if ciutat in METEOCLIMATIC_STATION_CODES:
+                lon, lat = coords['lon'], coords['lat']
+                ax.plot(lon, lat, 'o', color='darkblue', markersize=8, markeredgecolor='white', transform=ccrs.PlateCarree(), zorder=10)
+                ax.text(lon + 0.03, lat, ciutat, fontsize=7, transform=ccrs.PlateCarree(), zorder=11,
+                              path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
 
-    # Mostrar el mapa a Streamlit
-    st.pyplot(fig, use_container_width=True)
-    plt.close(fig)
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
+
+    with col2:
+        st.markdown("##### Dades de l'Estació")
+        
+        # El selector ara mostrarà totes les ciutats ordenades
+        ciutat_seleccionada = st.selectbox(
+            "Selecciona una capital de comarca:",
+            options=sorted(METEOCLIMATIC_STATION_CODES.keys())
+        )
+
+        if ciutat_seleccionada:
+            station_code = METEOCLIMATIC_STATION_CODES.get(ciutat_seleccionada)
+            
+            with st.spinner(f"Carregant dades de '{ciutat_seleccionada}'..."):
+                dades = obtenir_dades_estacio_meteoclimatic(station_code)
+
+            if dades:
+                st.info(f"**Estació:** {dades['nom_estacio']} | **Última actualització:** {dades['actualitzacio']}")
+                
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Temperatura", f"{dades['temperatura']} °C")
+                c2.metric("Humitat", f"{dades['humitat']} %")
+                c3.metric("Pressió", f"{dades['pressio']} hPa")
+
+                st.metric("Vent", f"{dades['vent_dir']} a {dades['vent_vel']} km/h (Ràfega: {dades['vent_rafega']} km/h)")
+                st.metric("Precipitació avui", f"{dades['pluja_avui']} mm")
+                
+                # Afegir un enllaç directe a la fitxa de l'estació
+                st.markdown(f"🔗 [Veure fitxa completa a Meteoclimatic](https://www.meteoclimatic.net/perfil/{station_code})", unsafe_allow_html=True)
+
+            else:
+                st.error("No s'han pogut carregar les dades. Pot ser que l'estació estigui temporalment fora de línia.")
+
+# =================== FI DEL NOU BLOC DE CODI ===================
 
 
 def ui_peu_de_pagina():
