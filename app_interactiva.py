@@ -472,6 +472,7 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
 
 # --- BLOQUE DE CÓDIGO ACTUALIZADO ---
 
+
 def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     """
     NOTA: Aquesta funció ara requereix la variable 'heights' per poder
@@ -482,82 +483,69 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(7, 8))
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.85, 0.85))
 
-    # Adiabáticas de fondo como referencia sutil
+    # Adiabàtiques de fons com a referència subtil
     skew.plot_dry_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     skew.plot_moist_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     skew.plot_mixing_lines(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     
-    # --- INICIO DE LA MEJORA: Sombreado Personalizado por Capas ---
+    # Ombrejat personalitzat per capes
     if prof is not None:
         p_np = p.m
         T_np = T.m
         prof_np = prof.m
         
-        # Calculem l'alçada sobre el terreny (AGL)
         heights_agl = (heights - heights[0]).m
         
-        # Trobem la pressió a 3km AGL per interpolació
         try:
-            # S'ha d'assegurar que les alçades són creixents per a la interpolació
             sort_indices = np.argsort(heights_agl)
             p_3km = np.interp(3000, heights_agl[sort_indices], p_np[sort_indices])
         except Exception:
-            # Si el sondeig no arriba a 3km, no hi haurà capa superior
             p_3km = p_np.min()
 
-        # Definim les condicions per a cada capa
         cond_cape = prof_np > T_np
         cond_cin = prof_np < T_np
         cond_capa_baixa = p_np >= p_3km
         cond_capa_alta = p_np < p_3km
 
-        # 1. Omplim CAPE per capes
         skew.ax.fill_betweenx(p_np, T_np, prof_np, where=cond_cape & cond_capa_baixa,
                               facecolor='yellow', alpha=0.5, interpolate=True, zorder=5)
         skew.ax.fill_betweenx(p_np, T_np, prof_np, where=cond_cape & cond_capa_alta,
-                              facecolor='#FFFACD', alpha=0.5, interpolate=True, zorder=5) # LemonChiffon (groc suau)
+                              facecolor='#FFFACD', alpha=0.5, interpolate=True, zorder=5)
 
-        # 2. Omplim CIN per capes
         skew.ax.fill_betweenx(p_np, T_np, prof_np, where=cond_cin & cond_capa_baixa,
                               facecolor='dimgray', alpha=0.5, interpolate=True, zorder=5)
         skew.ax.fill_betweenx(p_np, T_np, prof_np, where=cond_cin & cond_capa_alta,
                               facecolor='lightgray', alpha=0.5, interpolate=True, zorder=5)
-    # --- FIN DE LA MEJORA ---
 
-    # --- INICI DE LA CORRECCIÓ VISUAL ---
+    # --- INICI DE LA CORRECCIÓ VISUAL DEFINITIVA ---
     # Dibuixem explícitament l'ascens inicial fins al LCL
     if prof is not None:
-        # Calculem el LCL per saber on es creuen les línies
         lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
         
-        # --- LÍNIA CORREGIDA (VERSIÓ 2) ---
         # Calculem la relació de barreja (mixing ratio)
         mixing_ratio_sfc = mpcalc.mixing_ratio_from_relative_humidity(
             p[0], T[0], mpcalc.relative_humidity_from_dewpoint(T[0], Td[0])
         )
-        # Passem el valor directament, sense el paràmetre 'w='
-        skew.plot_mixing_lines(mixing_ratio_sfc, p=[p[0], lcl_p], 
-                               color='darkgreen', linestyle='--', linewidth=2)
-        # --- FI DE LA CORRECCIÓ ---
-        
-        # Dibuixem l'adiabàtica seca des de la temperatura de superfície
-        skew.plot_dry_adiabats(t0=[T[0]], p=[p[0], lcl_p], 
-                               color='darkorange', linestyle='--', linewidth=2)
-    # --- FI DE LA CORRECCIÓ VISUAL ---
 
-    # Perfiles principales con los nuevos colores
+        # --- LÍNIES CORREGIDES ---
+        # Passem els valors de pressió com a arguments posicionals
+        pressures_for_plot = np.linspace(p[0].m, lcl_p.m, 100) * units.hPa
+        
+        skew.plot_mixing_lines(mixing_ratio_sfc, pressures_for_plot,
+                               color='darkgreen', linestyle='--', linewidth=2)
+        
+        skew.plot_dry_adiabats(T[0], pressures_for_plot,
+                               color='darkorange', linestyle='--', linewidth=2)
+    # --- FI DE LA CORRECCIÓ VISUAL DEFINITIVA ---
+
+    # Perfils principals
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
-    skew.plot(p, Td, 'purple', lw=2.5, label='Punt de Rosada') # Color lila
+    skew.plot(p, Td, 'purple', lw=2.5, label='Punt de Rosada')
     if prof is not None:
-        # La trajectòria completa de la parcel·la (línia negra) se superposa
-        # a les línies discontínues en el tram inicial, mostrant el camí complet.
         skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la',
                   path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
 
-    # Marcadores de Nivel Intercalados (LFC, EL, 0°C)
-    # ... (el código para los marcadores intercalados se mantiene igual que en la versión anterior)
-    
-    # Configuración final
+    # Configuració final
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
     skew.ax.set_ylim(1000, 100)
     skew.ax.set_xlim(-40, 40)
@@ -568,6 +556,8 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     skew.ax.legend()
     
     return fig
+
+
 
 
     
