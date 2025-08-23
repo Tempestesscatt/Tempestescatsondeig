@@ -439,7 +439,7 @@ def debug_calculos(p, T, Td, u, v, heights, prof):
     
     # Debug DCAPE
     try:
-        dcape = mpcalc.dcape(p, T, Td, prof)
+        dcape = mpcalc.dcape(p, T, Td)
         print(f"DCAPE raw: {dcape}")
         print(f"DCAPE type: {type(dcape)}")
         if hasattr(dcape, 'm'): print(f"DCAPE.m: {dcape.m}")
