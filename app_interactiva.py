@@ -750,6 +750,37 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
 
+            # CAJA DESPLEGABLE EXPLICATIVA - NUEVA SECCIÓN
+            with st.expander("📚 Explicació dels Paràmetres i Gràfics", expanded=False):
+                st.markdown("""
+                ### 📊 **Sondeig Vertical (Diagrama Skew-T)**
+                El diagrama Skew-T mostra el perfil vertical de l'atmosfera:
+                - **Línia Vermella**: Temperatura ambient (°C)
+                - **Línia Lila**: Punt de rosada (°C)  
+                - **Línia Negra**: Trajectòria d'una parcel·la d'aire ascendent
+                - **Àrea Groga**: Energia positiva (CAPE) - favorables per a tempestes
+                - **Àrea Gris**: Energia negativa (CIN) - inhibeix el desenvolupament
+
+                ### 🌀 **Hodògraf**
+                Mostra l'evolució del vent amb l'altura:
+                - **Colors**: Indiquen diferents capes d'altitud (0-1km, 1-3km, etc.)
+                - **Fletxes**: Direcció i velocitat del vent a cada nivell
+                - **Marcadors**: Moviment de les tempestes (MD, ML, VM)
+
+                ### ⚡ **Paràmetres Clau**
+                - **CAPE**: Energia disponible per a convecció (valors >1000 J/kg significatius)
+                - **CIN**: Energia que inhibeix l'inici de tempestes (valors >-50 J/kg acceptables)
+                - **Cisallament**: Diferència de vent entre capes (>20 nusos per organització)
+                - **SRH**: Potencial de rotació (>150 m²/s² per supercèl·lules)
+                - **LCL**: Alçada de la base dels núvols (<1500m favorable)
+
+                ### 🎯 **Interpretació Ràpida**
+                - **Alt CAPE + Fort Cisallament**: Tempestes organitzades possibles
+                - **Alt CAPE + Baix Cisallament**: Tempestes puntuals, poc organitzades
+                - **Baix CAPE + Fort Cisallament**: Vent fort, poca activitat elèctrica
+                - **LCL Baix**: Base de núvols baixa, més favorable per a temps sever
+                """)
+
             st.markdown("##### Radar de Precipitació en Temps Real")
             radar_url = f"https://www.rainviewer.com/map.html?loc={lat_sel},{lon_sel},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
             
@@ -769,6 +800,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
 
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
+        
         
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
     st.subheader("Assistent Meteo-Col·lega (amb Google Gemini)")
