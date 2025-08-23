@@ -860,15 +860,14 @@ def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Selecciona la Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # --- CANVI CLAU: Els camins ara apunten al directori principal ---
-    # Ja no cal la carpeta 'assets'. Les imatges han d'estar al mateix lloc que el teu script.
+    # Camins a les imatges locals
     path_img_cat = "catalunya.jpeg"
     path_img_usa = "tornado_alley.jpeg"
 
     # Comprovem si els arxius existeixen per evitar un error
     if not os.path.exists(path_img_cat) or not os.path.exists(path_img_usa):
         st.error(f"Error: No es troben les imatges. Assegura't que els arxius '{path_img_cat}' i '{path_img_usa}' estan al mateix directori que el teu script Python.")
-        return # Aturem l'execució si les imatges no existeixen
+        return
 
     with st.spinner('Carregant entorns geoespacials...'): 
         time.sleep(1) 
@@ -876,32 +875,26 @@ def ui_zone_selection():
     col1, col2 = st.columns(2)
     with col1:
         with st.container(border=True):
-            # Utilitzem el camí local a la imatge
             st.image(path_img_cat, caption="Tempesta a prop de la costa catalana.")
             st.subheader("Catalunya")
             st.write("Anàlisi detallada d'alta resolució (Model AROME) per al territori català. Ideal per a seguiment de tempestes locals, fenòmens de costa i muntanya.")
-            if st.button("Analitzar Catalunya", use_container_width=True, type="primary"):
+            
+            # --- LÍNIA CORREGIDA ---
+            # S'ha afegit una 'key' única a aquest botó.
+            if st.button("Analitzar Catalunya", use_container_width=True, type="primary", key="btn_select_catalunya"):
                 st.session_state['zone_selected'] = 'catalunya'
                 st.rerun()
     with col2:
         with st.container(border=True):
-            # Utilitzem el camí local a la imatge
             st.image(path_img_usa, caption="Supercèl·lula a les planes dels Estats Units.")
             st.subheader("Tornado Alley (EUA)")
             st.write("Anàlisi a escala sinòptica (Model GFS) per al 'Corredor de Tornados' dels EUA. Perfecte per a l'estudi de sistemes de gran escala i temps sever organitzat.")
-            if st.button("Analitzar Tornado Alley", use_container_width=True):
+            
+            # --- LÍNIA CORREGIDA ---
+            # S'ha afegit una 'key' única i diferent a aquest altre botó.
+            if st.button("Analitzar Tornado Alley", use_container_width=True, key="btn_select_usa"):
                 st.session_state['zone_selected'] = 'valley_halley'
                 st.rerun()
-    with col2:
-        with st.container(border=True):
-            # Utilitzem el camí local a la imatge
-            st.image(path_img_usa, caption="Supercèl·lula a les planes dels Estats Units.")
-            st.subheader("Tornado Alley (EUA)")
-            st.write("Anàlisi a escala sinòptica (Model GFS) per al 'Corredor de Tornados' dels EUA. Perfecte per a l'estudi de sistemes de gran escala i temps sever organitzat.")
-            if st.button("Analitzar Tornado Alley", use_container_width=True):
-                st.session_state['zone_selected'] = 'valley_halley'
-                st.rerun()
-
 def main():
     if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
     if 'guest_mode' not in st.session_state: st.session_state['guest_mode'] = False
