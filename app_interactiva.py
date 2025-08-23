@@ -193,46 +193,44 @@ def calcular_li_manual(p, T, prof):
         return np.nan
 
 def calcular_dcape_manual(p, T, Td, heights):
-    """Cálculo manual de DCAPE - Versió robusta i depurada"""
+    """Cálculo manual de DCAPE - Versió amb DEPURACIÓ COMPLETA"""
     try:
-        # 1. Assegurar-nos que tenim dades vàlides i en les unitats correctes
-        if len(T) < 2:  # Necessitem com a mínim 2 punts per integrar
+        print(f"\n=== DEBUG DCAPE MANUAL ===")
+        print(f"Tipus de dades d'entrada:")
+        print(f"  p (pressió): {type(p)}, valors: {p.m[:5]}... {p.m[-5:]} hPa")  # Primeres i últimes 5 pressions
+        print(f"  T (temp): {type(T)}, valors: {T.m[:5]}... {T.m[-5:]} °C")      # Primeres i últimes 5 temperatures
+        print(f"  Td (punt rosada): {type(Td)}, valors: {Td.m[:5]}... {Td.m[-5:]} °C") # Primeres i últimes 5 Tr
+        print(f"  heights (altura): {type(heights)}, valors: {heights.m[:5]}... {heights.m[-5:]} {heights.units}") # Primeres i últimes 5 altures
+
+        # Aquest és el càlcul que està fent la teva fórmula actual:
+        diferencia_sense_logica = 9.8 * (T.m - Td.m)
+        print(f"\nCàlcul actual (sense lògica):")
+        print(f"  (T - Td) = {T.m[:3] - Td.m[:3]} ... °C")
+        print(f"  9.8 * (T - Td) = {diferencia_sense_logica[:3]} ... m²/s²")
+        print(f"  Integrated value: {np.trapz(diferencia_sense_logica, x=heights.m)} J/kg")
+        print("=== FI DEBUG ===\n")
+
+        # 1. Assegurar-nos que tenim dades vàlides
+        if len(T) < 2:
             return np.nan
 
-        # 2. Convertir les llistes a arrays de NumPy amb unitats (evita problemes amb MetPy)
-        #    Aquests 'heights' ja haurien de venir amb unitats de 'meter' de la funció principal.
-        #    T i Td haurien de venir amb 'degC'. Els convertim a Kelvin per al càlcul.
+        # 2. Convertir a Kelvin
         T_env_K = T.to('kelvin')
-        Td_parcel_K = Td.to('kelvin')  # Assumim que la parcel·la descendente té la Td de l'entorn
+        Td_parcel_K = Td.to('kelvin')
 
-        # 3. Càlcul de la diferència de temperatura virtual (aproximació)
-        #    La fórmula és: g * ( (T_env - T_parcel) / T_env )
-        #    On T_parcel per a un downdraft és propera a la temperatura del punt de rosada (Td)
+        # 3. Fórmula CORRECTA: g * ( (T_env - T_parcel) / T_env )
         difference = (T_env_K.m - Td_parcel_K.m) / T_env_K.m
+        integrand = 9.8 * difference
 
-        # 4. Assegurar-nos que les alçades estan en metres i en ordre ascendent
-        #    (np.trapz espera que 'x' sigui ascendent)
-        heights_m = heights.to('meter')
-        #    Crear una mascara per ordenar per altura i eliminar NaNs
-        sort_idx = np.argsort(heights_m.m)
-        heights_sorted = heights_m.m[sort_idx]
-        difference_sorted = difference[sort_idx]
+        # 4. Integrar
+        dcape_value = np.trapz(integrand, x=heights.m)
 
-        # 5. Calcular la integral: DCAPE = ∫ [g * (ΔT / T)] dz
-        integrand = 9.8 * difference_sorted  # g * (ΔT / T)
-        dcape_value = np.trapz(integrand, x=heights_sorted)
-
-        # 6. DCAPE ha de ser positiu. Retornar 0 si és negatiu.
         return max(0, dcape_value)
 
     except Exception as e:
-        # Imprimir l'error per depurar
         print(f"ERROR crític en calcular_dcape_manual: {e}")
-        print(f"Tipus de dades d'entrada - Heights: {type(heights)}, T: {type(T)}, Td: {type(Td)}")
-        if hasattr(heights, 'm'):
-            print(f"Rang d'altures: {heights.m.min()} - {heights.m.max()} meters")
-        if hasattr(T, 'm'):
-            print(f"Rang de Temperatura: {T.m.min()} - {T.m.max()} °C")
+        import traceback
+        traceback.print_exc()
         return np.nan
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
