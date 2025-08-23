@@ -477,8 +477,8 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
 def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     """
     Construeix i dibuixa la trajectòria de la parcel·la manualment,
-    ignorant el perfil pre-calculat, per garantir un control total
-    sobre el seu origen i comportament visual.
+    i realitza l'ombrejat de CAPE/CIN de manera correcta, comparant
+    directament la trajectòria manual amb el perfil de l'entorn.
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.85, 0.85))
@@ -488,61 +488,59 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     skew.plot_moist_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     skew.plot_mixing_lines(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
 
-    # --- 1. PREPARACIÓ DE LES DADES INICIALS (AMB EXTRAPOLACIÓ) ---
+    # --- 1. PREPARACIÓ DE DADES INICIALS (AMB EXTRAPOLACIÓ) ---
     p_sfc, T_sfc, Td_sfc = p[0], T[0], Td[0]
     p_plot, T_plot, Td_plot = p, T, Td
 
-    # Si el terreny és alt, extrapolem cap avall fins a 1000 hPa per al dibuix
     if p_sfc < 1000 * units.hPa:
         p_1000 = 1000 * units.hPa
         T_1000 = mpcalc.dry_lapse(p_1000, T_sfc)
         mixing_ratio = mpcalc.mixing_ratio(mpcalc.saturation_vapor_pressure(Td_sfc), p_sfc)
         Td_1000 = mpcalc.dewpoint(mpcalc.vapor_pressure(p_1000, mixing_ratio))
         
-        # Actualitzem les dades inicials i les dades a dibuixar
         p_sfc, T_sfc, Td_sfc = p_1000, T_1000, Td_1000
         p_plot = np.insert(p, 0, p_1000)
         T_plot = np.insert(T, 0, T_1000)
         Td_plot = np.insert(Td, 0, Td_1000)
 
-    # --- 2. CONSTRUCCIÓ MANUAL DE LA TRAJECTÒRIA ("LA FAREM NOSALTRES") ---
-    # Calculem el LCL a partir de les nostres dades inicials
+    # --- 2. CONSTRUCCIÓ MANUAL DE LA TRAJECTÒRIA ---
     lcl_p, lcl_t = mpcalc.lcl(p_sfc, T_sfc, Td_sfc)
-
-    # Part 1: Trajectòria per sota del núvol (Adiabàtica Seca)
-    p_dry = p_plot[p_plot >= lcl_p]
-    T_dry_path = mpcalc.dry_lapse(p_dry, T_sfc)
-
-    # Part 2: Trajectòria dins del núvol (Adiabàtica Humida)
-    p_moist = p_plot[p_plot < lcl_p]
-    # Afegim el punt del LCL per assegurar la continuïtat
-    p_moist = np.insert(p_moist, 0, lcl_p)
-    T_moist_path = mpcalc.moist_lapse(p_moist, lcl_t)
-
-    # Unim les dues parts per crear la nostra trajectòria manual completa
-    p_manual_prof = np.concatenate((p_dry, p_moist))
-    T_manual_prof = np.concatenate((T_dry_path, T_moist_path))
+    
+    # Utilitzem tots els nivells de pressió del sondeig per a la nostra trajectòria
+    # Assegurem que el LCL hi és per a precisió
+    p_full_path = np.union1d(p_plot.magnitude, [lcl_p.magnitude])
+    p_full_path = p_full_path[p_full_path <= p_sfc.magnitude]
+    p_full_path = np.sort(p_full_path)[::-1] * units.hPa
+    
+    # Construïm el perfil manual complet sobre aquests nivells de pressió
+    T_manual_prof = mpcalc.parcel_profile(p_full_path, T_sfc, Td_sfc)
 
     # Construïm la línia del punt de rosada de la parcel·la (verda)
+    p_dry = p_full_path[p_full_path >= lcl_p]
     mixing_ratio_sfc = mpcalc.mixing_ratio(mpcalc.saturation_vapor_pressure(Td_sfc), p_sfc)
     Td_parcel_path = mpcalc.dewpoint(mpcalc.vapor_pressure(p_dry, mixing_ratio_sfc))
 
-    # --- 3. DIBUIX I OMBREJAT ---
-    # Interpolem el perfil manual als nivells de pressió del sondeig per a l'ombrejat
-    prof_interp = np.interp(p.magnitude, p_manual_prof.magnitude[::-1], T_manual_prof.magnitude[::-1]) * units.degC
-    skew.ax.fill_betweenx(p.magnitude, T.magnitude, prof_interp.magnitude, where=prof_interp.magnitude > T.magnitude,
+    # --- 3. OMBREJAT CORRECTE I DEFINITIU ---
+    # Interpolem el perfil de l'entorn (T) als nivells de pressió del nostre perfil manual.
+    # Això és crucial per poder comparar-los directament.
+    T_env_on_prof_levels = np.interp(p_full_path.magnitude, p.magnitude[::-1], T.magnitude[::-1]) * units.degC
+    
+    # Ombregem l'àrea entre la nostra trajectòria manual i el perfil de l'entorn interpolat
+    skew.ax.fill_betweenx(p_full_path.magnitude, T_env_on_prof_levels.magnitude, T_manual_prof.magnitude,
+                          where=T_manual_prof.magnitude > T_env_on_prof_levels.magnitude,
                           facecolor='yellow', alpha=0.4, interpolate=True, zorder=5)
-    skew.ax.fill_betweenx(p.magnitude, T.magnitude, prof_interp.magnitude, where=prof_interp.magnitude < T.magnitude,
+    skew.ax.fill_betweenx(p_full_path.magnitude, T_env_on_prof_levels.magnitude, T_manual_prof.magnitude,
+                          where=T_manual_prof.magnitude < T_env_on_prof_levels.magnitude,
                           facecolor='dimgray', alpha=0.4, interpolate=True, zorder=5)
 
-    # Dibuixem els perfils i la nostra trajectòria manual
+    # --- 4. DIBUIX DELS PERFILS ---
     skew.plot(p_plot, T_plot, 'red', lw=2.5, label='Temperatura')
     skew.plot(p_plot, Td_plot, 'purple', lw=2.5, label='Punt de Rosada')
     skew.plot(p_dry, Td_parcel_path, color='darkgreen', linestyle='--', linewidth=2.5, zorder=10)
-    skew.plot(p_manual_prof, T_manual_prof, 'k', linewidth=3, label='Trajectòria Parcel·la',
+    skew.plot(p_full_path, T_manual_prof, 'k', linewidth=3, label='Trajectòria Parcel·la',
               path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
     
-    # --- 4. CONFIGURACIÓ FINAL ---
+    # --- 5. CONFIGURACIÓ FINAL ---
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
     skew.ax.set_ylim(1000, 100)
     skew.ax.set_xlim(-40, 40)
