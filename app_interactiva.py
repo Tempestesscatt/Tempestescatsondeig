@@ -590,13 +590,10 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
 def ui_caixa_parametres_sondeig(params, nivell_conv):
     def get_color(value, thresholds, param_key, reverse_colors=False):
         if pd.isna(value): return "#808080"
-        
-        # MODIFICAT: Lògica de color genèrica per a qualsevol nivell de convergència
         if 'CONV' in param_key:
             colors = ["#28a745", "#808080", "#ffc107", "#fd7e14", "#dc3545"]
             idx = np.searchsorted(thresholds, value)
             return colors[idx]
-
         colors = ["#808080", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
         if reverse_colors:
             thresholds = sorted(thresholds, reverse=True)
@@ -607,7 +604,6 @@ def ui_caixa_parametres_sondeig(params, nivell_conv):
             if value < threshold: return colors[i]
         return colors[-1]
 
-    # MODIFICAT: Clau dinàmica per als llindars de convergència
     THRESHOLDS = {
         'SBCAPE': (100, 500, 1500, 2500), 'MUCAPE': (100, 500, 1500, 2500), 
         'MLCAPE': (50, 250, 1000, 2000), 'CAPE_0-3km': (25, 75, 150, 250), 
@@ -622,15 +618,16 @@ def ui_caixa_parametres_sondeig(params, nivell_conv):
     def styled_metric(label, value, unit, param_key, precision=0, reverse_colors=False):
         if hasattr(value, '__len__') and not isinstance(value, str):
             value = value[0] if len(value) > 0 else np.nan
-        
         color = get_color(value, THRESHOLDS.get(param_key, []), param_key, reverse_colors)
         val_str = f"{value:.{precision}f}" if not pd.isna(value) else "---"
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;"><span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit})</span><br><strong style="font-size: 1.6em; color: {color};">{val_str}</strong></div>""", unsafe_allow_html=True)
 
     st.markdown("##### Paràmetres del Sondeig")
-    emoji, descripcio = determinar_emoji_temps(params)
+    
+    # MODIFICAT: Passem 'nivell_conv' a la funció de diagnòstic.
+    emoji, descripcio = determinar_emoji_temps(params, nivell_conv)
 
-    # ... (Files de CAPE, CIN, LI, PWAT, Emoji es queden iguals) ...
+    # El reste de la funció es queda exactament igual...
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE')
     with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE')
@@ -654,20 +651,13 @@ def ui_caixa_parametres_sondeig(params, nivell_conv):
             <span style="font-size: 0.8em; color: #E0E0E0;">{descripcio}</span>
         </div>
         """, unsafe_allow_html=True)
-
-    # Cuarta fila: Levels i Convergència (ara 100% dinàmic)
     cols = st.columns(3)
-    with cols[0]: 
-        styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
-    with cols[1]: 
-        styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
+    with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
+    with cols[1]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
     with cols[2]: 
-        # MODIFICAT: Etiqueta i clau de paràmetre dinàmiques
         param_key_conv = f'CONV_{nivell_conv}hPa'
         conv_value = params.get(param_key_conv, np.nan)
         styled_metric(f"Conv. {nivell_conv}hPa", conv_value, "10⁻⁵/s", param_key_conv, precision=1)
-
-    # ... (les files de BWD, CAPE 0-3km, SRH i UPDRAFT es queden iguals) ...
     cols = st.columns(3)
     with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
     with cols[1]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km')
@@ -1355,17 +1345,15 @@ def main():
     elif st.session_state['zone_selected'] == 'catalunya': run_catalunya_app()
     elif st.session_state['zone_selected'] == 'valley_halley': run_valley_halley_app()
     
-def determinar_emoji_temps(params):
+def determinar_emoji_temps(params, nivell_conv):
     """
-    Realitza un diagnòstic meteorològic avançat del perfil atmosfèric per determinar
-    el tipus de nuvolositat i el temps associat amb alta precisió. Utilitza una
-    lògica jeràrquica que combina tots els paràmetres rellevants (CAPE, LI, CIN,
-    LCL, LFC, PWAT, BWD, SRH).
+    Realitza un diagnòstic meteorològic avançat del perfil atmosfèric.
+    ARA ÉS DINÀMIC: Utilitza la convergència del nivell seleccionat per l'usuari
+    com a factor clau per a la iniciació de tempestes.
     """
     # --- 1. Extracció segura de tots els paràmetres necessaris ---
-    # Donem valors per defecte que representen condicions neutres o estables.
     cape = params.get('SBCAPE', 0) or 0
-    li = params.get('LI', 3) or 3  # Default a estable (LI positiu)
+    li = params.get('LI', 3) or 3
     cin = params.get('SBCIN', 0) or 0
     pwat = params.get('PWAT', 0) or 0
     bwd_6km = params.get('BWD_0-6km', 0) or 0
@@ -1373,64 +1361,38 @@ def determinar_emoji_temps(params):
     lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
     lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
     
-    # --- 2. Lògica de Diagnòstic Jeràrquic ---
+    # NOU: Obtenim la convergència del nivell seleccionat de forma dinàmica.
+    conv_key = f'CONV_{nivell_conv}hPa'
+    conv = params.get(conv_key, 0) or 0
 
-    # == Branca A: Potencial Convectiu Significatiu (CAPE > 350 J/kg i LI < 0) ==
-    # Si l'atmosfera és inestable, avaluem el potencial d'organització i severitat.
+    # --- 2. Lògica de Diagnòstic Jeràrquic (ARA AMB CONVERGÈNCIA) ---
     if cape > 350 and li < 0:
-        
-        # A.1: Condicions de Supercèl·lula -> El més sever.
-        # Requereix molta energia, cisallament fort i helicitat per a la rotació.
         if cape > 1500 and bwd_6km > 20 and srh_1km > 100 and li < -4:
             return "🌪️", "Supercèl·lula (Potencial)"
-
-        # A.2: Condicions de Tempestes Multicel·lulars Organitzades (MCS, Línies).
-        # Requereix energia i, crucialment, cisallament per a l'organització.
         elif cape > 800 and bwd_6km > 18:
             return "⛈️", "Multicèl·lula (Cb Incus)"
 
-        # A.3: Condicions de Tempesta Aïllada (de massa d'aire).
-        # Energia suficient, però poc cisallament. La "tapa" (CIN) ha de ser feble.
-        elif cin > -60: # Si la inhibició és baixa, la convecció es pot disparar fàcilment.
+        # MODIFICAT: Una tempesta es pot disparar per poca inhibició O per forta convergència.
+        elif cape > 500 and (cin > -60 or conv > 5):
             return "⚡", "Tempesta Aïllada (Cb Calvus)"
             
-        # A.4: Desenvolupament Vertical Actiu (pre-tempesta).
-        # Hi ha energia, però potser no prou organització o una "tapa" feble que impedeix la tempesta.
-        # El LFC baix indica que la convecció pot iniciar-se fàcilment.
-        elif lfc_hgt < 2500:
+        # MODIFICAT: El desenvolupament es veu afavorit per la convergència.
+        elif cape > 200 and (cin > -75 or conv > 5) and lfc_hgt < 2500:
              return "☁️", "Desenvolupament (Cu Congestus)"
         
-        # A.5: Inestabilitat "Capada".
-        # Hi ha energia (CAPE), però una forta inversió (CIN alt) impedeix que s'alliberi.
-        else: # cin < -60
+        else: # cin < -75 i conv < 5
             return "🌤️", "Inestabilitat Capada"
-
-    # == Branca B: Potencial Convectiu Marginal o Temps Estable (CAPE < 350 J/kg o LI >= 0) ==
-    # Si no hi ha prou energia per a tempestes, analitzem la humitat i l'estructura de capes baixes.
     else:
-        # B.1: Condicions de Núvols Baixos Estratiformes o Boira -> L'escenari més estable i humit.
-        # La clau és un LCL molt baix (núvols enganxats a terra) i alta humitat (PWAT).
+        # La lògica per a temps estable no canvia, ja que depèn menys de la convergència.
         if lcl_hgt < 400 and pwat > 25:
             return "🌫️", "Núvols Baixos / Boira (St)"
-            
-        # B.2: Condicions de Ruixats Febles o Plugims.
-        # No hi ha CAPE, però l'atmosfera està saturada (PWAT alt).
         elif pwat > 35:
             return "🌧️", "Ruixats / Plugims"
-
-        # B.3: Condicions de Cúmuls de Bon Temps.
-        # Poca o cap energia, però un LCL prou baix per formar núvols petits i dispersos.
         elif lcl_hgt < 1300 and pwat > 15:
             return "⛅", "Bon Temps (Cu Humilis)"
-        
-        # B.4: Condicions de Núvols Alts o Mitjans.
-        # L'LCL és alt, indicant que la capa baixa de l'atmosfera és seca.
         elif lcl_hgt < 3000:
             return "🌤️", "Núvols Alts (Ac / Ci)"
-
-        # B.5: Condicions de Cel Serè o Gairebé Serè.
-        # L'atmosfera és estable (LI > 1), seca (PWAT baix) i amb una base de núvols molt alta.
-        else: # LI > 1, PWAT baix, LCL alt
+        else:
             return "☀️", "Cel Serè"
 
 if __name__ == "__main__":
