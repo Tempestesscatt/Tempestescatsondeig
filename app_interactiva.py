@@ -730,7 +730,41 @@ def ui_caixa_parametres_sondeig(params):
             </div>
             """, unsafe_allow_html=True)
 
-    st.markdown("##### Paràmetres del Sondeig")
+    # --- INICI DE LA MODIFICACIÓ ---
+    # Creem dues columnes per alinear el títol a l'esquerra i el botó a la dreta
+    col_titol, col_boto = st.columns([0.85, 0.15])
+    
+    with col_titol:
+        st.markdown("##### Paràmetres del Sondeig")
+
+    with col_boto:
+        # Creem el popover. L'emoji '❓' serà el botó.
+        with st.popover("❓", use_container_width=True):
+            st.markdown("""
+            **Guia Ràpida dels Paràmetres:**
+
+            ---
+            **ENERGIA (CAPE):**
+            - **SBCAPE:** Energia disponible per a una tempesta que s'inicia des de la superfície. És la "benzina" principal.
+            - **MUCAPE:** L'energia màxima possible, buscant el punt més inestable de l'atmosfera. Indica el potencial màxim.
+            - **MLCAPE:** Energia calculada des d'una capa barrejada a prop del terra. Més representatiu durant el dia.
+
+            **INHIBICIÓ I ESTABILITAT:**
+            - **SBCIN:** Energia negativa que una tempesta ha de superar per iniciar-se. Actua com una "tapa". Valors molt negatius dificulten les tempestes.
+            - **LI (Índex d'Elevació):** Mesura ràpida de la inestabilitat a nivells mitjans. Com més negatiu, més inestable.
+            - **PWAT:** Aigua precipitable. La quantitat total d'humitat disponible a la columna d'aire. Valors alts afavoreixen pluges fortes.
+
+            **NIVELLS CLAU:**
+            - **LCL (Nivell de Condensació):** Alçada de la base dels núvols. Valors baixos afavoreixen el temps sever i tornados.
+            - **LFC (Nivell de Lliure Convecció):** Alçada a partir de la qual la tempesta comença a créixer per si sola, sense necessitat d'empenta.
+            - **DCAPE:** Energia disponible per als corrents descendents. Valors alts indiquen potencial de ratxes de vent molt fortes ("reventons").
+
+            **VENT (CISALLAMENT I ROTACIÓ):**
+            - **BWD 0-6km:** Diferència de vent entre la superfície i 6 km d'alçada. Mesura clau del cisallament que organitza les tempestes. Valors > 20 nusos afavoreixen supercèl·lules.
+            - **SRH 0-1km:** Helicitat relativa a la tempesta. Mesura el potencial de rotació a nivells baixos, clau per a la formació de tornados.
+            - **CAPE 0-3km:** Energia a nivells baixos. Combinat amb SRH alt, augmenta el risc de tornados.
+            """)
+    # --- FI DE LA MODIFICACIÓ ---
     
     # Fila 1: Energia Principal
     cols = st.columns(3)
