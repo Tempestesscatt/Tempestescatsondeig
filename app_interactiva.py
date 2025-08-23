@@ -127,29 +127,64 @@ def show_login_page():
 
 # --- BLOC DE CODI CORREGIT I EN L'ORDRE CORRECTE ---
 @st.cache_data(ttl=3600)
-def carregar_dades_mapa_base(variables, hourly_index):
+def carregar_dades_mapa(nivell, hourly_index):
     try:
+        # Determinar les variables necessàries segons el nivell de pressió
+        if nivell >= 950:
+            variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+        else:
+            variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+
+        # --- INICI DE LA LÒGICA DE CÀRREGA (abans a 'carregar_dades_mapa_base') ---
+        # Paràmetres per a la crida a l'API
+        lats = list(np.arange(MAP_EXTENT[2], MAP_EXTENT[3], 0.025))
+        lons = list(np.arange(MAP_EXTENT[0], MAP_EXTENT[1], 0.025))
+        
         params = {
-            "latitude": list(np.arange(MAP_EXTENT[2], MAP_EXTENT[3], 0.025)),
-            "longitude": list(np.arange(MAP_EXTENT[0], MAP_EXTENT[1], 0.025)),
+            "latitude": lats,
+            "longitude": lons,
             "hourly": variables,
             "models": "arome_seamless",
             "forecast_days": FORECAST_DAYS
         }
+        
+        # Realitzem la crida a l'API
         response = openmeteo.weather_api(API_URL, params=params)[0]
         hourly = response.Hourly()
-        map_data = {'lats': hourly.Latitude(), 'lons': hourly.Longitude()}
+        
+        # Creem el diccionari de resultats
+        map_data_raw = {
+            'lats': hourly.Latitude(),
+            'lons': hourly.Longitude()
+        }
+        
+        # Afegim les dades de cada variable per a l'hora seleccionada
         for i, var in enumerate(variables):
             data_array = hourly.Variables(i).ValuesAsNumpy()
             if hourly_index < data_array.shape[1]:
-                map_data[var] = data_array[:, hourly_index]
+                map_data_raw[var] = data_array[:, hourly_index]
             else:
                 return None, f"Índex horari ({hourly_index}) fora de rang."
-        if any(np.isnan(v).all() for k, v in map_data.items() if k not in ['lats', 'lons']):
+        
+        if any(np.isnan(v).all() for k, v in map_data_raw.items() if k not in ['lats', 'lons']):
              return None, "Les dades del mapa contenen valors invàlids (NaN)."
-        return map_data, None
-    except Exception as e:
-        return None, f"Error en la càrrega de dades base del mapa: {e}"
+        # --- FI DE LA LÒGICA DE CÀRREGA ---
+
+        # Processament de les dades rebudes
+        if nivell >= 950:
+            map_data_raw['dewpoint_data'] = map_data_raw.pop('dew_point_2m')
+        else:
+            temp_data = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
+            rh_data = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
+            map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
+            
+        map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
+        map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
+        
+        return map_data_raw, None
+
+    except Exception as e: 
+        return None, f"Error en processar dades del mapa: {e}"
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
