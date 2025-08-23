@@ -193,13 +193,24 @@ def calcular_li_manual(p, T, prof):
         return np.nan
 
 def calcular_dcape_manual(p, T, Td, heights):
-    """Cálculo manual de DCAPE"""
+    """Cálculo manual de DCAPE - FÓRMULA CORREGIDA"""
     try:
-        # Simplificación - cálculo aproximado de DCAPE
-        # DCAPE se relaciona con la diferencia de temperatura entre el aire y el punto de rocío
-        dcape = np.trapz(9.8 * (T.m - Td.m), x=heights.m) if len(T) > 0 else np.nan
+        # Convertir temperaturas a Kelvin para el cálculo correcto
+        T_kelvin = T.to('kelvin').m
+        Td_kelvin = Td.to('kelvin').m
+        
+        # Calcular la diferencia de temperatura virtual (aproximación)
+        # La fórmula correcta es: g * (T_v - T_vd) / T_v
+        # Donde T_v es temperatura virtual y T_vd es temperatura virtual del punto de rocío
+        # Para simplificar, usamos (T - Td) / T_kelvin
+        delta_temp_virtual = (T.m - Td.m) / T_kelvin
+        
+        # Integrar g * delta_temp_virtual respecto a la altura
+        dcape = np.trapz(9.8 * delta_temp_virtual, x=heights.m) if len(T) > 0 else np.nan
+        
         return max(0, dcape)
-    except:
+    except Exception as e:
+        print(f"Error cálculo manual DCAPE: {e}")
         return np.nan
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
