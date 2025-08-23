@@ -548,19 +548,16 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
 
 
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
-    fig = plt.figure(dpi=150, figsize=(8, 8)) # Ajustem l'alçada per fer espai
+    fig = plt.figure(dpi=150, figsize=(8, 8))
     
-    # --- INICIO DE LA MEJORA: Nou layout amb espai per a les barbes de vent ---
-    # Creem una graella de 2 files i 2 columnes. La fila de dalt serà molt més estreta.
     gs = fig.add_gridspec(nrows=2, ncols=2,
-                          height_ratios=[1, 6], # Proporció d'alçada: 1 part per les barbes, 6 per la resta
+                          height_ratios=[1, 6],
                           width_ratios=[1.5, 1],
                           hspace=0.4, wspace=0.3)
 
-    # Definim els eixos per a cada secció
-    ax_barbs = fig.add_subplot(gs[0, :]) # Eix superior que ocupa tota l'amplada
-    ax_hodo = fig.add_subplot(gs[1, 0])  # Eix inferior esquerre per a l'hodògraf
-    ax_params = fig.add_subplot(gs[1, 1]) # Eix inferior dret per al text
+    ax_barbs = fig.add_subplot(gs[0, :])
+    ax_hodo = fig.add_subplot(gs[1, 0])
+    ax_params = fig.add_subplot(gs[1, 1])
 
     fig.suptitle(titol, weight='bold', fontsize=16)
 
@@ -571,24 +568,28 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     barb_altitudes_m = [h * 1000 for h in barb_altitudes_km] * units.m
     u_barbs, v_barbs = [], []
 
+    # --- INICIO DE LA CORRECCIÓN: Usamos np.interp en lugar de mpcalc.interp ---
     for h_m in barb_altitudes_m:
         if h_m <= heights_agl.max():
-            u_interp = mpcalc.interp(h_m, heights_agl, u)[0]
-            v_interp = mpcalc.interp(h_m, heights_agl, v)[0]
-            u_barbs.append(u_interp); v_barbs.append(v_interp)
+            # Usem np.interp amb les magnituds (.m) de les variables
+            u_interp_val = np.interp(h_m.m, heights_agl.m, u.m)
+            v_interp_val = np.interp(h_m.m, heights_agl.m, v.m)
+            
+            # Tornem a afegir les unitats al resultat
+            u_barbs.append(u_interp_val * u.units)
+            v_barbs.append(v_interp_val * v.units)
         else:
-            u_barbs.append(np.nan * units('m/s')); v_barbs.append(np.nan * units('m/s'))
+            u_barbs.append(np.nan * units('m/s'))
+            v_barbs.append(np.nan * units('m/s'))
+    # --- FIN DE LA CORRECCIÓN ---
 
     u_barbs_kt = (units.Quantity(u_barbs)).to('kt'); v_barbs_kt = (units.Quantity(v_barbs)).to('kt')
     x_pos = np.arange(len(barb_altitudes_km))
     ax_barbs.barbs(x_pos, np.zeros_like(x_pos), u_barbs_kt, v_barbs_kt, length=8, pivot='middle')
 
-    # Neteja estètica de l'eix de les barbes
     ax_barbs.set_xticks(x_pos); ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km])
     ax_barbs.set_yticks([]); ax_barbs.spines[:].set_visible(False)
     ax_barbs.tick_params(axis='x', length=0, pad=5); ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5)
-    # --- FIN DE LA MEJORA ---
-
 
     # --- Dibuix de l'hodògraf (ara a ax_hodo) ---
     h = Hodograph(ax_hodo, component_range=80.)
@@ -616,7 +617,6 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     except: pass
     ax_hodo.set_xlabel('U-Component (nusos)')
     ax_hodo.set_ylabel('V-Component (nusos)')
-
 
     # --- Dibuix del panell de text (ara a ax_params) ---
     ax_params.axis('off')
@@ -648,7 +648,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     for key, label in [('0-1km', '0-1 km'), ('0-6km', '0-6 km'), ('EBWD', 'Efectiu')]:
         val = params_calc.get(key if key == 'EBWD' else f'BWD_{key}', np.nan)
         color = get_color(val, THRESHOLDS['BWD'])
-        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.na(val) else "---", ha='right', weight='bold', color=color)
+        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
         y-=0.07
 
     y-=0.05
@@ -656,7 +656,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     for key, label in [('0-1km', '0-1 km'), ('0-3km', '0-3 km'), ('ESRH', 'Efectiva')]:
         val = params_calc.get(key if key == 'ESRH' else f'SRH_{key}', np.nan)
         color = get_color(val, THRESHOLDS['SRH'])
-        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.na(val) else "---", ha='right', weight='bold', color=color)
+        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
         y-=0.07
         
     return fig
