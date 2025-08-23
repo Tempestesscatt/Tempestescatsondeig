@@ -776,32 +776,24 @@ def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str):
         plt.close(fig)
 
 def ui_pestanya_satelit_usa():
-    st.markdown("#### Imatges de Satèl·lit GOES (Sectors de Mesoescala)")
+    st.markdown("#### Imatge de Satèl·lit GOES-East (Temps Real)")
+    
+    # --- LÍNIA CORREGIDA ---
+    # S'ha canviat l'URL del satèl·lit de MESO (mòbil) a CONUS (fixa).
+    sat_url = f"https://cdn.star.nesdis.noaa.gov/GOES16/ABI/CONUS/GEOCOLOR/latest.jpg?{int(time.time())}"
+    
+    st.image(sat_url, caption="Imatge del satèl·lit GOES-East - Vista CONUS (NOAA STAR)", use_container_width=True)
+    
     st.info(
         """
-        A continuació es mostren els dos sectors de mesoescala del satèl·lit GOES-East. 
-        Aquests sectors s'actualitzen cada 60 segons i són posicionats manualment per la NOAA 
-        sobre les àrees de temps més significatiu (brots de tempestes, huracans, etc.). 
-        Durant un episodi de temps sever, és molt probable que un d'ells estigui enfocat a la "Tornado Alley".
+        Aquesta imatge mostra la vista **CONUS (Contiguous United States)**, que cobreix tots els Estats Units continentals. 
+        S'actualitza cada 5-10 minuts i garanteix que sempre puguem veure la "Tornado Alley", a diferència dels sectors de mesoescala mòbils.
         """
     )
+    st.markdown("<p style='text-align: center;'>[Font: NOAA STAR](https://www.star.nesdis.noaa.gov/GOES/index.php)</p>", unsafe_allow_html=True)
 
-    col1, col2 = st.columns(2)
-    
-    # URL única per a cada imatge per evitar problemes de cache
-    timestamp = int(time.time())
 
-    with col1:
-        st.markdown("<h6 style='text-align: center;'>Sector Mesoescala 1</h6>", unsafe_allow_html=True)
-        sat_url_m1 = f"https://cdn.star.nesdis.noaa.gov/GOES16/ABI/MESO/M1/GEOCOLOR/latest.jpg?{timestamp}"
-        st.image(sat_url_m1, use_container_width=True)
 
-    with col2:
-        st.markdown("<h6 style='text-align: center;'>Sector Mesoescala 2</h6>", unsafe_allow_html=True)
-        sat_url_m2 = f"https://cdn.star.nesdis.noaa.gov/GOES16/ABI/MESO/M2/GEOCOLOR/latest.jpg?{timestamp}"
-        st.image(sat_url_m2, use_container_width=True)
-
-    st.markdown("<p style='text-align: center;'>[Font: NOAA STAR - Fes clic aquí per veure la posició actual dels sectors](https://www.star.nesdis.noaa.gov/GOES/meso_index.php?sat=G16)</p>", unsafe_allow_html=True)
 
 @st.cache_data(ttl=600)
 def obtenir_dades_estacio_smc():
