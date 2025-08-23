@@ -228,7 +228,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     v = v[sort_idx]
     heights = heights[sort_idx]
     
-    params_calc = {}  # ← AQUÍ SE DEFINE params_calc
+    params_calc = {}
     prof = None
     heights_agl = heights - heights[0]
     
@@ -268,31 +268,15 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             print(f"Error MLCAPE/MLCIN: {e}")
             params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
         
-        # Cálculo del Lifted Index - CORREGIDO
+        # Cálculo del Lifted Index
         try:
             li = mpcalc.lifted_index(p, T, prof)
-            if hasattr(li, 'magnitude'):
-                params_calc['LI'] = float(li.magnitude)
-            elif hasattr(li, 'm'):
-                params_calc['LI'] = float(li.m)
-            elif isinstance(li, units.Quantity):
-                params_calc['LI'] = float(li.magnitude)
-            else:
-                params_calc['LI'] = float(li)
+            if hasattr(li, 'magnitude'): params_calc['LI'] = float(li.magnitude)
+            elif hasattr(li, 'm'): params_calc['LI'] = float(li.m)
+            else: params_calc['LI'] = float(li)
         except Exception as e:
             print(f"Error LI: {e}")
             params_calc['LI'] = np.nan
-        
-        # Fallback para LI si el cálculo principal falló
-        if np.isnan(params_calc.get('LI', np.nan)):
-            try:
-                li_manual = calcular_li_manual(p, T, prof)
-                params_calc['LI'] = li_manual
-                print(f"Usando cálculo manual LI: {li_manual}")
-            except Exception as e:
-                print(f"Error cálculo manual LI: {e}")
-                params_calc['LI'] = np.nan
-        
         
         # Cálculo de LFC
         try:
@@ -316,7 +300,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                 params_calc['LCL_Hgt'] = np.nan
         except Exception as e:
             print(f"Error LCL: {e}")
-            params_calc.update({'LCL_p': np.nan, 'LFC_Hgt': np.nan})
+            params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
         
         # Cálculo de agua precipitable
         try:
@@ -326,18 +310,30 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             print(f"Error PWAT: {e}")
             params_calc['PWAT'] = np.nan
         
-        # Cálculo de nivel de congelación - CORREGIDO
+        # Càlcul de nivell de congelació (Pressió i Altitud)
         try:
-            frz_pressure, frz_temp = mpcalc.freezing_level(p, T)
-            if hasattr(frz_pressure, 'magnitude'):
-                params_calc['FRZG_Lvl_p'] = float(frz_pressure.magnitude)
-            elif hasattr(frz_pressure, 'm'):
-                params_calc['FRZG_Lvl_p'] = float(frz_pressure.m)
+            frz_pressure, _ = mpcalc.freezing_level(p, T)
+            
+            # Guardem la pressió (hPa)
+            if hasattr(frz_pressure, 'm'):
+                p_frzg_scalar = float(frz_pressure.m)
             else:
-                params_calc['FRZG_Lvl_p'] = float(frz_pressure)
+                p_frzg_scalar = float(frz_pressure)
+            params_calc['FRZG_Lvl_p'] = p_frzg_scalar
+
+            # ARA CALCULEM L'ALTITUD (m) utilitzant la pressió que acabem de trobar
+            if not np.isnan(p_frzg_scalar):
+                # Interpolem l'altitud a partir del perfil d'altures i pressions.
+                # Recorda invertir els arrays (amb [::-1]) perquè np.interp necessita valors creixents.
+                frzg_alt_m = np.interp(p_frzg_scalar, p.m[::-1], heights.m[::-1])
+                params_calc['FRZG_Lvl_m'] = float(frzg_alt_m)
+            else:
+                params_calc['FRZG_Lvl_m'] = np.nan
+
         except Exception as e:
-            print(f"Error freezing level: {e}")
+            print(f"Error calculant el nivell de congelació: {e}")
             params_calc['FRZG_Lvl_p'] = np.nan
+            params_calc['FRZG_Lvl_m'] = np.nan
     
     # Cálculo de movimiento de tormenta
     try:
@@ -359,7 +355,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             print(f"Error BWD {name}: {e}")
             params_calc[f'BWD_{name}'] = np.nan
     
-    # Cálculo de helicidad relativa a la tormenta (SRH) - CORREGIDO
+    # Cálculo de helicidad relativa a la tormenta (SRH)
     if not np.isnan(params_calc.get('RM', (np.nan, np.nan))[0]):
         try:
             u_storm, v_storm = params_calc['RM']
@@ -371,14 +367,9 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                                                     depth=depth_m * units.meter, 
                                                     storm_u=u_storm, storm_v=v_storm)
                 
-                if hasattr(srh, 'magnitude'):
-                    params_calc[f'SRH_{name}'] = float(srh.magnitude)
-                elif hasattr(srh, 'm'):
-                    params_calc[f'SRH_{name}'] = float(srh.m)
-                elif isinstance(srh, units.Quantity):
-                    params_calc[f'SRH_{name}'] = float(srh.magnitude)
-                else:
-                    params_calc[f'SRH_{name}'] = float(srh)
+                if hasattr(srh, 'magnitude'): params_calc[f'SRH_{name}'] = float(srh.magnitude)
+                elif hasattr(srh, 'm'): params_calc[f'SRH_{name}'] = float(srh.m)
+                else: params_calc[f'SRH_{name}'] = float(srh)
                     
         except Exception as e:
             print(f"Error SRH: {e}")
@@ -682,60 +673,103 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         y-=0.07
         
     return fig
+    
 def ui_caixa_parametres_sondeig(params):
     def get_color(value, thresholds, reverse_colors=False):
+        if hasattr(value, '__len__') and not isinstance(value, str):
+            if len(value) > 0: value = value[0]
+            else: return "#808080"
         if pd.isna(value): return "#808080"
         colors = ["#808080", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
-        if reverse_colors:
-            thresholds = sorted(thresholds, reverse=True); colors = list(reversed(colors))
-        else: thresholds = sorted(thresholds)
+        if reverse_colors: 
+            thresholds = sorted(thresholds, reverse=True)
+            colors = list(reversed(colors))
+        else: 
+            thresholds = sorted(thresholds)
         for i, threshold in enumerate(thresholds):
             if value < threshold: return colors[i]
         return colors[-1]
-
+    
     THRESHOLDS = {
-        'SBCAPE': (100, 500, 1500, 2500), 'MUCAPE': (100, 500, 1500, 2500),
-        'MLCAPE': (50, 250, 1000, 2000), 'CAPE_0-3km': (25, 75, 150, 250),
-        'DCAPE': (200, 500, 800, 1200), 'SBCIN': (0, -25, -75, -150), 
-        'LI': (0, -2, -5, -8), 'PWAT': (20, 30, 40, 50),
-        'BWD_0-6km': (10, 20, 30, 40), 'SRH_0-1km': (50, 100, 150, 250)
+        'SBCAPE': (100, 500, 1500, 2500), 'MUCAPE': (100, 500, 1500, 2500), 
+        'MLCAPE': (50, 250, 1000, 2000), 'CAPE_0-3km': (25, 75, 150, 250), 
+        'SBCIN': (0, -25, -75, -150), 'MUCIN': (0, -25, -75, -150),
+        'MLCIN': (0, -25, -75, -150), 'LI': (0, -2, -5, -8), 
+        'PWAT': (20, 30, 40, 50), 'BWD_0-6km': (10, 20, 30, 40), 
+        'BWD_0-1km': (5, 10, 15, 20), 'SRH_0-1km': (50, 100, 150, 250),
+        'SRH_0-3km': (100, 200, 300, 400),
+        'FRZG_Lvl_m': (4000, 3000, 2000, 1000) # Llindars per l'altitud en metres
     }
-
+    
     def styled_metric(label, value, unit, param_key, precision=0, reverse_colors=False):
+        if hasattr(value, '__len__') and not isinstance(value, str):
+            if len(value) > 0: value = value[0]
+            else: value = np.nan
         color = get_color(value, THRESHOLDS.get(param_key, []), reverse_colors)
         val_str = f"{value:.{precision}f}" if not pd.isna(value) else "---"
-        st.markdown(f"""
-            <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
-                <span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit})</span><br>
-                <strong style="font-size: 1.6em; color: {color};">{val_str}</strong>
-            </div>
-            """, unsafe_allow_html=True)
-
+        st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;"><span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit})</span><br><strong style="font-size: 1.6em; color: {color};">{val_str}</strong></div>""", unsafe_allow_html=True)
+    
     st.markdown("##### Paràmetres del Sondeig")
     
-    # Fila 1: Energia Principal
+    emoji, descripcio = determinar_emoji_temps(params)
+
+    # Primera fila: CAPE values
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE')
     with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE')
     with cols[2]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE')
     
-    # Fila 2: Estabilitat i Humitat
+    # Segunda fila: CIN and other stability indices
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True)
-    with cols[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', precision=1, reverse_colors=True)
-    with cols[2]: styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1)
+    with cols[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True)
+    with cols[2]: styled_metric("MLCIN", params.get('MLCIN', np.nan), "J/kg", 'MLCIN', reverse_colors=True)
     
-    # Fila 3: Nivells i Potencial Descendent
+    # Tercera fila: LI, PWAT i el nou EMOJI
     cols = st.columns(3)
-    with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
-    with cols[1]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
-    with cols[2]: styled_metric("DCAPE", params.get('DCAPE', np.nan), "J/kg", 'DCAPE')
-    
-    # Fila 4: Paràmetres de Cisallament / Rotació
+    with cols[0]: 
+        li_value = params.get('LI', np.nan)
+        if hasattr(li_value, '__len__') and not isinstance(li_value, str) and len(li_value) > 0: li_value = li_value[0]
+        styled_metric("LI", li_value, "°C", 'LI', precision=1, reverse_colors=True)
+    with cols[1]: 
+        styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1)
+    with cols[2]:
+        st.markdown(f"""
+        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
+            <span style="font-size: 0.8em; color: #FAFAFA;">Tipus de Cel Previst</span>
+            <strong style="font-size: 1.8em; line-height: 1;">{emoji}</strong>
+            <span style="font-size: 0.8em; color: #E0E0E0;">{descripcio}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Cuarta fila: Levels
+    cols = st.columns(3)
+    with cols[0]: 
+        styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
+    with cols[1]: 
+        styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
+    with cols[2]: 
+        frzg_alt_value = params.get('FRZG_Lvl_m', np.nan)
+        styled_metric("Nivell 0°C", frzg_alt_value, "m", 'FRZG_Lvl_m', precision=0, reverse_colors=True)
+
+    # Quinta fila: Wind parameters
     cols = st.columns(3)
     with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
-    with cols[1]: styled_metric("SRH 0-1km", params.get('SRH_0-1km', np.nan), "m²/s²", 'SRH_0-1km')
+    with cols[1]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km')
     with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
+    
+    # Sexta fila: SRH and updraft
+    cols = st.columns(3)
+    with cols[0]: 
+        srh1_value = params.get('SRH_0-1km', np.nan)
+        if hasattr(srh1_value, '__len__') and not isinstance(srh1_value, str) and len(srh1_value) > 0: srh1_value = srh1_value[0]
+        styled_metric("SRH 0-1km", srh1_value, "m²/s²", 'SRH_0-1km')
+    with cols[1]: 
+        srh3_value = params.get('SRH_0-3km', np.nan)
+        if hasattr(srh3_value, '__len__') and not isinstance(srh3_value, str) and len(srh3_value) > 0: srh3_value = srh3_value[0]
+        styled_metric("SRH 0-3km", srh3_value, "m²/s²", 'SRH_0-3km')
+    with cols[2]: 
+        styled_metric("UPDRAFT", params.get('MAX_UPDRAFT', np.nan), "m/s", 'UPDRAFT', precision=1)
         
 
 def ui_caixa_parametres_sondeig(params):
