@@ -531,7 +531,16 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     motion = {'RM': params_calc.get('RM'), 'LM': params_calc.get('LM'), 'Vent Mitjà': params_calc.get('Mean_Wind')}
     if all(v is not None for v in motion.values()):
         for name, vec in motion.items():
-            u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m
+            # --- INICIO DE LA CORRECCIÓN ---
+            # CORRECCIÓ: Los valores 'vec[0]' y 'vec[1]' son floats sin unidades (en m/s).
+            # Les reasignamos las unidades antes de intentar convertirlos.
+            u_motion_ms = vec[0] * units('m/s')
+            v_motion_ms = vec[1] * units('m/s')
+            
+            # Ahora usamos las nuevas variables con unidades para la conversión.
+            u_comp, v_comp = u_motion_ms.to('kt').m, v_motion_ms.to('kt').m
+            # --- FIN DE LA CORRECCIÓN ---
+            
             marker = 's' if 'Mitjà' in name else 'o'
             ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
 
@@ -558,7 +567,16 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     ax_params.text(0, y, "Moviment (dir/kts)", ha='left', weight='bold', fontsize=11); y-=0.08
     for name, vec in motion.items():
         if vec is not None:
-            speed = mpcalc.wind_speed(*vec).to('kt').m; direction = mpcalc.wind_direction(*vec).to('deg').m
+            # --- INICIO DE LA CORRECCIÓN ---
+            # CORRECCIÓ: Hacemos lo mismo aquí. Creamos variables con unidades
+            # para poder usar las funciones de cálculo de metpy.
+            u_motion_ms = vec[0] * units('m/s')
+            v_motion_ms = vec[1] * units('m/s')
+            
+            speed = mpcalc.wind_speed(u_motion_ms, v_motion_ms).to('kt').m
+            direction = mpcalc.wind_direction(u_motion_ms, v_motion_ms).to('deg').m
+            # --- FIN DE LA CORRECCIÓN ---
+            
             ax_params.text(0.05, y, f"{name}:"); ax_params.text(0.95, y, f"{direction:.0f}°/{speed:.0f} kts", ha='right')
         else:
             ax_params.text(0.05, y, f"{name}:"); ax_params.text(0.95, y, "---", ha='right')
