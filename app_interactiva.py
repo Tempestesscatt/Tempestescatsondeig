@@ -1193,6 +1193,7 @@ def obtenir_dades_estacio_meteoclimatic(station_code):
     """
     Obté i processa les dades meteorològiques en temps real per a una estació
     de la xarxa Meteoclimatic a partir del seu fitxer XML.
+    Versió millorada per gestionar respostes buides.
     """
     if not station_code:
         return None
@@ -1200,7 +1201,13 @@ def obtenir_dades_estacio_meteoclimatic(station_code):
     url = f"https://www.meteoclimatic.net/feed/station/{station_code}"
     try:
         response = requests.get(url, timeout=10)
-        response.raise_for_status()  # Llançarà un error si la petició falla (ex: 404)
+        response.raise_for_status()
+
+        # MILLORA CLAU: Comprovem si la resposta té contingut abans de processar-la
+        if not response.content or not response.content.strip():
+            # No mostrem un error tècnic, simplement informem que no hi ha dades
+            print(f"Advertència: L'estació {station_code} ha retornat una resposta buida.")
+            return None
 
         # Processar el contingut XML
         root = ET.fromstring(response.content)
@@ -1223,6 +1230,15 @@ def obtenir_dades_estacio_meteoclimatic(station_code):
             "actualitzacio": find_text_safe('weather/update_time'),
         }
         return data
+
+    except ET.ParseError as e:
+        # Aquest error ara és menys probable, però el mantenim per seguretat
+        print(f"Error en processar l'XML de l'estació {station_code}: {e}")
+        return None
+    except requests.exceptions.RequestException as e:
+        # Aquest error és per problemes de connexió
+        print(f"Error de xarxa contactant amb l'estació {station_code}: {e}")
+        return None
 
     except (requests.exceptions.RequestException, ET.ParseError) as e:
         st.error(f"No s'ha pogut contactar amb l'estació {station_code}. Error: {e}")
