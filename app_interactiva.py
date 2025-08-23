@@ -1085,16 +1085,12 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv):
             st.components.v1.html(html_code, height=410)
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 
-def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str):
+def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model GFS)")
-    # --- LÍNIA MODIFICADA ---
-    # S'han afegit els nivells 1000, 975, 950 i 900 hPa a les opcions.
-    nivell_sel = st.selectbox(
-        "Nivell d'anàlisi:", 
-        options=[1000, 975, 950, 925, 900, 850, 700, 500, 300], 
-        format_func=lambda x: f"{x} hPa", 
-        key="level_usa"
-    )
+    
+    # ELIMINAT: El selector de nivell ja no és aquí, el rebem com a 'nivell_sel'.
+    # nivell_sel = st.selectbox(...)
+
     with st.spinner(f"Carregant dades del mapa GFS a {nivell_sel}hPa..."):
         map_data, error_map = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
     
