@@ -125,164 +125,7 @@ def show_login_page():
     if st.button("Entrar com a Convidat", use_container_width=True, type="secondary"):
         st.session_state.update({'guest_mode': True, 'logged_in': False}); st.rerun()
 
-# --- BLOC DE CODI CORREGIT I EN L'ORDRE CORRECTE ---
-@st.cache_data(ttl=3600)
-def carregar_dades_mapa_base(variables, hourly_index):
-    try:
-        # Reducir significativamente el número de puntos para evitar errores de URL demasiado larga
-        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 8), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 8)
-        lon_grid, lat_grid = np.meshgrid(lons, lats)
-        
-        # Hacer solicitudes en lotes más pequeños para evitar errores
-        all_lats, all_lons = [], []
-        all_data = {var: [] for var in variables}
-        
-        # Dividir los puntos en lotes más pequeños
-        batch_size = 16
-        points = list(zip(lat_grid.flatten(), lon_grid.flatten()))
-        
-        for i in range(0, len(points), batch_size):
-            batch_points = points[i:i+batch_size]
-            batch_lats = [p[0] for p in batch_points]
-            batch_lons = [p[1] for p in batch_points]
-            
-            params = {
-                "latitude": batch_lats,
-                "longitude": batch_lons,
-                "hourly": variables,
-                "models": "arome_seamless",
-                "forecast_days": FORECAST_DAYS
-            }
-            
-            try:
-                responses = openmeteo.weather_api(API_URL, params=params)
-                for r in responses:
-                    hourly = r.Hourly()
-                    vals = [hourly.Variables(j).ValuesAsNumpy()[hourly_index] for j in range(len(variables))]
-                    
-                    # Solo añadir puntos con datos válidos
-                    if not any(np.isnan(v) for v in vals):
-                        all_lats.append(r.Latitude())
-                        all_lons.append(r.Longitude())
-                        for j, var in enumerate(variables):
-                            all_data[var].append(vals[j])
-                
-                # Pequeña pausa entre lotes
-                time.sleep(0.1)
-                    
-            except Exception as e:
-                print(f"Error procesando lote: {e}")
-                continue
-        
-        if not all_lats:
-            return None, "No s'han rebut dades vàlides."
-        
-        # Crear el diccionario de salida
-        output = {"lats": np.array(all_lats), "lons": np.array(all_lons)}
-        for var in variables:
-            output[var] = np.array(all_data[var])
-            
-        return output, None
-        
-    except Exception as e:
-        return None, f"Error en carregar dades del mapa: {e}"
-
-@st.cache_data(ttl=3600)
-def carregar_dades_mapa(nivell, hourly_index):
-    try:
-        # Siempre usar temperatura y humedad relativa para calcular el punto de rocío
-        variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", 
-                    f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-
-        # Reducir significativamente el número de puntos (solo puntos clave)
-        puntos_clave = [
-            (41.0, 1.0), (41.0, 2.0), (41.0, 3.0),  # Puntos sur
-            (41.5, 1.0), (41.5, 2.0), (41.5, 3.0),  # Puntos centro
-            (42.0, 1.0), (42.0, 2.0), (42.0, 3.0),  # Puntos norte
-            (42.5, 0.5), (42.5, 1.5), (42.5, 2.5)   # Puntos Pirineos
-        ]
-        
-        lats_list = [p[0] for p in puntos_clave]
-        lons_list = [p[1] for p in puntos_clave]
-        
-        # Hacer solicitudes individuales para cada punto
-        all_lats = []
-        all_lons = []
-        all_data = {var: [] for var in variables}
-        
-        for i, (lat, lon) in enumerate(puntos_clave):
-            params = {
-                "latitude": lat,
-                "longitude": lon,
-                "hourly": variables,
-                "models": "arome_seamless",
-                "forecast_days": FORECAST_DAYS
-            }
-            
-            try:
-                response = openmeteo.weather_api(API_URL, params=params)[0]
-                hourly = response.Hourly()
-                
-                all_lats.append(lat)
-                all_lons.append(lon)
-                
-                for j, var in enumerate(variables):
-                    data_array = hourly.Variables(j).ValuesAsNumpy()
-                    if hourly_index < len(data_array):
-                        all_data[var].append(data_array[hourly_index])
-                    else:
-                        # Si hay un error, usar el último valor disponible o NaN
-                        all_data[var].append(data_array[-1] if len(data_array) > 0 else np.nan)
-                
-                # Pequeña pausa para no sobrecargar la API
-                if i < len(puntos_clave) - 1:
-                    time.sleep(0.2)
-                    
-            except Exception as e:
-                print(f"Error obteniendo datos para lat {lat}, lon {lon}: {e}")
-                # Añadir NaN para este punto
-                all_lats.append(lat)
-                all_lons.append(lon)
-                for var in variables:
-                    all_data[var].append(np.nan)
-        
-        # Crear el diccionari de resultats
-        map_data_raw = {
-            'lats': np.array(all_lats),
-            'lons': np.array(all_lons)
-        }
-        
-        for var in variables:
-            map_data_raw[var] = np.array(all_data[var])
-        
-        # Calcular el punto de rocío a partir de temperatura y humedad relativa
-        temp_data = map_data_raw[f'temperature_{nivell}hPa'] * units.degC
-        rh_data = map_data_raw[f'relative_humidity_{nivell}hPa'] * units.percent
-        
-        # Asegurarse de que no hay valores NaN antes del cálculo
-        valid_indices = ~np.isnan(temp_data) & ~np.isnan(rh_data)
-        dewpoint_data = np.full_like(temp_data, np.nan)
-        
-        if np.any(valid_indices):
-            dewpoint_data[valid_indices] = mpcalc.dewpoint_from_relative_humidity(
-                temp_data[valid_indices], rh_data[valid_indices]).m
-        
-        map_data_raw['dewpoint_data'] = dewpoint_data
-        map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
-        map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
-        
-        # Eliminar las variables temporales
-        for var in [f'temperature_{nivell}hPa', f'relative_humidity_{nivell}hPa']:
-            if var in map_data_raw:
-                del map_data_raw[var]
-        
-        return map_data_raw, None
-
-    except Exception as e: 
-        return None, f"Error en processar dades del mapa: {e}"
-
-
-
+# --- Funcions de càrrega de dades ---
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
@@ -314,232 +157,133 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         heights_agl = heights - heights[0]
         
         with parcel_lock:
-            # Calcular el perfil de la parcela de superficie
             prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
-            
-            # Calcular CAPE y CIN de superficie
-            try:
-                sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
-                params_calc['SBCAPE'] = sbcape.m if hasattr(sbcape, 'm') else float(sbcape)
-                params_calc['SBCIN'] = sbcin.m if hasattr(sbcin, 'm') else float(sbcin)
-            except:
-                params_calc['SBCAPE'] = np.nan
-                params_calc['SBCIN'] = np.nan
+            sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
+            params_calc['SBCAPE'] = sbcape.to('J/kg').m
+            params_calc['SBCIN'] = sbcin.to('J/kg').m
 
-            # Calcular CAPE y CIN más inestable
-            try:
-                mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td)
-                params_calc['MUCAPE'] = mucape.m if hasattr(mucape, 'm') else float(mucape)
-                params_calc['MUCIN'] = mucin.m if hasattr(mucin, 'm') else float(mucin)
-            except:
-                params_calc['MUCAPE'] = np.nan
-                params_calc['MUCIN'] = np.nan
+            mucape_cin_result = mpcalc.most_unstable_cape_cin(p, T, Td)
+            params_calc['MUCAPE'] = mucape_cin_result[0].to('J/kg').m if isinstance(mucape_cin_result, tuple) else np.nan
             
-            # Calcular CAPE y CIN de capa mezclada
-            try:
-                mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td)
-                params_calc['MLCAPE'] = mlcape.m if hasattr(mlcape, 'm') else float(mlcape)
-                params_calc['MLCIN'] = mlcin.m if hasattr(mlcin, 'm') else float(mlcin)
-            except:
-                params_calc['MLCAPE'] = np.nan
-                params_calc['MLCIN'] = np.nan
+            mlcape_cin_result = mpcalc.mixed_layer_cape_cin(p, T, Td)
+            params_calc['MLCAPE'] = mlcape_cin_result[0].to('J/kg').m if isinstance(mlcape_cin_result, tuple) else np.nan
             
-            # Cálculo del LI (Lifted Index) - Método Simplificado
-            try:
-                # Calcular manualmente el Lifted Index
-                p_500 = 500 * units.hPa
-                # Encontrar T a 500 hPa
-                idx_500 = np.argmin(np.abs(p - p_500))
-                T_500 = T[idx_500]
-                # Encontrar temperatura de la parcela a 500 hPa
-                T_parcel_500 = prof[idx_500]
-                # LI = T_ambiente - T_parcela a 500 hPa
-                li_value = T_500 - T_parcel_500
-                params_calc['LI'] = li_value.m if hasattr(li_value, 'm') else float(li_value)
-            except:
-                params_calc['LI'] = np.nan
+            li_result = mpcalc.lifted_index(p, T.to('degC'), Td.to('degC'))
+            params_calc['LI'] = li_result[0].to('delta_degC').m if isinstance(li_result, tuple) else np.nan
 
-        # Cálculo del CAPE 0-3km - Método Simplificado
         try:
-            # Encontrar el índice donde la altura es aproximadamente 3000 m
-            idx_3km = np.argmin(np.abs(heights_agl - 3000 * units.m))
-            # Calcular CAPE desde la superficie hasta 3 km
-            cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
-            params_calc['CAPE_0-3km'] = cape_0_3.m if hasattr(cape_0_3, 'm') else float(cape_0_3)
-        except:
-            params_calc['CAPE_0-3km'] = np.nan
+            h_agl_m = heights_agl.m; p_m = p.m
+            if 3000 <= h_agl_m[-1]:
+                p_3km_agl = np.interp(3000, h_agl_m, p_m) * units.hPa
+                cape_0_3, _ = mpcalc.cape_cin(p, T, Td, prof, top=p_3km_agl)
+                params_calc['CAPE_0-3km'] = cape_0_3.to('J/kg').m
+            else: params_calc['CAPE_0-3km'] = np.nan
+        except: params_calc['CAPE_0-3km'] = np.nan
 
-        # Cálculo de PWAT
-        try: 
-            pwat_value = mpcalc.precipitable_water(p, Td)
-            params_calc['PWAT'] = pwat_value.m if hasattr(pwat_value, 'm') else float(pwat_value)
-        except:
-            params_calc['PWAT'] = np.nan
-        
-        # Cálculo del DCAPE - Método Simplificado
-        try:
-            # Calcular DCAPE manualmente
-            dcape_value = 0
-            for i in range(len(p) - 1):
-                if p[i] > 500 * units.hPa:  # Solo niveles medios-bajos
-                    T_env = T[i]
-                    T_parcel = prof[i]
-                    if T_parcel < T_env:  # Solo donde la parcela es más fría
-                        # Aproximación simple: g * ΔT * Δz / T
-                        delta_z = (heights[i+1] - heights[i])
-                        delta_T = (T_env - T_parcel)
-                        dcape_value += (9.8 * delta_T * delta_z / T_env)
+        try: params_calc['PWAT'] = mpcalc.precipitable_water(p, Td).to('mm').m
+        except: params_calc['PWAT'] = np.nan
+        try: dcape, _ = mpcalc.dcape(p,T,Td); params_calc['DCAPE'] = dcape.to('J/kg').m
+        except: params_calc['DCAPE'] = np.nan
             
-            # Asegurarnos de obtener el valor numérico
-            params_calc['DCAPE'] = dcape_value.m if hasattr(dcape_value, 'm') else float(dcape_value)
-        except:
-            params_calc['DCAPE'] = np.nan
-                
-        # --- INICI DEL BLOC CORREGIT ---
-        # Cálculo de LCL
         try:
-            lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
-            params_calc['LCL_p'] = lcl_p.m if hasattr(lcl_p, 'm') else float(lcl_p)
-            
-            # Càlcul de l'alçada del LCL sobre el terra (AGL)
-            # Fórmula: Altura (m) ≈ 125 * (Temperatura (°C) - Punt de Rosada (°C))
-            lcl_height_agl = 125 * (T[0].m - Td[0].m)
-            params_calc['LCL_Hgt'] = lcl_height_agl
-        except:
-            params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan, np.nan
-        # --- FI DEL BLOC CORREGIT ---
+            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0], max_iters=50)
+            params_calc['LCL_p'] = lcl_p; params_calc['LCL_Hgt'] = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
+        except: params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan * units.hPa, np.nan
         
-        # Cálculo de LFC
         try:
-            # Buscar donde la parcela se vuelve más cálida que el ambiente
-            for i in range(len(p)):
-                if prof[i] > T[i]:
-                    params_calc['LFC_p'] = p[i].m if hasattr(p[i], 'm') else float(p[i])
-                    params_calc['LFC_Hgt'] = heights_agl[i].m if hasattr(heights_agl[i], 'm') else float(heights_agl[i])
-                    break
-            else:
-                params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan, np.nan
-        except:
-            params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan, np.nan
+            lfc_result = mpcalc.lfc(p, T, Td, which='surface', parcel_profile=prof)
+            if isinstance(lfc_result, tuple):
+                lfc_p = lfc_result[0]
+                params_calc['LFC_p'] = lfc_p
+                params_calc['LFC_Hgt'] = mpcalc.pressure_to_height_std(lfc_p).to('m').m if hasattr(lfc_p, 'm') else np.nan
+            else: params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
+        except: params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan * units.hPa, np.nan
         
-        # Cálculo de EL
         try:
-            # Buscar donde la parcela se vuelve más fría que el ambiente otra vez
-            for i in range(len(p)):
-                if prof[i] < T[i] and i > 0:
-                    params_calc['EL_p'] = p[i].m if hasattr(p[i], 'm') else float(p[i])
-                    params_calc['EL_Hgt'] = heights_agl[i].m if hasattr(heights_agl[i], 'm') else float(heights_agl[i])
-                    break
-            else:
-                params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan, np.nan
-        except:
-            params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan, np.nan
+            el_result = mpcalc.el(p, T, Td, which='surface', parcel_profile=prof)
+            if isinstance(el_result, tuple):
+                el_p = el_result[0]
+                params_calc['EL_p'] = el_p
+                params_calc['EL_Hgt'] = mpcalc.pressure_to_height_std(el_p).to('m').m if hasattr(el_p, 'm') else np.nan
+            else: params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan * units.hPa, np.nan
+        except: params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan * units.hPa, np.nan
         
-        # Cálculo del nivel de congelación
         try:
-            # Encontrar donde la temperatura cruza 0°C
-            p_frz = np.interp(0, T.magnitude if hasattr(T, 'magnitude') else T, p.magnitude if hasattr(p, 'magnitude') else p)
-            params_calc['FRZG_Lvl_p'] = float(p_frz)
-        except:
-            params_calc['FRZG_Lvl_p'] = np.nan
+            p_frz = np.interp(0, T.to('degC').m[::-1], p.m[::-1]) * units.hPa
+            params_calc['FRZG_Lvl_p'] = p_frz
+        except: params_calc['FRZG_Lvl_p'] = np.nan * units.hPa
 
-        # Cálculo de movimientos de tormenta
         try:
-            # Calcular viento medio en baja y media tropósfera
-            u_low = np.mean(u[:5]) if len(u) > 5 else u[0]
-            v_low = np.mean(v[:5]) if len(v) > 5 else v[0]
-            u_mid = np.mean(u[5:10]) if len(u) > 10 else u[-1]
-            v_mid = np.mean(v[5:10]) if len(v) > 10 else v[-1]
-            
-            # Movimiento derecho
-            rm_u = 0.75 * u_mid + 0.25 * u_low
-            rm_v = 0.75 * v_mid + 0.25 * v_low
-            
-            # Movimiento izquierdo
-            lm_u = 0.75 * u_mid - 0.25 * u_low
-            lm_v = 0.75 * v_mid - 0.25 * v_low
-            
-            # Viento medio
-            mean_u = np.mean(u)
-            mean_v = np.mean(v)
-            
-            # Asegurarnos de obtener valores numéricos
-            params_calc['RM'] = (rm_u.m if hasattr(rm_u, 'm') else float(rm_u), 
-                                rm_v.m if hasattr(rm_v, 'm') else float(rm_v))
-            params_calc['LM'] = (lm_u.m if hasattr(lm_u, 'm') else float(lm_u), 
-                                lm_v.m if hasattr(lm_v, 'm') else float(lm_v))
-            params_calc['Mean_Wind'] = (mean_u.m if hasattr(mean_u, 'm') else float(mean_u), 
-                                       mean_v.m if hasattr(mean_v, 'm') else float(mean_v))
-        except:
-            params_calc.update({'RM': None, 'LM': None, 'Mean_Wind': None})
+            right_mover, left_mover, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
+            params_calc['RM'] = right_mover; params_calc['LM'] = left_mover; params_calc['Mean_Wind'] = mean_wind
+        except: params_calc.update({'RM': None, 'LM': None, 'Mean_Wind': None})
         
-        # Cálculo de cortantes de viento
         depths = {'0-1km': 1000 * units.m, '0-6km': 6000 * units.m}
         for name, depth in depths.items():
-            try: 
-                # Encontrar el índice para la profundidad deseada
-                idx_depth = np.argmin(np.abs(heights_agl - depth))
-                if idx_depth > 0:
-                    shear_u = u[idx_depth] - u[0]
-                    shear_v = v[idx_depth] - v[0]
-                    shear_speed = np.sqrt(shear_u**2 + shear_v**2)
-                    # Convertir a nudos si es una quantity, de lo contrario asumir que ya está en nudos
-                    if hasattr(shear_speed, 'to'):
-                        params_calc[f'BWD_{name}'] = shear_speed.to('kt').m
-                    else:
-                        params_calc[f'BWD_{name}'] = float(shear_speed) * 1.94384  # m/s to kt
-                else:
-                    params_calc[f'BWD_{name}'] = np.nan
-            except:
-                params_calc[f'BWD_{name}'] = np.nan
+            try: params_calc[f'BWD_{name}'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights_agl, depth=depth)).to('kt').m
+            except: params_calc[f'BWD_{name}'] = np.nan
         
-        # Cálculo de SRH - VERSIÓN CORREGIDA
         if params_calc.get('RM') is not None:
             try:
                 u_storm, v_storm = params_calc['RM']
+                params_calc['SR_Wind'] = mpcalc.wind_speed(u - u_storm, v - v_storm).to('kt')
+                srh_0_1, _, _ = mpcalc.storm_relative_helicity(heights_agl, u, v, depth=1000 * units.m, storm_u=u_storm, storm_v=v_storm)
+                srh_0_3, _, _ = mpcalc.storm_relative_helicity(heights_agl, u, v, depth=3000 * units.m, storm_u=u_storm, storm_v=v_storm)
+                params_calc['SRH_0-1km'] = srh_0_1.to('m**2/s**2').m
+                params_calc['SRH_0-3km'] = srh_0_3.to('m**2/s**2').m
                 
-                # Convertir u y v a arrays numpy sin unidades para cálculos más sencillos
-                u_ms = u.to('m/s').m
-                v_ms = v.to('m/s').m
-                
-                # Calcular velocidad del viento relativo a la tormenta
-                sr_wind_u = u_ms[0] - u_storm
-                sr_wind_v = v_ms[0] - v_storm
-                params_calc['SR_Wind'] = np.sqrt(sr_wind_u**2 + sr_wind_v**2) * 1.94384  # m/s to kt
-
-                # Calcular SRH 0-1km
-                idx_1km = np.argmin(np.abs(heights_agl - 1000 * units.m))
-                srh_0_1 = 0
-                for i in range(1, idx_1km+1):
-                    du = (u_ms[i] - u_storm)
-                    dv = (v_ms[i] - v_storm)
-                    du_prev = (u_ms[i-1] - u_storm)
-                    dv_prev = (v_ms[i-1] - v_storm)
-                    srh_0_1 += (du * dv_prev - dv * du_prev)
-                
-                # Calcular SRH 0-3km
-                idx_3km = np.argmin(np.abs(heights_agl - 3000 * units.m))
-                srh_0_3 = 0
-                for i in range(1, idx_3km+1):
-                    du = (u_ms[i] - u_storm)
-                    dv = (v_ms[i] - v_storm)
-                    du_prev = (u_ms[i-1] - u_storm)
-                    dv_prev = (v_ms[i-1] - v_storm)
-                    srh_0_3 += (du * dv_prev - dv * du_prev)
-                
-                params_calc['SRH_0-1km'] = srh_0_1
-                params_calc['SRH_0-3km'] = srh_0_3
-                
-            except Exception as e:
-                print(f"Error en cálculo de SRH: {e}")
-                params_calc.update({'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-        else:
-            params_calc.update({'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
+                eff_p_bottom, eff_p_top = mpcalc.effective_inflow_layer(p, T, Td, prof)
+                if hasattr(eff_p_bottom, 'm'):
+                    eff_h_bottom = np.interp(eff_p_bottom.m, p.m[::-1], heights_agl.m[::-1]) * units.m
+                    eff_h_top = np.interp(eff_p_top.m, p.m[::-1], heights_agl.m[::-1]) * units.m
+                    eff_depth = eff_h_top - eff_h_bottom
+                    params_calc['EBWD'] = mpcalc.wind_speed(*mpcalc.bulk_shear(p, u, v, height=heights_agl, bottom=eff_h_bottom, depth=eff_depth)).to('kt').m
+                    esrh, _, _ = mpcalc.storm_relative_helicity(heights_agl, u, v, bottom=eff_h_bottom, depth=eff_depth, storm_u=u_storm, storm_v=v_storm)
+                    params_calc['ESRH'] = esrh.to('m**2/s**2').m
+                else: params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
+            except: params_calc.update({'SR_Wind':None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
+        else: params_calc.update({'SR_Wind': None, 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
             
         return ((p, T, Td, u, v, heights, prof), params_calc), None
     except Exception as e: 
         return None, f"Error en processar dades del sondeig: {e}"
 
+@st.cache_data(ttl=3600)
+def carregar_dades_mapa_base(variables, hourly_index):
+    try:
+        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
+        lon_grid, lat_grid = np.meshgrid(lons, lats)
+        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
+        responses = openmeteo.weather_api(API_URL, params=params)
+        output = {var: [] for var in ["lats", "lons"] + variables}
+        for r in responses:
+            vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
+            if not any(np.isnan(v) for v in vals):
+                output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
+                for i, var in enumerate(variables): output[var].append(vals[i])
+        if not output["lats"]: return None, "No s'han rebut dades vàlides."
+        return output, None
+    except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
+
+@st.cache_data(ttl=3600)
+def carregar_dades_mapa(nivell, hourly_index):
+    try:
+        if nivell >= 950:
+            variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            map_data_raw, error = carregar_dades_mapa_base(variables, hourly_index)
+            if error: return None, error
+            map_data_raw['dewpoint_data'] = map_data_raw.pop('dew_point_2m')
+        else:
+            variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            map_data_raw, error = carregar_dades_mapa_base(variables, hourly_index)
+            if error: return None, error
+            temp_data = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
+            rh_data = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
+            map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
+        map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
+        map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
+        return map_data_raw, None
+    except Exception as e: return None, f"Error en processar dades del mapa: {e}"
 
 @st.cache_data(ttl=3600)
 def obtenir_ciutats_actives(hourly_index):
@@ -572,23 +316,9 @@ def obtenir_ciutats_actives(hourly_index):
 
 def crear_mapa_base(map_extent):
     fig, ax = plt.subplots(figsize=(8, 8), dpi=90, subplot_kw={'projection': ccrs.PlateCarree()})
-    ax.set_extent(map_extent, crs=ccrs.PlateCarree())
-    
-    # Añadir características del mapa
-    ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
-    ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
-    ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
-    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
-    
-    # Añadir líneas de latitud y longitud para mejor referencia
-    gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True,
-                      linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
-    gl.top_labels = False
-    gl.right_labels = False
-    gl.xlabel_style = {'size': 8}
-    gl.ylabel_style = {'size': 8}
-    
-    return fig, ax
+    ax.set_extent(map_extent, crs=ccrs.PlateCarree()); ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
+    ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0); ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
+    ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5); return fig, ax
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     fig, ax = crear_mapa_base(map_extent)
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 400), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 400))
@@ -598,13 +328,10 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     colors_wind_new = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db', '#87ceeb', '#48d1cc', '#b0c4de', '#da70d6', '#ffdead', '#ffd700', '#9acd32', '#a9a9a9']
     speed_levels_new = [0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104, 130, 166, 184, 277, 374, 400]; cbar_ticks = [0, 18, 40, 61, 86, 130, 184, 374]
     custom_cmap = ListedColormap(colors_wind_new); norm_speed = BoundaryNorm(speed_levels_new, ncolors=custom_cmap.N, clip=True)
-    
-    # CORRECCIÓN: Usar el mesh directamente para el colorbar
-    mesh = ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
-    cbar = fig.colorbar(mesh, ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=cbar_ticks)
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=cbar_ticks)
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
-    
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=4, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density= 4, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1); dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
     convergence_scaled = -(dudx + dvdy).to('1/s').magnitude * 1e5
@@ -617,7 +344,6 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     labels = ax.clabel(contours, inline=True, fontsize=6, fmt='%1.0f')
     for label in labels: label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.6))
     ax.set_title(f"Vent i Nuclis de convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
-    
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, map_extent):
     fig, ax = crear_mapa_base(map_extent)
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 200), np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 200))
@@ -632,165 +358,76 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 
-def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
-    """
-    Construeix i dibuixa un diagrama Skew-T, garantint que totes les línies
-    comencin visualment a la base del gràfic (1000 hPa) i que l'ombrejat
-    sigui coherent, fins i tot quan la superfície real és més alta.
-    """
+def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(7, 8))
-    skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.85, 0.85))
-
-    # Dibuixa les línies de fons com a referència
-    skew.plot_dry_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
-    skew.plot_moist_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
-    skew.plot_mixing_lines(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
-
-    # --- LÒGICA DEFINITIVA D'EXTRAPOLACIÓ I RE-CÀLCUL ---
+    skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
+    skew.ax.grid(True, linestyle='-', alpha=0.5)
     
-    # Per defecte, les dades per dibuixar són les originals
-    p_plot, T_plot, Td_plot = p, T, Td
-    prof_plot = prof
+    skew.plot_dry_adiabats(color='coral', linestyle='--', alpha=0.5)
+    skew.plot_moist_adiabats(color='cornflowerblue', linestyle='--', alpha=0.5)
+    skew.plot_mixing_lines(color='limegreen', linestyle='--', alpha=0.5)
 
-    # Si la pressió de superfície és menor de 1000 hPa (el terreny és alt)...
-    if p[0] < 1000 * units.hPa and prof is not None:
-        # 1. Creem una nova superfície virtual a 1000 hPa
-        p_1000 = 1000 * units.hPa
-        T_1000 = mpcalc.dry_lapse(p_1000, T[0])
-        mixing_ratio_sfc = mpcalc.mixing_ratio(mpcalc.saturation_vapor_pressure(Td[0]), p[0])
-        Td_1000 = mpcalc.dewpoint(mpcalc.vapor_pressure(p_1000, mixing_ratio_sfc))
-        
-        # 2. Creem els perfils de pressió i temperatura de l'entorn estesos fins a 1000 hPa
-        p_plot = np.insert(p.magnitude, 0, p_1000.magnitude) * units.hPa
-        T_plot = np.insert(T.magnitude, 0, T_1000.magnitude) * units.degC
-        Td_plot = np.insert(Td.magnitude, 0, Td_1000.magnitude) * units.degC
-        
-        # 3. CRUCIAL: Recalculem la trajectòria sencera de la parcel·la
-        #    utilitzant el perfil de pressió estès i les noves condicions de superfície virtuals.
-        prof_plot = mpcalc.parcel_profile(p_plot, T_1000, Td_1000).to('degC')
+    if prof is not None:
+        skew.shade_cape(p, T, prof, color='red', alpha=0.2)
+        skew.shade_cin(p, T, prof, color='blue', alpha=0.2)
+    
+    skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
+    skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
+    if prof is not None:
+        skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+    
+    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
+    
+    skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40)
+    skew.ax.set_title(titol, weight='bold', fontsize=14, pad=15)
+    skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
+    
+    levels_to_plot = {'LCL_p': 'LCL', 'FRZG_Lvl_p': '0°C', 'LFC_p': 'LFC'}
+    for key, name in levels_to_plot.items():
+        p_lvl = params_calc.get(key)
+        if p_lvl is not None and hasattr(p_lvl, 'm') and not np.isnan(p_lvl.m):
+            skew.ax.axhline(p_lvl.m, color='blue', linestyle='--', linewidth=1.5)
+            skew.ax.text(skew.ax.get_xlim()[1] - 2, p_lvl.m, f' {name}', color='blue', ha='right', va='center', fontsize=10, weight='bold')
 
-    # --- FI DE LA LÒGICA ---
-
-    # Ombrejat i dibuix es fan SEMPRE amb les mateixes dades (les _plot),
-    # siguin les originals o les extrapolades, garantint la coherència.
-    if prof_plot is not None:
-        p_np = p_plot.m
-        T_np = T_plot.m
-        prof_np = prof_plot.m
-        
-        # SOMBREJAT
-        skew.ax.fill_betweenx(p_np, T_np, prof_np, where=prof_np > T_np,
-                              facecolor='yellow', alpha=0.5, interpolate=True, zorder=5)
-        skew.ax.fill_betweenx(p_np, T_np, prof_np, where=prof_np < T_np,
-                              facecolor='dimgray', alpha=0.5, interpolate=True, zorder=5)
-
-    # DIBUIX DELS PERFILS
-    skew.plot(p_plot, T_plot, 'red', lw=2.5, label='Temperatura')
-    skew.plot(p_plot, Td_plot, 'purple', lw=2.5, label='Punt de Rosada')
-    if prof_plot is not None:
-        skew.plot(p_plot, prof_plot, 'k', linewidth=3, label='Trajectòria Parcel·la',
-                  path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
-
-    # Configuració final del gràfic
-    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03) # Les barbes sí amb dades originals
-    skew.ax.set_ylim(1000, 100)
-    skew.ax.set_xlim(-40, 40)
-    skew.ax.set_title(titol, weight='bold', fontsize=14, pad=20)
-    skew.ax.set_xlabel("Temperatura (°C)")
-    skew.ax.set_ylabel("Pressió (hPa)")
-    skew.ax.grid(False)
     skew.ax.legend()
-    
     return fig
 
-    
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
-    fig = plt.figure(dpi=150, figsize=(8, 8))
-    
-    gs = fig.add_gridspec(nrows=2, ncols=2,
-                          height_ratios=[1.5, 6],
-                          width_ratios=[1.5, 1],
-                          hspace=0.4, wspace=0.3)
-
-    ax_barbs = fig.add_subplot(gs[0, :])
-    ax_hodo = fig.add_subplot(gs[1, 0])
-    ax_params = fig.add_subplot(gs[1, 1])
-
+    fig = plt.figure(dpi=150, figsize=(8, 7))
+    gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[1.5, 1], wspace=0.3)
+    ax_hodo = fig.add_subplot(gs[0])
+    ax_params = fig.add_subplot(gs[1])
     fig.suptitle(titol, weight='bold', fontsize=16)
 
-    # --- Dibuixem les barbes de vent (sense canvis) ---
-    ax_barbs.set_title("Vent a Nivells Clau", fontsize=11, pad=15)
-    heights_agl = heights - heights[0]
-    barb_altitudes_km = [1, 3, 6, 9]
-    barb_altitudes_m = [h * 1000 for h in barb_altitudes_km] * units.m
-    u_barbs_list, v_barbs_list = [], []
-
-    for h_m in barb_altitudes_m:
-        if h_m <= heights_agl.max():
-            u_interp_val = np.interp(h_m.m, heights_agl.m, u.m)
-            v_interp_val = np.interp(h_m.m, heights_agl.m, v.m)
-            u_barbs_list.append(u_interp_val)
-            v_barbs_list.append(v_interp_val)
-        else:
-            u_barbs_list.append(np.nan)
-            v_barbs_list.append(np.nan)
-
-    u_barbs = units.Quantity(u_barbs_list, u.units)
-    v_barbs = units.Quantity(v_barbs_list, v.units)
-    
-    speed_kmh_barbs = np.sqrt(u_barbs**2 + v_barbs**2).to('km/h').m
-    thresholds_barbs = [10, 40, 70, 100, 130]
-    colors_barbs = ['dimgrey', '#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd']
-    x_pos = np.arange(len(barb_altitudes_km))
-    u_barbs_kt = u_barbs.to('kt')
-    v_barbs_kt = v_barbs.to('kt')
-
-    for i, spd_kmh in enumerate(speed_kmh_barbs):
-        if not np.isnan(spd_kmh):
-            color_index = np.searchsorted(thresholds_barbs, spd_kmh)
-            color = colors_barbs[color_index]
-            ax_barbs.barbs(x_pos[i], 0, u_barbs_kt[i], v_barbs_kt[i], length=8, pivot='middle', color=color)
-            ax_barbs.text(x_pos[i], -0.8, f"{spd_kmh:.0f} km/h", ha='center', va='top', fontsize=9, color=color, weight='bold')
-        else:
-            ax_barbs.text(x_pos[i], 0, "N/A", ha='center', va='center', fontsize=9, color='grey')
-
-    ax_barbs.set_xticks(x_pos); ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km])
-    ax_barbs.set_yticks([]); ax_barbs.spines[:].set_visible(False)
-    ax_barbs.tick_params(axis='x', length=0, pad=5); ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5)
-    ax_barbs.set_ylim(-1.5, 1.5)
-
-    # --- Dibuix de l'hodògraf (sense canvis) ---
     h = Hodograph(ax_hodo, component_range=80.)
     h.add_grid(increment=20, color='gray', linestyle='--')
     
     intervals = np.array([0, 1, 3, 6, 9, 12]) * units.km
-    colors_hodo = ['red', 'blue', 'green', 'purple', 'gold']
-    h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
+    colors = ['red', 'blue', 'green', 'purple', 'gold']
+    h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors, linewidth=2)
+
+    for alt_km in [1, 3, 6, 9]:
+        try:
+            idx = np.argmin(np.abs(heights - alt_km * 1000 * units.m))
+            ax_hodo.text(u[idx].to('kt').m + 1, v[idx].to('kt').m + 1, f'{alt_km}km', fontsize=9, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+        except: continue
     
-    try:
-        mean_wind_vec = params_calc.get('Mean_Wind')
-        if mean_wind_vec is not None:
-            u_mean_kt = (mean_wind_vec[0] * units('m/s')).to('kt').m
-            v_mean_kt = (mean_wind_vec[1] * units('m/s')).to('kt').m
-            arrow_scale = 1.5
-            ax_hodo.arrow(0, 0, u_mean_kt * arrow_scale, v_mean_kt * arrow_scale, color='black', linewidth=1.5, head_width=3, length_includes_head=True, zorder=10)
-    except Exception: pass
+    motion = {'RM': params_calc.get('RM'), 'LM': params_calc.get('LM'), 'Vent Mitjà': params_calc.get('Mean_Wind')}
+    if all(v is not None for v in motion.values()):
+        for name, vec in motion.items():
+            u_comp, v_comp = vec[0].to('kt').m, vec[1].to('kt').m
+            marker = 's' if 'Mitjà' in name else 'o'
+            ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
 
     try:
         shear_vec = mpcalc.bulk_shear(p, u, v, height=heights - heights[0], depth=6000 * units.m)
-        ax_hodo.arrow(0, 0, shear_vec[0].to('kt').m, shear_vec[1].to('kt').m, color='dimgray', linestyle='--', alpha=0.7, head_width=2, length_includes_head=True)
+        ax_hodo.arrow(0, 0, shear_vec[0].to('kt').m, shear_vec[1].to('kt').m,
+                      color='black', linestyle='--', alpha=0.7, head_width=2, length_includes_head=True)
     except: pass
     ax_hodo.set_xlabel('U-Component (nusos)')
     ax_hodo.set_ylabel('V-Component (nusos)')
 
-    # --- Dibuix del panell de text ---
     ax_params.axis('off')
-    
-    def degrees_to_cardinal_ca(d):
-        dirs = ["Nord", "Nord-est", "Est", "Sud-est", "Sud", "Sud-oest", "Oest", "Nord-oest"]
-        ix = int(round(((d % 360) / 45)))
-        return dirs[ix % 8]
-
     def get_color(value, thresholds):
         if pd.isna(value): return "grey"
         colors = ["grey", "green", "#E69F00", "orange", "red"]
@@ -802,53 +439,33 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
     
     y = 0.95
-    
-    # --- INICI DE LA MODIFICACIÓ ---
-    # Definim les dades de moviment directament amb les noves etiquetes
-    motion_data = {
-        'MD': params_calc.get('RM'),
-        'ML': params_calc.get('LM'),
-        'VM (0-6 km)': params_calc.get('Mean_Wind')
-    }
-    # --- FI DE LA MODIFICACIÓ ---
-
-    ax_params.text(0, y, "Moviment (dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
-
-    # Iterem sobre el nou diccionari directament
-    for display_name, vec in motion_data.items():
+    ax_params.text(0, y, "Moviment (dir/kts)", ha='left', weight='bold', fontsize=11); y-=0.08
+    for name, vec in motion.items():
         if vec is not None:
-            u_motion_ms = vec[0] * units('m/s'); v_motion_ms = vec[1] * units('m/s')
-            speed_kmh = mpcalc.wind_speed(u_motion_ms, v_motion_ms).to('km/h').m
-            direction_from_deg = mpcalc.wind_direction(u_motion_ms, v_motion_ms).to('deg').m
-            direction_to_deg = (direction_from_deg + 180) % 360
-            cardinal_dir_ca = degrees_to_cardinal_ca(direction_to_deg)
-            ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
-            ax_params.text(1, y, f"{cardinal_dir_ca} / {speed_kmh:.0f} km/h", ha='right', va='center')
+            speed = mpcalc.wind_speed(*vec).to('kt').m; direction = mpcalc.wind_direction(*vec).to('deg').m
+            ax_params.text(0.05, y, f"{name}:"); ax_params.text(0.95, y, f"{direction:.0f}°/{speed:.0f} kts", ha='right')
         else:
-            ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
-            ax_params.text(1, y, "---", ha='right', va='center')
-        y-=0.1
+            ax_params.text(0.05, y, f"{name}:"); ax_params.text(0.95, y, "---", ha='right')
+        y-=0.07
 
     y-=0.05
-    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
+    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.08
     for key, label in [('0-1km', '0-1 km'), ('0-6km', '0-6 km'), ('EBWD', 'Efectiu')]:
         val = params_calc.get(key if key == 'EBWD' else f'BWD_{key}', np.nan)
         color = get_color(val, THRESHOLDS['BWD'])
-        ax_params.text(0, y, f"{label}:", ha='left', va='center')
-        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
+        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
         y-=0.07
 
     y-=0.05
-    ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.1
+    ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.08
     for key, label in [('0-1km', '0-1 km'), ('0-3km', '0-3 km'), ('ESRH', 'Efectiva')]:
         val = params_calc.get(key if key == 'ESRH' else f'SRH_{key}', np.nan)
         color = get_color(val, THRESHOLDS['SRH'])
-        ax_params.text(0, y, f"{label}:", ha='left', va='center')
-        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
+        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
         y-=0.07
         
     return fig
-    
+
 def ui_caixa_parametres_sondeig(params):
     def get_color(value, thresholds, reverse_colors=False):
         if pd.isna(value): return "#808080"
@@ -904,37 +521,7 @@ def ui_caixa_parametres_sondeig(params):
     with cols[1]: styled_metric("SRH 0-1km", params.get('SRH_0-1km', np.nan), "m²/s²", 'SRH_0-1km')
     with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
         
-    # --- INICI DE LA MODIFICACIÓ ---
-    # Creem columnes per centrar el botó d'ajuda a sota de la graella
-    _, col_boto, _ = st.columns([2, 1, 2])
-
-    with col_boto:
-        # Creem el popover. L'emoji '❓' serà el botó.
-        with st.popover("❓ Ajuda", use_container_width=True):
-            st.markdown("""
-            **Guia Ràpida dels Paràmetres:**
-
-            ---
-            **ENERGIA (CAPE):**
-            - **SBCAPE:** Energia disponible per a una tempesta que s'inicia des de la superfície. És la "benzina" principal.
-            - **MUCAPE:** L'energia màxima possible, buscant el punt més inestable de l'atmosfera. Indica el potencial màxim.
-            - **MLCAPE:** Energia calculada des d'una capa barrejada a prop del terra. Més representatiu durant el dia.
-
-            **INHIBICIÓ I ESTABILITAT:**
-            - **SBCIN:** Energia negativa que una tempesta ha de superar per iniciar-se. Actua com una "tapa". Valors molt negatius dificulten les tempestes.
-            - **LI (Índex d'Elevació):** Mesura ràpida de la inestabilitat a nivells mitjans. Com més negatiu, més inestable.
-            - **PWAT:** Aigua precipitable. La quantitat total d'humitat disponible a la columna d'aire. Valors alts afavoreixen pluges fortes.
-
-            **NIVELLS CLAU:**
-            - **LCL (Nivell de Condensació):** Alçada de la base dels núvols. Valors baixos afavoreixen el temps sever i tornados.
-            - **LFC (Nivell de Lliure Convecció):** Alçada a partir de la qual la tempesta comença a créixer per si sola, sense necessitat d'empenta.
-            - **DCAPE:** Energia disponible per als corrents descendents. Valors alts indiquen potencial de ratxes de vent molt fortes ("reventons").
-
-            **VENT (CISALLAMENT I ROTACIÓ):**
-            - **BWD 0-6km:** Diferència de vent entre la superfície i 6 km d'alçada. Mesura clau del cisallament que organitza les tempestes. Valors > 20 nusos afavoreixen supercèl·lules.
-            - **SRH 0-1km:** Helicitat relativa a la tempesta. Mesura el potencial de rotació a nivells baixos, clau per a la formació de tornados.
-            - **CAPE 0-3km:** Energia a nivells baixos. Combinat amb SRH alt, augmenta el risc de tornados.
-            """)
+        
 
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
@@ -947,38 +534,14 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         col1, col2 = st.columns(2, gap="large")
 
         with col1:
-            fig_skewt = crear_skewt(p, T, Td, u, v, heights, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
+            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             with st.container(border=True):
                 ui_caixa_parametres_sondeig(params_calculats)
         
         with col2:
-            col_titol, col_boto = st.columns([0.85, 0.15])
-            
-            with col_titol:
-                st.markdown("##### Hodògraf Avançat")
-
-            with col_boto:
-                with st.popover("❓"):
-                    st.markdown("""
-                    **Què signifiquen aquestes sigles?**
-
-                    Aquesta secció mostra la trajectòria més probable de les tempestes en un entorn amb fort cisallament del vent.
-
-                    ---
-
-                    **MD (Moviment Dret):**
-                    Indica la trajectòria de la part **dreta** de la tempesta si aquesta es divideix. A l'hemisferi nord, aquesta és gairebé sempre la cèl·lula **dominant i més perillosa**, amb potencial de generar calamarsa grossa o tornados.
-
-                    **ML (Moviment Esquerre):**
-                    La trajectòria de la part **esquerra** de la tempesta. Sol ser més feble i tendeix a dissipar-se.
-
-                    **VM (Vent Mitjà 0-6 km):**
-                    Mostra la direcció general del flux de vent. Una tempesta normal seguiria aquesta ruta, però les supercèl·lules organitzades es desvien seguint les trajectòries **MD** o **ML**.
-                    """)
-
-            fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Anàlisi del Vent per a {poble_sel}")
+            fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
 
@@ -1064,7 +627,7 @@ Recorda, l'usuari té accés a aquests pobles: """ + ', '.join(CIUTATS_CATALUNYA
                     sounding_data, params_calculats = data_tuple
                     p, T, Td, u, v, heights, prof = sounding_data
                     
-                    fig_skewt = crear_skewt(p, T, Td, u, v, heights, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
+                    fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
                     buf_skewt = io.BytesIO(); fig_skewt.savefig(buf_skewt, format='png', dpi=150, bbox_inches='tight'); buf_skewt.seek(0); img_skewt = Image.open(buf_skewt); plt.close(fig_skewt); contingut_per_ia.append(img_skewt)
                     
                     fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
@@ -1200,6 +763,8 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
         with st.container(border=True):
             ui_info_desenvolupament_tempesta()
             
+
+
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteologix & Rainviewer | IA per Google Gemini.</p>", unsafe_allow_html=True)
 
@@ -1249,3 +814,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
