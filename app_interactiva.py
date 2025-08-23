@@ -173,7 +173,6 @@ def carregar_dades_mapa_base(variables, hourly_index):
     except Exception as e:
         # En cas de qualsevol altre error, el capturem i el retornem
         return None, f"Error en la càrrega de dades base del mapa: {e}"
-# --- FI DEL BLOC AFEGIT ---
 
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
