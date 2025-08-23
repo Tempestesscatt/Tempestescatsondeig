@@ -551,7 +551,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
     
     gs = fig.add_gridspec(nrows=2, ncols=2,
-                          height_ratios=[1.5, 6], # Donem una mica més d'espai a les barbes
+                          height_ratios=[1.5, 6],
                           width_ratios=[1.5, 1],
                           hspace=0.4, wspace=0.3)
 
@@ -561,7 +561,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
 
     fig.suptitle(titol, weight='bold', fontsize=16)
 
-    # --- Dibuixem les barbes de vent a l'eix superior (ax_barbs) ---
+    # --- Dibuixem les barbes de vent (sense canvis) ---
     ax_barbs.set_title("Vent a Nivells Clau", fontsize=11, pad=15)
     heights_agl = heights - heights[0]
     barb_altitudes_km = [1, 3, 6, 9]
@@ -581,15 +581,9 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     u_barbs = units.Quantity(u_barbs_list, u.units)
     v_barbs = units.Quantity(v_barbs_list, v.units)
     
-    # --- INICI DE LA CORRECCIÓ: Nova paleta de colors amb més contrast ---
-    
     speed_kmh = np.sqrt(u_barbs**2 + v_barbs**2).to('km/h').m
-
-    # Definim llindars de velocitat (km/h) i la NOVA paleta de colors
     thresholds = [10, 40, 70, 100, 130]
-    colors = ['dimgrey', '#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd']
-    # Gris Fosc -> Blau -> Verd -> Taronja -> Vermell -> Lila
-
+    colors_barbs = ['dimgrey', '#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd']
     x_pos = np.arange(len(barb_altitudes_km))
     u_barbs_kt = u_barbs.to('kt')
     v_barbs_kt = v_barbs.to('kt')
@@ -597,26 +591,18 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     for i, spd_kmh in enumerate(speed_kmh):
         if not np.isnan(spd_kmh):
             color_index = np.searchsorted(thresholds, spd_kmh)
-            color = colors[color_index]
-            
-            ax_barbs.barbs(x_pos[i], 0, u_barbs_kt[i], v_barbs_kt[i], 
-                           length=8, pivot='middle', color=color)
-            
-            ax_barbs.text(x_pos[i], -0.8, f"{spd_kmh:.0f} km/h", 
-                          ha='center', va='top', fontsize=9, color=color, weight='bold')
+            color = colors_barbs[color_index]
+            ax_barbs.barbs(x_pos[i], 0, u_barbs_kt[i], v_barbs_kt[i], length=8, pivot='middle', color=color)
+            ax_barbs.text(x_pos[i], -0.8, f"{spd_kmh:.0f} km/h", ha='center', va='top', fontsize=9, color=color, weight='bold')
         else:
             ax_barbs.text(x_pos[i], 0, "N/A", ha='center', va='center', fontsize=9, color='grey')
 
-    ax_barbs.set_xticks(x_pos)
-    ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km])
-    ax_barbs.set_yticks([])
-    ax_barbs.spines[:].set_visible(False)
-    ax_barbs.tick_params(axis='x', length=0, pad=5)
-    ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5)
+    ax_barbs.set_xticks(x_pos); ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km])
+    ax_barbs.set_yticks([]); ax_barbs.spines[:].set_visible(False)
+    ax_barbs.tick_params(axis='x', length=0, pad=5); ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5)
     ax_barbs.set_ylim(-1.5, 1.5)
-    # --- FI DE LA CORRECCIÓ ---
 
-    # --- Dibuix de l'hodògraf (ara a ax_hodo) ---
+    # --- Dibuix de l'hodògraf (sense canvis) ---
     h = Hodograph(ax_hodo, component_range=80.)
     h.add_grid(increment=20, color='gray', linestyle='--')
     
@@ -630,21 +616,28 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             u_mean_kt = (mean_wind_vec[0] * units('m/s')).to('kt').m
             v_mean_kt = (mean_wind_vec[1] * units('m/s')).to('kt').m
             arrow_scale = 1.5
-            ax_hodo.arrow(0, 0, u_mean_kt * arrow_scale, v_mean_kt * arrow_scale,
-                          color='black', linewidth=1.5,
-                          head_width=3, length_includes_head=True, zorder=10)
+            ax_hodo.arrow(0, 0, u_mean_kt * arrow_scale, v_mean_kt * arrow_scale, color='black', linewidth=1.5, head_width=3, length_includes_head=True, zorder=10)
     except Exception: pass
 
     try:
         shear_vec = mpcalc.bulk_shear(p, u, v, height=heights - heights[0], depth=6000 * units.m)
-        ax_hodo.arrow(0, 0, shear_vec[0].to('kt').m, shear_vec[1].to('kt').m,
-                      color='dimgray', linestyle='--', alpha=0.7, head_width=2, length_includes_head=True)
+        ax_hodo.arrow(0, 0, shear_vec[0].to('kt').m, shear_vec[1].to('kt').m, color='dimgray', linestyle='--', alpha=0.7, head_width=2, length_includes_head=True)
     except: pass
     ax_hodo.set_xlabel('U-Component (nusos)')
     ax_hodo.set_ylabel('V-Component (nusos)')
 
     # --- Dibuix del panell de text (ara a ax_params) ---
     ax_params.axis('off')
+    
+    # --- INICI DE LA MILLORA: Secció de Moviment actualitzada ---
+
+    # Funció auxiliar per convertir graus a direcció cardinal
+    def degrees_to_cardinal(d):
+        dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+        # Cada direcció cobreix 45 graus. Es desplaça 22.5 per centrar-ho.
+        ix = int(round(((d % 360) / 45)))
+        return dirs[ix % 8]
+
     def get_color(value, thresholds):
         if pd.isna(value): return "grey"
         colors = ["grey", "green", "#E69F00", "orange", "red"]
@@ -657,16 +650,31 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     
     y = 0.95
     motion = {'RM': params_calc.get('RM'), 'LM': params_calc.get('LM'), 'Vent Mitjà': params_calc.get('Mean_Wind')}
-    ax_params.text(0, y, "Moviment (dir/kts)", ha='left', weight='bold', fontsize=11); y-=0.08
+    
+    # Títol actualitzat
+    ax_params.text(0, y, "Moviment (dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.08
+    
     for name, vec in motion.items():
         if vec is not None:
-            u_motion_ms = vec[0] * units('m/s'); v_motion_ms = vec[1] * units('m/s')
-            speed = mpcalc.wind_speed(u_motion_ms, v_motion_ms).to('kt').m
-            direction = mpcalc.wind_direction(u_motion_ms, v_motion_ms).to('deg').m
-            ax_params.text(0.05, y, f"{name}:"); ax_params.text(0.95, y, f"{direction:.0f}°/{speed:.0f} kts", ha='right')
+            u_motion_ms = vec[0] * units('m/s')
+            v_motion_ms = vec[1] * units('m/s')
+            
+            # Càlcul de la velocitat en km/h
+            speed_kmh = mpcalc.wind_speed(u_motion_ms, v_motion_ms).to('km/h').m
+            
+            # Càlcul de la direcció i conversió a cardinal
+            direction_deg = mpcalc.wind_direction(u_motion_ms, v_motion_ms).to('deg').m
+            cardinal_dir = degrees_to_cardinal(direction_deg)
+            
+            # Format de text actualitzat
+            ax_params.text(0.05, y, f"{name}:")
+            ax_params.text(0.95, y, f"{cardinal_dir} / {speed_kmh:.0f} km/h", ha='right')
         else:
-            ax_params.text(0.05, y, f"{name}:"); ax_params.text(0.95, y, "---", ha='right')
+            ax_params.text(0.05, y, f"{name}:")
+            ax_params.text(0.95, y, "---", ha='right')
         y-=0.07
+
+    # --- FI DE LA MILLORA ---
 
     y-=0.05
     ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.08
@@ -685,7 +693,6 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         y-=0.07
         
     return fig
-    
     
 
 def ui_caixa_parametres_sondeig(params):
