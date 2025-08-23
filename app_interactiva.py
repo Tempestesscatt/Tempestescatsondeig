@@ -847,85 +847,357 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         
         
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
-    st.subheader("Assistent Meteo-Col·lega (amb Google Gemini)")
-    try: genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    except (KeyError, AttributeError): st.error("Falta la GEMINI_API_KEY als secrets de Streamlit."); return
-    username = st.session_state.get('username');
-    if not username: st.error("Error d'autenticació."); return
-    LIMIT_PER_WINDOW = 10; WINDOW_HOURS = 3; rate_limits = load_json_file(RATE_LIMIT_FILE)
-    user_limit_data = rate_limits.get(username, {"count": 0, "window_start_time": None}); limit_reached = False
+    # Configuración inicial
+    st.subheader("🌤️ Assistente Meteo-Col·lega Pro (con Google Gemini)")
+    
+    # Verificar configuración de API
+    try: 
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    except (KeyError, AttributeError): 
+        st.error("❌ Falta la GEMINI_API_KEY en los secrets de Streamlit.")
+        st.info("Por favor, configura tu API key en la sección de secrets de Streamlit.")
+        return
+    
+    # Verificar autenticación
+    username = st.session_state.get('username')
+    if not username: 
+        st.error("🔒 Error de autenticación. Por favor, inicia sesión.")
+        return
+    
+    # Configuración de límites de uso mejorada
+    LIMIT_PER_WINDOW = 15  # Aumentado ligeramente
+    WINDOW_HOURS = 3
+    PREMIUM_LIMIT = 30  # Límite para usuarios premium
+    
+    # Cargar límites de uso
+    rate_limits = load_json_file(RATE_LIMIT_FILE)
+    user_limit_data = rate_limits.get(username, {"count": 0, "window_start_time": None, "is_premium": False})
+    
+    # Verificar si el usuario es premium (lógica de ejemplo)
+    if user_limit_data.get("is_premium", False):
+        user_limit = PREMIUM_LIMIT
+        user_type = "Premium"
+    else:
+        user_limit = LIMIT_PER_WINDOW
+        user_type = "Estándar"
+    
+    # Gestión de ventana de tiempo
+    current_time = datetime.now(pytz.utc)
     if user_limit_data.get("window_start_time"):
         start_time = datetime.fromtimestamp(user_limit_data["window_start_time"], tz=pytz.utc)
-        if (datetime.now(pytz.utc) - start_time) > timedelta(hours=WINDOW_HOURS): user_limit_data.update({"count": 0, "window_start_time": None})
-    if user_limit_data.get("count", 0) >= LIMIT_PER_WINDOW:
-        limit_reached = True; time_left = (datetime.fromtimestamp(user_limit_data["window_start_time"], tz=pytz.utc) + timedelta(hours=WINDOW_HOURS)) - datetime.now(pytz.utc)
-        if time_left.total_seconds() > 0: st.warning(f"**Límit de {LIMIT_PER_WINDOW} preguntes assolit.** Accés renovat en **{format_time_left(time_left)}**.")
-        else: user_limit_data.update({"count": 0, "window_start_time": None}); rate_limits[username] = user_limit_data; save_json_file(rate_limits, RATE_LIMIT_FILE); limit_reached = False
-    if not limit_reached:
-        preguntes_restants = LIMIT_PER_WINDOW - user_limit_data.get("count", 0)
-        color = "green" if preguntes_restants > 3 else "orange" if 1 <= preguntes_restants <= 3 else "red"
-        st.markdown(f"""<div style="text-align: right; margin-top: -30px; margin-bottom: 10px;"><span style="font-size: 0.9em;">Preguntes restants: <strong style="color: {color}; font-size: 1.1em;">{preguntes_restants}/{LIMIT_PER_WINDOW}</strong></span></div>""", unsafe_allow_html=True)
+        time_since_start = current_time - start_time
+        
+        if time_since_start > timedelta(hours=WINDOW_HOURS):
+            # Reiniciar contador si ha pasado la ventana de tiempo
+            user_limit_data.update({"count": 0, "window_start_time": current_time.timestamp()})
+            rate_limits[username] = user_limit_data
+            save_json_file(rate_limits, RATE_LIMIT_FILE)
+    
+    # Verificar si se ha alcanzado el límite
+    current_count = user_limit_data.get("count", 0)
+    limit_reached = current_count >= user_limit
+    
+    # Mostrar información de límites de uso
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.markdown(f"**Usuario:** {username} ({user_type})")
+    with col2:
+        preguntes_restants = max(0, user_limit - current_count)
+        color = "green" if preguntes_restants > 5 else "orange" if preguntes_restants > 0 else "red"
+        emoji = "✅" if preguntes_restants > 5 else "⚠️" if preguntes_restants > 0 else "❌"
+        st.markdown(f"{emoji} **Preguntas restantes:** <span style='color: {color}; font-weight: bold;'>{preguntes_restants}/{user_limit}</span>", 
+                   unsafe_allow_html=True)
+    with col3:
+        if user_limit_data.get("window_start_time"):
+            reset_time = datetime.fromtimestamp(user_limit_data["window_start_time"], tz=pytz.utc) + timedelta(hours=WINDOW_HOURS)
+            time_left = reset_time - current_time
+            if time_left.total_seconds() > 0:
+                st.markdown(f"🕒 **Renovación:** {format_time_left(time_left)}")
+    
+    # Mensaje de límite alcanzado
+    if limit_reached:
+        reset_time = datetime.fromtimestamp(user_limit_data["window_start_time"], tz=pytz.utc) + timedelta(hours=WINDOW_HOURS)
+        time_left = reset_time - current_time
+        
+        if time_left.total_seconds() > 0:
+            st.warning(f"""
+            **Límite de consultas alcanzado.**
+            
+            Has utilizado {user_limit} preguntas en las últimas {WINDOW_HOURS} horas. 
+            Podrás realizar nuevas consultas en **{format_time_left(time_left)}**.
+            
+            *¿Eres un usuario frecuente? Considera actualizar a premium para aumentar tu límite.*
+            """)
+        else:
+            # Reiniciar si el tiempo ha expirado
+            user_limit_data.update({"count": 0, "window_start_time": None})
+            rate_limits[username] = user_limit_data
+            save_json_file(rate_limits, RATE_LIMIT_FILE)
+            limit_reached = False
+            st.rerun()
+    
+    # Inicializar chat si no existe
     if "chat" not in st.session_state:
         model = genai.GenerativeModel('gemini-1.5-flash')
-        system_prompt = """Ets 'Meteo-Col·lega', un expert en meteorologia de Catalunya. Ets directe, proper i parles de 'tu'. La teva única missió és donar LA CONCLUSIÓ FINAL.
-# REGLA D'OR: NO descriguis les dades. No diguis "el CAPE és X" o "l'hodògraf mostra Y". Això ja ho veu l'usuari. Tu has d'ajuntar totes les peces (mapa, sondeig, hodògraf) i donar el diagnòstic final: què passarà i on. Sigues breu i ves al gra.
-# EL TEU PROCÉS MENTAL:
-1. **On som?** L'usuari et preguntarà per un poble concret. Centra la teva resposta en aquella zona.
-2. **Hi ha disparador a prop?** Mira el mapa. Si hi ha una zona de convergència (línies de colors) a prop del poble, és un SÍ. Si no n'hi ha, és un NO.
-3. **Si es dispara, què passarà?** Mira el sondeig i l'hodògraf per saber el potencial.
-4. **Dóna la conclusió final:** Ajunta-ho tot en una resposta clara.
-# EXEMPLES DE RESPOSTES PERFECTES:
-- **(Pregunta per Lleida, amb convergència a prop i bon sondeig):** "Bona tarda! Avui a la teva zona de Ponent ho teniu tot de cara. Hi ha una bona línia de convergència a prop que actuarà de disparador, i el sondeig mostra prou 'benzina' i organització per a tempestes fortes. Compte a la tarda, que es pot posar interessant."
-- **(Pregunta per Mataró, sense convergència a prop):** "Què tal! Avui pel Maresme la cosa sembla tranquil·la. El problema és que no teniu cap disparador a prop; les línies de convergència queden molt a l'interior. Encara que el sondeig té potencial, si no hi ha qui encengui la metxa, no passarà gran cosa."
-- **(Pregunta per Berga, amb convergència llunyana):** "Ei! Per la teva zona del Berguedà avui sembla que calma. Ara bé, compte a les comarques de Girona! Allà sí que s'està formant una bona línia de convergència. Si vols veure el potencial real d'aquella zona, et recomano que canviïs al sondeig de **Girona** o **Figueres**."
-- **(Pregunta per Reus, amb convergència a prop però sondeig molt estable):** "Avui per la teva zona teniu un bon disparador amb aquesta convergència, però el sondeig està molt estable, gairebé no hi ha 'benzina' (CAPE). Així que, tot i la convergència, el més probable és que només es formin alguns núvols sin més conseqüències. Un dia tranquil."
-Recorda, l'usuari té accés a aquests pobles: """ + ', '.join(CIUTATS_CATALUNYA.keys())
-        missatge_inicial_model = "Ei! Sóc el teu Meteo-Col·lega. Tria un poble, fes-me una pregunta i et dono la conclusió del que pot passar avui."
-        st.session_state.chat = model.start_chat(history=[{'role': 'user', 'parts': [system_prompt]}, {'role': 'model', 'parts': [missatge_inicial_model]}]); st.session_state.messages = [{"role": "assistant", "content": missatge_inicial_model}]
-    
-    st.markdown(f"**Anàlisi per:** `{poble_sel.upper()}` | **Dia:** `{timestamp_str}`")
-    nivell_mapa_ia = st.selectbox("Nivell d'anàlisi del mapa:", [1000, 950, 925, 850, 800, 700], format_func=lambda x: f"{x} hPa", key="ia_level_selector_chat_final", disabled=limit_reached)
-    
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]): st.markdown(message["content"])
         
-    if prompt_usuari := st.chat_input("Què vols saber sobre el temps avui?", disabled=limit_reached):
-        st.session_state.messages.append({"role": "user", "content": prompt_usuari})
-        with st.chat_message("user"): st.markdown(prompt_usuari)
-        with st.chat_message("assistant"):
-            with st.spinner("Connectant totes les peces..."):
-                if user_limit_data.get("window_start_time") is None: user_limit_data["window_start_time"] = datetime.now(pytz.utc).timestamp()
-                user_limit_data["count"] += 1; rate_limits[username] = user_limit_data; save_json_file(rate_limits, RATE_LIMIT_FILE)
-                
-                map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
-                if error_map_ia: st.error(f"Error en carregar dades del mapa: {error_map_ia}"); return
-                fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str, MAP_EXTENT)
-                buf_mapa = io.BytesIO(); fig_mapa.savefig(buf_mapa, format='png', dpi=150, bbox_inches='tight'); buf_mapa.seek(0); img_mapa = Image.open(buf_mapa); plt.close(fig_mapa)
-                
-                contingut_per_ia = [img_mapa]
-                
-                if data_tuple: 
-                    sounding_data, params_calculats = data_tuple
-                    p, T, Td, u, v, heights, prof = sounding_data
-                    
-                    fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
-                    buf_skewt = io.BytesIO(); fig_skewt.savefig(buf_skewt, format='png', dpi=150, bbox_inches='tight'); buf_skewt.seek(0); img_skewt = Image.open(buf_skewt); plt.close(fig_skewt); contingut_per_ia.append(img_skewt)
-                    
-                    fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
-                    buf_hodo = io.BytesIO(); fig_hodo.savefig(buf_hodo, format='png', dpi=150, bbox_inches='tight'); buf_hodo.seek(0); img_hodo = Image.open(buf_hodo); plt.close(fig_hodo); contingut_per_ia.append(img_hodo)
+        # Prompt del sistema mejorado
+        system_prompt = """Eres 'Meteo-Col·lega Pro', un experto en meteorología de Catalunya con más de 20 años de experiencia. 
+        Eres directo, cercano y hablas de 'tú'. Tu misión es proporcionar un análisis completo pero conciso.
 
-                prompt_context = f"PREGUNTA DE L'USUARI: '{prompt_usuari}'"
-                contingut_per_ia.insert(0, prompt_context)
-                
+        # REGLAS PRINCIPALES:
+        1. **NO describas los datos crudos** - el usuario ya puede ver los valores específicos.
+        2. **Proporciona contexto regional** - explica cómo afecta la situación a la zona específica.
+        3. **Identifica patrones clave** - destaca los factores más relevantes para el pronóstico.
+        4. **Sé práctico** - ofrece insights útiles para la toma de decisiones.
+        5. **Menciona limitaciones** - si los datos tienen limitaciones, menciónalo brevemente.
+
+        # ESTRUCTURA DE RESPUESTA RECOMENDADA:
+        - **Situación actual:** Breve contexto de lo que está ocurriendo.
+        - **Factores clave:** 2-3 elementos más importantes a considerar.
+        - **Pronóstico conciso:** Qué esperar en las próximas horas.
+        - **Recomendación práctica:** Consejo específico para el usuario.
+
+        # EJEMPLOS DE RESPUESTAS:
+        - Para riesgo de tormentas: "La combinación de alta inestabilidad (CAPE > 2000 J/kg) y cizalladura moderada sugiere posible desarrollo de tormentas organizadas. Espera actividad entre las 15-18h, con riesgo de granizo pequeño. Recomiendo monitorizar hacia el noroeste después de las 14h."
+        - Para condiciones estables: "La atmósfera muestra notable estabilidad con inversión térmica en capas bajas. No se espera desarrollo convectivo significativo. Ideal para actividades al aire libre sin preocupaciones por lluvia."
+        - Para situaciones complejas: "Hay señales contradictorias: buena humedad superficial pero capa seca en niveles medios. Si se desarrollan tormentas, serían aisladas pero potencialmente intensas. Vigila especialmente entre las 17-19h."
+
+        Zonas disponibles: """ + ', '.join(CIUTATS_CATALUNYA.keys())
+        
+        missatge_inicial_model = f"""
+        ¡Hola! Soy tu Meteo-Col·lega Pro. 👋 
+        
+        He analizado los datos para **{poble_sel.upper()}** en la fecha **{timestamp_str}**.
+        
+        ¿En qué puedo ayudarte hoy? Puedes preguntarme sobre:
+        - Riesgo de tormentas o precipitación
+        - Condiciones para actividades específicas
+        - Explicación de patrones meteorológicos
+        - Comparación con otros días
+        - Cualquier otra duda meteorológica
+        """
+        
+        st.session_state.chat = model.start_chat(history=[
+            {'role': 'user', 'parts': [system_prompt]}, 
+            {'role': 'model', 'parts': [missatge_inicial_model]}
+        ])
+        st.session_state.messages = [{"role": "assistant", "content": missatge_inicial_model}]
+    
+    # Encabezado de análisis
+    st.markdown(f"### 📍 Análisis para: `{poble_sel.upper()}` | 📅 Fecha: `{timestamp_str}`")
+    
+    # Selector de nivel con descripción mejorada
+    nivell_options = {
+        1000: "Superficie (1000 hPa) - Condiciones en superficie",
+        950: "Nivel bajo (950 hPa) - ~500m altitud",
+        925: "Baja atmósfera (925 hPa) ~750m",
+        850: "Nivel medio (850 hPa) ~1500m - Importante para precipitación",
+        800: "Nivel medio-alto (800 hPa) ~2000m",
+        700: "Nivel alto (700 hPa) ~3000m - Dirección de sistemas"
+    }
+    
+    nivell_mapa_ia = st.selectbox(
+        "**Selecciona el nivel de análisis:**",
+        options=list(nivell_options.keys()),
+        format_func=lambda x: f"{x} hPa - {nivell_options[x]}",
+        key="ia_level_selector_chat_final",
+        disabled=limit_reached,
+        help="Selecciona el nivel atmosférico para el análisis. Diferentes niveles muestran patrones meteorológicos distintos."
+    )
+    
+    # Mostrar historial de chat
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+    
+    # Input de chat con sugerencias
+    if not limit_reached:
+        sugerencias = [
+            "¿Qué riesgo de tormentas hay hoy?",
+            "¿Es un buen día para actividades al aire libre?",
+            "Explica los patrones principales que ves",
+            "¿Cómo comparas hoy con días anteriores?",
+            "¿Hay algún factor inusual que deba conocer?"
+        ]
+        
+        st.markdown("**💡 Sugerencias de preguntas:**")
+        cols = st.columns(3)
+        for i, sug in enumerate(sugerencias):
+            with cols[i % 3]:
+                if st.button(sug, key=f"sug_{i}", help="Haz clic para usar esta pregunta"):
+                    st.session_state.pregunta_predefinida = sug
+                    st.rerun()
+    
+    # Manejar preguntas predefinidas
+    if "pregunta_predefinida" in st.session_state:
+        prompt_usuari = st.session_state.pregunta_predefinida
+        del st.session_state.pregunta_predefinida
+    else:
+        prompt_usuari = st.chat_input("¿Qué te gustaría saber sobre el tiempo hoy?", disabled=limit_reached)
+    
+    # Procesar pregunta del usuario
+    if prompt_usuari and not limit_reached:
+        # Actualizar contador de uso
+        if user_limit_data.get("window_start_time") is None:
+            user_limit_data["window_start_time"] = current_time.timestamp()
+        
+        user_limit_data["count"] += 1
+        rate_limits[username] = user_limit_data
+        save_json_file(rate_limits, RATE_LIMIT_FILE)
+        
+        # Añadir mensaje del usuario al historial
+        st.session_state.messages.append({"role": "user", "content": prompt_usuari})
+        with st.chat_message("user"):
+            st.markdown(prompt_usuari)
+        
+        # Procesar con asistente
+        with st.chat_message("assistant"):
+            with st.spinner("🔍 Analizando datos y generando insights..."):
                 try:
+                    # Cargar y procesar datos del mapa
+                    map_data_ia, error_map_ia = carregar_dades_mapa(nivell_mapa_ia, hourly_index_sel)
+                    if error_map_ia:
+                        st.error(f"Error cargando datos del mapa: {error_map_ia}")
+                        # Intentar con nivel alternativo si falla
+                        nivell_alternativo = 850 if nivell_mapa_ia != 850 else 700
+                        st.info(f"Intentando con nivel alternativo: {nivell_alternativo} hPa")
+                        map_data_ia, error_map_ia = carregar_dades_mapa(nivell_alternativo, hourly_index_sel)
+                        
+                        if error_map_ia:
+                            st.error(f"También falló el nivel alternativo: {error_map_ia}")
+                            return
+                    
+                    # Generar visualizaciones
+                    fig_mapa = crear_mapa_forecast_combinat(
+                        map_data_ia['lons'], map_data_ia['lats'], 
+                        map_data_ia['speed_data'], map_data_ia['dir_data'], 
+                        map_data_ia['dewpoint_data'], nivell_mapa_ia, 
+                        timestamp_str, MAP_EXTENT
+                    )
+                    buf_mapa = io.BytesIO()
+                    fig_mapa.savefig(buf_mapa, format='png', dpi=150, bbox_inches='tight')
+                    buf_mapa.seek(0)
+                    img_mapa = Image.open(buf_mapa)
+                    plt.close(fig_mapa)
+                    
+                    # Preparar contenido para IA
+                    contingut_per_ia = [img_mapa]
+                    
+                    # Añadir sondeo y hodógrafo si están disponibles
+                    if data_tuple: 
+                        sounding_data, params_calculats = data_tuple
+                        p, T, Td, u, v, heights, prof = sounding_data
+                        
+                        # Crear gráfico skew-T
+                        fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Perfil Vertical - {poble_sel}")
+                        buf_skewt = io.BytesIO()
+                        fig_skewt.savefig(buf_skewt, format='png', dpi=150, bbox_inches='tight')
+                        buf_skewt.seek(0)
+                        img_skewt = Image.open(buf_skewt)
+                        plt.close(fig_skewt)
+                        contingut_per_ia.append(img_skewt)
+                        
+                        # Crear hodógrafo
+                        fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodógrafo - {poble_sel}")
+                        buf_hodo = io.BytesIO()
+                        fig_hodo.savefig(buf_hodo, format='png', dpi=150, bbox_inches='tight')
+                        buf_hodo.seek(0)
+                        img_hodo = Image.open(buf_hodo)
+                        plt.close(fig_hodo)
+                        contingut_per_ia.append(img_hodo)
+                    
+                    # Añadir contexto de la pregunta
+                    prompt_context = f"""
+                    PREGUNTA DEL USUARIO: '{prompt_usuari}'
+                    UBICACIÓN: {poble_sel}
+                    FECHA: {timestamp_str}
+                    NIVEL DE ANÁLISIS: {nivell_mapa_ia} hPa ({nivell_options.get(nivell_mapa_ia, '')})
+                    """
+                    contingut_per_ia.insert(0, prompt_context)
+                    
+                    # Obtener respuesta del modelo
                     resposta = st.session_state.chat.send_message(contingut_per_ia)
                     full_response = resposta.text
+                    
                 except Exception as e:
-                    full_response = f"Vaja, hi ha hagut un error contactant la IA: {e}"
-                    if "429" in str(e): full_response = "**Ep, hem superat el límit de consultes a l'API de Google per avui.**"
-                st.markdown(full_response)
+                    if "429" in str(e):
+                        full_response = """
+                        **⚠️ Límite de frecuencia alcanzado en la API.**
+                        
+                        Hemos excedido el límite de consultas a la API de Google Gemini. 
+                        Por favor, espera unos minutos antes de realizar otra consulta.
+                        
+                        Mientras tanto, puedes:
+                        - Revisar los datos visuales disponibles
+                        - Consultar predicciones de otras fuentes
+                        - Intentar de nuevo en 5-10 minutos
+                        """
+                        # Revertir contador por error de API
+                        user_limit_data["count"] = max(0, user_limit_data.get("count", 1) - 1)
+                        rate_limits[username] = user_limit_data
+                        save_json_file(rate_limits, RATE_LIMIT_FILE)
+                    else:
+                        full_response = f"""
+                        **❌ Error técnico inesperado.**
+                        
+                        Hemos encontrado un problema al procesar tu consulta: 
+                        `{str(e)}`
+                        
+                        Por favor, intenta de nuevo o contacta con soporte si el problema persiste.
+                        """
+            
+            # Mostrar respuesta
+            st.markdown(full_response)
+            
+            # Añadir botones de feedback
+            col_fb1, col_fb2, col_fb3 = st.columns([1, 1, 3])
+            with col_fb1:
+                if st.button("👍 Útil", key="feedback_positive"):
+                    st.success("¡Gracias por tu feedback!")
+            with col_fb2:
+                if st.button("👎 Poco útil", key="feedback_negative"):
+                    st.info("Lamentamos que no fuera útil. ¿Podrías especificar qué mejorar?")
+            with col_fb3:
+                if st.button("🔄 Reformular", key="reformular"):
+                    st.info("Reformulando la respuesta...")
+                    # Lógica para reformular (simplificada)
+                    try:
+                        reformulada = st.session_state.chat.send_message(
+                            f"Reformula esta respuesta de manera más clara o concisa: {full_response}"
+                        )
+                        st.markdown("**Respuesta reformulada:**")
+                        st.markdown(reformulada.text)
+                        full_response = reformulada.text
+                    except:
+                        st.warning("No se pudo reformular en este momento.")
+        
+        # Añadir respuesta al historial y rerun
         st.session_state.messages.append({"role": "assistant", "content": full_response})
         st.rerun()
+
+    # Pie de página informativo
+    if not limit_reached:
+        st.markdown("---")
+        st.markdown("""
+        <div style='font-size: 0.8em; color: #666;'>
+        <b>Nota:</b> Este asistente utiliza modelos de IA para interpretar datos meteorológicos. 
+        Las predicciones pueden tener incertidumbre inherente y deben considerarse como guías, 
+        no como pronósticos definitivos. Para alertas oficiales, consulta siempre fuentes oficiales.
+        </div>
+        """, unsafe_allow_html=True)
+
+# Función auxiliar para formatear tiempo restante
+def format_time_left(time_left):
+    hours, remainder = divmod(time_left.total_seconds(), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    
+    if hours > 0:
+        return f"{int(hours)}h {int(minutes)}m"
+    elif minutes > 0:
+        return f"{int(minutes)}m {int(seconds)}s"
+    else:
+        return f"{int(seconds)}s"
+        
 def ui_pestanya_xat(chat_history):
     st.subheader("Xat en Línia per a Usuaris"); col1, col2 = st.columns([0.7, 0.3]);
     with col1: st.caption("Els missatges s'esborren automàticament després d'una hora.")
