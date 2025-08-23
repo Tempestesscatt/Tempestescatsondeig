@@ -268,6 +268,14 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             print(f"Error LI: {e}")
             params_calc['LI'] = np.nan
         
+        # Fallback para LI si el cálculo principal falló
+        if np.isnan(params_calc.get('LI', np.nan)):
+            try:
+                params_calc['LI'] = calcular_li_manual(p, T, prof)
+            except Exception as e:
+                print(f"Error cálculo manual LI: {e}")
+                params_calc['LI'] = np.nan
+        
         # Cálculo de DCAPE - CORREGIDO
         try:
             dcape = mpcalc.dcape(p, T, Td, prof)
@@ -282,6 +290,14 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except Exception as e:
             print(f"Error DCAPE: {e}")
             params_calc['DCAPE'] = np.nan
+        
+        # Fallback para DCAPE si el cálculo principal falló
+        if np.isnan(params_calc.get('DCAPE', np.nan)):
+            try:
+                params_calc['DCAPE'] = calcular_dcape_manual(p, T, Td)
+            except Exception as e:
+                print(f"Error cálculo manual DCAPE: {e}")
+                params_calc['DCAPE'] = np.nan
         
         # Cálculo de LFC
         try:
