@@ -213,7 +213,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     v = v[sort_idx]
     heights = heights[sort_idx]
     
-    params_calc = {}
+    params_calc = {}  # ← AQUÍ SE DEFINE params_calc
     prof = None
     heights_agl = heights - heights[0]
     
@@ -225,12 +225,37 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             print(f"Error calculant el perfil de la parcel·la: {e}")
             return None, f"Error calculant el perfil de la parcel·la: {e}"
         
-        # [Cálculos de CAPE/CIN sin cambios...]
+        # Cálculo de CAPE/CIN para superficie
+        try:
+            sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
+            params_calc['SBCAPE'] = float(sbcape.m) if hasattr(sbcape, 'm') and not isinstance(sbcape.m, np.ndarray) else np.nan
+            params_calc['SBCIN'] = float(sbcin.m) if hasattr(sbcin, 'm') and not isinstance(sbcin.m, np.ndarray) else np.nan
+            params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if hasattr(sbcape, 'm') and not isinstance(sbcape.m, np.ndarray) and float(sbcape.m) > 0 else 0.0
+        except Exception as e:
+            print(f"Error CAPE/CIN: {e}")
+            params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
         
-        # Cálculo del Lifted Index - CORRECCIÓN COMPLETA
+        # Cálculo de CAPE/CIN más inestable
+        try:
+            mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td, depth=300 * units.hPa)
+            params_calc['MUCAPE'] = float(mucape.m) if hasattr(mucape, 'm') and not isinstance(mucape.m, np.ndarray) else np.nan
+            params_calc['MUCIN'] = float(mucin.m) if hasattr(mucin, 'm') and not isinstance(mucin.m, np.ndarray) else np.nan
+        except Exception as e:
+            print(f"Error MUCAPE/MUCIN: {e}")
+            params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
+        
+        # Cálculo de CAPE/CIN de capa mezclada
+        try:
+            mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td, depth=100 * units.hPa)
+            params_calc['MLCAPE'] = float(mlcape.m) if hasattr(mlcape, 'm') and not isinstance(mlcape.m, np.ndarray) else np.nan
+            params_calc['MLCIN'] = float(mlcin.m) if hasattr(mlcin, 'm') and not isinstance(mlcin.m, np.ndarray) else np.nan
+        except Exception as e:
+            print(f"Error MLCAPE/MLCIN: {e}")
+            params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
+        
+        # Cálculo del Lifted Index - CORREGIDO
         try:
             li = mpcalc.lifted_index(p, T, prof)
-            # Manejar diferentes tipos de retorno de metpy
             if hasattr(li, 'magnitude'):
                 params_calc['LI'] = float(li.magnitude)
             elif hasattr(li, 'm'):
@@ -240,13 +265,12 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             else:
                 params_calc['LI'] = float(li)
         except Exception as e:
-            print(f"Error calculando LI: {e}")
+            print(f"Error LI: {e}")
             params_calc['LI'] = np.nan
         
-        # Cálculo de DCAPE - CORRECCIÓN COMPLETA
+        # Cálculo de DCAPE - CORREGIDO
         try:
             dcape = mpcalc.dcape(p, T, Td, prof)
-            # Manejar diferentes tipos de retorno
             if hasattr(dcape, 'magnitude'):
                 params_calc['DCAPE'] = float(dcape.magnitude)
             elif hasattr(dcape, 'm'):
@@ -256,14 +280,43 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             else:
                 params_calc['DCAPE'] = float(dcape)
         except Exception as e:
-            print(f"Error calculando DCAPE: {e}")
+            print(f"Error DCAPE: {e}")
             params_calc['DCAPE'] = np.nan
         
-        # [Otros cálculos sin cambios...]
-        
-        # Cálculo de nivel de congelación - CORRECCIÓN COMPLETA
+        # Cálculo de LFC
         try:
-            # Método 1: Usar freezing_level
+            lfc_p, lfc_t = mpcalc.lfc(p, T, Td, prof)
+            params_calc['LFC_p'] = float(lfc_p.m) if hasattr(lfc_p, 'm') and not isinstance(lfc_p.m, np.ndarray) else np.nan
+            if not np.isnan(params_calc['LFC_p']):
+                params_calc['LFC_Hgt'] = float(np.interp(params_calc['LFC_p'], p.m[::-1], heights_agl.m[::-1]))
+            else:
+                params_calc['LFC_Hgt'] = np.nan
+        except Exception as e:
+            print(f"Error LFC: {e}")
+            params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
+        
+        # Cálculo de LCL
+        try:
+            lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
+            params_calc['LCL_p'] = float(lcl_p.m) if hasattr(lcl_p, 'm') and not isinstance(lcl_p.m, np.ndarray) else np.nan
+            if not np.isnan(params_calc['LCL_p']):
+                params_calc['LCL_Hgt'] = float(np.interp(params_calc['LCL_p'], p.m[::-1], heights_agl.m[::-1]))
+            else:
+                params_calc['LCL_Hgt'] = np.nan
+        except Exception as e:
+            print(f"Error LCL: {e}")
+            params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
+        
+        # Cálculo de agua precipitable
+        try:
+            pwat = mpcalc.precipitable_water(p, Td)
+            params_calc['PWAT'] = float(pwat.to('mm').m) if hasattr(pwat, 'm') and not isinstance(pwat.m, np.ndarray) else np.nan
+        except Exception as e:
+            print(f"Error PWAT: {e}")
+            params_calc['PWAT'] = np.nan
+        
+        # Cálculo de nivel de congelación - CORREGIDO
+        try:
             frz_pressure, frz_temp = mpcalc.freezing_level(p, T)
             if hasattr(frz_pressure, 'magnitude'):
                 params_calc['FRZG_Lvl_p'] = float(frz_pressure.magnitude)
@@ -272,27 +325,30 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             else:
                 params_calc['FRZG_Lvl_p'] = float(frz_pressure)
         except Exception as e:
-            print(f"Error calculando freezing level (método 1): {e}")
-            try:
-                # Método 2: Buscar manualmente el nivel de 0°C
-                temp_interp = np.interp(0, T.m, p.m)
-                params_calc['FRZG_Lvl_p'] = float(temp_interp)
-            except Exception as e2:
-                print(f"Error calculando freezing level (método 2): {e2}")
-                params_calc['FRZG_Lvl_p'] = np.nan
+            print(f"Error freezing level: {e}")
+            params_calc['FRZG_Lvl_p'] = np.nan
     
     # Cálculo de movimiento de tormenta
     try:
         rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
-        # Asegurar valores escalares
         rm_u = float(rm[0].m) if hasattr(rm[0], 'm') else float(rm[0])
         rm_v = float(rm[1].m) if hasattr(rm[1], 'm') else float(rm[1])
         params_calc['RM'] = (rm_u, rm_v)
     except Exception as e:
-        print(f"Error calculando movimiento de tormenta: {e}")
+        print(f"Error movimiento tormenta: {e}")
         params_calc['RM'] = (np.nan, np.nan)
     
-    # Cálculo de helicidad relativa a la tormenta (SRH) - CORRECCIÓN COMPLETA
+    # Cálculo de cizalladura del viento (BWD)
+    for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
+        try:
+            bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter)
+            bwd_speed = mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m
+            params_calc[f'BWD_{name}'] = float(bwd_speed) if not isinstance(bwd_speed, np.ndarray) else np.nan
+        except Exception as e:
+            print(f"Error BWD {name}: {e}")
+            params_calc[f'BWD_{name}'] = np.nan
+    
+    # Cálculo de helicidad relativa a la tormenta (SRH) - CORREGIDO
     if not np.isnan(params_calc.get('RM', (np.nan, np.nan))[0]):
         try:
             u_storm, v_storm = params_calc['RM']
@@ -304,7 +360,6 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                                                     depth=depth_m * units.meter, 
                                                     storm_u=u_storm, storm_v=v_storm)
                 
-                # Manejar diferentes tipos de retorno
                 if hasattr(srh, 'magnitude'):
                     params_calc[f'SRH_{name}'] = float(srh.magnitude)
                 elif hasattr(srh, 'm'):
@@ -315,13 +370,20 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                     params_calc[f'SRH_{name}'] = float(srh)
                     
         except Exception as e:
-            print(f"Error calculando SRH: {e}")
+            print(f"Error SRH: {e}")
             params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
     else:
-        print("RM no disponible para cálculo de SRH")
+        print("RM no disponible para SRH")
         params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
     
-    # [Resto del código sin cambios...]
+    # Cálculo de CAPE en capa 0-3km
+    try:
+        idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
+        cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
+        params_calc['CAPE_0-3km'] = float(cape_0_3.m) if hasattr(cape_0_3, 'm') and not isinstance(cape_0_3.m, np.ndarray) else np.nan
+    except Exception as e:
+        print(f"Error CAPE 0-3km: {e}")
+        params_calc['CAPE_0-3km'] = np.nan
     
     return ((p, T, Td, u, v, heights, prof), params_calc), None
 
