@@ -768,7 +768,37 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                 ui_caixa_parametres_sondeig(params_calculats)
         
         with col2:
-            fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
+            # --- INICI DE LA MILLORA: Botó d'ajuda contextual ---
+            
+            # Creem dues columnes per alinear el títol a l'esquerra i el botó a la dreta
+            col_titol, col_boto = st.columns([0.85, 0.15])
+            
+            with col_titol:
+                st.markdown("##### Hodògraf Avançat") # Un títol estàtic per a la secció
+
+            with col_boto:
+                # Creem el popover. L'emoji '❓' serà el botó.
+                with st.popover("❓"):
+                    st.markdown("""
+                    **Què signifiquen aquestes sigles?**
+
+                    Aquesta secció mostra la trajectòria més probable de les tempestes en un entorn amb fort cisallament del vent.
+
+                    ---
+
+                    **MD (Moviment Dret):**
+                    Indica la trajectòria de la part **dreta** de la tempesta si aquesta es divideix. A l'hemisferi nord, aquesta és gairebé sempre la cèl·lula **dominant i més perillosa**, amb potencial de generar calamarsa grossa o tornados.
+
+                    **ML (Moviment Esquerre):**
+                    La trajectòria de la part **esquerra** de la tempesta. Sol ser més feble i tendeix a dissipar-se.
+
+                    **VM (Vent Mitjà 0-6 km):**
+                    Mostra la direcció general del flux de vent. Una tempesta normal seguiria aquesta ruta, però les supercèl·lules organitzades es desvien seguint les trajectòries **MD** o **ML**.
+                    """)
+
+            # --- FI DE LA MILLORA ---
+
+            fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Anàlisi del Vent per a {poble_sel}")
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
 
