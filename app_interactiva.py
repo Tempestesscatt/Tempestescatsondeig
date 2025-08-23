@@ -196,7 +196,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                 # Encontrar temperatura de la parcela a 500 hPa
                 T_parcel_500 = prof[idx_500]
                 # LI = T_ambiente - T_parcela a 500 hPa
-                params_calc['LI'] = (T_500 - T_parcel_500).m if hasattr(T_500, 'm') else (T_500 - T_parcel_500)
+                li_value = T_500 - T_parcel_500
+                params_calc['LI'] = li_value.m if hasattr(li_value, 'm') else li_value
             except:
                 params_calc['LI'] = np.nan
 
@@ -212,7 +213,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 
         # Cálculo de PWAT
         try: 
-            params_calc['PWAT'] = mpcalc.precipitable_water(p, Td).m if hasattr(mpcalc.precipitable_water(p, Td), 'm') else mpcalc.precipitable_water(p, Td)
+            pwat_value = mpcalc.precipitable_water(p, Td)
+            params_calc['PWAT'] = pwat_value.m if hasattr(pwat_value, 'm') else pwat_value
         except:
             params_calc['PWAT'] = np.nan
         
@@ -226,10 +228,12 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                     T_parcel = prof[i]
                     if T_parcel < T_env:  # Solo donde la parcela es más fría
                         # Aproximación simple: g * ΔT * Δz / T
-                        delta_z = (heights[i+1] - heights[i]).to('m')
-                        delta_T = (T_env - T_parcel).to('K')
-                        dcape_value += (9.8 * delta_T * delta_z / T_env).m
-            params_calc['DCAPE'] = dcape_value
+                        delta_z = (heights[i+1] - heights[i])
+                        delta_T = (T_env - T_parcel)
+                        dcape_value += (9.8 * delta_T * delta_z / T_env)
+            
+            # Asegurarnos de obtener el valor numérico
+            params_calc['DCAPE'] = dcape_value.m if hasattr(dcape_value, 'm') else dcape_value
         except:
             params_calc['DCAPE'] = np.nan
                 
@@ -237,7 +241,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         try:
             lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
             params_calc['LCL_p'] = lcl_p.m if hasattr(lcl_p, 'm') else lcl_p
-            params_calc['LCL_Hgt'] = mpcalc.pressure_to_height_std(lcl_p).m if hasattr(mpcalc.pressure_to_height_std(lcl_p), 'm') else mpcalc.pressure_to_height_std(lcl_p)
+            lcl_height = mpcalc.pressure_to_height_std(lcl_p)
+            params_calc['LCL_Hgt'] = lcl_height.m if hasattr(lcl_height, 'm') else lcl_height
         except:
             params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan, np.nan
         
@@ -269,8 +274,9 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         
         # Cálculo del nivel de congelación
         try:
-            p_frz = np.interp(0, T.to('degC').m, p.m) * units.hPa
-            params_calc['FRZG_Lvl_p'] = p_frz.m if hasattr(p_frz, 'm') else p_frz
+            # Encontrar donde la temperatura cruza 0°C
+            p_frz = np.interp(0, T.magnitude if hasattr(T, 'magnitude') else T, p.magnitude if hasattr(p, 'magnitude') else p)
+            params_calc['FRZG_Lvl_p'] = p_frz
         except:
             params_calc['FRZG_Lvl_p'] = np.nan
 
@@ -294,6 +300,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             mean_u = np.mean(u)
             mean_v = np.mean(v)
             
+            # Asegurarnos de obtener valores numéricos
             params_calc['RM'] = (rm_u.m if hasattr(rm_u, 'm') else rm_u, rm_v.m if hasattr(rm_v, 'm') else rm_v)
             params_calc['LM'] = (lm_u.m if hasattr(lm_u, 'm') else lm_u, lm_v.m if hasattr(lm_v, 'm') else lm_v)
             params_calc['Mean_Wind'] = (mean_u.m if hasattr(mean_u, 'm') else mean_u, mean_v.m if hasattr(mean_v, 'm') else mean_v)
@@ -310,7 +317,11 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                     shear_u = u[idx_depth] - u[0]
                     shear_v = v[idx_depth] - v[0]
                     shear_speed = np.sqrt(shear_u**2 + shear_v**2)
-                    params_calc[f'BWD_{name}'] = shear_speed.to('kt').m if hasattr(shear_speed, 'to') else shear_speed
+                    # Convertir a nudos si es una quantity, de lo contrario asumir que ya está en nudos
+                    if hasattr(shear_speed, 'to'):
+                        params_calc[f'BWD_{name}'] = shear_speed.to('kt').m
+                    else:
+                        params_calc[f'BWD_{name}'] = shear_speed
                 else:
                     params_calc[f'BWD_{name}'] = np.nan
             except:
@@ -320,27 +331,43 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         if params_calc.get('RM') is not None:
             try:
                 u_storm, v_storm = params_calc['RM']
-                params_calc['SR_Wind'] = np.sqrt((u[0] - u_storm)**2 + (v[0] - v_storm)**2)
+                # Calcular velocidad del viento relativo a la tormenta
+                sr_wind_u = u[0] - u_storm
+                sr_wind_v = v[0] - v_storm
+                if hasattr(sr_wind_u, 'to'):
+                    params_calc['SR_Wind'] = mpcalc.wind_speed(sr_wind_u, sr_wind_v).to('kt').m
+                else:
+                    params_calc['SR_Wind'] = np.sqrt(sr_wind_u**2 + sr_wind_v**2)
                 
                 # Calcular SRH 0-1km
                 idx_1km = np.argmin(np.abs(heights_agl - 1000 * units.m))
                 srh_0_1 = 0
                 for i in range(1, idx_1km+1):
-                    du = (u[i] - u_storm).m if hasattr(u[i], 'm') else (u[i] - u_storm)
-                    dv = (v[i] - v_storm).m if hasattr(v[i], 'm') else (v[i] - v_storm)
-                    du_prev = (u[i-1] - u_storm).m if hasattr(u[i-1], 'm') else (u[i-1] - u_storm)
-                    dv_prev = (v[i-1] - v_storm).m if hasattr(v[i-1], 'm') else (v[i-1] - v_storm)
-                    srh_0_1 += (du * dv_prev - dv * du_prev)
+                    du = (u[i] - u_storm)
+                    dv = (v[i] - v_storm)
+                    du_prev = (u[i-1] - u_storm)
+                    dv_prev = (v[i-1] - v_storm)
+                    # Asegurarnos de obtener valores numéricos
+                    du_val = du.m if hasattr(du, 'm') else du
+                    dv_val = dv.m if hasattr(dv, 'm') else dv
+                    du_prev_val = du_prev.m if hasattr(du_prev, 'm') else du_prev
+                    dv_prev_val = dv_prev.m if hasattr(dv_prev, 'm') else dv_prev
+                    srh_0_1 += (du_val * dv_prev_val - dv_val * du_prev_val)
                 
                 # Calcular SRH 0-3km
                 idx_3km = np.argmin(np.abs(heights_agl - 3000 * units.m))
                 srh_0_3 = 0
                 for i in range(1, idx_3km+1):
-                    du = (u[i] - u_storm).m if hasattr(u[i], 'm') else (u[i] - u_storm)
-                    dv = (v[i] - v_storm).m if hasattr(v[i], 'm') else (v[i] - v_storm)
-                    du_prev = (u[i-1] - u_storm).m if hasattr(u[i-1], 'm') else (u[i-1] - u_storm)
-                    dv_prev = (v[i-1] - v_storm).m if hasattr(v[i-1], 'm') else (v[i-1] - v_storm)
-                    srh_0_3 += (du * dv_prev - dv * du_prev)
+                    du = (u[i] - u_storm)
+                    dv = (v[i] - v_storm)
+                    du_prev = (u[i-1] - u_storm)
+                    dv_prev = (v[i-1] - v_storm)
+                    # Asegurarnos de obtener valores numéricos
+                    du_val = du.m if hasattr(du, 'm') else du
+                    dv_val = dv.m if hasattr(dv, 'm') else dv
+                    du_prev_val = du_prev.m if hasattr(du_prev, 'm') else du_prev
+                    dv_prev_val = dv_prev.m if hasattr(dv_prev, 'm') else dv_prev
+                    srh_0_3 += (du_val * dv_prev_val - dv_val * du_prev_val)
                 
                 params_calc['SRH_0-1km'] = srh_0_1
                 params_calc['SRH_0-3km'] = srh_0_3
@@ -353,23 +380,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         return ((p, T, Td, u, v, heights, prof), params_calc), None
     except Exception as e: 
         return None, f"Error en processar dades del sondeig: {e}"
-
-@st.cache_data(ttl=3600)
-def carregar_dades_mapa_base(variables, hourly_index):
-    try:
-        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 12), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 12)
-        lon_grid, lat_grid = np.meshgrid(lons, lats)
-        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
-        responses = openmeteo.weather_api(API_URL, params=params)
-        output = {var: [] for var in ["lats", "lons"] + variables}
-        for r in responses:
-            vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
-            if not any(np.isnan(v) for v in vals):
-                output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
-                for i, var in enumerate(variables): output[var].append(vals[i])
-        if not output["lats"]: return None, "No s'han rebut dades vàlides."
-        return output, None
-    except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
