@@ -839,6 +839,85 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
+            
+            # CAJA DESPLEGABLE BAJO EL HODÓGRAFO - NUEVA SECCIÓN
+            with st.expander("🌀 Com Interpretar l'Hodògraf", expanded=False):
+                st.markdown("""
+                ## 🌀 **Guia d'Interpretació de l'Hodògraf**
+                
+                ### 🎨 **Colors i Capes d'Alçada**
+                - **Vermell**: 0-1 km (Capa límit)
+                - **Blau**: 1-3 km (Baixa mitjana troposfera)  
+                - **Verd**: 3-6 km (Mitjana troposfera)
+                - **Lila**: 6-9 km (Alta troposfera)
+                - **Groc**: 9-12 km (Alta troposfera)
+                
+                ### 📍 **Marcadors de Moviment**
+                - **🔷 MD (Moviment Dret)**: Trajectòria de la part dreta de la tempesta
+                - **🔶 ML (Moviment Esquerre)**: Trajectòria de la part esquerra
+                - **⚫ VM (Vent Mitjà)**: Moviment mitjà de la tempesta
+                
+                ### 🎯 **Interpretació dels Moviments**
+                
+                **MD vs ML a Catalunya**:
+                - **MD (Dret)**: Almost sempre la cèl·lula dominant i més perillosa
+                - **ML (Esquerre)**: Tendència a dissipar-se més ràpidament
+                
+                **Exemples de Configuracions**:
+                
+                **Hodògraf Corbat (Favorable)**:
+                - Forma de "C" o "S" marcada
+                - Vent canviant amb l'altura
+                - **Resultat**: Tempestes organitzades amb rotació
+                
+                **Hodògraf Recte (Poc organitzat)**:
+                - Línia quasi recta
+                - Poc canvi de direcció
+                - **Resultat**: Tempestes aïllades poc organitzades
+                
+                **Hodògraf Gran (Supercèl·lules)**:
+                - Gran extensió en totes direccions
+                - Fort cisallament
+                - **Resultat**: Alt potencial per supercèl·lules
+                
+                ### 📏 **Mides i Escales**
+                - **Eixos**: Mesuren components del vent (nusos)
+                - **Distància al centre**: Indica velocitat del vent
+                - **Grandària general**: Indica cisallament total
+                
+                ### 🎪 **Escenaris Pratcis a Catalunya**
+                
+                **Configuració de Ponent**:
+                - Vent de ponent a baixos nivells
+                - Vent del sud a mitjans nivells
+                - **Resultat**: Tempestes que es mouen cap a la costa
+                
+                **Configuració de Llevant**:
+                - Vent de llevant a baixos nivells  
+                - Vent de ponent a alts nivells
+                - **Resultat**: Tempestes estacionàries o retrògrades
+                
+                **Configuració de Sud**:
+                - Vent del sud a tots els nivells
+                - **Resultat**: Tempestes que pugen cap al Pirineu
+                
+                ### ⚠️ **Atenció a Aquests Patterns**
+                
+                **Signes de Rotació**:
+                - Hodògraf corbat i ample
+                - Gran SRH (Helicitat)
+                - Moviment MD ben definit
+                
+                **Signes de Cisallament**:
+                - Hodògraf gran i estès
+                - Diferència clara entre capes
+                - BWD (Bulk Wind Difference) alt
+                
+                **Signes de Inestabilitat**:
+                - Vent feble a baixos nivells
+                - Fort vent a mitjans nivells
+                - Canvis sobtats de direcció
+                """)
 
             st.markdown("##### Radar de Precipitació en Temps Real")
             radar_url = f"https://www.rainviewer.com/map.html?loc={lat_sel},{lon_sel},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
