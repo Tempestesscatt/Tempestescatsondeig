@@ -487,7 +487,7 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     skew.plot_moist_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     skew.plot_mixing_lines(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     
-    # --- INICI DE LA MEJORA: Sombreado Personalizado por Capas ---
+    # --- INICIO DE LA MEJORA: Sombreado Personalizado por Capas ---
     if prof is not None:
         p_np = p.m
         T_np = T.m
@@ -530,9 +530,13 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
         # Calculem el LCL per saber on es creuen les línies
         lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
         
-        # Dibuixem la línia de relació de barreja des del punt de rosada de superfície
-        skew.plot_mixing_lines(w=mpcalc.mixing_ratio(p[0], Td[0]), p=[p[0], lcl_p], 
+        # --- LÍNIA CORREGIDA ---
+        # Primer calculem la pressió de vapor (e) i després la relació de barreja (w)
+        e = mpcalc.saturation_vapor_pressure(Td[0])
+        w = mpcalc.mixing_ratio(e, p[0])
+        skew.plot_mixing_lines(w=w, p=[p[0], lcl_p], 
                                color='darkgreen', linestyle='--', linewidth=2)
+        # --- FI DE LA CORRECCIÓ ---
         
         # Dibuixem l'adiabàtica seca des de la temperatura de superfície
         skew.plot_dry_adiabats(t0=[T[0]], p=[p[0], lcl_p], 
@@ -562,7 +566,7 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     skew.ax.legend()
     
     return fig
-
+    
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
     
