@@ -240,28 +240,24 @@ def calcular_li_manual(p, T, prof):
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
     Processa les dades de sondeig brutes per calcular un conjunt complet de paràmetres
-    termodinàmics i cinemàtics. Aquesta funció està dissenyada per ser robusta.
+    termodinàmics i cinemàtics, incloent paràmetres de capa efectiva.
     """
-    # --- 1. PREPARACIÓ I NETEJA DE DADES ---
-    if len(p_profile) < 4:
-        return None, "Perfil atmosfèric massa curt per a un càlcul fiable."
+    # --- 1. PREPARACIÓ I NETEJA DE DADES (Sense canvis) ---
+    if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt per a un càlcul fiable."
     p = np.array(p_profile) * units.hPa; T = np.array(T_profile) * units.degC
     Td = np.array(Td_profile) * units.degC; u = np.array(u_profile) * units('m/s')
     v = np.array(v_profile) * units('m/s'); heights = np.array(h_profile) * units.meter
     valid_indices = ~np.isnan(p.m) & ~np.isnan(T.m) & ~np.isnan(Td.m) & ~np.isnan(u.m) & ~np.isnan(v.m)
     p, T, Td, u, v, heights = p[valid_indices], T[valid_indices], Td[valid_indices], u[valid_indices], v[valid_indices], heights[valid_indices]
-    if len(p) < 3:
-        return None, "No hi ha prou dades vàlides després d'eliminar valors anòmals."
+    if len(p) < 3: return None, "No hi ha prou dades vàlides després d'eliminar valors anòmals."
     sort_idx = np.argsort(p.m)[::-1]
     p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
     params_calc = {}; prof = None; heights_agl = heights - heights[0]
 
-    # --- 2. CÀLCULS TERMODINÀMICS ---
+    # --- 2. CÀLCULS TERMODINÀMICS (Sense canvis) ---
     with parcel_lock:
-        try:
-            prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
-        except Exception as e:
-            return None, f"Error crític calculant el perfil de la parcel·la: {e}"
+        try: prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
+        except Exception as e: return None, f"Error crític calculant el perfil de la parcel·la: {e}"
         try:
             sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
             params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m)
@@ -295,16 +291,26 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except Exception: params_calc['PWAT'] = np.nan
         
     # --- 3. CÀLCULS CINEMÀTICS (VENT) ---
+    # MODIFICAT: Ara guardem tots els components del moviment de la tempesta
     try:
-        rm, _, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
+        rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
         params_calc['RM'] = (float(rm[0].m), float(rm[1].m))
-    except Exception: params_calc['RM'] = (np.nan, np.nan)
+        params_calc['LM'] = (float(lm[0].m), float(lm[1].m)) # NOU
+        params_calc['Mean_Wind'] = (float(mean_wind[0].m), float(mean_wind[1].m)) # NOU
+    except Exception:
+        params_calc['RM'] = (np.nan, np.nan)
+        params_calc['LM'] = (np.nan, np.nan) # NOU
+        params_calc['Mean_Wind'] = (np.nan, np.nan) # NOU
+
+    # Cisallament del vent (BWD) a capes fixes (sense canvis)
     for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
         try:
             bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter)
             bwd_speed = mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m
             params_calc[f'BWD_{name}'] = float(bwd_speed)
         except Exception: params_calc[f'BWD_{name}'] = np.nan
+
+    # Helicitat (SRH) a capes fixes (sense canvis)
     if not np.isnan(params_calc.get('RM', (np.nan,))[0]):
         u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
         for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
@@ -314,6 +320,28 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             except Exception: params_calc[f'SRH_{name}'] = np.nan
     else:
         params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
+
+    # NOU: Càlculs de la Capa Efectiva (EBWD, ESRH)
+    try:
+        # 1. Trobar la capa efectiva (la regió rellevant per a la tempesta)
+        eff_bottom, eff_top = mpcalc.effective_inflow_layer(p, T, Td, heights=heights_agl)
+        # 2. Calcular el cisallament efectiu (EBWD) en aquesta capa
+        ebwd_u, ebwd_v = mpcalc.bulk_shear(p, u, v, height=heights_agl, bottom=eff_bottom, top=eff_top)
+        params_calc['EBWD'] = float(mpcalc.wind_speed(ebwd_u, ebwd_v).to('kt').m)
+        # 3. Calcular la helicitat efectiva (ESRH) en aquesta capa
+        if not np.isnan(params_calc.get('RM', (np.nan,))[0]):
+            u_storm_eff, v_storm_eff = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
+            esrh, _, _ = mpcalc.storm_relative_helicity(heights, u, v, bottom=eff_bottom, top=eff_top, storm_u=u_storm_eff, storm_v=v_storm_eff)
+            params_calc['ESRH'] = float(esrh.m)
+        else:
+            params_calc['ESRH'] = np.nan
+    except Exception as e:
+        # Aquest error és comú en atmosferes estables on no hi ha capa efectiva
+        print(f"AVÍS: No s'ha pogut calcular la capa efectiva. {e}")
+        params_calc['EBWD'] = np.nan
+        params_calc['ESRH'] = np.nan
+
+    # CAPE 0-3km (sense canvis)
     try:
         idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
         cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
@@ -322,7 +350,6 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
 
     # --- 4. RETORN DELS RESULTATS ---
     return ((p, T, Td, u, v, heights, prof), params_calc), None
-
 
     
 
@@ -439,149 +466,112 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
 
     skew.ax.legend()
     return fig
+    
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
-    
-    gs = fig.add_gridspec(nrows=2, ncols=2,
-                          height_ratios=[1.5, 6],
-                          width_ratios=[1.5, 1],
-                          hspace=0.4, wspace=0.3)
-
-    ax_barbs = fig.add_subplot(gs[0, :])
-    ax_hodo = fig.add_subplot(gs[1, 0])
-    ax_params = fig.add_subplot(gs[1, 1])
-
+    gs = fig.add_gridspec(nrows=2, ncols=2, height_ratios=[1.5, 6], width_ratios=[1.5, 1], hspace=0.4, wspace=0.3)
+    ax_barbs = fig.add_subplot(gs[0, :]); ax_hodo = fig.add_subplot(gs[1, 0]); ax_params = fig.add_subplot(gs[1, 1])
     fig.suptitle(titol, weight='bold', fontsize=16)
-
-    # --- Dibuixem les barbes de vent (sense canvis) ---
+    
+    # Configurar gràfic de barbes de vent (sense canvis)
     ax_barbs.set_title("Vent a Nivells Clau", fontsize=11, pad=15)
     heights_agl = heights - heights[0]
-    barb_altitudes_km = [1, 3, 6, 9]
-    barb_altitudes_m = [h * 1000 for h in barb_altitudes_km] * units.m
+    barb_altitudes_km = [1, 3, 6, 9]; barb_altitudes_m = [h * 1000 for h in barb_altitudes_km] * units.m
     u_barbs_list, v_barbs_list = [], []
-
     for h_m in barb_altitudes_m:
         if h_m <= heights_agl.max():
-            u_interp_val = np.interp(h_m.m, heights_agl.m, u.m)
-            v_interp_val = np.interp(h_m.m, heights_agl.m, v.m)
-            u_barbs_list.append(u_interp_val)
-            v_barbs_list.append(v_interp_val)
+            u_interp_val = np.interp(h_m.m, heights_agl.m, u.m); v_interp_val = np.interp(h_m.m, heights_agl.m, v.m)
+            u_barbs_list.append(u_interp_val); v_barbs_list.append(v_interp_val)
         else:
-            u_barbs_list.append(np.nan)
-            v_barbs_list.append(np.nan)
-
-    u_barbs = units.Quantity(u_barbs_list, u.units)
-    v_barbs = units.Quantity(v_barbs_list, v.units)
-    
+            u_barbs_list.append(np.nan); v_barbs_list.append(np.nan)
+    u_barbs = units.Quantity(u_barbs_list, u.units); v_barbs = units.Quantity(v_barbs_list, v.units)
     speed_kmh_barbs = np.sqrt(u_barbs**2 + v_barbs**2).to('km/h').m
-    thresholds_barbs = [10, 40, 70, 100, 130]
-    colors_barbs = ['dimgrey', '#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd']
-    x_pos = np.arange(len(barb_altitudes_km))
-    u_barbs_kt = u_barbs.to('kt')
-    v_barbs_kt = v_barbs.to('kt')
-
+    thresholds_barbs = [10, 40, 70, 100, 130]; colors_barbs = ['dimgrey', '#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd']
+    x_pos = np.arange(len(barb_altitudes_km)); u_barbs_kt = u_barbs.to('kt'); v_barbs_kt = v_barbs.to('kt')
     for i, spd_kmh in enumerate(speed_kmh_barbs):
         if not np.isnan(spd_kmh):
-            color_index = np.searchsorted(thresholds_barbs, spd_kmh)
-            color = colors_barbs[color_index]
+            color_index = np.searchsorted(thresholds_barbs, spd_kmh); color = colors_barbs[color_index]
             ax_barbs.barbs(x_pos[i], 0, u_barbs_kt[i], v_barbs_kt[i], length=8, pivot='middle', color=color)
             ax_barbs.text(x_pos[i], -0.8, f"{spd_kmh:.0f} km/h", ha='center', va='top', fontsize=9, color=color, weight='bold')
         else:
             ax_barbs.text(x_pos[i], 0, "N/A", ha='center', va='center', fontsize=9, color='grey')
-
-    ax_barbs.set_xticks(x_pos); ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km])
-    ax_barbs.set_yticks([]); ax_barbs.spines[:].set_visible(False)
-    ax_barbs.tick_params(axis='x', length=0, pad=5); ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5)
-    ax_barbs.set_ylim(-1.5, 1.5)
-
-    # --- Dibuix de l'hodògraf (sense canvis) ---
-    h = Hodograph(ax_hodo, component_range=80.)
-    h.add_grid(increment=20, color='gray', linestyle='--')
+    ax_barbs.set_xticks(x_pos); ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km]); ax_barbs.set_yticks([]); ax_barbs.spines[:].set_visible(False); ax_barbs.tick_params(axis='x', length=0, pad=5); ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5); ax_barbs.set_ylim(-1.5, 1.5)
     
-    intervals = np.array([0, 1, 3, 6, 9, 12]) * units.km
-    colors_hodo = ['red', 'blue', 'green', 'purple', 'gold']
+    # Configurar hodògraf (sense canvis)
+    h = Hodograph(ax_hodo, component_range=80.); h.add_grid(increment=20, color='gray', linestyle='--')
+    intervals = np.array([0, 1, 3, 6, 9, 12]) * units.km; colors_hodo = ['red', 'blue', 'green', 'purple', 'gold']
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
-    
     try:
-        mean_wind_vec = params_calc.get('Mean_Wind')
-        if mean_wind_vec is not None:
-            u_mean_kt = (mean_wind_vec[0] * units('m/s')).to('kt').m
-            v_mean_kt = (mean_wind_vec[1] * units('m/s')).to('kt').m
-            arrow_scale = 1.5
-            ax_hodo.arrow(0, 0, u_mean_kt * arrow_scale, v_mean_kt * arrow_scale, color='black', linewidth=1.5, head_width=3, length_includes_head=True, zorder=10)
+        rm_vec = params_calc.get('RM'); lm_vec = params_calc.get('LM')
+        if rm_vec and not np.isnan(rm_vec[0]):
+            u_rm_kt = (rm_vec[0] * units('m/s')).to('kt').m; v_rm_kt = (rm_vec[1] * units('m/s')).to('kt').m
+            ax_hodo.plot(u_rm_kt, v_rm_kt, 'o', color='blue', markersize=8, label='Mov. Dret')
+        if lm_vec and not np.isnan(lm_vec[0]):
+            u_lm_kt = (lm_vec[0] * units('m/s')).to('kt').m; v_lm_kt = (lm_vec[1] * units('m/s')).to('kt').m
+            ax_hodo.plot(u_lm_kt, v_lm_kt, 'o', color='green', markersize=8, label='Mov. Esquerre')
     except Exception: pass
-
-    try:
-        shear_vec = mpcalc.bulk_shear(p, u, v, height=heights - heights[0], depth=6000 * units.m)
-        ax_hodo.arrow(0, 0, shear_vec[0].to('kt').m, shear_vec[1].to('kt').m, color='dimgray', linestyle='--', alpha=0.7, head_width=2, length_includes_head=True)
-    except: pass
-    ax_hodo.set_xlabel('U-Component (nusos)')
-    ax_hodo.set_ylabel('V-Component (nusos)')
-
-    # --- Dibuix del panell de text ---
-    ax_params.axis('off')
+    ax_hodo.set_xlabel('U-Component (nusos)'); ax_hodo.set_ylabel('V-Component (nusos)')
     
-    def degrees_to_cardinal_ca(d):
-        dirs = ["Nord", "Nord-est", "Est", "Sud-est", "Sud", "Sud-oest", "Oest", "Nord-oest"]
-        ix = int(round(((d % 360) / 45)))
-        return dirs[ix % 8]
-
+    # --- Configurar panell de paràmetres (AMB MODIFICACIONS) ---
+    ax_params.axis('off')
+    def degrees_to_cardinal(d):
+        dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+        return dirs[int(round(d / 22.5)) % 16]
     def get_color(value, thresholds):
         if pd.isna(value): return "grey"
-        colors = ["grey", "green", "#E69F00", "orange", "red"]
+        colors = ["grey", "green", "#E69F00", "orange", "red", "#C71585"]
         thresholds = sorted(thresholds)
         for i, threshold in enumerate(thresholds):
             if value < threshold: return colors[i]
         return colors[-1]
-
-    THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
     
-    y = 0.95
+    THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (50, 150, 250, 400), 'UPDRAFT': (15, 25, 40, 50)}
+    y = 0.98
     
-    # --- INICI DE LA MODIFICACIÓ ---
-    # Definim les dades de moviment directament amb les noves etiquetes
+    # MODIFICAT: Ara el diccionari conté totes les dades que hem calculat
     motion_data = {
-        'MD': params_calc.get('RM'),
-        'ML': params_calc.get('LM'),
+        'MD': params_calc.get('RM'), 
+        'ML': params_calc.get('LM'), 
         'VM (0-6 km)': params_calc.get('Mean_Wind')
     }
-    # --- FI DE LA MODIFICACIÓ ---
-
-    ax_params.text(0, y, "Moviment (dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
-
-    # Iterem sobre el nou diccionari directament
+    
+    ax_params.text(0, y, "Moviment (dir/km/h)", ha='left', weight='bold', fontsize=11); y -= 0.1
     for display_name, vec in motion_data.items():
-        if vec is not None:
-            u_motion_ms = vec[0] * units('m/s'); v_motion_ms = vec[1] * units('m/s')
+        if vec and not any(pd.isna(v) for v in vec):
+            u_motion_ms, v_motion_ms = vec[0] * units('m/s'), vec[1] * units('m/s')
             speed_kmh = mpcalc.wind_speed(u_motion_ms, v_motion_ms).to('km/h').m
-            direction_from_deg = mpcalc.wind_direction(u_motion_ms, v_motion_ms).to('deg').m
-            direction_to_deg = (direction_from_deg + 180) % 360
-            cardinal_dir_ca = degrees_to_cardinal_ca(direction_to_deg)
+            direction_from_deg = mpcalc.wind_direction(u_motion_ms, v_motion_ms, convention='from').to('deg').m
+            cardinal_dir = degrees_to_cardinal(direction_from_deg)
             ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
-            ax_params.text(1, y, f"{cardinal_dir_ca} / {speed_kmh:.0f} km/h", ha='right', va='center')
+            ax_params.text(1, y, f"{direction_from_deg:.0f}° ({cardinal_dir}) / {speed_kmh:.0f}", ha='right', va='center')
         else:
-            ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
-            ax_params.text(1, y, "---", ha='right', va='center')
-        y-=0.1
-
-    y-=0.05
-    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
+            ax_params.text(0, y, f"{display_name}:", ha='left', va='center'); ax_params.text(1, y, "---", ha='right', va='center')
+        y -= 0.08
+    
+    y -= 0.05; ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y -= 0.1
+    # MODIFICAT: Afegim 'Efectiu' a la llista
     for key, label in [('0-1km', '0-1 km'), ('0-6km', '0-6 km'), ('EBWD', 'Efectiu')]:
         val = params_calc.get(key if key == 'EBWD' else f'BWD_{key}', np.nan)
         color = get_color(val, THRESHOLDS['BWD'])
         ax_params.text(0, y, f"{label}:", ha='left', va='center')
         ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
-        y-=0.07
-
-    y-=0.05
-    ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.1
+        y -= 0.08
+    
+    y -= 0.05; ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y -= 0.1
+    # MODIFICAT: Afegim 'Efectiva' a la llista
     for key, label in [('0-1km', '0-1 km'), ('0-3km', '0-3 km'), ('ESRH', 'Efectiva')]:
         val = params_calc.get(key if key == 'ESRH' else f'SRH_{key}', np.nan)
         color = get_color(val, THRESHOLDS['SRH'])
         ax_params.text(0, y, f"{label}:", ha='left', va='center')
         ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
-        y-=0.07
-        
+        y -= 0.08
+    
+    y -= 0.05; ax_params.text(0, y, "Corrent Ascendent", ha='left', weight='bold', fontsize=11); y -= 0.1
+    val_updraft = params_calc.get('MAX_UPDRAFT', np.nan)
+    color_updraft = get_color(val_updraft, THRESHOLDS['UPDRAFT'])
+    ax_params.text(0, y, "Vel. Max (0-6km):", ha='left', va='center')
+    ax_params.text(1, y, f"{val_updraft:.1f} m/s" if not pd.isna(val_updraft) else "---", ha='right', va='center', weight='bold', color=color_updraft)
+    
     return fig
     
 
