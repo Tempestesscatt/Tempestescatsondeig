@@ -629,11 +629,9 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     # --- Dibuix del panell de text ---
     ax_params.axis('off')
     
-    # --- INICI DE LA MILLORA: Noms complets de les direccions ---
+    # --- INICI DE LA MILLORA ---
 
-    # Funció auxiliar per convertir graus a direcció cardinal amb nom complet en català
     def degrees_to_cardinal_ca(d):
-        # Llista amb els noms complets
         dirs = ["Nord", "Nord-est", "Est", "Sud-est", "Sud", "Sud-oest", "Oest", "Nord-oest"]
         ix = int(round(((d % 360) / 45)))
         return dirs[ix % 8]
@@ -649,44 +647,58 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
     
     y = 0.95
-    motion = {'RM': params_calc.get('RM'), 'LM': params_calc.get('LM'), 'Vent Mitjà': params_calc.get('Mean_Wind')}
+    motion_data = {'RM': params_calc.get('RM'), 'LM': params_calc.get('LM'), 'Vent Mitjà': params_calc.get('Mean_Wind')}
     
-    ax_params.text(0, y, "Moviment (dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.08
-    
-    for name, vec in motion.items():
+    # Mapa per canviar les etiquetes originals per les noves
+    label_map = {
+        'RM': "Supercèl·lula (dreta)",
+        'LM': "Supercèl·lula (esquerra)",
+        'Vent Mitjà': "Vent Mitjà (0-6 km)"
+    }
+
+    ax_params.text(0, y, "Moviment (dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
+
+    for key, vec in motion_data.items():
+        display_name = label_map.get(key, key) # Utilitza la nova etiqueta
+
         if vec is not None:
             u_motion_ms = vec[0] * units('m/s')
             v_motion_ms = vec[1] * units('m/s')
             
             speed_kmh = mpcalc.wind_speed(u_motion_ms, v_motion_ms).to('km/h').m
-            direction_deg = mpcalc.wind_direction(u_motion_ms, v_motion_ms).to('deg').m
             
-            # Fem servir la funció amb els noms complets
-            cardinal_dir_ca = degrees_to_cardinal_ca(direction_deg)
+            # La direcció estàndard és D'ON VE el vent. Per saber ON VA, sumem 180 graus.
+            direction_from_deg = mpcalc.wind_direction(u_motion_ms, v_motion_ms).to('deg').m
+            direction_to_deg = (direction_from_deg + 180) % 360
             
-            ax_params.text(0.05, y, f"{name}:")
-            ax_params.text(0.95, y, f"{cardinal_dir_ca} / {speed_kmh:.0f} km/h", ha='right')
+            cardinal_dir_ca = degrees_to_cardinal_ca(direction_to_deg)
+            
+            # Alineació corregida per evitar solapaments
+            ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
+            ax_params.text(1, y, f"{cardinal_dir_ca} / {speed_kmh:.0f} km/h", ha='right', va='center')
         else:
-            ax_params.text(0.05, y, f"{name}:")
-            ax_params.text(0.95, y, "---", ha='right')
-        y-=0.07
+            ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
+            ax_params.text(1, y, "---", ha='right', va='center')
+        y-=0.1
 
     # --- FI DE LA MILLORA ---
 
     y-=0.05
-    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.08
+    ax_params.text(0, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
     for key, label in [('0-1km', '0-1 km'), ('0-6km', '0-6 km'), ('EBWD', 'Efectiu')]:
         val = params_calc.get(key if key == 'EBWD' else f'BWD_{key}', np.nan)
         color = get_color(val, THRESHOLDS['BWD'])
-        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
+        ax_params.text(0, y, f"{label}:", ha='left', va='center')
+        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
         y-=0.07
 
     y-=0.05
-    ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.08
+    ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.1
     for key, label in [('0-1km', '0-1 km'), ('0-3km', '0-3 km'), ('ESRH', 'Efectiva')]:
         val = params_calc.get(key if key == 'ESRH' else f'SRH_{key}', np.nan)
         color = get_color(val, THRESHOLDS['SRH'])
-        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
+        ax_params.text(0, y, f"{label}:", ha='left', va='center')
+        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
         y-=0.07
         
     return fig
