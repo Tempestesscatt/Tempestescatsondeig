@@ -476,8 +476,9 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
 
 def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     """
-    Dibuixa un diagrama Skew-T, mostrant explícitament l'ascens de la parcel·la
-    des de la temperatura i el punt de rosada de superfície fins al LCL.
+    Dibuixa un diagrama Skew-T, garantint que les línies de la trajectòria
+    de la parcel·la comencen visualment on comencen els perfils de
+    temperatura i punt de rosada.
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.85, 0.85))
@@ -501,34 +502,24 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
     skew.plot(p, Td, 'purple', lw=2.5, label='Punt de Rosada')
     
-    # --- INICI DE LA VISUALITZACIÓ MANUAL I DEFINITIVA DE LA TRAJECTÒRIA INICIAL ---
+    # --- VISUALITZACIÓ DEFINITIVA DE LA TRAJECTÒRIA INICIAL ---
     if prof is not None:
-        # 1. Calculem el LCL per saber fins on han d'arribar les línies
-        lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
-        
-        # Creem un rang de pressions des de la superfície fins al LCL
-        p_path = np.linspace(p[0], lcl_p, 100)
-
-        # 2. Trajectòria des de la TEMPERATURA (Adiabàtica Seca)
-        # Calculem la temperatura de la parcel·la a cada nivell de pressió mentre puja seca
-        T_path = mpcalc.dry_lapse(p_path, T[0])
-        # Dibuixem aquesta trajectòria manualment
-        skew.plot(p_path, T_path, color='darkorange', linestyle='--', linewidth=2.5, zorder=10)
-
-        # 3. Trajectòria des del PUNT DE ROSADA (Relació de Barreja Constant)
-        # Calculem la relació de barreja a la superfície, que es mantindrà constant
-        mixing_ratio_sfc = mpcalc.mixing_ratio(mpcalc.saturation_vapor_pressure(Td[0]), p[0])
-        
-        # --- LÍNIA CORREGIDA ---
-        # Calculem el punt de rosada de la parcel·la a cada nivell de pressió utilitzant la nova funció 'dewpoint'
-        Td_path = mpcalc.dewpoint(mpcalc.vapor_pressure(p_path, mixing_ratio_sfc))
-        # Dibuixem aquesta trajectòria manualment
-        skew.plot(p_path, Td_path, color='darkgreen', linestyle='--', linewidth=2.5, zorder=10)
-        
-        # 4. Finalment, dibuixem la trajectòria completa (línia negra) que se superposarà
-        # a les dues línies anteriors i continuarà per sobre del LCL.
+        # 1. Dibuixem la trajectòria COMPLETA i CORRECTA de la parcel·la (línia negra).
+        # Aquesta variable 'prof' ja comença a T[0] i segueix l'adiabàtica seca i després la humida.
+        # Això garanteix que la línia negra comença exactament on comença la línia vermella.
         skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la',
                   path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+        
+        # 2. Afegim NOMÉS la línia que faltava: la del punt de rosada de la parcel·la.
+        # Això garanteix que la línia verda comença exactament on comença la línia lila.
+        lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0])
+        p_path = np.linspace(p[0], lcl_p, 100) # Camí només fins al LCL
+        mixing_ratio_sfc = mpcalc.mixing_ratio(mpcalc.saturation_vapor_pressure(Td[0]), p[0])
+        Td_path = mpcalc.dewpoint(mpcalc.vapor_pressure(p_path, mixing_ratio_sfc))
+        
+        # Dibuixem aquesta trajectòria del punt de rosada
+        skew.plot(p_path, Td_path, color='darkgreen', linestyle='--', linewidth=2.5, zorder=10)
+
     # --- FI DE LA VISUALITZACIÓ ---
 
     # Configuració final del gràfic
