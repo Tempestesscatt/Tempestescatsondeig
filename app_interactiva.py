@@ -194,204 +194,168 @@ def calcular_li_manual(p, T, prof):
 
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
-    """Funció genèrica que processa dades de sondeig amb MetPy."""
+    """
+    Processa les dades de sondeig brutes per calcular un conjunt complet de paràmetres
+    termodinàmics i cinemàtics. Aquesta funció està dissenyada per ser robusta,
+    gestionant dades absents (NaN) i condicions meteorològiques extremes
+    (p. ex., absència de nivell de 0°C).
+
+    Retorna:
+        Una tupla amb les dades processades per als gràfics i un diccionari amb
+        els paràmetres calculats, o (None, missatge_error) si el processament falla.
+    """
+    # --- 1. PREPARACIÓ I NETEJA DE DADES ---
+
     if len(p_profile) < 4:
-        return None, "Perfil atmosfèric massa curt."
-    
-    # Convertir a arrays de numpy y aplicar unidades
+        return None, "Perfil atmosfəric massa curt per a un càlcul fiable."
+
+    # Conversió a arrays de numpy amb unitats de MetPy.
     p = np.array(p_profile) * units.hPa
     T = np.array(T_profile) * units.degC
     Td = np.array(Td_profile) * units.degC
     u = np.array(u_profile) * units('m/s')
     v = np.array(v_profile) * units('m/s')
     heights = np.array(h_profile) * units.meter
-    
-    # Eliminar valores NaN
+
+    # Neteja de valors no vàlids (NaN) que poden corrompre els càlculs.
     valid_indices = ~np.isnan(p.m) & ~np.isnan(T.m) & ~np.isnan(Td.m) & ~np.isnan(u.m) & ~np.isnan(v.m)
-    
-    p = p[valid_indices]
-    T = T[valid_indices]
-    Td = Td[valid_indices]
-    u = u[valid_indices]
-    v = v[valid_indices]
-    heights = heights[valid_indices]
-    
+    p, T, Td, u, v, heights = p[valid_indices], T[valid_indices], Td[valid_indices], u[valid_indices], v[valid_indices], heights[valid_indices]
+
     if len(p) < 3:
-        return None, "No hay suficientes datos válidos después de eliminar NaN"
-    
-    # Ordenar por presión (descendente)
+        return None, "No hi ha prou dades vàlides després d'eliminar valors anòmals."
+
+    # Assegurem que les dades estan ordenades per pressió descendent (de superfície a altura).
     sort_idx = np.argsort(p.m)[::-1]
-    p = p[sort_idx]
-    T = T[sort_idx]
-    Td = Td[sort_idx]
-    u = u[sort_idx]
-    v = v[sort_idx]
-    heights = heights[sort_idx]
-    
+    p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
+
+    # Inicialització del diccionari de resultats i variables.
     params_calc = {}
     prof = None
-    heights_agl = heights - heights[0]
-    
+    heights_agl = heights - heights[0] # Altura sobre el nivell del terra
+
+    # --- 2. CÀLCULS TERMODINÀMICS ---
+    # Aquest bloc s'executa amb un lock per garantir la seguretat en entorns multithread.
     with parcel_lock:
-        # Calcular perfil de parcela
+        # Perfil de la bombolla d'aire ascendent (parcel·la). És la base per a molts càlculs.
         try:
             prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
         except Exception as e:
-            print(f"Error calculant el perfil de la parcel·la: {e}")
-            return None, f"Error calculant el perfil de la parcel·la: {e}"
-        
-        # Cálculo de CAPE/CIN para superficie
+            return None, f"Error crític calculant el perfil de la parcel·la: {e}"
+
+        # Càlculs de CAPE/CIN (Surface-Based, Most-Unstable, Mixed-Layer)
         try:
             sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
-            params_calc['SBCAPE'] = float(sbcape.m) if hasattr(sbcape, 'm') and not isinstance(sbcape.m, np.ndarray) else np.nan
-            params_calc['SBCIN'] = float(sbcin.m) if hasattr(sbcin, 'm') and not isinstance(sbcin.m, np.ndarray) else np.nan
-            params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if hasattr(sbcape, 'm') and not isinstance(sbcape.m, np.ndarray) and float(sbcape.m) > 0 else 0.0
-        except Exception as e:
-            print(f"Error CAPE/CIN: {e}")
+            params_calc['SBCAPE'] = float(sbcape.m)
+            params_calc['SBCIN'] = float(sbcin.m)
+            params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if sbcape.m > 0 else 0.0
+        except Exception:
             params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
         
-        # Cálculo de CAPE/CIN más inestable
         try:
             mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td, depth=300 * units.hPa)
-            params_calc['MUCAPE'] = float(mucape.m) if hasattr(mucape, 'm') and not isinstance(mucape.m, np.ndarray) else np.nan
-            params_calc['MUCIN'] = float(mucin.m) if hasattr(mucin, 'm') and not isinstance(mucin.m, np.ndarray) else np.nan
-        except Exception as e:
-            print(f"Error MUCAPE/MUCIN: {e}")
+            params_calc['MUCAPE'] = float(mucape.m)
+            params_calc['MUCIN'] = float(mucin.m)
+        except Exception:
             params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
-        
-        # Cálculo de CAPE/CIN de capa mezclada
+
         try:
             mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td, depth=100 * units.hPa)
-            params_calc['MLCAPE'] = float(mlcape.m) if hasattr(mlcape, 'm') and not isinstance(mlcape.m, np.ndarray) else np.nan
-            params_calc['MLCIN'] = float(mlcin.m) if hasattr(mlcin, 'm') and not isinstance(mlcin.m, np.ndarray) else np.nan
-        except Exception as e:
-            print(f"Error MLCAPE/MLCIN: {e}")
+            params_calc['MLCAPE'] = float(mlcape.m)
+            params_calc['MLCIN'] = float(mlcin.m)
+        except Exception:
             params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
-        
-        # Cálculo del Lifted Index
+
+        # Càlcul del Lifted Index (LI).
         try:
             li = mpcalc.lifted_index(p, T, prof)
-            if hasattr(li, 'magnitude'): params_calc['LI'] = float(li.magnitude)
-            elif hasattr(li, 'm'): params_calc['LI'] = float(li.m)
-            else: params_calc['LI'] = float(li)
-        except Exception as e:
-            print(f"Error LI: {e}")
+            params_calc['LI'] = float(li.m)
+        except Exception:
             params_calc['LI'] = np.nan
-        
-        # Cálculo de LFC
+
+        # Càlculs de nivells característics (LCL, LFC) i la seva altura en metres.
         try:
-            lfc_p, lfc_t = mpcalc.lfc(p, T, Td, prof)
-            params_calc['LFC_p'] = float(lfc_p.m) if hasattr(lfc_p, 'm') and not isinstance(lfc_p.m, np.ndarray) else np.nan
-            if not np.isnan(params_calc['LFC_p']):
-                params_calc['LFC_Hgt'] = float(np.interp(params_calc['LFC_p'], p.m[::-1], heights_agl.m[::-1]))
-            else:
-                params_calc['LFC_Hgt'] = np.nan
-        except Exception as e:
-            print(f"Error LFC: {e}")
-            params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
-        
-        # Cálculo de LCL
-        try:
-            lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
-            params_calc['LCL_p'] = float(lcl_p.m) if hasattr(lcl_p, 'm') and not isinstance(lcl_p.m, np.ndarray) else np.nan
-            if not np.isnan(params_calc['LCL_p']):
-                params_calc['LCL_Hgt'] = float(np.interp(params_calc['LCL_p'], p.m[::-1], heights_agl.m[::-1]))
-            else:
-                params_calc['LCL_Hgt'] = np.nan
-        except Exception as e:
-            print(f"Error LCL: {e}")
+            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0])
+            params_calc['LCL_p'] = float(lcl_p.m)
+            params_calc['LCL_Hgt'] = float(np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1]))
+        except Exception:
             params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
-        
-        # Cálculo de agua precipitable
+
+        try:
+            lfc_p, _ = mpcalc.lfc(p, T, Td, prof)
+            params_calc['LFC_p'] = float(lfc_p.m)
+            params_calc['LFC_Hgt'] = float(np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1]))
+        except Exception:
+            params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
+
+        # Càlcul d'Aigua Precipitable (PWAT).
         try:
             pwat = mpcalc.precipitable_water(p, Td)
-            params_calc['PWAT'] = float(pwat.to('mm').m) if hasattr(pwat, 'm') and not isinstance(pwat.m, np.ndarray) else np.nan
-        except Exception as e:
-            print(f"Error PWAT: {e}")
+            params_calc['PWAT'] = float(pwat.to('mm').m)
+        except Exception:
             params_calc['PWAT'] = np.nan
-        
-        # Càlcul de nivell de congelació (Pressió i Altitud)
+
+        # Càlcul del Nivell de Congelació (0°C) - Lògica robusta.
         try:
-            # MetPy pot retornar múltiples nivells si la temperatura creua 0°C diverses vegades.
-            # Normalment ens interessa el primer (el més baix).
+            # MetPy pot retornar una llista si la temperatura creua 0°C múltiples vegades.
+            # Normalment ens interessa el primer nivell (el més baix).
             frz_pressure_levels, _ = mpcalc.freezing_level(p, T)
             frz_pressure = frz_pressure_levels[0] if hasattr(frz_pressure_levels, '__len__') else frz_pressure_levels
-            
-            # Guardem la pressió (hPa)
-            if hasattr(frz_pressure, 'm'):
-                p_frzg_scalar = float(frz_pressure.m)
-            else:
-                p_frzg_scalar = float(frz_pressure)
+            p_frzg_scalar = float(frz_pressure.m)
             params_calc['FRZG_Lvl_p'] = p_frzg_scalar
 
-            # ARA CALCULEM L'ALTITUD (m) utilitzant la pressió que acabem de trobar
-            if not np.isnan(p_frzg_scalar):
-                # Interpolem l'altitud a partir del perfil d'altures i pressions.
-                # Recorda invertir els arrays (amb [::-1]) perquè np.interp necessita valors creixents.
-                frzg_alt_m = np.interp(p_frzg_scalar, p.m[::-1], heights.m[::-1])
-                params_calc['FRZG_Lvl_m'] = float(frzg_alt_m)
-            else:
-                params_calc['FRZG_Lvl_m'] = np.nan
+            # Calculem l'altitud (m) interpolant a partir de la pressió trobada.
+            frzg_alt_m = np.interp(p_frzg_scalar, p.m[::-1], heights.m[::-1])
+            params_calc['FRZG_Lvl_m'] = float(frzg_alt_m)
 
         except (ValueError, IndexError, TypeError) as e:
-            # Aquest error salta si mpcalc.freezing_level no troba cap nivell.
-            print(f"No s'ha trobat nivell de congelació: {e}")
+            # Aquesta excepció salta si mpcalc.freezing_level no troba cap nivell,
+            # la qual cosa és una condició meteorològica vàlida (massa fred o massa calor).
+            print(f"AVÍS: No s'ha trobat nivell de congelació en aquest perfil. ({e})")
             params_calc['FRZG_Lvl_p'] = np.nan
             params_calc['FRZG_Lvl_m'] = np.nan
-    
-    # Cálculo de movimiento de tormenta
+
+    # --- 3. CÀLCULS CINEMÀTICS (VENT) ---
+
+    # Moviment de la tempesta (Bunkers). És necessari per al càlcul de l'helicitat.
     try:
-        rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
-        rm_u = float(rm[0].m) if hasattr(rm[0], 'm') else float(rm[0])
-        rm_v = float(rm[1].m) if hasattr(rm[1], 'm') else float(rm[1])
-        params_calc['RM'] = (rm_u, rm_v)
-    except Exception as e:
-        print(f"Error movimiento tormenta: {e}")
+        rm, _, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
+        params_calc['RM'] = (float(rm[0].m), float(rm[1].m))
+    except Exception:
         params_calc['RM'] = (np.nan, np.nan)
-    
-    # Cálculo de cizalladura del viento (BWD)
+
+    # Cisallament del vent (Bulk Wind Shear) a capes clau.
     for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
         try:
             bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter)
             bwd_speed = mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m
-            params_calc[f'BWD_{name}'] = float(bwd_speed) if not isinstance(bwd_speed, np.ndarray) else np.nan
-        except Exception as e:
-            print(f"Error BWD {name}: {e}")
+            params_calc[f'BWD_{name}'] = float(bwd_speed)
+        except Exception:
             params_calc[f'BWD_{name}'] = np.nan
-    
-    # Cálculo de helicidad relativa a la tormenta (SRH)
-    if not np.isnan(params_calc.get('RM', (np.nan, np.nan))[0]):
-        try:
-            u_storm, v_storm = params_calc['RM']
-            u_storm = u_storm * units('m/s')
-            v_storm = v_storm * units('m/s')
-            
-            for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
-                srh = mpcalc.storm_relative_helicity(heights, u, v, 
-                                                    depth=depth_m * units.meter, 
-                                                    storm_u=u_storm, storm_v=v_storm)
-                
-                if hasattr(srh, 'magnitude'): params_calc[f'SRH_{name}'] = float(srh.magnitude)
-                elif hasattr(srh, 'm'): params_calc[f'SRH_{name}'] = float(srh.m)
-                else: params_calc[f'SRH_{name}'] = float(srh)
-                    
-        except Exception as e:
-            print(f"Error SRH: {e}")
-            params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
+
+    # Helicitat Relativa a la Tempesta (SRH). Només es pot calcular si tenim el moviment de la tempesta.
+    if not np.isnan(params_calc.get('RM', (np.nan,))[0]):
+        u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
+        for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
+            try:
+                srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.meter, storm_u=u_storm, storm_v=v_storm)[0]
+                params_calc[f'SRH_{name}'] = float(srh.m)
+            except Exception:
+                params_calc[f'SRH_{name}'] = np.nan
     else:
-        print("RM no disponible para SRH")
         params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-    
-    # Cálculo de CAPE en capa 0-3km
+
+    # CAPE en la capa 0-3 km, un bon indicador del potencial de rotació a nivells baixos.
     try:
         idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
         cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
-        params_calc['CAPE_0-3km'] = float(cape_0_3.m) if hasattr(cape_0_3, 'm') and not isinstance(cape_0_3.m, np.ndarray) else np.nan
-    except Exception as e:
-        print(f"Error CAPE 0-3km: {e}")
+        params_calc['CAPE_0-3km'] = float(cape_0_3.m)
+    except Exception:
         params_calc['CAPE_0-3km'] = np.nan
-    
+
+    # --- 4. RETORN DELS RESULTATS ---
     return ((p, T, Td, u, v, heights, prof), params_calc), None
+
+
     
 
 def debug_calculos(p, T, Td, u, v, heights, prof):
