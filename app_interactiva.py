@@ -469,7 +469,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density= 4, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density= 4, zorder=4, transform=ccrs.PlateCarree())
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1); dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
     convergence_scaled = -(dudx + dvdy).to('1/s').magnitude * 1e5
@@ -493,7 +493,7 @@ def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str
     speed_levels = [0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 220, 250]
     custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.7, density=2.5, arrowsize=0.6, zorder=3, transform=ccrs.PlateCarree())
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.7, density=2.5, zorder=3, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 
@@ -631,7 +631,7 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
 
     ax.set_title(f"Vent i Nuclis de convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
-    
+
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya"):
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
@@ -712,7 +712,14 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon):
 
 def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str):
     st.markdown("#### Mapes de Pronòstic (Model GFS)")
-    nivell_sel = st.selectbox("Nivell d'anàlisi:", options=[925, 850, 700, 500, 300], format_func=lambda x: f"{x} hPa", key="level_usa")
+    # --- LÍNIA MODIFICADA ---
+    # S'han afegit els nivells 1000, 975, 950 i 900 hPa a les opcions.
+    nivell_sel = st.selectbox(
+        "Nivell d'anàlisi:", 
+        options=[1000, 975, 950, 925, 900, 850, 700, 500, 300], 
+        format_func=lambda x: f"{x} hPa", 
+        key="level_usa"
+    )
     with st.spinner(f"Carregant dades del mapa GFS a {nivell_sel}hPa..."):
         map_data, error_map = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
     
