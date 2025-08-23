@@ -730,16 +730,39 @@ def ui_caixa_parametres_sondeig(params):
             </div>
             """, unsafe_allow_html=True)
 
-    # --- INICI DE LA MODIFICACIÓ ---
-    # Creem dues columnes per alinear el títol a l'esquerra i el botó a la dreta
-    col_titol, col_boto = st.columns([0.85, 0.15])
+    st.markdown("##### Paràmetres del Sondeig")
     
-    with col_titol:
-        st.markdown("##### Paràmetres del Sondeig")
+    # Fila 1: Energia Principal
+    cols = st.columns(3)
+    with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE')
+    with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE')
+    with cols[2]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE')
+    
+    # Fila 2: Estabilitat i Humitat
+    cols = st.columns(3)
+    with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True)
+    with cols[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', precision=1, reverse_colors=True)
+    with cols[2]: styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1)
+    
+    # Fila 3: Nivells i Potencial Descendent
+    cols = st.columns(3)
+    with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
+    with cols[1]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
+    with cols[2]: styled_metric("DCAPE", params.get('DCAPE', np.nan), "J/kg", 'DCAPE')
+    
+    # Fila 4: Paràmetres de Cisallament / Rotació
+    cols = st.columns(3)
+    with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
+    with cols[1]: styled_metric("SRH 0-1km", params.get('SRH_0-1km', np.nan), "m²/s²", 'SRH_0-1km')
+    with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
+        
+    # --- INICI DE LA MODIFICACIÓ ---
+    # Creem columnes per centrar el botó d'ajuda a sota de la graella
+    _, col_boto, _ = st.columns([2, 1, 2])
 
     with col_boto:
         # Creem el popover. L'emoji '❓' serà el botó.
-        with st.popover("❓", use_container_width=True):
+        with st.popover("❓ Ajuda", use_container_width=True):
             st.markdown("""
             **Guia Ràpida dels Paràmetres:**
 
