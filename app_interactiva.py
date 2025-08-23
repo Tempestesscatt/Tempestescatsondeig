@@ -530,11 +530,13 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
         # Calculem el LCL per saber on es creuen les línies
         lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
         
-        # --- LÍNIA CORREGIDA ---
-        # Primer calculem la pressió de vapor (e) i després la relació de barreja (w)
-        e = mpcalc.saturation_vapor_pressure(Td[0])
-        w = mpcalc.mixing_ratio(e, p[0])
-        skew.plot_mixing_lines(w=w, p=[p[0], lcl_p], 
+        # --- LÍNIA CORREGIDA (VERSIÓ 2) ---
+        # Calculem la relació de barreja (mixing ratio)
+        mixing_ratio_sfc = mpcalc.mixing_ratio_from_relative_humidity(
+            p[0], T[0], mpcalc.relative_humidity_from_dewpoint(T[0], Td[0])
+        )
+        # Passem el valor directament, sense el paràmetre 'w='
+        skew.plot_mixing_lines(mixing_ratio_sfc, p=[p[0], lcl_p], 
                                color='darkgreen', linestyle='--', linewidth=2)
         # --- FI DE LA CORRECCIÓ ---
         
@@ -566,6 +568,8 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     skew.ax.legend()
     
     return fig
+
+
     
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
