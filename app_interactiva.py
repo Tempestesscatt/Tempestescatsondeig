@@ -566,21 +566,36 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             ax_hodo.text(u[idx].to('kt').m + 1, v[idx].to('kt').m + 1, f'{alt_km}km', fontsize=9, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
         except: continue
     
-    motion = {'RM': params_calc.get('RM'), 'LM': params_calc.get('LM'), 'Vent Mitjà': params_calc.get('Mean_Wind')}
-    if all(v is not None for v in motion.values()):
-        for name, vec in motion.items():
-            # --- INICIO DE LA CORRECCIÓN ---
-            # CORRECCIÓ: Los valores 'vec[0]' y 'vec[1]' son floats sin unidades (en m/s).
-            # Les reasignamos las unidades antes de intentar convertirlos.
-            u_motion_ms = vec[0] * units('m/s')
-            v_motion_ms = vec[1] * units('m/s')
+    # --- INICIO DE LA MEJORA: Eliminamos marcadores y añadimos flecha de viento relativo ---
+    
+    # 1. Eliminamos los marcadores de movimiento de tormenta para un gráfico más limpio.
+    # El bucle que dibujaba los círculos y cuadrados ha sido eliminado.
+    
+    # 2. Añadimos una flecha para el viento de superficie relativo a la tormenta (RM).
+    # Esta flecha es clave para visualizar el "inflow" o flujo de entrada.
+    try:
+        rm_vec = params_calc.get('RM')
+        if rm_vec is not None and len(u) > 0:
+            # Convertimos todas las unidades a nudos para el gráfico
+            u_rm_kt = (rm_vec[0] * units('m/s')).to('kt').m
+            v_rm_kt = (rm_vec[1] * units('m/s')).to('kt').m
+            u_sfc_kt = u[0].to('kt').m
+            v_sfc_kt = v[0].to('kt').m
             
-            # Ahora usamos las nuevas variables con unidades para la conversión.
-            u_comp, v_comp = u_motion_ms.to('kt').m, v_motion_ms.to('kt').m
-            # --- FIN DE LA CORRECCIÓN ---
+            # La flecha empieza en el vector de movimiento de la tormenta (RM)
+            # y apunta hacia el vector de viento en superficie.
+            ax_hodo.arrow(u_rm_kt, v_rm_kt, (u_sfc_kt - u_rm_kt), (v_sfc_kt - v_rm_kt),
+                          color='dodgerblue', linestyle='--', linewidth=2,
+                          head_width=4, length_includes_head=True, zorder=10)
             
-            marker = 's' if 'Mitjà' in name else 'o'
-            ax_hodo.plot(u_comp, v_comp, marker=marker, color='black', markersize=8, fillstyle='none', mew=1.5)
+            # Añadimos una etiqueta para identificar el movimiento de la supercélula (RM)
+            ax_hodo.text(u_rm_kt, v_rm_kt - 5, 'RM', color='dodgerblue',
+                         ha='center', va='top', weight='bold', fontsize=12,
+                         path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+    except Exception:
+        pass # Si falla, simplemente no se dibuja la flecha.
+
+    # --- FIN DE LA MEJORA ---
 
     try:
         shear_vec = mpcalc.bulk_shear(p, u, v, height=heights - heights[0], depth=6000 * units.m)
@@ -602,19 +617,13 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
     
     y = 0.95
+    motion = {'RM': params_calc.get('RM'), 'LM': params_calc.get('LM'), 'Vent Mitjà': params_calc.get('Mean_Wind')}
     ax_params.text(0, y, "Moviment (dir/kts)", ha='left', weight='bold', fontsize=11); y-=0.08
     for name, vec in motion.items():
         if vec is not None:
-            # --- INICIO DE LA CORRECCIÓN ---
-            # CORRECCIÓ: Hacemos lo mismo aquí. Creamos variables con unidades
-            # para poder usar las funciones de cálculo de metpy.
-            u_motion_ms = vec[0] * units('m/s')
-            v_motion_ms = vec[1] * units('m/s')
-            
+            u_motion_ms = vec[0] * units('m/s'); v_motion_ms = vec[1] * units('m/s')
             speed = mpcalc.wind_speed(u_motion_ms, v_motion_ms).to('kt').m
             direction = mpcalc.wind_direction(u_motion_ms, v_motion_ms).to('deg').m
-            # --- FIN DE LA CORRECCIÓN ---
-            
             ax_params.text(0.05, y, f"{name}:"); ax_params.text(0.95, y, f"{direction:.0f}°/{speed:.0f} kts", ha='right')
         else:
             ax_params.text(0.05, y, f"{name}:"); ax_params.text(0.95, y, "---", ha='right')
@@ -637,6 +646,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         y-=0.07
         
     return fig
+    
 
 def ui_caixa_parametres_sondeig(params):
     def get_color(value, thresholds, reverse_colors=False):
