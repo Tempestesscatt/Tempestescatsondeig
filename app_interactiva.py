@@ -500,19 +500,25 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
 
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
-    gs = fig.add_gridspec(nrows=2, ncols=2, height_ratios=[1.5, 6], width_ratios=[1.5, 1], hspace=0.4, wspace=0.3)
+    
+    gs = fig.add_gridspec(nrows=2, ncols=2,
+                          height_ratios=[1.5, 6],
+                          width_ratios=[1.5, 1],
+                          hspace=0.4, wspace=0.3)
+
     ax_barbs = fig.add_subplot(gs[0, :])
     ax_hodo = fig.add_subplot(gs[1, 0])
     ax_params = fig.add_subplot(gs[1, 1])
+
     fig.suptitle(titol, weight='bold', fontsize=16)
-    
-    # Configurar gráfico de barbas de viento
+
+    # --- Dibuixem les barbes de vent (sense canvis) ---
     ax_barbs.set_title("Vent a Nivells Clau", fontsize=11, pad=15)
     heights_agl = heights - heights[0]
     barb_altitudes_km = [1, 3, 6, 9]
     barb_altitudes_m = [h * 1000 for h in barb_altitudes_km] * units.m
-    
     u_barbs_list, v_barbs_list = [], []
+
     for h_m in barb_altitudes_m:
         if h_m <= heights_agl.max():
             u_interp_val = np.interp(h_m.m, heights_agl.m, u.m)
@@ -522,18 +528,17 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         else:
             u_barbs_list.append(np.nan)
             v_barbs_list.append(np.nan)
-    
+
     u_barbs = units.Quantity(u_barbs_list, u.units)
     v_barbs = units.Quantity(v_barbs_list, v.units)
-    speed_kmh_barbs = np.sqrt(u_barbs**2 + v_barbs**2).to('km/h').m
     
+    speed_kmh_barbs = np.sqrt(u_barbs**2 + v_barbs**2).to('km/h').m
     thresholds_barbs = [10, 40, 70, 100, 130]
     colors_barbs = ['dimgrey', '#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd']
-    
     x_pos = np.arange(len(barb_altitudes_km))
     u_barbs_kt = u_barbs.to('kt')
     v_barbs_kt = v_barbs.to('kt')
-    
+
     for i, spd_kmh in enumerate(speed_kmh_barbs):
         if not np.isnan(spd_kmh):
             color_index = np.searchsorted(thresholds_barbs, spd_kmh)
@@ -542,115 +547,156 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             ax_barbs.text(x_pos[i], -0.8, f"{spd_kmh:.0f} km/h", ha='center', va='top', fontsize=9, color=color, weight='bold')
         else:
             ax_barbs.text(x_pos[i], 0, "N/A", ha='center', va='center', fontsize=9, color='grey')
-    
-    ax_barbs.set_xticks(x_pos)
-    ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km])
-    ax_barbs.set_yticks([])
-    ax_barbs.spines[:].set_visible(False)
-    ax_barbs.tick_params(axis='x', length=0, pad=5)
-    ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5)
+
+    ax_barbs.set_xticks(x_pos); ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km])
+    ax_barbs.set_yticks([]); ax_barbs.spines[:].set_visible(False)
+    ax_barbs.tick_params(axis='x', length=0, pad=5); ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5)
     ax_barbs.set_ylim(-1.5, 1.5)
-    
-    # Configurar hodógrafo
+
+    # --- Dibuix de l'hodògraf (sense canvis) ---
     h = Hodograph(ax_hodo, component_range=80.)
     h.add_grid(increment=20, color='gray', linestyle='--')
     
     intervals = np.array([0, 1, 3, 6, 9, 12]) * units.km
     colors_hodo = ['red', 'blue', 'green', 'purple', 'gold']
-    
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
     
-    # Añadir movimiento de tormenta si está disponible
     try:
-        rm_vec = params_calc.get('RM')
-        if rm_vec and not np.isnan(rm_vec[0]):
-            u_rm_kt = (rm_vec[0] * units('m/s')).to('kt').m
-            v_rm_kt = (rm_vec[1] * units('m/s')).to('kt').m
-            ax_hodo.plot(u_rm_kt, v_rm_kt, 'o', color='blue', markersize=8, label='Mov. Dret')
-    except Exception:
-        pass
-    
+        mean_wind_vec = params_calc.get('Mean_Wind')
+        if mean_wind_vec is not None:
+            u_mean_kt = (mean_wind_vec[0] * units('m/s')).to('kt').m
+            v_mean_kt = (mean_wind_vec[1] * units('m/s')).to('kt').m
+            arrow_scale = 1.5
+            ax_hodo.arrow(0, 0, u_mean_kt * arrow_scale, v_mean_kt * arrow_scale, color='black', linewidth=1.5, head_width=3, length_includes_head=True, zorder=10)
+    except Exception: pass
+
+    try:
+        shear_vec = mpcalc.bulk_shear(p, u, v, height=heights - heights[0], depth=6000 * units.m)
+        ax_hodo.arrow(0, 0, shear_vec[0].to('kt').m, shear_vec[1].to('kt').m, color='dimgray', linestyle='--', alpha=0.7, head_width=2, length_includes_head=True)
+    except: pass
     ax_hodo.set_xlabel('U-Component (nusos)')
     ax_hodo.set_ylabel('V-Component (nusos)')
-    
-    # Configurar panel de parámetros
+
+    # --- Dibuix del panell de text ---
     ax_params.axis('off')
     
-    def degrees_to_cardinal(d):
-        dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
-        ix = int(round(d / 22.5))
-        return dirs[ix % 16]
-    
+    def degrees_to_cardinal_ca(d):
+        dirs = ["Nord", "Nord-est", "Est", "Sud-est", "Sud", "Sud-oest", "Oest", "Nord-oest"]
+        ix = int(round(((d % 360) / 45)))
+        return dirs[ix % 8]
+
     def get_color(value, thresholds):
         if pd.isna(value): return "grey"
-        colors = ["grey", "green", "#E69F00", "orange", "red", "#C71585"]
+        colors = ["grey", "green", "#E69F00", "orange", "red"]
         thresholds = sorted(thresholds)
         for i, threshold in enumerate(thresholds):
             if value < threshold: return colors[i]
         return colors[-1]
+
+    THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
     
-    THRESHOLDS = {
-        'BWD': (10, 20, 30, 40), 
-        'SRH': (50, 150, 250, 400), 
-        'UPDRAFT': (15, 25, 40, 50)
-    }
+    y = 0.95
     
-    y = 0.98
+    # --- INICI DE LA MODIFICACIÓ ---
+    # Definim les dades de moviment directament amb les noves etiquetes
     motion_data = {
-        'MD': params_calc.get('RM'), 
-        'ML': params_calc.get('LM'), 
+        'MD': params_calc.get('RM'),
+        'ML': params_calc.get('LM'),
         'VM (0-6 km)': params_calc.get('Mean_Wind')
     }
-    
-    ax_params.text(0, y, "Moviment (dir/km/h)", ha='left', weight='bold', fontsize=11)
-    y -= 0.1
-    
+    # --- FI DE LA MODIFICACIÓ ---
+
+    ax_params.text(0, y, "Moviment (dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
+
+    # Iterem sobre el nou diccionari directament
     for display_name, vec in motion_data.items():
-        if vec and not any(pd.isna(v) for v in vec):
-            u_motion_ms, v_motion_ms = vec[0] * units('m/s'), vec[1] * units('m/s')
+        if vec is not None:
+            u_motion_ms = vec[0] * units('m/s'); v_motion_ms = vec[1] * units('m/s')
             speed_kmh = mpcalc.wind_speed(u_motion_ms, v_motion_ms).to('km/h').m
-            direction_from_deg = mpcalc.wind_direction(u_motion_ms, v_motion_ms, convention='from').to('deg').m
-            cardinal_dir = degrees_to_cardinal(direction_from_deg)
+            direction_from_deg = mpcalc.wind_direction(u_motion_ms, v_motion_ms).to('deg').m
+            direction_to_deg = (direction_from_deg + 180) % 360
+            cardinal_dir_ca = degrees_to_cardinal_ca(direction_to_deg)
             ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
-            ax_params.text(1, y, f"{direction_from_deg:.0f}° ({cardinal_dir}) / {speed_kmh:.0f}", ha='right', va='center')
+            ax_params.text(1, y, f"{cardinal_dir_ca} / {speed_kmh:.0f} km/h", ha='right', va='center')
         else:
             ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
             ax_params.text(1, y, "---", ha='right', va='center')
-        y -= 0.08
-    
-    y -= 0.05
-    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11)
-    y -= 0.1
-    
-    for key, label in [('0-1km', '0-1 km'), ('0-6km', '0-6 km')]:
-        val = params_calc.get(f'BWD_{key}', np.nan)
+        y-=0.1
+
+    y-=0.05
+    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
+    for key, label in [('0-1km', '0-1 km'), ('0-6km', '0-6 km'), ('EBWD', 'Efectiu')]:
+        val = params_calc.get(key if key == 'EBWD' else f'BWD_{key}', np.nan)
         color = get_color(val, THRESHOLDS['BWD'])
         ax_params.text(0, y, f"{label}:", ha='left', va='center')
         ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
-        y -= 0.08
-    
-    y -= 0.05
-    ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11)
-    y -= 0.1
-    
-    for key, label in [('0-1km', '0-1 km'), ('0-3km', '0-3 km')]:
-        val = params_calc.get(f'SRH_{key}', np.nan)
+        y-=0.07
+
+    y-=0.05
+    ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.1
+    for key, label in [('0-1km', '0-1 km'), ('0-3km', '0-3 km'), ('ESRH', 'Efectiva')]:
+        val = params_calc.get(key if key == 'ESRH' else f'SRH_{key}', np.nan)
         color = get_color(val, THRESHOLDS['SRH'])
         ax_params.text(0, y, f"{label}:", ha='left', va='center')
         ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
-        y -= 0.08
-    
-    y -= 0.05
-    ax_params.text(0, y, "Corrent Ascendent", ha='left', weight='bold', fontsize=11)
-    y -= 0.1
-    
-    val_updraft = params_calc.get('MAX_UPDRAFT', np.nan)
-    color_updraft = get_color(val_updraft, THRESHOLDS['UPDRAFT'])
-    ax_params.text(0, y, f"Vel. Max (0-6km):", ha='left', va='center')
-    ax_params.text(1, y, f"{val_updraft:.1f} m/s" if not pd.isna(val_updraft) else "---", ha='right', va='center', weight='bold', color=color_updraft)
-    y -= 0.08
-    
+        y-=0.07
+        
     return fig
+def ui_caixa_parametres_sondeig(params):
+    def get_color(value, thresholds, reverse_colors=False):
+        if pd.isna(value): return "#808080"
+        colors = ["#808080", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
+        if reverse_colors:
+            thresholds = sorted(thresholds, reverse=True); colors = list(reversed(colors))
+        else: thresholds = sorted(thresholds)
+        for i, threshold in enumerate(thresholds):
+            if value < threshold: return colors[i]
+        return colors[-1]
+
+    THRESHOLDS = {
+        'SBCAPE': (100, 500, 1500, 2500), 'MUCAPE': (100, 500, 1500, 2500),
+        'MLCAPE': (50, 250, 1000, 2000), 'CAPE_0-3km': (25, 75, 150, 250),
+        'DCAPE': (200, 500, 800, 1200), 'SBCIN': (0, -25, -75, -150), 
+        'LI': (0, -2, -5, -8), 'PWAT': (20, 30, 40, 50),
+        'BWD_0-6km': (10, 20, 30, 40), 'SRH_0-1km': (50, 100, 150, 250)
+    }
+
+    def styled_metric(label, value, unit, param_key, precision=0, reverse_colors=False):
+        color = get_color(value, THRESHOLDS.get(param_key, []), reverse_colors)
+        val_str = f"{value:.{precision}f}" if not pd.isna(value) else "---"
+        st.markdown(f"""
+            <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
+                <span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit})</span><br>
+                <strong style="font-size: 1.6em; color: {color};">{val_str}</strong>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("##### Paràmetres del Sondeig")
+    
+    # Fila 1: Energia Principal
+    cols = st.columns(3)
+    with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE')
+    with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE')
+    with cols[2]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE')
+    
+    # Fila 2: Estabilitat i Humitat
+    cols = st.columns(3)
+    with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True)
+    with cols[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', precision=1, reverse_colors=True)
+    with cols[2]: styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1)
+    
+    # Fila 3: Nivells i Potencial Descendent
+    cols = st.columns(3)
+    with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
+    with cols[1]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
+    with cols[2]: styled_metric("DCAPE", params.get('DCAPE', np.nan), "J/kg", 'DCAPE')
+    
+    # Fila 4: Paràmetres de Cisallament / Rotació
+    cols = st.columns(3)
+    with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
+    with cols[1]: styled_metric("SRH 0-1km", params.get('SRH_0-1km', np.nan), "m²/s²", 'SRH_0-1km')
+    with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
+        
 
 def ui_caixa_parametres_sondeig(params):
     def get_color(value, thresholds, reverse_colors=False):
