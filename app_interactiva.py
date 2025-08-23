@@ -125,6 +125,7 @@ def show_login_page():
     if st.button("Entrar com a Convidat", use_container_width=True, type="secondary"):
         st.session_state.update({'guest_mode': True, 'logged_in': False}); st.rerun()
 
+# --- INICI DEL BLOC AFEGIT ---
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base(variables, hourly_index):
     """
@@ -172,6 +173,7 @@ def carregar_dades_mapa_base(variables, hourly_index):
     except Exception as e:
         # En cas de qualsevol altre error, el capturem i el retornem
         return None, f"Error en la càrrega de dades base del mapa: {e}"
+# --- FI DEL BLOC AFEGIT ---
 
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
@@ -431,7 +433,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         return None, f"Error en processar dades del sondeig: {e}"
 
 
-        
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
     try:
@@ -532,68 +533,65 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
 
 def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     """
-    NOTA: Aquesta funció ara requereix la variable 'heights' per poder
-    diferenciar les capes per sota i sobre dels 3 km.
-    Assegura't de passar-la quan cridis la funció.
-    Exemple: crear_skewt(p, T, Td, u, v, heights, prof, ...)
+    Construeix i dibuixa un diagrama Skew-T, garantint que totes les línies
+    comencin visualment a la base del gràfic (1000 hPa) i que l'ombrejat
+    sigui coherent, fins i tot quan la superfície real és més alta.
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.85, 0.85))
 
-    # Adiabáticas de fondo como referencia sutil
+    # Dibuixa les línies de fons com a referència
     skew.plot_dry_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     skew.plot_moist_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     skew.plot_mixing_lines(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
+
+    # --- LÒGICA DEFINITIVA D'EXTRAPOLACIÓ I RE-CÀLCUL ---
     
-    # --- INICIO DE LA MEJORA: Sombreado Personalizado por Capas ---
-    if prof is not None:
-        p_np = p.m
-        T_np = T.m
-        prof_np = prof.m
-        
-        # Calculem l'alçada sobre el terreny (AGL)
-        heights_agl = (heights - heights[0]).m
-        
-        # Trobem la pressió a 3km AGL per interpolació
-        try:
-            # S'ha d'assegurar que les alçades són creixents per a la interpolació
-            sort_indices = np.argsort(heights_agl)
-            p_3km = np.interp(3000, heights_agl[sort_indices], p_np[sort_indices])
-        except Exception:
-            # Si el sondeig no arriba a 3km, no hi haurà capa superior
-            p_3km = p_np.min()
+    # Per defecte, les dades per dibuixar són les originals
+    p_plot, T_plot, Td_plot = p, T, Td
+    prof_plot = prof
 
-        # Definim les condicions per a cada capa
-        cond_cape = prof_np > T_np
-        cond_cin = prof_np < T_np
-        cond_capa_baixa = p_np >= p_3km
-        cond_capa_alta = p_np < p_3km
+    # Si la pressió de superfície és menor de 1000 hPa (el terreny és alt)...
+    if p[0] < 1000 * units.hPa and prof is not None:
+        # 1. Creem una nova superfície virtual a 1000 hPa
+        p_1000 = 1000 * units.hPa
+        T_1000 = mpcalc.dry_lapse(p_1000, T[0])
+        mixing_ratio_sfc = mpcalc.mixing_ratio(mpcalc.saturation_vapor_pressure(Td[0]), p[0])
+        Td_1000 = mpcalc.dewpoint(mpcalc.vapor_pressure(p_1000, mixing_ratio_sfc))
+        
+        # 2. Creem els perfils de pressió i temperatura de l'entorn estesos fins a 1000 hPa
+        p_plot = np.insert(p.magnitude, 0, p_1000.magnitude) * units.hPa
+        T_plot = np.insert(T.magnitude, 0, T_1000.magnitude) * units.degC
+        Td_plot = np.insert(Td.magnitude, 0, Td_1000.magnitude) * units.degC
+        
+        # 3. CRUCIAL: Recalculem la trajectòria sencera de la parcel·la
+        #    utilitzant el perfil de pressió estès i les noves condicions de superfície virtuals.
+        prof_plot = mpcalc.parcel_profile(p_plot, T_1000, Td_1000).to('degC')
 
-        # 1. Omplim CAPE per capes
-        skew.ax.fill_betweenx(p_np, T_np, prof_np, where=cond_cape & cond_capa_baixa,
+    # --- FI DE LA LÒGICA ---
+
+    # Ombrejat i dibuix es fan SEMPRE amb les mateixes dades (les _plot),
+    # siguin les originals o les extrapolades, garantint la coherència.
+    if prof_plot is not None:
+        p_np = p_plot.m
+        T_np = T_plot.m
+        prof_np = prof_plot.m
+        
+        # SOMBREJAT
+        skew.ax.fill_betweenx(p_np, T_np, prof_np, where=prof_np > T_np,
                               facecolor='yellow', alpha=0.5, interpolate=True, zorder=5)
-        skew.ax.fill_betweenx(p_np, T_np, prof_np, where=cond_cape & cond_capa_alta,
-                              facecolor='#FFFACD', alpha=0.5, interpolate=True, zorder=5) # LemonChiffon (groc suau)
-
-        # 2. Omplim CIN per capes
-        skew.ax.fill_betweenx(p_np, T_np, prof_np, where=cond_cin & cond_capa_baixa,
+        skew.ax.fill_betweenx(p_np, T_np, prof_np, where=prof_np < T_np,
                               facecolor='dimgray', alpha=0.5, interpolate=True, zorder=5)
-        skew.ax.fill_betweenx(p_np, T_np, prof_np, where=cond_cin & cond_capa_alta,
-                              facecolor='lightgray', alpha=0.5, interpolate=True, zorder=5)
-    # --- FIN DE LA MEJORA ---
 
-    # Perfiles principales con los nuevos colores
-    skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
-    skew.plot(p, Td, 'purple', lw=2.5, label='Punt de Rosada') # Color lila
-    if prof is not None:
-        skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la',
+    # DIBUIX DELS PERFILS
+    skew.plot(p_plot, T_plot, 'red', lw=2.5, label='Temperatura')
+    skew.plot(p_plot, Td_plot, 'purple', lw=2.5, label='Punt de Rosada')
+    if prof_plot is not None:
+        skew.plot(p_plot, prof_plot, 'k', linewidth=3, label='Trajectòria Parcel·la',
                   path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
 
-    # Marcadores de Nivel Intercalados (LFC, EL, 0°C)
-    # ... (el código para los marcadores intercalados se mantiene igual que en la versión anterior)
-    
-    # Configuración final
-    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
+    # Configuració final del gràfic
+    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03) # Les barbes sí amb dades originals
     skew.ax.set_ylim(1000, 100)
     skew.ax.set_xlim(-40, 40)
     skew.ax.set_title(titol, weight='bold', fontsize=14, pad=20)
