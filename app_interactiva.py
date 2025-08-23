@@ -691,30 +691,30 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         
 
 def ui_caixa_parametres_sondeig(params):
-    def get_color(value, thresholds, reverse_colors=False):
-        if hasattr(value, '__len__') and not isinstance(value, str):
-            if len(value) > 0: value = value[0]
-            else: return "#808080"
+    # La funció 'get_color' ara rep 'param_key' com a argument per resoldre l'error.
+    def get_color(value, thresholds, param_key, reverse_colors=False):
         if pd.isna(value): return "#808080"
-        # Valors negatius (divergència) seran verds, positius (convergència) seran vermells
+
+        # Lògica de color específica per a la Convergència
         if param_key == 'CONV_925hPa':
             colors = ["#28a745", "#808080", "#ffc107", "#fd7e14", "#dc3545"]
-            thresholds = sorted(thresholds)
-            if value < thresholds[0]: return colors[0] # Divergència forta
-            for i, threshold in enumerate(thresholds):
-                if value < threshold: return colors[i+1]
-            return colors[-1]
+            # thresholds = [-2, 2, 5, 10]
+            # Utilitzem searchsorted per trobar l'índex de color correcte de forma eficient.
+            # Verd per divergència (< -2), gris per neutre, i groc/taronja/vermell per convergència.
+            idx = np.searchsorted(thresholds, value)
+            return colors[idx]
 
+        # Lògica de color general per a la resta de paràmetres
         colors = ["#808080", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
-        if reverse_colors: 
+        if reverse_colors:
             thresholds = sorted(thresholds, reverse=True)
             colors = list(reversed(colors))
-        else: 
+        else:
             thresholds = sorted(thresholds)
         for i, threshold in enumerate(thresholds):
             if value < threshold: return colors[i]
         return colors[-1]
-    
+
     THRESHOLDS = {
         'SBCAPE': (100, 500, 1500, 2500), 'MUCAPE': (100, 500, 1500, 2500), 
         'MLCAPE': (50, 250, 1000, 2000), 'CAPE_0-3km': (25, 75, 150, 250), 
@@ -723,38 +723,36 @@ def ui_caixa_parametres_sondeig(params):
         'PWAT': (20, 30, 40, 50), 'BWD_0-6km': (10, 20, 30, 40), 
         'BWD_0-1km': (5, 10, 15, 20), 'SRH_0-1km': (50, 100, 150, 250),
         'SRH_0-3km': (100, 200, 300, 400),
-        # Llindars per a la convergència. Negatiu=Divergència, Positiu=Convergència
-        'CONV_925hPa': (-2, 2, 5, 10) 
+        'CONV_925hPa': [-2, 2, 5, 10] # Llindars per a la convergència/divergència
     }
-    
+
     def styled_metric(label, value, unit, param_key, precision=0, reverse_colors=False):
-        # Aquesta variable global s'utilitza per a la lògica de color específica
-        nonlocal get_color_param_key
-        get_color_param_key = param_key
-        
         if hasattr(value, '__len__') and not isinstance(value, str):
-            if len(value) > 0: value = value[0]
-            else: value = np.nan
+            value = value[0] if len(value) > 0 else np.nan
         
-        color = get_color(value, THRESHOLDS.get(param_key, []), reverse_colors)
+        # La crida a 'get_color' ara passa 'param_key' correctament.
+        color = get_color(value, THRESHOLDS.get(param_key, []), param_key, reverse_colors)
+        
         val_str = f"{value:.{precision}f}" if not pd.isna(value) else "---"
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;"><span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit})</span><br><strong style="font-size: 1.6em; color: {color};">{val_str}</strong></div>""", unsafe_allow_html=True)
-    
-    # Variable per passar el param_key a la funció de color
-    get_color_param_key = None
-    
+
     st.markdown("##### Paràmetres del Sondeig")
+    
     emoji, descripcio = determinar_emoji_temps(params)
 
-    # ... (Files de CAPE, CIN, LI, PWAT, Emoji es queden iguals) ...
+    # Primera fila: CAPE values
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE')
     with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE')
     with cols[2]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE')
+    
+    # Segunda fila: CIN and other stability indices
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True)
     with cols[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True)
     with cols[2]: styled_metric("MLCIN", params.get('MLCIN', np.nan), "J/kg", 'MLCIN', reverse_colors=True)
+    
+    # Tercera fila: LI, PWAT i l'emoji
     cols = st.columns(3)
     with cols[0]: 
         li_value = params.get('LI', np.nan)
@@ -771,22 +769,23 @@ def ui_caixa_parametres_sondeig(params):
         </div>
         """, unsafe_allow_html=True)
 
-    # --- CANVI A LA QUARTA FILA ---
+    # Cuarta fila: Levels i Convergència
     cols = st.columns(3)
     with cols[0]: 
         styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
     with cols[1]: 
         styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
     with cols[2]: 
-        # MODIFICAT: Ara mostrem la convergència a 925hPa
         conv_value = params.get('CONV_925hPa', np.nan)
         styled_metric("Conv. 925hPa", conv_value, "10⁻⁵/s", 'CONV_925hPa', precision=1)
 
-    # ... (les files de BWD, CAPE 0-3km, SRH i UPDRAFT es queden iguals) ...
+    # Quinta fila: Wind parameters
     cols = st.columns(3)
     with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
     with cols[1]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km')
     with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
+    
+    # Sexta fila: SRH and updraft
     cols = st.columns(3)
     with cols[0]: 
         srh1_value = params.get('SRH_0-1km', np.nan)
