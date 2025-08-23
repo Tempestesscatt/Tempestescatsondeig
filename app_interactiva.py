@@ -870,7 +870,9 @@ def ui_zone_selection():
                 st.session_state['zone_selected'] = 'catalunya'; st.rerun()
     with col2:
         with st.container(border=True):
-            st.image("https://i.imgur.com/L125aaM.jpeg", caption="Supercèl·lula a les planes dels Estats Units.")
+            # --- LÍNIA CORREGIDA ---
+            # S'ha canviat l'URL de la imatge trencada per una de nova.
+            st.image("https://i.imgur.com/83o5A7x.jpeg", caption="Supercèl·lula a les planes dels Estats Units.")
             st.subheader("Tornado Alley (EUA)")
             st.write("Anàlisi a escala sinòptica (Model GFS) per al 'Corredor de Tornados' dels EUA. Perfecte per a l'estudi de sistemes de gran escala i temps sever organitzat.")
             if st.button("Analitzar Tornado Alley", use_container_width=True):
