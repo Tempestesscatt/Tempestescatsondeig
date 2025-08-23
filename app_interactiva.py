@@ -32,14 +32,15 @@ import xml.etree.ElementTree as ET
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever")
 
-# --- Constants per Catalunya ---
+# --- Clients API ---
 parcel_lock = threading.Lock()
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
-FORECAST_DAYS = 4
+
+# --- Constants per Catalunya ---
 API_URL_CAT = "https://api.open-meteo.com/v1/forecast"
-TIMEZONE = pytz.timezone('Europe/Madrid')
+TIMEZONE_CAT = pytz.timezone('Europe/Madrid')
 CIUTATS_CATALUNYA = {
     'Amposta': {'lat': 40.7093, 'lon': 0.5810}, 'Balaguer': {'lat': 41.7904, 'lon': 0.8066},
     'Banyoles': {'lat': 42.1197, 'lon': 2.7667}, 'Barcelona': {'lat': 41.3851, 'lon': 2.1734},
@@ -73,16 +74,13 @@ PRESS_LEVELS = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 2
 MAP_ZOOM_LEVELS = {'Catalunya (Complet)': MAP_EXTENT_CAT, 'Nord-est (Girona)': [1.8, 3.4, 41.7, 42.6], 'Sud (Tarragona i Ebre)': [0.2, 1.8, 40.5, 41.4], 'Ponent i Pirineu (Lleida)': [0.4, 1.9, 41.4, 42.6], 'Àrea Metropolitana (BCN)': [1.7, 2.7, 41.2, 41.8]}
 
 # --- Constants per Tornado Alley ---
-API_URL_USA = "https://customer-api.open-meteo.com/v1/forecast"
-MAP_EXTENT_USA = [-105, -85, 30, 48] # Extensió per a Tornado Alley
+API_URL_USA = "https://api.open-meteo.com/v1/forecast" # API Estàndard
+MAP_EXTENT_USA = [-105, -85, 30, 48]
 TIMEZONE_USA = pytz.timezone('America/Chicago')
 USA_CITIES = {
-    'Dallas, TX': {'lat': 32.7767, 'lon': -96.7970},
-    'Oklahoma City, OK': {'lat': 35.4676, 'lon': -97.5164},
-    'Kansas City, MO': {'lat': 39.0997, 'lon': -94.5786},
-    'Omaha, NE': {'lat': 41.2565, 'lon': -95.9345},
-    'Wichita, KS': {'lat': 37.6872, 'lon': -97.3301},
-    'Tulsa, OK': {'lat': 36.1540, 'lon': -95.9928},
+    'Dallas, TX': {'lat': 32.7767, 'lon': -96.7970}, 'Oklahoma City, OK': {'lat': 35.4676, 'lon': -97.5164},
+    'Kansas City, MO': {'lat': 39.0997, 'lon': -94.5786}, 'Omaha, NE': {'lat': 41.2565, 'lon': -95.9345},
+    'Wichita, KS': {'lat': 37.6872, 'lon': -97.3301}, 'Tulsa, OK': {'lat': 36.1540, 'lon': -95.9928},
 }
 
 # --- Constants Generals ---
@@ -142,7 +140,7 @@ def show_login_page():
                     st.success("Compte creat amb èxit! Ara pots iniciar sessió.")
     st.divider()
     if st.button("Entrar com a Convidat", use_container_width=True, type="secondary"):
-        st.session_state.update({'guest_mode': True, 'logged_in': True}); st.rerun() # Marcador com a logged_in per simplificar el flux
+        st.session_state.update({'guest_mode': True, 'logged_in': True}); st.rerun()
 
 # --- Funcions Específiques per a Catalunya ---
 
@@ -151,7 +149,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS]
-        params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
+        params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_seamless", "forecast_days": 4}
         response = openmeteo.weather_api(API_URL_CAT, params=params)[0]
         hourly = response.Hourly()
         sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i, v in enumerate(h_base)}
@@ -163,7 +161,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             p_data[var] = [hourly.Variables(var_count + i * len(PRESS_LEVELS) + j).ValuesAsNumpy()[hourly_index] for j in range(len(PRESS_LEVELS))]
         
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
-        
         p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
         
         for i, p_val in enumerate(PRESS_LEVELS):
@@ -172,9 +169,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                 T_profile.append(p_data["T"][i])
                 Td_profile.append(mpcalc.dewpoint_from_relative_humidity(p_data["T"][i] * units.degC, p_data["RH"][i] * units.percent).m)
                 u, v = mpcalc.wind_components(p_data["WS"][i] * units('km/h'), p_data["WD"][i] * units.degrees)
-                u_profile.append(u.to('m/s').m)
-                v_profile.append(v.to('m/s').m)
-                h_profile.append(p_data["H"][i])
+                u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m); h_profile.append(p_data["H"][i])
         
         if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
         
@@ -182,128 +177,68 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         p, T, Td = np.array(p_profile)[valid_indices] * units.hPa, np.array(T_profile)[valid_indices] * units.degC, np.array(Td_profile)[valid_indices] * units.degC
         u, v, heights = np.array(u_profile)[valid_indices] * units('m/s'), np.array(v_profile)[valid_indices] * units('m/s'), np.array(h_profile)[valid_indices] * units.meter
         
-        params_calc = {}
-        prof = None
-        heights_agl = heights - heights[0]
-
+        params_calc = {}; prof = None; heights_agl = heights - heights[0]
         with parcel_lock:
             prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
-
-            # --- CÀLCULS D'ENERGIA ---
             try:
-                sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
-                params_calc['SBCAPE'] = sbcape.m
-                params_calc['SBCIN'] = sbcin.m
+                sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof); params_calc['SBCAPE'] = sbcape.m; params_calc['SBCIN'] = sbcin.m
                 params_calc['MAX_UPDRAFT'] = np.sqrt(2 * sbcape.m) if sbcape.m > 0 else 0.0
-            except Exception:
-                params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
-
+            except Exception: params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
+            try: mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td, as_pentads=False); params_calc['MUCAPE'] = mucape.m; params_calc['MUCIN'] = mucin.m
+            except Exception: params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
+            try: mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td, depth=100 * units.hPa); params_calc['MLCAPE'] = mlcape.m; params_calc['MLCIN'] = mlcin.m
+            except Exception: params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
+            try: li, _ = mpcalc.lifted_index(p, T, prof); params_calc['LI'] = li.m
+            except Exception: params_calc['LI'] = np.nan
+            try: dcape, _ = mpcalc.dcape(p, T, Td, prof); params_calc['DCAPE'] = dcape.m
+            except Exception: params_calc['DCAPE'] = np.nan
             try:
-                mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td, as_pentads=False)
-                params_calc['MUCAPE'] = mucape.m
-                params_calc['MUCIN'] = mucin.m
-            except Exception:
-                params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
-
-            try:
-                mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td, depth=100 * units.hPa)
-                params_calc['MLCAPE'] = mlcape.m
-                params_calc['MLCIN'] = mlcin.m
-            except Exception:
-                params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
-            
-            # --- CÀLCULS DE NIVELLS I ÍNDEXS ---
-            try:
-                li, _ = mpcalc.lifted_index(p, T, prof)
-                params_calc['LI'] = li.m
-            except Exception:
-                params_calc['LI'] = np.nan
-            
-            try:
-                dcape, _ = mpcalc.dcape(p, T, Td, prof)
-                params_calc['DCAPE'] = dcape.m
-            except Exception:
-                params_calc['DCAPE'] = np.nan
-
-            try:
-                lfc_p, _ = mpcalc.lfc(p, T, Td, prof)
-                params_calc['LFC_p'] = lfc_p.m
+                lfc_p, _ = mpcalc.lfc(p, T, Td, prof); params_calc['LFC_p'] = lfc_p.m
                 params_calc['LFC_Hgt'] = np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1])
-            except Exception:
-                params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
-                
+            except Exception: params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
             try:
-                el_p, _ = mpcalc.el(p, T, Td, prof)
-                params_calc['EL_p'] = el_p.m
+                el_p, _ = mpcalc.el(p, T, Td, prof); params_calc['EL_p'] = el_p.m
                 params_calc['EL_Hgt'] = np.interp(el_p.m, p.m[::-1], heights_agl.m[::-1])
-            except Exception:
-                params_calc.update({'EL_p': np.nan, 'EL_Hgt': np.nan})
-            
+            except Exception: params_calc.update({'EL_p': np.nan, 'EL_Hgt': np.nan})
             try:
-                lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0])
-                params_calc['LCL_p'] = lcl_p.m
+                lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); params_calc['LCL_p'] = lcl_p.m
                 params_calc['LCL_Hgt'] = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
-            except Exception:
-                params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
-
-            try:
-                pwat = mpcalc.precipitable_water(p, Td)
-                params_calc['PWAT'] = pwat.to('mm').m
-            except Exception:
-                params_calc['PWAT'] = np.nan
-                
-            try:
-                frz_lvl, _ = mpcalc.freezing_level(p, T)
-                params_calc['FRZG_Lvl_p'] = frz_lvl.m
-            except Exception:
-                params_calc['FRZG_Lvl_p'] = np.nan
-
-        # --- CÀLCULS DE CINEMÀTICA (VENT) ---
+            except Exception: params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
+            try: pwat = mpcalc.precipitable_water(p, Td); params_calc['PWAT'] = pwat.to('mm').m
+            except Exception: params_calc['PWAT'] = np.nan
+            try: frz_lvl, _ = mpcalc.freezing_level(p, T); params_calc['FRZG_Lvl_p'] = frz_lvl.m
+            except Exception: params_calc['FRZG_Lvl_p'] = np.nan
         try:
             rm, lm, mean_wind = mpcalc.storm_motion(p, u, v, heights)
-            params_calc['RM'] = (rm[0].m, rm[1].m)
-            params_calc['LM'] = (lm[0].m, lm[1].m)
-            params_calc['Mean_Wind'] = (mean_wind[0].m, mean_wind[1].m)
-        except Exception:
-            params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan), 'Mean_Wind': (np.nan, np.nan)})
-        
+            params_calc['RM'] = (rm[0].m, rm[1].m); params_calc['LM'] = (lm[0].m, lm[1].m); params_calc['Mean_Wind'] = (mean_wind[0].m, mean_wind[1].m)
+        except Exception: params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan), 'Mean_Wind': (np.nan, np.nan)})
         for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
             try:
                 bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights_agl, depth=depth_m * units.m)
-                shear_speed = mpcalc.wind_speed(bwd_u, bwd_v)
-                params_calc[f'BWD_{name}'] = shear_speed.to('kt').m
-            except Exception:
-                params_calc[f'BWD_{name}'] = np.nan
-        
+                params_calc[f'BWD_{name}'] = mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m
+            except Exception: params_calc[f'BWD_{name}'] = np.nan
         if not np.isnan(params_calc.get('RM', [(np.nan, np.nan)])[0]):
             try:
                 u_storm, v_storm = params_calc['RM'] * units('m/s')
                 for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
                     srh, _, _ = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.m, storm_u=u_storm, storm_v=v_storm)
                     params_calc[f'SRH_{name}'] = srh.m
-            except Exception:
-                params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-        else:
-            params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-
+            except Exception: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
+        else: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
         try:
             idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
             cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
             params_calc['CAPE_0-3km'] = cape_0_3.m
-        except Exception:
-            params_calc['CAPE_0-3km'] = np.nan
-
+        except Exception: params_calc['CAPE_0-3km'] = np.nan
         return ((p, T, Td, u, v, heights, prof), params_calc), None
-    except Exception as e:
-        st.error(f"Error crític en carregar les dades del sondeig: {e}")
-        return None, f"Error en processar dades del sondeig: {e}"
+    except Exception as e: return None, f"Error en processar dades del sondeig: {e}"
         
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base_cat(variables, hourly_index):
     try:
         lats, lons = np.linspace(MAP_EXTENT_CAT[2], MAP_EXTENT_CAT[3], 12), np.linspace(MAP_EXTENT_CAT[0], MAP_EXTENT_CAT[1], 12)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
-        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": FORECAST_DAYS}
+        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": 4}
         responses = openmeteo.weather_api(API_URL_CAT, params=params)
         output = {var: [] for var in ["lats", "lons"] + variables}
         for r in responses:
@@ -365,8 +300,8 @@ def obtenir_ciutats_actives(hourly_index):
     except Exception as e: return CIUTATS_CONVIDAT, f"Error calculant zones actives: {e}."
 
 def crear_mapa_base(map_extent, projection=ccrs.PlateCarree()):
-    fig, ax = plt.subplots(figsize=(8, 8), dpi=90, subplot_kw={'projection': projection})
-    ax.set_extent(map_extent, crs=ccrs.PlateCarree()); 
+    fig, ax = plt.subplots(figsize=(8, 8), dpi=100, subplot_kw={'projection': projection})
+    ax.set_extent(map_extent, crs=ccrs.PlateCarree()) 
     ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
     ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
@@ -377,15 +312,15 @@ def crear_mapa_base(map_extent, projection=ccrs.PlateCarree()):
 
 def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     fig, ax = crear_mapa_base(map_extent)
-    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_CAT[0], MAP_EXTENT_CAT[1], 400), np.linspace(MAP_EXTENT_CAT[2], MAP_EXTENT_CAT[3], 400))
+    grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 400), np.linspace(map_extent[2], map_extent[3], 400))
     grid_speed, grid_dewpoint = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
-    colors_wind_new = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db', '#87ceeb', '#48d1cc', '#b0c4de', '#da70d6', '#ffdead', '#ffd700', '#9acd32', '#a9a9a9']
-    speed_levels_new = [0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104, 130, 166, 184, 277, 374, 400]; cbar_ticks = [0, 18, 40, 61, 86, 130, 184, 374]
-    custom_cmap = ListedColormap(colors_wind_new); norm_speed = BoundaryNorm(speed_levels_new, ncolors=custom_cmap.N, clip=True)
+    colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
+    speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]; 
+    custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
-    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=cbar_ticks)
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density= 4, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
@@ -400,20 +335,22 @@ def crear_mapa_forecast_combinat(lons, lats, speed_data, dir_data, dewpoint_data
     labels = ax.clabel(contours, inline=True, fontsize=6, fmt='%1.0f')
     for label in labels: label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.6))
     ax.set_title(f"Vent i Nuclis de convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
+
 def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, map_extent):
     fig, ax = crear_mapa_base(map_extent)
-    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_CAT[0], MAP_EXTENT_CAT[1], 200), np.linspace(MAP_EXTENT_CAT[2], MAP_EXTENT_CAT[3], 200))
+    grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 200), np.linspace(map_extent[2], map_extent[3], 200))
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic')
-    colors_wind_new = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db', '#87ceeb', '#48d1cc', '#b0c4de', '#da70d6', '#ffdead', '#ffd700', '#9acd32', '#a9a9a9']
-    speed_levels_new = [0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104, 130, 166, 184, 277, 374, 400]; cbar_ticks = [0, 18, 40, 61, 86, 130, 184, 374]
-    custom_cmap = ListedColormap(colors_wind_new); norm_speed = BoundaryNorm(speed_levels_new, ncolors=custom_cmap.N, clip=True)
+    colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
+    speed_levels = [0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 220, 250]
+    custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.7, density=2.5, arrowsize=0.6, zorder=3, transform=ccrs.PlateCarree())
-    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 
+# ... (La resta de funcions per a SkewT, Hodògraf, UI de paràmetres, etc., es mantenen igual)
 def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(7, 8))
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
@@ -563,42 +500,37 @@ def ui_caixa_parametres_sondeig(params):
         
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
-        lat_sel = CIUTATS_CATALUNYA[poble_sel]['lat']
-        lon_sel = CIUTATS_CATALUNYA[poble_sel]['lon']
-        
+        lat_sel = CIUTATS_CATALUNYA[poble_sel]['lat']; lon_sel = CIUTATS_CATALUNYA[poble_sel]['lon']
         sounding_data, params_calculats = data_tuple
         p, T, Td, u, v, heights, prof = sounding_data
-        
         col1, col2 = st.columns(2, gap="large")
-
         with col1:
             fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
-            st.pyplot(fig_skewt, use_container_width=True)
-            plt.close(fig_skewt)
+            st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
             with st.container(border=True): ui_caixa_parametres_sondeig(params_calculats)
-            with st.expander("📚 Guia Completa d'Interpretació dels Paràmetres", expanded=False): st.markdown("""... contingut ...""")
+            with st.expander("📚 Guia d'Interpretació dels Paràmetres", expanded=False): st.markdown("""... contingut ...""")
         with col2:
             fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
-            st.pyplot(fig_hodo, use_container_width=True)
-            plt.close(fig_hodo)
+            st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
             with st.expander("🌀 Com Interpretar l'Hodògraf", expanded=False): st.markdown("""... contingut ...""")
             st.markdown("##### Radar de Precipitació en Temps Real")
             radar_url = f"https://www.rainviewer.com/map.html?loc={lat_sel},{lon_sel},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
             html_code = f"""<div style="position: relative; width: 100%; height: 410px; border-radius: 10px; overflow: hidden;"><iframe src="{radar_url}" width="100%" height="410" frameborder="0" style="border:0;"></iframe><div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div></div>"""
             st.components.v1.html(html_code, height=410)
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
-        
+
+# ... (La resta de funcions com IA, Xat, Capçalera, etc., es mantenen igual)
 def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str):
-    st.subheader("🌤️ Assistente Meteo-Col·lega Pro (con Google Gemini)")
+    st.subheader("🌤️ Assistent Meteo-Col·lega Pro (amb Google Gemini)")
     try: genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    except (KeyError, AttributeError): st.error("❌ Falta la GEMINI_API_KEY en los secrets de Streamlit."); return
+    except (KeyError, AttributeError): st.error("❌ Falta la GEMINI_API_KEY als secrets de Streamlit."); return
     username = st.session_state.get('username')
-    if not username: st.error("🔒 Error de autenticación. Por favor, inicia sesión."); return
+    if not username: st.error("🔒 Error d'autenticació. Si us plau, inicia sessió."); return
     
     LIMIT_PER_WINDOW = 15; WINDOW_HOURS = 3; PREMIUM_LIMIT = 30
     rate_limits = load_json_file(RATE_LIMIT_FILE); user_limit_data = rate_limits.get(username, {"count": 0, "window_start_time": None, "is_premium": False})
     user_limit = PREMIUM_LIMIT if user_limit_data.get("is_premium", False) else LIMIT_PER_WINDOW
-    user_type = "Premium" if user_limit_data.get("is_premium", False) else "Estándar"
+    user_type = "Premium" if user_limit_data.get("is_premium", False) else "Estàndard"
     
     current_time = datetime.now(pytz.utc)
     if user_limit_data.get("window_start_time"):
@@ -609,18 +541,18 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
     current_count = user_limit_data.get("count", 0); limit_reached = current_count >= user_limit
     
     col1, col2, col3 = st.columns([2, 1, 1])
-    with col1: st.markdown(f"**Usuario:** {username} ({user_type})")
+    with col1: st.markdown(f"**Usuari:** {username} ({user_type})")
     with col2:
         preguntes_restants = max(0, user_limit - current_count); color = "green" if preguntes_restants > 5 else "orange" if preguntes_restants > 0 else "red"; emoji = "✅" if preguntes_restants > 5 else "⚠️" if preguntes_restants > 0 else "❌"
-        st.markdown(f"{emoji} **Preguntas restantes:** <span style='color: {color}; font-weight: bold;'>{preguntes_restants}/{user_limit}</span>", unsafe_allow_html=True)
+        st.markdown(f"{emoji} **Consultes restants:** <span style='color: {color}; font-weight: bold;'>{preguntes_restants}/{user_limit}</span>", unsafe_allow_html=True)
     with col3:
         if user_limit_data.get("window_start_time"):
             reset_time = datetime.fromtimestamp(user_limit_data["window_start_time"], tz=pytz.utc) + timedelta(hours=WINDOW_HOURS); time_left = reset_time - current_time
-            if time_left.total_seconds() > 0: st.markdown(f"🕒 **Renovación:** {format_time_left(time_left)}")
+            if time_left.total_seconds() > 0: st.markdown(f"🕒 **Renovació:** {format_time_left(time_left)}")
     
     if limit_reached:
         reset_time = datetime.fromtimestamp(user_limit_data["window_start_time"], tz=pytz.utc) + timedelta(hours=WINDOW_HOURS); time_left = reset_time - current_time
-        if time_left.total_seconds() > 0: st.warning(f"**Límite de consultas alcanzado.** Podrás realizar nuevas consultas en **{format_time_left(time_left)}**.")
+        if time_left.total_seconds() > 0: st.warning(f"**Límit de consultes assolit.** Podràs fer noves consultes en **{format_time_left(time_left)}**.")
         else:
             user_limit_data.update({"count": 0, "window_start_time": None}); rate_limits[username] = user_limit_data; save_json_file(rate_limits, RATE_LIMIT_FILE)
             st.rerun()
@@ -628,20 +560,20 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
     if "chat" not in st.session_state:
         model = genai.GenerativeModel('gemini-1.5-flash')
         system_prompt = """Eres 'Meteo-Col·lega Pro', un experto en meteorología de Catalunya. ... (prompt original) ... Zonas disponibles: """ + ', '.join(CIUTATS_CATALUNYA.keys())
-        missatge_inicial_model = f"""¡Hola! Soy tu Meteo-Col·lega Pro. 👋 He analizado los datos para **{poble_sel.upper()}** en la fecha **{timestamp_str}**. ¿En qué puedo ayudarte hoy?"""
+        missatge_inicial_model = f"""Hola! Soc el teu Meteo-Col·lega Pro. 👋 He analitzat les dades per a **{poble_sel.upper()}** el **{timestamp_str}**. En què et puc ajudar?"""
         st.session_state.chat = model.start_chat(history=[{'role': 'user', 'parts': [system_prompt]}, {'role': 'model', 'parts': [missatge_inicial_model]}])
         st.session_state.messages = [{"role": "assistant", "content": missatge_inicial_model}]
     
-    st.markdown(f"### 📍 Análisis para: `{poble_sel.upper()}` | 📅 Fecha: `{timestamp_str}`")
-    nivell_options = {1000: "Superficie", 950: "~500m", 925: "~750m", 850: "~1500m", 800: "~2000m", 700: "~3000m"}
-    nivell_mapa_ia = st.selectbox("**Selecciona el nivel de análisis:**", options=list(nivell_options.keys()), format_func=lambda x: f"{x} hPa - {nivell_options[x]}", key="ia_level_selector_chat_final", disabled=limit_reached)
+    st.markdown(f"### 📍 Anàlisi per a: `{poble_sel.upper()}` | 📅 Data: `{timestamp_str}`")
+    nivell_options = {1000: "Superfície", 950: "~500m", 925: "~750m", 850: "~1500m", 800: "~2000m", 700: "~3000m"}
+    nivell_mapa_ia = st.selectbox("**Selecciona el nivell d'anàlisi:**", options=list(nivell_options.keys()), format_func=lambda x: f"{x} hPa - {nivell_options[x]}", key="ia_level_selector_chat_final", disabled=limit_reached)
     
     for message in st.session_state.messages:
         with st.chat_message(message["role"]): st.markdown(message["content"])
     
     if "pregunta_predefinida" in st.session_state:
         prompt_usuari = st.session_state.predefinida; del st.session_state.predefinida
-    else: prompt_usuari = st.chat_input("¿Qué te gustaría saber?", disabled=limit_reached)
+    else: prompt_usuari = st.chat_input("Què vols saber sobre el temps avui?", disabled=limit_reached)
     
     if prompt_usuari and not limit_reached:
         if user_limit_data.get("window_start_time") is None: user_limit_data["window_start_time"] = current_time.timestamp()
@@ -650,10 +582,10 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
         with st.chat_message("user"): st.markdown(prompt_usuari)
         
         with st.chat_message("assistant"):
-            with st.spinner("🔍 Analizando..."):
+            with st.spinner("🔍 Analitzant dades i generant resposta..."):
                 try:
                     map_data_ia, error_map_ia = carregar_dades_mapa_cat(nivell_mapa_ia, hourly_index_sel)
-                    if error_map_ia: st.error(f"Error cargando datos: {error_map_ia}"); return
+                    if error_map_ia: st.error(f"Error carregant dades: {error_map_ia}"); return
                     
                     fig_mapa = crear_mapa_forecast_combinat(map_data_ia['lons'], map_data_ia['lats'], map_data_ia['speed_data'], map_data_ia['dir_data'], map_data_ia['dewpoint_data'], nivell_mapa_ia, timestamp_str, MAP_EXTENT_CAT)
                     buf_mapa = io.BytesIO(); fig_mapa.savefig(buf_mapa, format='png', dpi=150, bbox_inches='tight'); buf_mapa.seek(0); img_mapa = Image.open(buf_mapa); plt.close(fig_mapa)
@@ -663,18 +595,18 @@ def ui_pestanya_ia_final(data_tuple, hourly_index_sel, poble_sel, timestamp_str)
                         sounding_data, params_calculats = data_tuple; p, T, Td, u, v, heights, prof = sounding_data
                         fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Perfil Vertical - {poble_sel}")
                         buf_skewt = io.BytesIO(); fig_skewt.savefig(buf_skewt, format='png', dpi=150); buf_skewt.seek(0); img_skewt = Image.open(buf_skewt); plt.close(fig_skewt); contingut_per_ia.append(img_skewt)
-                        fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodógrafo - {poble_sel}")
+                        fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf - {poble_sel}")
                         buf_hodo = io.BytesIO(); fig_hodo.savefig(buf_hodo, format='png', dpi=150); buf_hodo.seek(0); img_hodo = Image.open(buf_hodo); plt.close(fig_hodo); contingut_per_ia.append(img_hodo)
                     
-                    prompt_context = f"PREGUNTA: '{prompt_usuari}'\nUBICACIÓN: {poble_sel}\nFECHA: {timestamp_str}\nNIVEL: {nivell_mapa_ia} hPa"
+                    prompt_context = f"PREGUNTA: '{prompt_usuari}'\nUBICACIÓ: {poble_sel}\nDATA: {timestamp_str}\nNIVELL: {nivell_mapa_ia} hPa"
                     contingut_per_ia.insert(0, prompt_context)
                     
                     resposta = st.session_state.chat.send_message(contingut_per_ia); full_response = resposta.text
                 except Exception as e:
-                    full_response = f"**❌ Error técnico inesperado:** `{str(e)}`"
+                    full_response = f"**❌ Error tècnic inesperat:** `{str(e)}`"
             st.markdown(full_response)
         st.session_state.messages.append({"role": "assistant", "content": full_response}); st.rerun()
-    if not limit_reached: st.markdown("<div style='font-size: 0.8em; color: #666;'><b>Nota:</b> Aquest assistent utilitza IA. Les prediccions són orientatives.</div>", unsafe_allow_html=True)
+    if not limit_reached: st.markdown("<div style='font-size: 0.8em; color: #666;'><b>Nota:</b> Aquest assistent utilitza IA. Les prediccions són orientatives. Per a alertes oficials, consulta sempre fonts oficials.</div>", unsafe_allow_html=True)
         
 def ui_pestanya_xat(chat_history):
     st.subheader("Xat en Línia per a Usuaris"); col1, col2 = st.columns([0.7, 0.3]);
@@ -725,7 +657,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 sorted_ciutats = sorted(ciutats_a_mostrar.keys())
                 index_poble = sorted_ciutats.index(poble_actual) if poble_actual in sorted_ciutats else 0
                 st.selectbox("Població de referència:", sorted_ciutats, key="poble_selector", index=index_poble)
-            now_local = datetime.now(TIMEZONE)
+            now_local = datetime.now(TIMEZONE_CAT)
             with col2: st.selectbox("Dia del pronòstic:", ("Avui",) if is_guest else ("Avui", "Demà"), key="dia_selector", disabled=is_guest, index=0)
             with col3: st.selectbox("Hora del pronòstic (Local):", (f"{now_local.hour:02d}:00h",) if is_guest else [f"{h:02d}:00h" for h in range(24)], key="hora_selector", disabled=is_guest, index=0 if is_guest else now_local.hour)
         else: # Zona USA
@@ -734,7 +666,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
              now_local = datetime.now(TIMEZONE_USA)
              with col2: st.selectbox("Dia del pronòstic:", ("Avui", "Demà", "Demà passat"), key="dia_selector_usa", index=0)
              with col3: st.selectbox("Hora del pronòstic (Local - CST):", [f"{h:02d}:00" for h in range(24)], key="hora_selector_usa", index=now_local.hour)
-
 
 def ui_explicacio_alertes():
     with st.expander("Com interpretar el mapa de convergència?"):
@@ -780,7 +711,7 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, data_tuple):
                 st.pyplot(fig); plt.close(fig)
     with col2:
         st.markdown("#### Visualització en Temps Real (Meteociel)")
-        now_local = datetime.now(TIMEZONE)
+        now_local = datetime.now(TIMEZONE_CAT)
         sat_url = f"https://modeles20.meteociel.fr/satellite/animsatviscolmtgsp.gif?ver={int(time.time())}" if 7 <= now_local.hour < 21 else f"https://modeles20.meteociel.fr/satellite/animsatirmtgsp.gif?ver={int(time.time())}"
         caption = "Satèl·lit Visible (NE Peninsular)" if 7 <= now_local.hour < 21 else "Satèl·lit Infraroig (NE Peninsular)"
         st.image(sat_url, caption=caption, use_container_width=True)
@@ -791,77 +722,92 @@ SMC_STATION_CODES = {'Amposta': 'D5', 'Balaguer': 'C9', 'Banyoles': 'UB', 'Barce
 @st.cache_data(ttl=600)
 def obtenir_dades_estacio_smc():
     try: api_key = st.secrets["SMC_API_KEY"]
-    except KeyError:
-        st.error("Error: Falta la clau 'SMC_API_KEY' als secrets de Streamlit.")
-        return None
+    except KeyError: return None, "Falta la clau 'SMC_API_KEY' als secrets."
     url = "https://api.meteo.cat/xema/v1/observacions/mesurades/ultimes"; headers = {"X-Api-Key": api_key}
     try:
-        response = requests.get(url, headers=headers, timeout=15); response.raise_for_status(); return response.json()
-    except requests.exceptions.RequestException as e:
-        st.error(f"Error de xarxa en contactar amb l'API de l'SMC. Detalls: {e}"); return None
+        response = requests.get(url, headers=headers, timeout=15); response.raise_for_status(); return response.json(), None
+    except requests.exceptions.RequestException as e: return None, f"Error de xarxa en contactar amb l'API de l'SMC: {e}"
 
 def ui_pestanya_estacions_meteorologiques():
     st.markdown("#### Dades en Temps Real (Xarxa d'Estacions de l'SMC)")
-    if "SMC_API_KEY" in st.secrets and st.secrets["SMC_API_KEY"]:
-        st.caption("Dades oficials de la Xarxa d'Estacions Meteorològiques Automàtiques (XEMA) del Servei Meteorològic de Catalunya.")
-        with st.spinner("Carregant dades de la XEMA..."): dades_xema = obtenir_dades_estacio_smc()
-        if not dades_xema: st.warning("No s'han pogut carregar les dades de les estacions de l'SMC."); return
-        col1, col2 = st.columns([0.6, 0.4], gap="large")
-        with col1:
-            st.markdown("##### Mapa d'Ubicacions")
-            fig, ax = crear_mapa_base(MAP_EXTENT_CAT)
-            for ciutat, coords in CIUTATS_CATALUNYA.items():
-                if ciutat in SMC_STATION_CODES:
-                    lon, lat = coords['lon'], coords['lat']
-                    ax.plot(lon, lat, 'o', color='darkblue', markersize=8, markeredgecolor='white', transform=ccrs.PlateCarree(), zorder=10)
-                    ax.text(lon + 0.03, lat, ciutat, fontsize=7, transform=ccrs.PlateCarree(), zorder=11, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
-            st.pyplot(fig, use_container_width=True); plt.close(fig)
-        with col2:
-            st.markdown("##### Dades de l'Estació")
-            ciutat_seleccionada = st.selectbox("Selecciona una capital de comarca:", options=sorted(SMC_STATION_CODES.keys()))
-            if ciutat_seleccionada:
-                station_code = SMC_STATION_CODES.get(ciutat_seleccionada)
-                dades_estacio = next((item for item in dades_xema if item.get("codi") == station_code), None)
-                if dades_estacio:
-                    nom = dades_estacio.get("nom", "N/A"); data = dades_estacio.get("data", "N/A").replace("T", " ").replace("Z", "")
-                    variables = {var['codi']: var['valor'] for var in dades_estacio.get('variables', [])}
-                    st.info(f"**Estació:** {nom} | **Lectura:** {data} UTC")
-                    c1, c2 = st.columns(2)
-                    c1.metric("Temperatura", f"{variables.get(32, '--')} °C"); c2.metric("Humitat", f"{variables.get(33, '--')} %")
-                    st.metric("Pressió atmosfàrica", f"{variables.get(35, '--')} hPa")
-                    st.metric("Vent", f"{variables.get(31, '--')}° a {variables.get(30, '--')} km/h (Ràfega: {variables.get(2004, '--')} km/h)")
-                    st.metric("Precipitació (30 min)", f"{variables.get(34, '--')} mm")
-                    st.markdown(f"🔗 [Veure a la web de l'SMC](https://www.meteo.cat/observacions/xema/dades?codi={station_code})", unsafe_allow_html=True)
-                else: st.error("No s'han trobat dades recents per a aquesta estació.")
-    else:
+    if "SMC_API_KEY" not in st.secrets or not st.secrets["SMC_API_KEY"]:
         st.info("🚧 **Pestanya en Desenvolupament**\n\nAquesta secció està pendent de la validació de la clau d'accés a les dades oficials del Servei Meteorològic de Catalunya (SMC).", icon="🚧")
+        return
+
+    st.caption("Dades oficials de la Xarxa d'Estacions Meteorològiques Automàtiques (XEMA) del Servei Meteorològic de Catalunya.")
+    with st.spinner("Carregant dades de la XEMA..."): dades_xema, error = obtenir_dades_estacio_smc()
+    if error: st.error(error); return
+    if not dades_xema: st.warning("No s'han pogut carregar les dades de les estacions de l'SMC."); return
+    
+    col1, col2 = st.columns([0.6, 0.4], gap="large")
+    with col1:
+        st.markdown("##### Mapa d'Ubicacions")
+        fig, ax = crear_mapa_base(MAP_EXTENT_CAT)
+        for ciutat, coords in CIUTATS_CATALUNYA.items():
+            if ciutat in SMC_STATION_CODES:
+                lon, lat = coords['lon'], coords['lat']
+                ax.plot(lon, lat, 'o', color='darkblue', markersize=8, markeredgecolor='white', transform=ccrs.PlateCarree(), zorder=10)
+                ax.text(lon + 0.03, lat, ciutat, fontsize=7, transform=ccrs.PlateCarree(), zorder=11, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+        st.pyplot(fig, use_container_width=True); plt.close(fig)
+    with col2:
+        st.markdown("##### Dades de l'Estació")
+        ciutat_seleccionada = st.selectbox("Selecciona una capital de comarca:", options=sorted(SMC_STATION_CODES.keys()))
+        if ciutat_seleccionada:
+            station_code = SMC_STATION_CODES.get(ciutat_seleccionada)
+            dades_estacio = next((item for item in dades_xema if item.get("codi") == station_code), None)
+            if dades_estacio:
+                nom = dades_estacio.get("nom", "N/A"); data = dades_estacio.get("data", "N/A").replace("T", " ").replace("Z", "")
+                variables = {var['codi']: var['valor'] for var in dades_estacio.get('variables', [])}
+                st.info(f"**Estació:** {nom} | **Lectura:** {data} UTC")
+                c1, c2 = st.columns(2)
+                c1.metric("Temperatura", f"{variables.get(32, '--')} °C"); c2.metric("Humitat", f"{variables.get(33, '--')} %")
+                st.metric("Pressió atmosfàrica", f"{variables.get(35, '--')} hPa")
+                st.metric("Vent", f"{variables.get(31, '--')}° a {variables.get(30, '--')} km/h (Ràfega: {variables.get(2004, '--')} km/h)")
+                st.metric("Precipitació (30 min)", f"{variables.get(34, '--')} mm")
+                st.markdown(f"🔗 [Veure a la web de l'SMC](https://www.meteo.cat/observacions/xema/dades?codi={station_code})", unsafe_allow_html=True)
+            else: st.error("No s'han trobat dades recents per a aquesta estació.")
 
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME/GFS via Open-Meteo | Imatges via Meteociel & Rainviewer | IA per Google Gemini.</p>", unsafe_allow_html=True)
 
-# --- Funcions Específiques per a Tornado Alley ---
+# --- Funcions Específiques per a Tornado Alley (CORREGIT) ---
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_usa(variables, hourly_index):
     try:
-        lats, lons = np.linspace(MAP_EXTENT_USA[2], MAP_EXTENT_USA[3], 15), np.linspace(MAP_EXTENT_USA[0], MAP_EXTENT_USA[1], 15)
+        # --- CORRECCIÓ: Reduïm la densitat de la graella de 15x15 a 10x10 ---
+        lats, lons = np.linspace(MAP_EXTENT_USA[2], MAP_EXTENT_USA[3], 10), np.linspace(MAP_EXTENT_USA[0], MAP_EXTENT_USA[1], 10)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
+        
         params = {
-            "latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(),
-            "hourly": variables, "models": "gfs_seamless", "forecast_days": 3,
+            "latitude": lat_grid.flatten().tolist(), 
+            "longitude": lon_grid.flatten().tolist(),
+            "hourly": variables, 
+            "models": "gfs_seamless", 
+            "forecast_days": 3,
         }
-        # Afegeix la teva API Key de client aquí si la tens
-        if "OM_CUSTOMER_KEY" in st.secrets:
-            params["apikey"] = st.secrets["OM_CUSTOMER_KEY"]
-
+        
+        # Utilitzem l'API estàndard
         responses = openmeteo.weather_api(API_URL_USA, params=params)
         
         output = {var: [] for var in ["lats", "lons"] + variables}
         for r in responses:
-            vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
-            if not any(np.isnan(v) for v in vals):
-                output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
-                for i, var in enumerate(variables): output[var].append(vals[i])
+            # Comprovem si la resposta conté dades horàries
+            if not r.Hourly(): continue
+            hourly_vars = r.Hourly()
+            vals = [hourly_vars.Variables(i).ValuesAsNumpy() for i in range(len(variables))]
+            
+            # Assegurem-nos que l'índex horari és vàlid
+            if any(hourly_index >= len(v) for v in vals): continue
+            
+            # Extraiem el valor per a l'hora seleccionada
+            current_vals = [v[hourly_index] for v in vals]
+
+            if not any(np.isnan(v) for v in current_vals):
+                output["lats"].append(r.Latitude())
+                output["lons"].append(r.Longitude())
+                for i, var in enumerate(variables):
+                    output[var].append(current_vals[i])
         
         if not output["lats"]: return None, "No s'han rebut dades vàlides del model GFS."
         return output, None
@@ -871,34 +817,33 @@ def carregar_dades_mapa_usa(variables, hourly_index):
 def crear_mapa_usa(lons, lats, data, cmap, norm, label, timestamp_str):
     fig, ax = crear_mapa_base(MAP_EXTENT_USA, projection=ccrs.LambertConformal(central_longitude=-95, central_latitude=35))
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_USA[0], MAP_EXTENT_USA[1], 200), np.linspace(MAP_EXTENT_USA[2], MAP_EXTENT_USA[3], 200))
+    
+    # Assegurem que hi ha prous punts per interpolar
+    if len(lons) < 4:
+        st.warning("No hi ha prous dades per generar un mapa interpolat.")
+        return fig
+
     grid_data = griddata((lons, lats), data, (grid_lon, grid_lat), 'cubic')
     
     mesh = ax.pcolormesh(grid_lon, grid_lat, grid_data, cmap=cmap, norm=norm, zorder=2, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(mesh, ax=ax, orientation='vertical', shrink=0.8, pad=0.02)
     cbar.set_label(label)
     
-    ax.set_title(f"Paràmetre: {label}\n{timestamp_str}", weight='bold', fontsize=16)
+    ax.set_title(f"{label}\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
 def get_usa_map_style(param):
     if param == 'cape':
-        return {
-            'cmap': 'hot_r', 'norm': BoundaryNorm([0, 250, 500, 1000, 2000, 3000, 4000, 5000], 256), 'label': 'CAPE (J/kg)'
-        }
+        return {'cmap': 'hot_r', 'norm': BoundaryNorm([0, 250, 500, 1000, 2000, 3000, 4000, 5000], 256), 'label': 'CAPE (J/kg)'}
     elif param == 'lifted_index':
-        return {
-            'cmap': 'coolwarm', 'norm': BoundaryNorm([-10, -8, -6, -4, -2, 0, 2, 4], 256), 'label': 'Lifted Index'
-        }
+        return {'cmap': 'coolwarm_r', 'norm': BoundaryNorm([-10, -8, -6, -4, -2, 0, 2, 4, 6], 256), 'label': 'Lifted Index (°C)'}
     elif param == 'thunderstorm_probability':
-        return {
-            'cmap': 'viridis', 'norm': BoundaryNorm(np.arange(0, 101, 10), 256), 'label': 'Probabilitat de Tempesta (%)'
-        }
+        return {'cmap': 'viridis', 'norm': BoundaryNorm(np.arange(0, 101, 10), 256), 'label': 'Probabilitat de Tempesta (%)'}
     return {'cmap': 'viridis', 'norm': None, 'label': param}
 
 def run_valley_halley_app():
     ui_capcalera_selectors(None, zona_activa="tornado_alley")
     
-    poble_sel = st.session_state.poble_selector_usa
     dia_sel_str = st.session_state.dia_selector_usa
     hora_sel_str = st.session_state.hora_selector_usa
 
@@ -906,13 +851,12 @@ def run_valley_halley_app():
     target_date = datetime.now(TIMEZONE_USA).date() + timedelta(days=day_offset)
     local_dt = TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    hourly_index_sel = max(0, int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600))
+    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     
     timestamp_str = f"{dia_sel_str} a les {hora_sel_str} (Central Time)"
     
     param_options = {
-        "cape": "CAPE (Energia)",
-        "lifted_index": "Lifted Index (Estabilitat)",
+        "cape": "CAPE (Energia)", "lifted_index": "Lifted Index (Estabilitat)",
         "thunderstorm_probability": "Prob. de Tempesta"
     }
     param_sel = st.selectbox("Paràmetre a visualitzar:", options=param_options.keys(), format_func=lambda x: param_options[x])
@@ -922,28 +866,26 @@ def run_valley_halley_app():
 
     if error:
         st.error(f"No s'ha pogut carregar el mapa: {error}")
-        if "customer" in error:
-            st.info("L'API per a la zona dels EUA pot requerir una clau d'API de client. Assegura't de configurar-la als secrets de Streamlit com a 'OM_CUSTOMER_KEY' si en tens una.")
     elif map_data:
         style = get_usa_map_style(param_sel)
         fig = crear_mapa_usa(map_data['lons'], map_data['lats'], map_data[param_sel], style['cmap'], style['norm'], style['label'], timestamp_str)
-        st.pyplot(fig)
+        st.pyplot(fig, use_container_width=True)
         plt.close(fig)
 
     ui_peu_de_pagina()
     
 def run_catalunya_app():
     is_guest = st.session_state.get('guest_mode', False)
-    now_local = datetime.now(TIMEZONE)
+    now_local = datetime.now(TIMEZONE_CAT)
     hora_sel_str = f"{now_local.hour:02d}:00h" if is_guest else st.session_state.get('hora_selector', f"{now_local.hour:02d}:00h")
     dia_sel_str = "Avui" if is_guest else st.session_state.get('dia_selector', "Avui")
     
     target_date = now_local.date() + timedelta(days=1) if dia_sel_str == "Demà" else now_local.date()
-    local_dt = TIMEZONE.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
+    local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    hourly_index_sel = max(0, int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600))
+    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     
-    ciutats_per_selector, info_msg = (obtenir_ciutats_actives(hourly_index_sel), "Anàlisi limitada a les zones de més interès.") if is_guest else (CIUTATS_CATALUNYA, None)
+    ciutats_per_selector, info_msg = (obtenir_ciutats_actives(hourly_index_sel)[0], "Anàlisi limitada a les zones de més interès.") if is_guest else (CIUTATS_CATALUNYA, None)
     ui_capcalera_selectors(ciutats_per_selector, info_msg, zona_activa="catalunya")
     
     poble_sel = st.session_state.poble_selector
@@ -987,45 +929,33 @@ def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Selecciona la Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
     
-    # Placeholder per a una animació
-    with st.spinner('Carregant entorns...'):
-        time.sleep(1) 
+    with st.spinner('Carregant entorns geoespacials...'): time.sleep(1) 
 
     col1, col2 = st.columns(2)
-
     with col1:
         with st.container(border=True):
-            st.image("https://i.imgur.com/8i26mD8.png", caption="Mapa de Catalunya") # Imatge de marcador
+            st.image("https://i.imgur.com/vL9a3h2.jpeg", caption="Tempesta a prop de la costa catalana.")
             st.subheader("Catalunya")
             st.write("Anàlisi detallada d'alta resolució (Model AROME) per al territori català. Ideal per a seguiment de tempestes locals, fenòmens de costa i muntanya.")
             if st.button("Analitzar Catalunya", use_container_width=True, type="primary"):
-                st.session_state['zone_selected'] = 'catalunya'
-                st.rerun()
-
+                st.session_state['zone_selected'] = 'catalunya'; st.rerun()
     with col2:
         with st.container(border=True):
-            st.image("https://i.imgur.com/iRkbo4c.png", caption="Mapa de la Tornado Alley, EUA") # Imatge de marcador
+            st.image("https://i.imgur.com/L125aaM.jpeg", caption="Supercèl·lula a les planes dels Estats Units.")
             st.subheader("Tornado Alley (EUA)")
-            st.write("Anàlisi a escala sinòptica (Model GFS) per a la famosa 'Corredor de Tornados' dels EUA. Perfecte per a l'estudi de sistemes de gran escala i temps sever organitzat.")
+            st.write("Anàlisi a escala sinòptica (Model GFS) per al 'Corredor de Tornados' dels EUA. Perfecte per a l'estudi de sistemes de gran escala i temps sever organitzat.")
             if st.button("Analitzar Tornado Alley", use_container_width=True):
-                st.session_state['zone_selected'] = 'valley_halley'
-                st.rerun()
+                st.session_state['zone_selected'] = 'valley_halley'; st.rerun()
 
 def main():
-    # Inicialització d'estats de sessió
     if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
     if 'guest_mode' not in st.session_state: st.session_state['guest_mode'] = False
     if 'zone_selected' not in st.session_state: st.session_state['zone_selected'] = None
 
-    # Flux de l'aplicació
-    if not st.session_state['logged_in']:
-        show_login_page()
-    elif not st.session_state['zone_selected']:
-        ui_zone_selection()
-    elif st.session_state['zone_selected'] == 'catalunya':
-        run_catalunya_app()
-    elif st.session_state['zone_selected'] == 'valley_halley':
-        run_valley_halley_app()
+    if not st.session_state['logged_in']: show_login_page()
+    elif not st.session_state['zone_selected']: ui_zone_selection()
+    elif st.session_state['zone_selected'] == 'catalunya': run_catalunya_app()
+    elif st.session_state['zone_selected'] == 'valley_halley': run_valley_halley_app()
 
 if __name__ == "__main__":
     main()
