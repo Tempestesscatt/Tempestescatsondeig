@@ -647,16 +647,17 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     y = 0.95
     motion_data = {'RM': params_calc.get('RM'), 'LM': params_calc.get('LM'), 'Vent Mitjà': params_calc.get('Mean_Wind')}
     
+    # --- INICI DE LA MODIFICACIÓ ---
+    # Tornem a les etiquetes originals per RM i LM
     label_map = {
-        'RM': "Supercèl·lula (dreta)",
-        'LM': "Supercèl·lula (esquerra)",
         'Vent Mitjà': "Vent Mitjà (0-6 km)"
     }
+    # --- FI DE LA MODIFICACI ´O ---
 
     ax_params.text(0, y, "Moviment (dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
 
     for key, vec in motion_data.items():
-        display_name = label_map.get(key, key)
+        display_name = label_map.get(key, key) 
         if vec is not None:
             u_motion_ms = vec[0] * units('m/s'); v_motion_ms = vec[1] * units('m/s')
             speed_kmh = mpcalc.wind_speed(u_motion_ms, v_motion_ms).to('km/h').m
@@ -671,11 +672,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         y-=0.1
 
     y-=0.05
-    # --- INICI DE LA CORRECCIÓ ---
-    # Faltava la coordenada 'y' en aquesta línia.
     ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
-    # --- FI DE LA CORRECCIÓ ---
-    
     for key, label in [('0-1km', '0-1 km'), ('0-6km', '0-6 km'), ('EBWD', 'Efectiu')]:
         val = params_calc.get(key if key == 'EBWD' else f'BWD_{key}', np.nan)
         color = get_color(val, THRESHOLDS['BWD'])
