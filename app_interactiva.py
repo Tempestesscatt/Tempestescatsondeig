@@ -335,7 +335,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                 print(f"Error cálculo manual LI: {e}")
                 params_calc['LI'] = np.nan
         
-        # Cálculo de DCAPE - CORREGIDO
+        # Cálculo de DCAPE - CORREGIDO CON DEPURACIÓN
         try:
             dcape = mpcalc.dcape(p, T, Td, prof)
             if hasattr(dcape, 'magnitude'):
@@ -346,8 +346,9 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                 params_calc['DCAPE'] = float(dcape.magnitude)
             else:
                 params_calc['DCAPE'] = float(dcape)
+            print(f"DEBUG: DCAPE (MetPy) = {params_calc['DCAPE']} J/kg") # ← MISSATGE DE DEPURACIÓ AFEGIT
         except Exception as e:
-            print(f"Error DCAPE: {e}")
+            print(f"Error DCAPE (MetPy): {e}")
             params_calc['DCAPE'] = np.nan
         
         # Fallback para DCAPE si el cálculo principal falló
@@ -355,7 +356,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             try:
                 dcape_manual = calcular_dcape_manual(p, T, Td, heights)
                 params_calc['DCAPE'] = dcape_manual
-                print(f"Usando cálculo manual DCAPE: {dcape_manual}")
+                print(f"DEBUG: DCAPE (Manual) = {dcape_manual} J/kg") # ← MISSATGE DE DEPURACIÓ AFEGIT
             except Exception as e:
                 print(f"Error cálculo manual DCAPE: {e}")
                 params_calc['DCAPE'] = np.nan
