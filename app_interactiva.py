@@ -585,32 +585,38 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
     
     colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
-    speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140];
-    custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]
+    custom_cmap = ListedColormap(colors_wind)
+    norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    
     mesh = ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=2, arrowsize=0.6, zorder=4, transform=ccrs.PlateCarree())
     
     # --- LÍNIA CORREGIDA ---
-    # Hem eliminat l'argument 'projection="lcc"' que causava l'error.
+    # S'ha eliminat l'argument 'projection' de la trucada a la funció.
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     
     dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1, x_dim=-1, y_dim=-2)
     dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0, x_dim=-1, y_dim=-2)
     convergence_scaled = -(dudx + dvdy).to('1/s').magnitude * 1e5
     
-    DEWPOINT_THRESHOLD_USA = 16 # Llindar de punt de rosada més alt per a temps sever a les planes (~60°F)
+    DEWPOINT_THRESHOLD_USA = 16  # Llindar de punt de rosada més alt per a temps sever a les planes (~60°F)
     convergence_in_humid_areas = np.where(grid_dewpoint >= DEWPOINT_THRESHOLD_USA, convergence_scaled, 0)
-    fill_levels = [5, 10, 15, 25]; fill_colors = ['#ffc107', '#ff9800', '#f44336']; line_levels = [5, 10, 15]; line_colors = ['#e65100', '#bf360c', '#b71c1c']
+    fill_levels = [5, 10, 15, 25]
+    fill_colors = ['#ffc107', '#ff9800', '#f44336']
+    line_levels = [5, 10, 15]
+    line_colors = ['#e65100', '#bf360c', '#b71c1c']
+    
     ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=fill_colors, alpha=0.4, zorder=5, transform=ccrs.PlateCarree())
     contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors=line_colors, linestyles='--', linewidths=1.2, zorder=6, transform=ccrs.PlateCarree())
     labels = ax.clabel(contours, inline=True, fontsize=6, fmt='%1.0f')
-    for label in labels: label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.6))
+    for label in labels:
+        label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.6))
     
     ax.set_title(f"Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
-# --- Seccions UI i Lògica Principal ---
 
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya"):
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
