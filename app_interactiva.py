@@ -224,17 +224,16 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except Exception as e:
             return None, f"Error calculant el perfil de la parcel·la: {e}"
         
-        # Cálculo de CAPE/CIN para superficie - EXTRAER VALORES ESCALARES
+        # Cálculo de CAPE/CIN para superficie
         try:
             sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
-            # Asegurarse de obtener valores escalares, no arrays
             params_calc['SBCAPE'] = float(sbcape.m) if hasattr(sbcape, 'm') and not isinstance(sbcape.m, np.ndarray) else np.nan
             params_calc['SBCIN'] = float(sbcin.m) if hasattr(sbcin, 'm') and not isinstance(sbcin.m, np.ndarray) else np.nan
             params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if hasattr(sbcape, 'm') and not isinstance(sbcape.m, np.ndarray) and float(sbcape.m) > 0 else 0.0
         except Exception:
             params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
         
-        # Cálculo de CAPE/CIN más inestable - EXTRAER VALORES ESCALARES
+        # Cálculo de CAPE/CIN más inestable
         try:
             mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td, depth=300 * units.hPa)
             params_calc['MUCAPE'] = float(mucape.m) if hasattr(mucape, 'm') and not isinstance(mucape.m, np.ndarray) else np.nan
@@ -242,7 +241,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except Exception:
             params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
         
-        # Cálculo de CAPE/CIN de capa mezclada - EXTRAER VALORES ESCALARES
+        # Cálculo de CAPE/CIN de capa mezclada
         try:
             mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td, depth=100 * units.hPa)
             params_calc['MLCAPE'] = float(mlcape.m) if hasattr(mlcape, 'm') and not isinstance(mlcape.m, np.ndarray) else np.nan
@@ -250,21 +249,29 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except Exception:
             params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
         
-        # Cálculo del Lifted Index - EXTRAER VALOR ESCALAR
+        # Cálculo del Lifted Index - CORREGIDO
         try:
             li = mpcalc.lifted_index(p, T, prof)
-            params_calc['LI'] = float(li.m) if hasattr(li, 'm') and not isinstance(li.m, np.ndarray) else np.nan
-        except Exception:
+            # Asegurarse de obtener un valor escalar
+            if hasattr(li, 'm'):
+                if isinstance(li.m, np.ndarray) and li.m.size > 0:
+                    params_calc['LI'] = float(li.m[0])
+                else:
+                    params_calc['LI'] = float(li.m)
+            else:
+                params_calc['LI'] = float(li) if not isinstance(li, np.ndarray) else np.nan
+        except Exception as e:
+            print(f"Error calculando LI: {e}")
             params_calc['LI'] = np.nan
         
-        # Cálculo de DCAPE - EXTRAER VALOR ESCALAR
+        # Cálculo de DCAPE
         try:
             dcape = mpcalc.dcape(p, T, Td)
             params_calc['DCAPE'] = float(dcape.m) if hasattr(dcape, 'm') and not isinstance(dcape.m, np.ndarray) else np.nan
         except Exception:
             params_calc['DCAPE'] = np.nan
         
-        # Cálculo de LFC - EXTRAER VALORES ESCALARES
+        # Cálculo de LFC
         try:
             lfc_p, lfc_t = mpcalc.lfc(p, T, Td, prof)
             params_calc['LFC_p'] = float(lfc_p.m) if hasattr(lfc_p, 'm') and not isinstance(lfc_p.m, np.ndarray) else np.nan
@@ -275,7 +282,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except Exception:
             params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
         
-        # Cálculo de LCL - EXTRAER VALORES ESCALARES
+        # Cálculo de LCL
         try:
             lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
             params_calc['LCL_p'] = float(lcl_p.m) if hasattr(lcl_p, 'm') and not isinstance(lcl_p.m, np.ndarray) else np.nan
@@ -286,21 +293,30 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except Exception:
             params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
         
-        # Cálculo de agua precipitable - EXTRAER VALOR ESCALAR
+        # Cálculo de agua precipitable
         try:
             pwat = mpcalc.precipitable_water(p, Td)
             params_calc['PWAT'] = float(pwat.to('mm').m) if hasattr(pwat, 'm') and not isinstance(pwat.m, np.ndarray) else np.nan
         except Exception:
             params_calc['PWAT'] = np.nan
         
-        # Cálculo de nivel de congelación - EXTRAER VALOR ESCALAR
+        # Cálculo de nivel de congelación - CORREGIDO
         try:
-            frz_lvl = mpcalc.freezing_level_height(p, T)
-            params_calc['FRZG_Lvl_p'] = float(frz_lvl.m) if hasattr(frz_lvl, 'm') and not isinstance(frz_lvl.m, np.ndarray) else np.nan
-        except Exception:
+            # Usar freezing_level_heights que devuelve un array de alturas
+            freezing_levels = mpcalc.freezing_level_heights(p, T)
+            if freezing_levels.size > 0:
+                # Tomar la altura del primer nivel de congelación
+                frz_height = freezing_levels[0]
+                # Encontrar la presión correspondiente a esta altura
+                frz_pressure = np.interp(frz_height.m, heights.m, p.m)
+                params_calc['FRZG_Lvl_p'] = float(frz_pressure)
+            else:
+                params_calc['FRZG_Lvl_p'] = np.nan
+        except Exception as e:
+            print(f"Error calculando freezing level: {e}")
             params_calc['FRZG_Lvl_p'] = np.nan
     
-    # Cálculo de movimiento de tormenta - EXTRAER VALORES ESCALARES
+    # Cálculo de movimiento de tormenta
     try:
         rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
         params_calc['RM'] = (float(rm[0].m), float(rm[1].m)) if not isinstance(rm[0].m, np.ndarray) else (np.nan, np.nan)
@@ -309,7 +325,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     except Exception:
         params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan), 'Mean_Wind': (np.nan, np.nan)})
     
-    # Cálculo de cizalladura del viento (BWD) - EXTRAER VALORES ESCALARES
+    # Cálculo de cizalladura del viento (BWD)
     for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
         try:
             bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter)
@@ -318,7 +334,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except Exception:
             params_calc[f'BWD_{name}'] = np.nan
     
-    # Cálculo de helicidad relativa a la tormenta (SRH) - EXTRAER VALORES ESCALARES
+    # Cálculo de helicidad relativa a la tormenta (SRH) - CORREGIDO
     if not np.isnan(params_calc.get('RM', (np.nan, np.nan))[0]):
         try:
             u_storm, v_storm = params_calc['RM']
@@ -326,15 +342,26 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             v_storm = v_storm * units('m/s')
             
             for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
-                srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.meter, 
+                srh = mpcalc.storm_relative_helicity(heights, u, v, 
+                                                    depth=depth_m * units.meter, 
                                                     storm_u=u_storm, storm_v=v_storm)
-                params_calc[f'SRH_{name}'] = float(srh.m) if hasattr(srh, 'm') and not isinstance(srh.m, np.ndarray) else np.nan
-        except Exception:
+                
+                # Asegurarse de obtener un valor escalar
+                if hasattr(srh, 'm'):
+                    if isinstance(srh.m, np.ndarray) and srh.m.size > 0:
+                        params_calc[f'SRH_{name}'] = float(srh.m[0])
+                    else:
+                        params_calc[f'SRH_{name}'] = float(srh.m)
+                else:
+                    params_calc[f'SRH_{name}'] = float(srh) if not isinstance(srh, np.ndarray) else np.nan
+                    
+        except Exception as e:
+            print(f"Error calculando SRH: {e}")
             params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
     else:
         params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
     
-    # Cálculo de CAPE en capa 0-3km - EXTRAER VALOR ESCALAR
+    # Cálculo de CAPE en capa 0-3km
     try:
         idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
         cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
@@ -344,7 +371,6 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     
     return ((p, T, Td, u, v, heights, prof), params_calc), None
     
-    return ((p, T, Td, u, v, heights, prof), params_calc), None
 def crear_mapa_base(map_extent, projection=ccrs.PlateCarree()):
     fig, ax = plt.subplots(figsize=(8, 8), dpi=100, subplot_kw={'projection': projection})
     ax.set_extent(map_extent, crs=ccrs.PlateCarree()) 
@@ -606,23 +632,31 @@ def ui_caixa_parametres_sondeig(params):
     with cols[2]: 
         styled_metric("MLCIN", params.get('MLCIN', np.nan), "J/kg", 'MLCIN', reverse_colors=True)
     
-    # Tercera fila: LI and moisture
+    # Tercera fila: LI and moisture - CORREGIDO
     cols = st.columns(3)
     with cols[0]: 
-        styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', precision=1, reverse_colors=True)
+        # Asegurar que LI es un valor escalar
+        li_value = params.get('LI', np.nan)
+        if hasattr(li_value, '__len__') and not isinstance(li_value, str) and len(li_value) > 0:
+            li_value = li_value[0]
+        styled_metric("LI", li_value, "°C", 'LI', precision=1, reverse_colors=True)
     with cols[1]: 
         styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1)
     with cols[2]: 
         styled_metric("DCAPE", params.get('DCAPE', np.nan), "J/kg", 'DCAPE')
     
-    # Cuarta fila: Levels
+    # Cuarta fila: Levels - CORREGIDO
     cols = st.columns(3)
     with cols[0]: 
         styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
     with cols[1]: 
         styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
     with cols[2]: 
-        styled_metric("FRZG", params.get('FRZG_Lvl_p', np.nan), "hPa", '', precision=0)
+        # Asegurar que FRZG es un valor escalar
+        frzg_value = params.get('FRZG_Lvl_p', np.nan)
+        if hasattr(frzg_value, '__len__') and not isinstance(frzg_value, str) and len(frzg_value) > 0:
+            frzg_value = frzg_value[0]
+        styled_metric("FRZG", frzg_value, "hPa", '', precision=0)
     
     # Quinta fila: Wind parameters
     cols = st.columns(3)
@@ -633,12 +667,20 @@ def ui_caixa_parametres_sondeig(params):
     with cols[2]: 
         styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
     
-    # Sexta fila: SRH and updraft
+    # Sexta fila: SRH and updraft - CORREGIDO
     cols = st.columns(3)
     with cols[0]: 
-        styled_metric("SRH 0-1km", params.get('SRH_0-1km', np.nan), "m²/s²", 'SRH_0-1km')
+        # Asegurar que SRH 0-1km es un valor escalar
+        srh1_value = params.get('SRH_0-1km', np.nan)
+        if hasattr(srh1_value, '__len__') and not isinstance(srh1_value, str) and len(srh1_value) > 0:
+            srh1_value = srh1_value[0]
+        styled_metric("SRH 0-1km", srh1_value, "m²/s²", 'SRH_0-1km')
     with cols[1]: 
-        styled_metric("SRH 0-3km", params.get('SRH_0-3km', np.nan), "m²/s²", 'SRH_0-3km')
+        # Asegurar que SRH 0-3km es un valor escalar
+        srh3_value = params.get('SRH_0-3km', np.nan)
+        if hasattr(srh3_value, '__len__') and not isinstance(srh3_value, str) and len(srh3_value) > 0:
+            srh3_value = srh3_value[0]
+        styled_metric("SRH 0-3km", srh3_value, "m²/s²", 'SRH_0-3km')
     with cols[2]: 
         styled_metric("UPDRAFT", params.get('MAX_UPDRAFT', np.nan), "m/s", 'UPDRAFT', precision=1)
 
