@@ -472,6 +472,7 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
 
 # --- BLOQUE DE CÓDIGO ACTUALIZADO ---
 
+
 def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     """
     NOTA: Aquesta funció ara requereix la variable 'heights' per poder
@@ -516,7 +517,7 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
         skew.ax.fill_betweenx(p_np, T_np, prof_np, where=cond_cin & cond_capa_alta,
                               facecolor='lightgray', alpha=0.5, interpolate=True, zorder=5)
 
-    # --- INICI DE LA CORRECCIÓ VISUAL FINAL ---
+    # --- INICI DE LA CORRECCIÓ VISUAL FINAL I DEFINITIVA ---
     # Dibuixem explícitament l'ascens inicial fins al LCL
     if prof is not None:
         lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
@@ -528,13 +529,16 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
         pressures_for_plot = np.linspace(p[0].m, lcl_p.m, 100) * units.hPa
         
         # --- LÍNIES CORREGIDES ---
-        # Passem T[0] i mixing_ratio_sfc com a llistes d'un sol element
-        skew.plot_mixing_lines([mixing_ratio_sfc], pressures_for_plot,
+        # Creem un objecte Quantity que contingui una llista/array d'un element
+        t0_for_plot = units.Quantity([T[0].m], T[0].units)
+        mixing_ratio_for_plot = units.Quantity([mixing_ratio_sfc.m], mixing_ratio_sfc.units)
+
+        skew.plot_mixing_lines(mixing_ratio_for_plot, pressures_for_plot,
                                color='darkgreen', linestyle='--', linewidth=2)
         
-        skew.plot_dry_adiabats([T[0]], pressures_for_plot,
+        skew.plot_dry_adiabats(t0_for_plot, pressures_for_plot,
                                color='darkorange', linestyle='--', linewidth=2)
-    # --- FI DE LA CORRECCIÓ VISUAL FINAL ---
+    # --- FI DE LA CORRECCIÓ VISUAL FINAL I DEFINITIVA ---
 
     # Perfils principals
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
@@ -554,6 +558,7 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     skew.ax.legend()
     
     return fig
+
 
 
 
