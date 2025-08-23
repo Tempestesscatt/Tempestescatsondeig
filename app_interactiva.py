@@ -546,6 +546,7 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     
     return fig
 
+
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 7))
     gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[1.5, 1], wspace=0.3)
@@ -560,30 +561,26 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     colors = ['red', 'blue', 'green', 'purple', 'gold']
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors, linewidth=2)
 
-    for alt_km in [1, 3, 6, 9]:
-        try:
-            idx = np.argmin(np.abs(heights - alt_km * 1000 * units.m))
-            ax_hodo.text(u[idx].to('kt').m + 1, v[idx].to('kt').m + 1, f'{alt_km}km', fontsize=9, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
-        except: continue
+    # --- INICIO DE LA MEJORA: Eliminamos las etiquetas de altitud ---
+    # El bucle que dibujaba los textos "1km", "3km", etc., ha sido eliminado para un gráfico más limpio.
+    # for alt_km in [1, 3, 6, 9]:
+    #     try:
+    #         idx = np.argmin(np.abs(heights - alt_km * 1000 * units.m))
+    #         ax_hodo.text(u[idx].to('kt').m + 1, v[idx].to('kt').m + 1, f'{alt_km}km', fontsize=9, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+    #     except: continue
+    # --- FIN DE LA MEJORA ---
     
-    # --- INICIO DE LA MEJORA: Flecha de Viento Medio más larga ---
     try:
         mean_wind_vec = params_calc.get('Mean_Wind')
         if mean_wind_vec is not None:
             u_mean_kt = (mean_wind_vec[0] * units('m/s')).to('kt').m
             v_mean_kt = (mean_wind_vec[1] * units('m/s')).to('kt').m
-            
-            # 1. Definim un factor d'escala per allargar la fletxa (ex: 1.5 = 50% més llarga)
             arrow_scale = 1.5
-            
-            # 2. Multipliquem les components del vector per l'escala
             ax_hodo.arrow(0, 0, u_mean_kt * arrow_scale, v_mean_kt * arrow_scale,
                           color='black', linewidth=1.5,
                           head_width=3, length_includes_head=True, zorder=10)
-                          
     except Exception as e:
         print(f"Error en dibuixar la fletxa de vent mitjà: {e}")
-    # --- FIN DE LA MEJORA ---
 
     try:
         shear_vec = mpcalc.bulk_shear(p, u, v, height=heights - heights[0], depth=6000 * units.m)
