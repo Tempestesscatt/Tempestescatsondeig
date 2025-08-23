@@ -181,47 +181,58 @@ def carregar_dades_mapa(nivell, hourly_index):
         else:
             variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
 
-        # --- INICI DE LA LÒGICA DE CÀRREGA (abans a 'carregar_dades_mapa_base') ---
-        # Paràmetres per a la crida a l'API
-        lats = list(np.arange(MAP_EXTENT[2], MAP_EXTENT[3], 0.025))
-        lons = list(np.arange(MAP_EXTENT[0], MAP_EXTENT[1], 0.025))
+        # Crear una cuadrícula más pequeña para evitar problemas con la API
+        lats = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 20)  # Solo 20 puntos en latitud
+        lons = np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 20)  # Solo 20 puntos en longitud
+        
+        # Crear todas las combinaciones de lat/lon
+        lons_grid, lats_grid = np.meshgrid(lons, lats)
+        lats_list = lats_grid.ravel()
+        lons_list = lons_grid.ravel()
         
         params = {
-            "latitude": lats,
-            "longitude": lons,
+            "latitude": lats_list.tolist(),
+            "longitude": lons_list.tolist(),
             "hourly": variables,
             "models": "arome_seamless",
             "forecast_days": FORECAST_DAYS
         }
         
         # Realitzem la crida a l'API
-        response = openmeteo.weather_api(API_URL, params=params)[0]
-        hourly = response.Hourly()
+        responses = openmeteo.weather_api(API_URL, params=params)
         
-        # Creem el diccionari de resultats
+        # Processar les respostes
+        all_lats = []
+        all_lons = []
+        all_data = {var: [] for var in variables}
+        
+        for response in responses:
+            hourly = response.Hourly()
+            all_lats.extend(hourly.Latitude())
+            all_lons.extend(hourly.Longitude())
+            
+            for i, var in enumerate(variables):
+                data_array = hourly.Variables(i).ValuesAsNumpy()
+                if hourly_index < len(data_array):
+                    all_data[var].append(data_array[hourly_index])
+                else:
+                    return None, f"Índex horari ({hourly_index}) fora de rang."
+        
+        # Crear el diccionari de resultats
         map_data_raw = {
-            'lats': hourly.Latitude(),
-            'lons': hourly.Longitude()
+            'lats': np.array(all_lats),
+            'lons': np.array(all_lons)
         }
         
-        # Afegim les dades de cada variable per a l'hora seleccionada
-        for i, var in enumerate(variables):
-            data_array = hourly.Variables(i).ValuesAsNumpy()
-            if hourly_index < data_array.shape[1]:
-                map_data_raw[var] = data_array[:, hourly_index]
-            else:
-                return None, f"Índex horari ({hourly_index}) fora de rang."
+        for var in variables:
+            map_data_raw[var] = np.array(all_data[var])
         
-        if any(np.isnan(v).all() for k, v in map_data_raw.items() if k not in ['lats', 'lons']):
-             return None, "Les dades del mapa contenen valors invàlids (NaN)."
-        # --- FI DE LA LÒGICA DE CÀRREGA ---
-
         # Processament de les dades rebudes
         if nivell >= 950:
             map_data_raw['dewpoint_data'] = map_data_raw.pop('dew_point_2m')
         else:
-            temp_data = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
-            rh_data = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
+            temp_data = map_data_raw.pop(f'temperature_{nivell}hPa') * units.degC
+            rh_data = map_data_raw.pop(f'relative_humidity_{nivell}hPa') * units.percent
             map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
             
         map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
