@@ -192,34 +192,6 @@ def calcular_li_manual(p, T, prof):
     except:
         return np.nan
 
-def calcular_dcape_manual(p, T, Td, heights):
-    """Cálculo correcto de DCAPE según la meteorología de downdrafts"""
-    try:
-        # 1. Calcular la temperatura potencial (θ) del parcél·la descendente
-        #    Assumim que el parcél·la descendente té la mateixa humitat que l'ambient
-        theta_parcela = mpcalc.potential_temperature(p, T)
-        
-        # 2. Calcular la temperatura que assoliria el parcél·la descendent
-        #    quan baixés adiabàticament (sense canvi d'humitat)
-        T_descendente = mpcalc.temperature_from_potential_temperature(p, theta_parcela)
-        
-        # 3. Calcular la diferència entre la temperatura ambient i la del parcél·la
-        #    Això representa l'energia disponible per als corrents descendents
-        delta_t = T_descendente - T
-        
-        # 4. Integrar la diferència de temperatura respecte a l'altura
-        #    La fórmula correcta és: ∫ g * (ΔT / T) dz
-        T_kelvin = T.to('kelvin')
-        integrand = 9.8 * (delta_t / T_kelvin)
-        
-        # 5. Calcular la integral
-        dcape_value = np.trapz(integrand.m, x=heights.m)
-        
-        return max(0, dcape_value)
-        
-    except Exception as e:
-        print(f"Error en cálculo de DCAPE: {e}")
-        return np.nan
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """Funció genèrica que processa dades de sondeig amb MetPy."""
