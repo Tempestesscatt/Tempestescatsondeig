@@ -1166,10 +1166,9 @@ def run_catalunya_app():
     data_tuple, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
     if error_msg: 
         st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
-        # Aturem l'execució si el sondeig falla per evitar més errors
-        return
+        return # Aturem l'execució si el sondeig falla per evitar més errors
 
-    nivell_sel = 925 # Valor per defecte per a convidats
+    nivell_sel = 925 # Valor per defecte
     if not is_guest:
         nivells_disponibles = [1000, 950, 925, 850, 800, 700]
         index_default = nivells_disponibles.index(925) if 925 in nivells_disponibles else 0
@@ -1191,7 +1190,6 @@ def run_catalunya_app():
         params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
     
     # --- VISUALITZACIÓ EN PESTANYES (ARA IGUAL PER A TOTS) ---
-    # Hem eliminat el 'if is_guest' que et bloquejava l'accés.
     tab_mapes, tab_vertical, tab_estacions = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Estacions Meteorològiques"])
     with tab_mapes: 
         ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
