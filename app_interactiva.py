@@ -475,28 +475,68 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(7, 8))
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
     skew.ax.grid(True, linestyle='-', alpha=0.5)
+    
+    # Dibuixem la isoterma de 0°C més gruixuda per a referència visual
+    skew.ax.axvline(0, color='cyan', linestyle='--', linewidth=1.5, alpha=0.7)
+
     skew.plot_dry_adiabats(color='coral', linestyle='--', alpha=0.5)
     skew.plot_moist_adiabats(color='cornflowerblue', linestyle='--', alpha=0.5)
     skew.plot_mixing_lines(color='limegreen', linestyle='--', alpha=0.5)
+    
     if prof is not None:
         skew.shade_cape(p, T, prof, color='red', alpha=0.2)
         skew.shade_cin(p, T, prof, color='blue', alpha=0.2)
+        
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
     skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
+    
     if prof is not None:
         skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+        
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
     skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40)
     skew.ax.set_title(titol, weight='bold', fontsize=14, pad=15)
     skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
-    levels_to_plot = {'LCL_p': 'LCL', 'FRZG_Lvl_p': '0°C', 'LFC_p': 'LFC'}
+
+    # --- LÒGICA MILLORADA PER ALS NIVELLS ---
+
+    # 1. Dibuixar LCL i LFC com a línies completes (com abans)
+    levels_to_plot = {'LCL_p': 'LCL', 'LFC_p': 'LFC'}
     for key, name in levels_to_plot.items():
         p_lvl = params_calc.get(key)
         if p_lvl is not None and not np.isnan(p_lvl):
             p_val = p_lvl.m if hasattr(p_lvl, 'm') else p_lvl
             skew.ax.axhline(p_val, color='blue', linestyle='--', linewidth=1.5)
             skew.ax.text(skew.ax.get_xlim()[1] - 2, p_val, f' {name}', color='blue', ha='right', va='center', fontsize=10, weight='bold')
-    skew.ax.legend(); return fig
+
+    # 2. Dibuixar el Freezing Level (0°C) com una línia PARCIAL i INTEL·LIGENT
+    frzg_lvl_p_val = params_calc.get('FRZG_Lvl_p')
+    if frzg_lvl_p_val is not None and not np.isnan(frzg_lvl_p_val):
+        # Assegurar que el valor de pressió és un número simple per poder-lo utilitzar
+        p_frzg_scalar = frzg_lvl_p_val.m if hasattr(frzg_lvl_p_val, 'm') else frzg_lvl_p_val
+        
+        # Com que la pressió del nivell de 0°C pot no coincidir exactament amb un punt de les dades,
+        # hem d'interpolar per trobar la temperatura AMBIENTAL a aquest nivell de pressió exacte.
+        try:
+            # Important: np.interp necessita que els valors de 'x' (pressió) estiguin en ordre ascendent.
+            # Com que els nostres perfils van de 1000 a 100 hPa (descendent), invertim els arrays amb [::-1].
+            temp_at_frzg_lvl = np.interp(p_frzg_scalar, p.m[::-1], T.m[::-1])
+            
+            # Dibuixar la línia horitzontal des de la isoterma 0°C fins a la línia de temperatura
+            skew.ax.plot([0, temp_at_frzg_lvl], [p_frzg_scalar, p_frzg_scalar],
+                          color='cyan', linestyle='-', linewidth=2.5,
+                          marker='o', markersize=6, markerfacecolor='cyan', markeredgecolor='black')
+                          
+            # Afegir l'etiqueta de text al final de la línia per a més claredat
+            skew.ax.text(temp_at_frzg_lvl + 1.5, p_frzg_scalar, '0°C', color='cyan',
+                          ha='left', va='center', weight='bold',
+                          path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+        except Exception as e:
+            # Aquesta excepció és per si hi ha algun problema amb la interpolació
+            print(f"No s'ha pogut dibuixar la línia de 0°C: {e}")
+
+    skew.ax.legend()
+    return fig
 
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
