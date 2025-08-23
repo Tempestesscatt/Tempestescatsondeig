@@ -312,7 +312,10 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         
         # Càlcul de nivell de congelació (Pressió i Altitud)
         try:
-            frz_pressure, _ = mpcalc.freezing_level(p, T)
+            # MetPy pot retornar múltiples nivells si la temperatura creua 0°C diverses vegades.
+            # Normalment ens interessa el primer (el més baix).
+            frz_pressure_levels, _ = mpcalc.freezing_level(p, T)
+            frz_pressure = frz_pressure_levels[0] if hasattr(frz_pressure_levels, '__len__') else frz_pressure_levels
             
             # Guardem la pressió (hPa)
             if hasattr(frz_pressure, 'm'):
@@ -330,8 +333,9 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             else:
                 params_calc['FRZG_Lvl_m'] = np.nan
 
-        except Exception as e:
-            print(f"Error calculant el nivell de congelació: {e}")
+        except (ValueError, IndexError, TypeError) as e:
+            # Aquest error salta si mpcalc.freezing_level no troba cap nivell.
+            print(f"No s'ha trobat nivell de congelació: {e}")
             params_calc['FRZG_Lvl_p'] = np.nan
             params_calc['FRZG_Lvl_m'] = np.nan
     
@@ -388,6 +392,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         params_calc['CAPE_0-3km'] = np.nan
     
     return ((p, T, Td, u, v, heights, prof), params_calc), None
+    
 
 def debug_calculos(p, T, Td, u, v, heights, prof):
     """Función para depurar los cálculos problemáticos"""
@@ -774,13 +779,9 @@ def ui_caixa_parametres_sondeig(params):
 
 def ui_caixa_parametres_sondeig(params):
     def get_color(value, thresholds, reverse_colors=False):
-        # Assegurar-se que el valor és escalar, no un array
         if hasattr(value, '__len__') and not isinstance(value, str):
-            if len(value) > 0:
-                value = value[0]  # Tomar el primer elemento si es un array
-            else:
-                return "#808080"
-                
+            if len(value) > 0: value = value[0]
+            else: return "#808080"
         if pd.isna(value): return "#808080"
         colors = ["#808080", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
         if reverse_colors: 
@@ -799,7 +800,8 @@ def ui_caixa_parametres_sondeig(params):
         'MLCIN': (0, -25, -75, -150), 'LI': (0, -2, -5, -8), 
         'PWAT': (20, 30, 40, 50), 'BWD_0-6km': (10, 20, 30, 40), 
         'BWD_0-1km': (5, 10, 15, 20), 'SRH_0-1km': (50, 100, 150, 250),
-        'SRH_0-3km': (100, 200, 300, 400)
+        'SRH_0-3km': (100, 200, 300, 400),
+        'FRZG_Lvl_m': (4000, 3000, 2000, 1000) # Llindars per l'altitud en metres
     }
     
     def styled_metric(label, value, unit, param_key, precision=0, reverse_colors=False):
@@ -812,7 +814,6 @@ def ui_caixa_parametres_sondeig(params):
     
     st.markdown("##### Paràmetres del Sondeig")
     
-    # Obtenim l'emoji i la descripció cridant a la nova funció
     emoji, descripcio = determinar_emoji_temps(params)
 
     # Primera fila: CAPE values
@@ -836,7 +837,6 @@ def ui_caixa_parametres_sondeig(params):
     with cols[1]: 
         styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1)
     with cols[2]:
-        # Aquí mostrem l'emoji en lloc de DCAPE
         st.markdown(f"""
         <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
             <span style="font-size: 0.8em; color: #FAFAFA;">Tipus de Cel Previst</span>
@@ -847,13 +847,14 @@ def ui_caixa_parametres_sondeig(params):
 
     # Cuarta fila: Levels
     cols = st.columns(3)
-    with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
-    with cols[1]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
+    with cols[0]: 
+        styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
+    with cols[1]: 
+        styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
     with cols[2]: 
-        frzg_value = params.get('FRZG_Lvl_p', np.nan)
-        if hasattr(frzg_value, '__len__') and not isinstance(frzg_value, str) and len(frzg_value) > 0: frzg_value = frzg_value[0]
-        styled_metric("FRZG", frzg_value, "hPa", '', precision=0)
-    
+        frzg_alt_value = params.get('FRZG_Lvl_m', np.nan)
+        styled_metric("Nivell 0°C", frzg_alt_value, "m", 'FRZG_Lvl_m', precision=0, reverse_colors=True)
+
     # Quinta fila: Wind parameters
     cols = st.columns(3)
     with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
