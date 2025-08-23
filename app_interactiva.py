@@ -1181,71 +1181,78 @@ def obtenir_dades_estacio_smc():
         st.error(f"Error de xarxa en contactar amb l'API de l'SMC. Detalls: {e}")
         return None
 
+# ================= SUBSTITUEIX LA TEVA FUNCIÓ PER AQUESTA =================
+
 def ui_pestanya_estacions_meteorologiques():
     st.markdown("#### Dades en Temps Real (Xarxa d'Estacions de l'SMC)")
-    st.caption("Dades oficials de la Xarxa d'Estacions Meteorològiques Automàtiques (XEMA) del Servei Meteorològic de Catalunya.")
 
-    # Obtenim les dades de totes les estacions una sola vegada
-    with st.spinner("Carregant dades de la XEMA..."):
-        dades_xema = obtenir_dades_estacio_smc()
+    # ---> INICI DE LA MILLORA: Comprovem si la clau API existeix <---
+    if "SMC_API_KEY" in st.secrets and st.secrets["SMC_API_KEY"]:
+        # Si la clau existeix, executem la lògica normal per mostrar les dades
+        st.caption("Dades oficials de la Xarxa d'Estacions Meteorològiques Automàtiques (XEMA) del Servei Meteorològic de Catalunya.")
 
-    if not dades_xema:
-        st.warning("No s'han pogut carregar les dades de les estacions de l'SMC en aquests moments.")
-        return
+        with st.spinner("Carregant dades de la XEMA..."):
+            dades_xema = obtenir_dades_estacio_smc()
 
-    col1, col2 = st.columns([0.6, 0.4], gap="large")
+        if not dades_xema:
+            st.warning("No s'han pogut carregar les dades de les estacions de l'SMC en aquests moments.")
+            return
 
-    with col1:
-        st.markdown("##### Mapa d'Ubicacions")
-        fig, ax = crear_mapa_base(MAP_EXTENT)
-        for ciutat, coords in CIUTATS_CATALUNYA.items():
-            if ciutat in SMC_STATION_CODES:
-                lon, lat = coords['lon'], coords['lat']
-                ax.plot(lon, lat, 'o', color='darkblue', markersize=8, markeredgecolor='white', transform=ccrs.PlateCarree(), zorder=10)
-                ax.text(lon + 0.03, lat, ciutat, fontsize=7, transform=ccrs.PlateCarree(), zorder=11, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
+        col1, col2 = st.columns([0.6, 0.4], gap="large")
 
-    with col2:
-        st.markdown("##### Dades de l'Estació")
-        ciutat_seleccionada = st.selectbox("Selecciona una capital de comarca:", options=sorted(SMC_STATION_CODES.keys()))
+        with col1:
+            st.markdown("##### Mapa d'Ubicacions")
+            fig, ax = crear_mapa_base(MAP_EXTENT)
+            for ciutat, coords in CIUTATS_CATALUNYA.items():
+                if ciutat in SMC_STATION_CODES:
+                    lon, lat = coords['lon'], coords['lat']
+                    ax.plot(lon, lat, 'o', color='darkblue', markersize=8, markeredgecolor='white', transform=ccrs.PlateCarree(), zorder=10)
+                    ax.text(lon + 0.03, lat, ciutat, fontsize=7, transform=ccrs.PlateCarree(), zorder=11, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
 
-        if ciutat_seleccionada:
-            station_code = SMC_STATION_CODES.get(ciutat_seleccionada)
-            
-            # Busquem les dades de l'estació seleccionada dins de la resposta JSON
-            dades_estacio = next((item for item in dades_xema if item.get("codi") == station_code), None)
+        with col2:
+            st.markdown("##### Dades de l'Estació")
+            ciutat_seleccionada = st.selectbox("Selecciona una capital de comarca:", options=sorted(SMC_STATION_CODES.keys()))
 
-            if dades_estacio:
-                nom_estacio = dades_estacio.get("nom", "N/A")
-                data_lectura = dades_estacio.get("data", "N/A").replace("T", " ").replace("Z", "")
-                
-                # Accedim a les variables
-                variables = {var['codi']: var['valor'] for var in dades_estacio.get('variables', [])}
-                temp = variables.get(32, "--") # 32: Temperatura
-                humitat = variables.get(33, "--") # 33: Humitat Relativa
-                pressio = variables.get(35, "--") # 35: Pressió
-                vel_vent = variables.get(30, "--") # 30: Velocitat vent
-                dir_vent = variables.get(31, "--") # 31: Direcció vent
-                precip = variables.get(34, "--") # 34: Precipitació
-                rafaga = variables.get(2004, "--") # 2004: Ratxa màxima
+            if ciutat_seleccionada:
+                station_code = SMC_STATION_CODES.get(ciutat_seleccionada)
+                dades_estacio = next((item for item in dades_xema if item.get("codi") == station_code), None)
 
-                st.info(f"**Estació:** {nom_estacio} | **Lectura:** {data_lectura} UTC")
-                
-                c1, c2 = st.columns(2)
-                c1.metric("Temperatura", f"{temp} °C")
-                c2.metric("Humitat", f"{humitat} %")
+                if dades_estacio:
+                    nom_estacio = dades_estacio.get("nom", "N/A")
+                    data_lectura = dades_estacio.get("data", "N/A").replace("T", " ").replace("Z", "")
+                    variables = {var['codi']: var['valor'] for var in dades_estacio.get('variables', [])}
+                    temp = variables.get(32, "--")
+                    humitat = variables.get(33, "--")
+                    pressio = variables.get(35, "--")
+                    vel_vent = variables.get(30, "--")
+                    dir_vent = variables.get(31, "--")
+                    precip = variables.get(34, "--")
+                    rafaga = variables.get(2004, "--")
 
-                st.metric("Pressió atmosfàrica", f"{pressio} hPa")
-                st.metric("Vent", f"{dir_vent}° a {vel_vent} km/h (Ràfega: {rafaga} km/h)")
-                st.metric("Precipitació (30 min)", f"{precip} mm")
-                
-                st.markdown(f"🔗 [Veure a la web de l'SMC](https://www.meteo.cat/observacions/xema/dades?codi={station_code})", unsafe_allow_html=True)
-            else:
-                st.error("No s'han trobat dades recents per a aquesta estació a la resposta de l'SMC.")
+                    st.info(f"**Estació:** {nom_estacio} | **Lectura:** {data_lectura} UTC")
+                    c1, c2 = st.columns(2)
+                    c1.metric("Temperatura", f"{temp} °C")
+                    c2.metric("Humitat", f"{humitat} %")
+                    st.metric("Pressió atmosfàrica", f"{pressio} hPa")
+                    st.metric("Vent", f"{dir_vent}° a {vel_vent} km/h (Ràfega: {rafaga} km/h)")
+                    st.metric("Precipitació (30 min)", f"{precip} mm")
+                    st.markdown(f"🔗 [Veure a la web de l'SMC](https://www.meteo.cat/observacions/xema/dades?codi={station_code})", unsafe_allow_html=True)
+                else:
+                    st.error("No s'han trobat dades recents per a aquesta estació a la resposta de l'SMC.")
 
-# =================== FI DEL NOU BLOC DE CODI ===================
+    else:
+        # Si la clau NO existeix, mostrem el cartell informatiu
+        st.info(
+            "🚧 **Pestanya en Desenvolupament**\n\n"
+            "Aquesta secció està esperant la validació de la clau d'accés a les dades oficials del Servei Meteorològic de Catalunya (SMC).\n\n"
+            "Tornarà a estar operativa pròximament. Gràcies per la paciència!",
+            icon="🚧"
+        )
+    # ---> FI DE LA MILLORA <---
 
+# =======================================================================
 
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteologix & Rainviewer | IA per Google Gemini.</p>", unsafe_allow_html=True)
