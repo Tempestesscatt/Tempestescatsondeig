@@ -162,8 +162,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             # Calcular CAPE y CIN de superficie
             try:
                 sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
-                params_calc['SBCAPE'] = sbcape.m if hasattr(sbcape, 'm') else sbcape
-                params_calc['SBCIN'] = sbcin.m if hasattr(sbcin, 'm') else sbcin
+                params_calc['SBCAPE'] = sbcape.m if hasattr(sbcape, 'm') else float(sbcape)
+                params_calc['SBCIN'] = sbcin.m if hasattr(sbcin, 'm') else float(sbcin)
             except:
                 params_calc['SBCAPE'] = np.nan
                 params_calc['SBCIN'] = np.nan
@@ -171,8 +171,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             # Calcular CAPE y CIN más inestable
             try:
                 mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td)
-                params_calc['MUCAPE'] = mucape.m if hasattr(mucape, 'm') else mucape
-                params_calc['MUCIN'] = mucin.m if hasattr(mucin, 'm') else mucin
+                params_calc['MUCAPE'] = mucape.m if hasattr(mucape, 'm') else float(mucape)
+                params_calc['MUCIN'] = mucin.m if hasattr(mucin, 'm') else float(mucin)
             except:
                 params_calc['MUCAPE'] = np.nan
                 params_calc['MUCIN'] = np.nan
@@ -180,8 +180,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             # Calcular CAPE y CIN de capa mezclada
             try:
                 mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td)
-                params_calc['MLCAPE'] = mlcape.m if hasattr(mlcape, 'm') else mlcape
-                params_calc['MLCIN'] = mlcin.m if hasattr(mlcin, 'm') else mlcin
+                params_calc['MLCAPE'] = mlcape.m if hasattr(mlcape, 'm') else float(mlcape)
+                params_calc['MLCIN'] = mlcin.m if hasattr(mlcin, 'm') else float(mlcin)
             except:
                 params_calc['MLCAPE'] = np.nan
                 params_calc['MLCIN'] = np.nan
@@ -197,7 +197,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                 T_parcel_500 = prof[idx_500]
                 # LI = T_ambiente - T_parcela a 500 hPa
                 li_value = T_500 - T_parcel_500
-                params_calc['LI'] = li_value.m if hasattr(li_value, 'm') else li_value
+                params_calc['LI'] = li_value.m if hasattr(li_value, 'm') else float(li_value)
             except:
                 params_calc['LI'] = np.nan
 
@@ -207,14 +207,14 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             idx_3km = np.argmin(np.abs(heights_agl - 3000 * units.meter))
             # Calcular CAPE desde la superficie hasta 3 km
             cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
-            params_calc['CAPE_0-3km'] = cape_0_3.m if hasattr(cape_0_3, 'm') else cape_0_3
+            params_calc['CAPE_0-3km'] = cape_0_3.m if hasattr(cape_0_3, 'm') else float(cape_0_3)
         except:
             params_calc['CAPE_0-3km'] = np.nan
 
         # Cálculo de PWAT
         try: 
             pwat_value = mpcalc.precipitable_water(p, Td)
-            params_calc['PWAT'] = pwat_value.m if hasattr(pwat_value, 'm') else pwat_value
+            params_calc['PWAT'] = pwat_value.m if hasattr(pwat_value, 'm') else float(pwat_value)
         except:
             params_calc['PWAT'] = np.nan
         
@@ -233,16 +233,16 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                         dcape_value += (9.8 * delta_T * delta_z / T_env)
             
             # Asegurarnos de obtener el valor numérico
-            params_calc['DCAPE'] = dcape_value.m if hasattr(dcape_value, 'm') else dcape_value
+            params_calc['DCAPE'] = dcape_value.m if hasattr(dcape_value, 'm') else float(dcape_value)
         except:
             params_calc['DCAPE'] = np.nan
                 
         # Cálculo de LCL
         try:
             lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
-            params_calc['LCL_p'] = lcl_p.m if hasattr(lcl_p, 'm') else lcl_p
+            params_calc['LCL_p'] = lcl_p.m if hasattr(lcl_p, 'm') else float(lcl_p)
             lcl_height = mpcalc.pressure_to_height_std(lcl_p)
-            params_calc['LCL_Hgt'] = lcl_height.m if hasattr(lcl_height, 'm') else lcl_height
+            params_calc['LCL_Hgt'] = lcl_height.m if hasattr(lcl_height, 'm') else float(lcl_height)
         except:
             params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan, np.nan
         
@@ -251,8 +251,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             # Buscar donde la parcela se vuelve más cálida que el ambiente
             for i in range(len(p)):
                 if prof[i] > T[i]:
-                    params_calc['LFC_p'] = p[i].m if hasattr(p[i], 'm') else p[i]
-                    params_calc['LFC_Hgt'] = heights_agl[i].m if hasattr(heights_agl[i], 'm') else heights_agl[i]
+                    params_calc['LFC_p'] = p[i].m if hasattr(p[i], 'm') else float(p[i])
+                    params_calc['LFC_Hgt'] = heights_agl[i].m if hasattr(heights_agl[i], 'm') else float(heights_agl[i])
                     break
             else:
                 params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan, np.nan
@@ -264,8 +264,8 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             # Buscar donde la parcela se vuelve más fría que el ambiente otra vez
             for i in range(len(p)):
                 if prof[i] < T[i] and i > 0:
-                    params_calc['EL_p'] = p[i].m if hasattr(p[i], 'm') else p[i]
-                    params_calc['EL_Hgt'] = heights_agl[i].m if hasattr(heights_agl[i], 'm') else heights_agl[i]
+                    params_calc['EL_p'] = p[i].m if hasattr(p[i], 'm') else float(p[i])
+                    params_calc['EL_Hgt'] = heights_agl[i].m if hasattr(heights_agl[i], 'm') else float(heights_agl[i])
                     break
             else:
                 params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan, np.nan
@@ -276,7 +276,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         try:
             # Encontrar donde la temperatura cruza 0°C
             p_frz = np.interp(0, T.magnitude if hasattr(T, 'magnitude') else T, p.magnitude if hasattr(p, 'magnitude') else p)
-            params_calc['FRZG_Lvl_p'] = p_frz
+            params_calc['FRZG_Lvl_p'] = float(p_frz)
         except:
             params_calc['FRZG_Lvl_p'] = np.nan
 
@@ -301,9 +301,12 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
             mean_v = np.mean(v)
             
             # Asegurarnos de obtener valores numéricos
-            params_calc['RM'] = (rm_u.m if hasattr(rm_u, 'm') else rm_u, rm_v.m if hasattr(rm_v, 'm') else rm_v)
-            params_calc['LM'] = (lm_u.m if hasattr(lm_u, 'm') else lm_u, lm_v.m if hasattr(lm_v, 'm') else lm_v)
-            params_calc['Mean_Wind'] = (mean_u.m if hasattr(mean_u, 'm') else mean_u, mean_v.m if hasattr(mean_v, 'm') else mean_v)
+            params_calc['RM'] = (rm_u.m if hasattr(rm_u, 'm') else float(rm_u), 
+                                rm_v.m if hasattr(rm_v, 'm') else float(rm_v))
+            params_calc['LM'] = (lm_u.m if hasattr(lm_u, 'm') else float(lm_u), 
+                                lm_v.m if hasattr(lm_v, 'm') else float(lm_v))
+            params_calc['Mean_Wind'] = (mean_u.m if hasattr(mean_u, 'm') else float(mean_u), 
+                                       mean_v.m if hasattr(mean_v, 'm') else float(mean_v))
         except:
             params_calc.update({'RM': None, 'LM': None, 'Mean_Wind': None})
         
@@ -321,7 +324,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                     if hasattr(shear_speed, 'to'):
                         params_calc[f'BWD_{name}'] = shear_speed.to('kt').m
                     else:
-                        params_calc[f'BWD_{name}'] = shear_speed
+                        params_calc[f'BWD_{name}'] = float(shear_speed) * 1.94384  # m/s to kt
                 else:
                     params_calc[f'BWD_{name}'] = np.nan
             except:
@@ -337,7 +340,7 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                 if hasattr(sr_wind_u, 'to'):
                     params_calc['SR_Wind'] = mpcalc.wind_speed(sr_wind_u, sr_wind_v).to('kt').m
                 else:
-                    params_calc['SR_Wind'] = np.sqrt(sr_wind_u**2 + sr_wind_v**2)
+                    params_calc['SR_Wind'] = np.sqrt(sr_wind_u**2 + sr_wind_v**2) * 1.94384
                 
                 # Calcular SRH 0-1km
                 idx_1km = np.argmin(np.abs(heights_agl - 1000 * units.m))
@@ -348,10 +351,10 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                     du_prev = (u[i-1] - u_storm)
                     dv_prev = (v[i-1] - v_storm)
                     # Asegurarnos de obtener valores numéricos
-                    du_val = du.m if hasattr(du, 'm') else du
-                    dv_val = dv.m if hasattr(dv, 'm') else dv
-                    du_prev_val = du_prev.m if hasattr(du_prev, 'm') else du_prev
-                    dv_prev_val = dv_prev.m if hasattr(dv_prev, 'm') else dv_prev
+                    du_val = du.m if hasattr(du, 'm') else float(du)
+                    dv_val = dv.m if hasattr(dv, 'm') else float(dv)
+                    du_prev_val = du_prev.m if hasattr(du_prev, 'm') else float(du_prev)
+                    dv_prev_val = dv_prev.m if hasattr(dv_prev, 'm') else float(dv_prev)
                     srh_0_1 += (du_val * dv_prev_val - dv_val * du_prev_val)
                 
                 # Calcular SRH 0-3km
@@ -363,10 +366,10 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                     du_prev = (u[i-1] - u_storm)
                     dv_prev = (v[i-1] - v_storm)
                     # Asegurarnos de obtener valores numéricos
-                    du_val = du.m if hasattr(du, 'm') else du
-                    dv_val = dv.m if hasattr(dv, 'm') else dv
-                    du_prev_val = du_prev.m if hasattr(du_prev, 'm') else du_prev
-                    dv_prev_val = dv_prev.m if hasattr(dv_prev, 'm') else dv_prev
+                    du_val = du.m if hasattr(du, 'm') else float(du)
+                    dv_val = dv.m if hasattr(dv, 'm') else float(dv)
+                    du_prev_val = du_prev.m if hasattr(du_prev, 'm') else float(du_prev)
+                    dv_prev_val = dv_prev.m if hasattr(dv_prev, 'm') else float(dv_prev)
                     srh_0_3 += (du_val * dv_prev_val - dv_val * du_prev_val)
                 
                 params_calc['SRH_0-1km'] = srh_0_1
@@ -380,7 +383,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         return ((p, T, Td, u, v, heights, prof), params_calc), None
     except Exception as e: 
         return None, f"Error en processar dades del sondeig: {e}"
-
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
     try:
