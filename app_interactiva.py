@@ -548,27 +548,55 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
 
 
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
-    fig = plt.figure(dpi=150, figsize=(8, 7))
-    gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[1.5, 1], wspace=0.3)
-    ax_hodo = fig.add_subplot(gs[0])
-    ax_params = fig.add_subplot(gs[1])
+    fig = plt.figure(dpi=150, figsize=(8, 8)) # Ajustem l'alçada per fer espai
+    
+    # --- INICIO DE LA MEJORA: Nou layout amb espai per a les barbes de vent ---
+    # Creem una graella de 2 files i 2 columnes. La fila de dalt serà molt més estreta.
+    gs = fig.add_gridspec(nrows=2, ncols=2,
+                          height_ratios=[1, 6], # Proporció d'alçada: 1 part per les barbes, 6 per la resta
+                          width_ratios=[1.5, 1],
+                          hspace=0.4, wspace=0.3)
+
+    # Definim els eixos per a cada secció
+    ax_barbs = fig.add_subplot(gs[0, :]) # Eix superior que ocupa tota l'amplada
+    ax_hodo = fig.add_subplot(gs[1, 0])  # Eix inferior esquerre per a l'hodògraf
+    ax_params = fig.add_subplot(gs[1, 1]) # Eix inferior dret per al text
+
     fig.suptitle(titol, weight='bold', fontsize=16)
 
+    # --- Dibuixem les barbes de vent a l'eix superior (ax_barbs) ---
+    ax_barbs.set_title("Vent a Nivells Clau", fontsize=11, pad=10)
+    heights_agl = heights - heights[0]
+    barb_altitudes_km = [1, 3, 6, 9]
+    barb_altitudes_m = [h * 1000 for h in barb_altitudes_km] * units.m
+    u_barbs, v_barbs = [], []
+
+    for h_m in barb_altitudes_m:
+        if h_m <= heights_agl.max():
+            u_interp = mpcalc.interp(h_m, heights_agl, u)[0]
+            v_interp = mpcalc.interp(h_m, heights_agl, v)[0]
+            u_barbs.append(u_interp); v_barbs.append(v_interp)
+        else:
+            u_barbs.append(np.nan * units('m/s')); v_barbs.append(np.nan * units('m/s'))
+
+    u_barbs_kt = (units.Quantity(u_barbs)).to('kt'); v_barbs_kt = (units.Quantity(v_barbs)).to('kt')
+    x_pos = np.arange(len(barb_altitudes_km))
+    ax_barbs.barbs(x_pos, np.zeros_like(x_pos), u_barbs_kt, v_barbs_kt, length=8, pivot='middle')
+
+    # Neteja estètica de l'eix de les barbes
+    ax_barbs.set_xticks(x_pos); ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km])
+    ax_barbs.set_yticks([]); ax_barbs.spines[:].set_visible(False)
+    ax_barbs.tick_params(axis='x', length=0, pad=5); ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5)
+    # --- FIN DE LA MEJORA ---
+
+
+    # --- Dibuix de l'hodògraf (ara a ax_hodo) ---
     h = Hodograph(ax_hodo, component_range=80.)
     h.add_grid(increment=20, color='gray', linestyle='--')
     
     intervals = np.array([0, 1, 3, 6, 9, 12]) * units.km
     colors = ['red', 'blue', 'green', 'purple', 'gold']
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors, linewidth=2)
-
-    # --- INICIO DE LA MEJORA: Eliminamos las etiquetas de altitud ---
-    # El bucle que dibujaba los textos "1km", "3km", etc., ha sido eliminado para un gráfico más limpio.
-    # for alt_km in [1, 3, 6, 9]:
-    #     try:
-    #         idx = np.argmin(np.abs(heights - alt_km * 1000 * units.m))
-    #         ax_hodo.text(u[idx].to('kt').m + 1, v[idx].to('kt').m + 1, f'{alt_km}km', fontsize=9, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
-    #     except: continue
-    # --- FIN DE LA MEJORA ---
     
     try:
         mean_wind_vec = params_calc.get('Mean_Wind')
@@ -579,8 +607,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             ax_hodo.arrow(0, 0, u_mean_kt * arrow_scale, v_mean_kt * arrow_scale,
                           color='black', linewidth=1.5,
                           head_width=3, length_includes_head=True, zorder=10)
-    except Exception as e:
-        print(f"Error en dibuixar la fletxa de vent mitjà: {e}")
+    except Exception: pass
 
     try:
         shear_vec = mpcalc.bulk_shear(p, u, v, height=heights - heights[0], depth=6000 * units.m)
@@ -590,6 +617,8 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     ax_hodo.set_xlabel('U-Component (nusos)')
     ax_hodo.set_ylabel('V-Component (nusos)')
 
+
+    # --- Dibuix del panell de text (ara a ax_params) ---
     ax_params.axis('off')
     def get_color(value, thresholds):
         if pd.isna(value): return "grey"
@@ -619,7 +648,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     for key, label in [('0-1km', '0-1 km'), ('0-6km', '0-6 km'), ('EBWD', 'Efectiu')]:
         val = params_calc.get(key if key == 'EBWD' else f'BWD_{key}', np.nan)
         color = get_color(val, THRESHOLDS['BWD'])
-        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
+        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.na(val) else "---", ha='right', weight='bold', color=color)
         y-=0.07
 
     y-=0.05
@@ -627,11 +656,11 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     for key, label in [('0-1km', '0-1 km'), ('0-3km', '0-3 km'), ('ESRH', 'Efectiva')]:
         val = params_calc.get(key if key == 'ESRH' else f'SRH_{key}', np.nan)
         color = get_color(val, THRESHOLDS['SRH'])
-        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', weight='bold', color=color)
+        ax_params.text(0.05, y, f"{label}:"); ax_params.text(0.95, y, f"{val:.0f}" if not pd.na(val) else "---", ha='right', weight='bold', color=color)
         y-=0.07
         
     return fig
-
+    
 
     
 
