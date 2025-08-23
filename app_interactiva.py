@@ -591,7 +591,7 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
     custom_cmap = ListedColormap(colors_wind)
     norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
     
-    # Mostrar velocidad del viento
+    # Mostrar velocidad del viento - CORREGIDO: eliminado parámetro 'projection'
     mesh = ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
