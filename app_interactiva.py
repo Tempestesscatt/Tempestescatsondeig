@@ -157,47 +157,102 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         heights_agl = heights - heights[0]
         
         with parcel_lock:
+            # Calcular el perfil de la parcela de superficie
             prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
+            
+            # Calcular CAPE y CIN de superficie
             sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
-            params_calc['SBCAPE'] = sbcape.to('J/kg').m
-            params_calc['SBCIN'] = sbcin.to('J/kg').m
+            params_calc['SBCAPE'] = sbcape.to('J/kg').m if not np.isnan(sbcape.magnitude) else np.nan
+            params_calc['SBCIN'] = sbcin.to('J/kg').m if not np.isnan(sbcin.magnitude) else np.nan
 
-            mucape_cin_result = mpcalc.most_unstable_cape_cin(p, T, Td)
-            params_calc['MUCAPE'] = mucape_cin_result[0].to('J/kg').m if isinstance(mucape_cin_result, tuple) else np.nan
+            # Calcular CAPE y CIN más inestable
+            mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td)
+            params_calc['MUCAPE'] = mucape.to('J/kg').m if not np.isnan(mucape.magnitude) else np.nan
+            params_calc['MUCIN'] = mucin.to('J/kg').m if not np.isnan(mucin.magnitude) else np.nan
             
-            mlcape_cin_result = mpcalc.mixed_layer_cape_cin(p, T, Td)
-            params_calc['MLCAPE'] = mlcape_cin_result[0].to('J/kg').m if isinstance(mlcape_cin_result, tuple) else np.nan
+            # Calcular CAPE y CIN de capa mezclada
+            mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td)
+            params_calc['MLCAPE'] = mlcape.to('J/kg').m if not np.isnan(mlcape.magnitude) else np.nan
+            params_calc['MLCIN'] = mlcin.to('J/kg').m if not np.isnan(mlcin.magnitude) else np.nan
             
-            li_result = mpcalc.lifted_index(p, T.to('degC'), Td.to('degC'))
-            params_calc['LI'] = li_result[0].to('delta_degC').m if isinstance(li_result, tuple) else np.nan
+            # Cálculo del LI (Lifted Index) - Método Mejorado
+            try:
+                # Calcular el lifted index usando la parcela de superficie
+                li_value = mpcalc.lifted_index(p, T, Td, prof)
+                
+                # Manejar diferentes tipos de retorno de metpy
+                if hasattr(li_value, 'magnitude'):
+                    # Es una Quantity de metpy
+                    params_calc['LI'] = li_value.magnitude
+                elif hasattr(li_value, '__len__') and len(li_value) > 0:
+                    # Es un array, tomar el primer valor
+                    params_calc['LI'] = li_value[0].magnitude if hasattr(li_value[0], 'magnitude') else li_value[0]
+                else:
+                    # Es un escalar
+                    params_calc['LI'] = li_value.magnitude if hasattr(li_value, 'magnitude') else li_value
+            except Exception as e:
+                params_calc['LI'] = np.nan
 
+        # Cálculo del CAPE 0-3km - Método Mejorado
         try:
-            h_agl_m = heights_agl.m; p_m = p.m
-            if 3000 <= h_agl_m[-1]:
-                p_3km_agl = np.interp(3000, h_agl_m, p_m) * units.hPa
-                cape_0_3, _ = mpcalc.cape_cin(p, T, Td, prof, top=p_3km_agl)
-                params_calc['CAPE_0-3km'] = cape_0_3.to('J/kg').m
-            else: params_calc['CAPE_0-3km'] = np.nan
-        except: params_calc['CAPE_0-3km'] = np.nan
-
-        try: params_calc['PWAT'] = mpcalc.precipitable_water(p, Td).to('mm').m
-        except: params_calc['PWAT'] = np.nan
-        
-        # CÁLCULO DE DCAPE - MÉTODO ALTERNATIVO
-        try:
-            # Calcular DCAPE manualmente como diferencia entre temperatura y temperatura de punto de rocío
-            # en niveles bajos, integrado verticalmente
-            dcape_value = 0
-            for i in range(len(p) - 1):
-                if p[i] > 700 * units.hPa:  # Solo niveles bajos
-                    delta_p = (p[i] - p[i+1])
-                    delta_T = (T[i] - Td[i])
-                    if delta_T > 0:
-                        dcape_value += (delta_p * delta_T).to('J/kg').m
-            params_calc['DCAPE'] = dcape_value
+            # Encontrar la presión a 3 km sobre el nivel del suelo
+            if heights_agl[-1] >= 3000 * units.meter:
+                # Si el perfil llega a 3 km, usar interpolación
+                p_3km = np.interp(3000, heights_agl.m, p.m) * units.hPa
+            else:
+                # Si no llega, usar la presión al nivel más alto disponible
+                p_3km = p[-1]
+            
+            # Calcular el CAPE desde la superficie hasta p_3km
+            cape_0_3, cin_0_3 = mpcalc.cape_cin(p, T, Td, prof, which='surface', bottom=p[0], top=p_3km)
+            params_calc['CAPE_0-3km'] = cape_0_3.to('J/kg').m if not np.isnan(cape_0_3.magnitude) else np.nan
         except Exception as e:
-            params_calc['DCAPE'] = np.nan
+            params_calc['CAPE_0-3km'] = np.nan
+
+        # Cálculo de PWAT (Precipitable Water) - Método Mejorado
+        try: 
+            params_calc['PWAT'] = mpcalc.precipitable_water(p, Td).to('mm').m
+        except Exception as e:
+            # Fallback: cálculo manual simplificado de PWAT
+            try:
+                pwat_manual = 0
+                for i in range(len(p) - 1):
+                    # Calcular el contenido de humedad en la capa
+                    mixing_ratio = mpcalc.mixing_ratio_from_dewpoint(p[i], Td[i])
+                    density = mpcalc.density(p[i], T[i], mixing_ratio)
+                    dp = (p[i] - p[i+1]).to('Pa').m
+                    pwat_manual += (mixing_ratio.m * density.m * dp) / 9.8
+                
+                params_calc['PWAT'] = pwat_manual
+            except:
+                params_calc['PWAT'] = np.nan
+        
+        # Cálculo del DCAPE - Método Mejorado
+        try:
+            # Calcular DCAPE usando la función de metpy con manejo de errores
+            dcape_value = mpcalc.dcape(p, T, Td)
             
+            # Manejar diferentes tipos de retorno
+            if hasattr(dcape_value, 'magnitude'):
+                params_calc['DCAPE'] = dcape_value.magnitude
+            elif hasattr(dcape_value, '__len__') and len(dcape_value) > 0:
+                params_calc['DCAPE'] = dcape_value[0].magnitude if hasattr(dcape_value[0], 'magnitude') else dcape_value[0]
+            else:
+                params_calc['DCAPE'] = dcape_value.magnitude if hasattr(dcape_value, 'magnitude') else dcape_value
+        except Exception as e:
+            # Fallback: cálculo manual simplificado de DCAPE
+            try:
+                dcape_manual = 0
+                for i in range(len(p) - 1):
+                    if p[i] > 500 * units.hPa:  # Solo niveles medios-bajos
+                        T_env = T[i]
+                        T_parcel = prof[i]
+                        if T_parcel < T_env:  # Solo donde la parcela es más fría
+                            dcape_manual += (T_env - T_parcel) * (p[i] - p[i+1]) * 100 / p[i]
+                params_calc['DCAPE'] = dcape_manual.to('J/kg').m if hasattr(dcape_manual, 'to') else dcape_manual
+            except:
+                params_calc['DCAPE'] = np.nan
+                
         try:
             lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
             params_calc['LCL_p'] = lcl_p
