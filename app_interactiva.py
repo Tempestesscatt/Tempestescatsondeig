@@ -629,12 +629,12 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     # --- Dibuix del panell de text ---
     ax_params.axis('off')
     
-    # --- INICI DE LA MILLORA: Direccions en català ---
+    # --- INICI DE LA MILLORA: Noms complets de les direccions ---
 
-    # Funció auxiliar per convertir graus a direcció cardinal en català
+    # Funció auxiliar per convertir graus a direcció cardinal amb nom complet en català
     def degrees_to_cardinal_ca(d):
-        # N: Nord, E: Est, S: Sud, O: Oest
-        dirs = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"]
+        # Llista amb els noms complets
+        dirs = ["Nord", "Nord-est", "Est", "Sud-est", "Sud", "Sud-oest", "Oest", "Nord-oest"]
         ix = int(round(((d % 360) / 45)))
         return dirs[ix % 8]
 
@@ -661,7 +661,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             speed_kmh = mpcalc.wind_speed(u_motion_ms, v_motion_ms).to('km/h').m
             direction_deg = mpcalc.wind_direction(u_motion_ms, v_motion_ms).to('deg').m
             
-            # Fem servir la nova funció en català
+            # Fem servir la funció amb els noms complets
             cardinal_dir_ca = degrees_to_cardinal_ca(direction_deg)
             
             ax_params.text(0.05, y, f"{name}:")
@@ -690,6 +690,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         y-=0.07
         
     return fig
+    
 def ui_caixa_parametres_sondeig(params):
     def get_color(value, thresholds, reverse_colors=False):
         if pd.isna(value): return "#808080"
