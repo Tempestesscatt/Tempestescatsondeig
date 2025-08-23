@@ -476,9 +476,9 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
 
 def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     """
-    Dibuixa un diagrama Skew-T, garantint que les línies de la trajectòria
-    de la parcel·la comencen visualment on comencen els perfils de
-    temperatura i punt de rosada.
+    Dibuixa un diagrama Skew-T, garantint que totes les línies comencin
+    visualment a la base del gràfic (1000 hPa), extrapolant les dades
+    si la pressió de superfície és menor.
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.85, 0.85))
@@ -487,43 +487,49 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     skew.plot_dry_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     skew.plot_moist_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     skew.plot_mixing_lines(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
-    
-    # Ombrejat de les àrees de CAPE i CIN
+
+    # --- LÒGICA D'EXTRAPOLACIÓ PER FORÇAR L'INICI A 1000 HPA ---
+    # Definim les variables que farem servir per al gràfic
+    p_plot, T_plot, Td_plot, prof_plot = p, T, Td, prof
+
+    # Si la pressió de superfície és menor de 1000 hPa (el terreny és alt)
+    if p[0] < 1000 * units.hPa and prof is not None:
+        p_1000 = 1000 * units.hPa
+        
+        # Extrapola la temperatura ambiental fins a 1000 hPa seguint l'adiabàtica seca
+        T_1000 = mpcalc.dry_lapse(p_1000, T[0])
+        
+        # Extrapola el punt de rosada fins a 1000 hPa mantenint la relació de barreja constant
+        mixing_ratio_sfc = mpcalc.mixing_ratio(mpcalc.saturation_vapor_pressure(Td[0]), p[0])
+        Td_1000 = mpcalc.dewpoint(mpcalc.vapor_pressure(p_1000, mixing_ratio_sfc))
+        
+        # Extrapola la trajectòria de la parcel·la (que també segueix l'adiabàtica seca per sota del LCL)
+        prof_1000 = T_1000 # La temperatura de la parcel·la a 1000 hPa és la mateixa que la de l'ambient extrapolada
+        
+        # Inserim els nous punts al principi dels arrays que es dibuixaran
+        p_plot = np.insert(p, 0, p_1000)
+        T_plot = np.insert(T, 0, T_1000)
+        Td_plot = np.insert(Td, 0, Td_1000)
+        prof_plot = np.insert(prof, 0, prof_1000)
+
+    # --- FI DE LA LÒGICA D'EXTRAPOLACIÓ ---
+
+    # Ombrejat de les àrees de CAPE i CIN (utilitzant les dades originals per al càlcul)
     if prof is not None:
-        p_np = p.magnitude
-        T_np = T.magnitude
-        prof_np = prof.magnitude
-        skew.ax.fill_betweenx(p_np, T_np, prof_np, where=prof_np > T_np,
+        skew.ax.fill_betweenx(p.magnitude, T.magnitude, prof.magnitude, where=prof.magnitude > T.magnitude,
                               facecolor='yellow', alpha=0.4, interpolate=True, zorder=5)
-        skew.ax.fill_betweenx(p_np, T_np, prof_np, where=prof_np < T_np,
+        skew.ax.fill_betweenx(p.magnitude, T.magnitude, prof.magnitude, where=prof.magnitude < T.magnitude,
                               facecolor='dimgray', alpha=0.4, interpolate=True, zorder=5)
 
-    # Perfils principals de l'atmosfera
-    skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
-    skew.plot(p, Td, 'purple', lw=2.5, label='Punt de Rosada')
-    
-    # --- VISUALITZACIÓ DEFINITIVA DE LA TRAJECTÒRIA INICIAL ---
-    if prof is not None:
-        # 1. Dibuixem la trajectòria COMPLETA i CORRECTA de la parcel·la (línia negra).
-        # Aquesta variable 'prof' ja comença a T[0] i segueix l'adiabàtica seca i després la humida.
-        # Això garanteix que la línia negra comença exactament on comença la línia vermella.
-        skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la',
+    # Dibuixem els perfils amb les dades possiblement extrapolades
+    skew.plot(p_plot, T_plot, 'red', lw=2.5, label='Temperatura')
+    skew.plot(p_plot, Td_plot, 'purple', lw=2.5, label='Punt de Rosada')
+    if prof_plot is not None:
+        skew.plot(p_plot, prof_plot, 'k', linewidth=3, label='Trajectòria Parcel·la',
                   path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
-        
-        # 2. Afegim NOMÉS la línia que faltava: la del punt de rosada de la parcel·la.
-        # Això garanteix que la línia verda comença exactament on comença la línia lila.
-        lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0])
-        p_path = np.linspace(p[0], lcl_p, 100) # Camí només fins al LCL
-        mixing_ratio_sfc = mpcalc.mixing_ratio(mpcalc.saturation_vapor_pressure(Td[0]), p[0])
-        Td_path = mpcalc.dewpoint(mpcalc.vapor_pressure(p_path, mixing_ratio_sfc))
-        
-        # Dibuixem aquesta trajectòria del punt de rosada
-        skew.plot(p_path, Td_path, color='darkgreen', linestyle='--', linewidth=2.5, zorder=10)
-
-    # --- FI DE LA VISUALITZACIÓ ---
 
     # Configuració final del gràfic
-    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
+    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03) # Les barbes sí amb dades originals
     skew.ax.set_ylim(1000, 100)
     skew.ax.set_xlim(-40, 40)
     skew.ax.set_title(titol, weight='bold', fontsize=14, pad=20)
