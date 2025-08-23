@@ -487,7 +487,7 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     skew.plot_moist_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     skew.plot_mixing_lines(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     
-    # --- INICIO DE LA MEJORA: Sombreado Personalizado por Capas ---
+    # --- INICI DE LA MEJORA: Sombreado Personalizado por Capas ---
     if prof is not None:
         p_np = p.m
         T_np = T.m
@@ -524,10 +524,27 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
                               facecolor='lightgray', alpha=0.5, interpolate=True, zorder=5)
     # --- FIN DE LA MEJORA ---
 
+    # --- INICI DE LA CORRECCIÓ VISUAL ---
+    # Dibuixem explícitament l'ascens inicial fins al LCL
+    if prof is not None:
+        # Calculem el LCL per saber on es creuen les línies
+        lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
+        
+        # Dibuixem la línia de relació de barreja des del punt de rosada de superfície
+        skew.plot_mixing_lines(w=mpcalc.mixing_ratio(p[0], Td[0]), p=[p[0], lcl_p], 
+                               color='darkgreen', linestyle='--', linewidth=2)
+        
+        # Dibuixem l'adiabàtica seca des de la temperatura de superfície
+        skew.plot_dry_adiabats(t0=[T[0]], p=[p[0], lcl_p], 
+                               color='darkorange', linestyle='--', linewidth=2)
+    # --- FI DE LA CORRECCIÓ VISUAL ---
+
     # Perfiles principales con los nuevos colores
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
     skew.plot(p, Td, 'purple', lw=2.5, label='Punt de Rosada') # Color lila
     if prof is not None:
+        # La trajectòria completa de la parcel·la (línia negra) se superposa
+        # a les línies discontínues en el tram inicial, mostrant el camí complet.
         skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la',
                   path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
 
