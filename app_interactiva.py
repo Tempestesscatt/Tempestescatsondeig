@@ -1251,6 +1251,55 @@ def run_catalunya_app():
             ui_pestanya_assistent_ia(params_calc, poble_sel)
         with tab_estacions: 
             ui_pestanya_estacions_meteorologiques()
+
+def run_valley_halley_app():
+    ui_capcalera_selectors(None, zona_activa="tornado_alley")
+    
+    poble_sel = st.session_state.poble_selector_usa
+    dia_sel_str = st.session_state.dia_selector_usa
+    hora_sel_str = st.session_state.hora_selector_usa
+
+    day_offset = {"Avui": 0, "Demà": 1, "Demà passat": 2}[dia_sel_str]
+    target_date = datetime.now(TIMEZONE_USA).date() + timedelta(days=day_offset)
+    local_dt = TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
+    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    
+    timestamp_str = f"{dia_sel_str} a les {hora_sel_str} (Central Time)"
+    lat_sel, lon_sel = USA_CITIES[poble_sel]['lat'], USA_CITIES[poble_sel]['lon']
+    
+    # --- LÒGICA DE CÀLCUL CENTRALITZADA (ARA TAMBÉ PER A EUA) ---
+    data_tuple, error_msg = carregar_dades_sondeig_usa(lat_sel, lon_sel, hourly_index_sel)
+    if error_msg:
+        st.error(f"No s'ha pogut carregar el sondeig per a {poble_sel}: {error_msg}")
+        return
+
+    # Selector de nivell per a mapes i convergència (model GFS)
+    nivells_disponibles_gfs = [925, 850, 700, 500, 300]
+    nivell_sel = st.selectbox(
+        "Nivell d'anàlisi per a Mapes i Convergència:", 
+        options=nivells_disponibles_gfs, 
+        format_func=lambda x: f"{x} hPa", 
+        key="level_usa_main"
+    )
+
+    map_data_conv, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
+
+    params_calc = data_tuple[1] if data_tuple else {}
+    if data_tuple and map_data_conv:
+        conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+        params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
+
+    # --- VISUALITZACIÓ EN PESTANYES ---
+    tab_mapes, tab_vertical, tab_satelit = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"])
+    with tab_mapes:
+        # Passem el nivell seleccionat a la funció de mapes
+        ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel)
+    with tab_vertical:
+        # Passem el nivell seleccionat a la funció vertical
+        ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
+    with tab_satelit:
+        ui_pestanya_satelit_usa()
         
 
 def ui_zone_selection():
