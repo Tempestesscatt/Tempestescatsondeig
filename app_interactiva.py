@@ -592,7 +592,10 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density=2, arrowsize=0.6, zorder=4, transform=ccrs.PlateCarree())
     
-    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat, projection='lcc')
+    # --- LÍNIA CORREGIDA ---
+    # Hem eliminat l'argument 'projection="lcc"' que causava l'error.
+    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+    
     dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1, x_dim=-1, y_dim=-2)
     dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0, x_dim=-1, y_dim=-2)
     convergence_scaled = -(dudx + dvdy).to('1/s').magnitude * 1e5
@@ -607,7 +610,6 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
     
     ax.set_title(f"Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
-
 # --- Seccions UI i Lògica Principal ---
 
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya"):
