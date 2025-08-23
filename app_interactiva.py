@@ -1319,68 +1319,81 @@ def main():
     
 def determinar_emoji_temps(params):
     """
-    Analitza els paràmetres del sondeig per determinar el tipus de núvol més probable
-    i el temps associat, basant-se en LCL, CAPE, LFC i paràmetres de cisallament.
-    Retorna un emoji i una descripció detallada.
+    Realitza un diagnòstic meteorològic avançat del perfil atmosfèric per determinar
+    el tipus de nuvolositat i el temps associat amb alta precisió. Utilitza una
+    lògica jeràrquica que combina tots els paràmetres rellevants (CAPE, LI, CIN,
+    LCL, LFC, PWAT, BWD, SRH).
     """
-    # Obtenim els valors de forma segura, assignant valors per defecte que no interfereixin
+    # --- 1. Extracció segura de tots els paràmetres necessaris ---
+    # Donem valors per defecte que representen condicions neutres o estables.
     cape = params.get('SBCAPE', 0) or 0
+    li = params.get('LI', 3) or 3  # Default a estable (LI positiu)
     cin = params.get('SBCIN', 0) or 0
     pwat = params.get('PWAT', 0) or 0
-    bwd_6km = params.get('BWD_0-6km', 0) or 0  # Cisallament 0-6km en nusos
-    srh_1km = params.get('SRH_0-1km', 0) or 0  # Helicitat 0-1km en m²/s²
-    lcl_hgt = params.get('LCL_Hgt', 9999) or 9999 # Altura de la base del núvol en metres
-    lfc_hgt = params.get('LFC_Hgt', 9999) or 9999 # Altura on comença la convecció lliure
+    bwd_6km = params.get('BWD_0-6km', 0) or 0
+    srh_1km = params.get('SRH_0-1km', 0) or 0
+    lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
+    lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
+    
+    # --- 2. Lògica de Diagnòstic Jeràrquic ---
 
-    # --- LÒGICA DE DECISIÓ JERÀRQUICA (DE MÉS SEVER A MÉS ESTABLE) ---
-
-    # 1. Condicions de Supercèl·lula: CAPE alt, cisallament fort i rotació (helicitat).
-    # Aquests són els sistemes més organitzats i perillosos.
-    if cape > 1500 and bwd_6km > 20 and srh_1km > 100:
-        return "🌪️", "Supercèl·lula (Cb Arcus)"
-
-    # 2. Condicions de Tempestes Multicel·lulars Organitzades (línies de tempesta, MCS):
-    # CAPE moderat/alt i cisallament significatiu que permet que les tempestes s'organitzin.
-    elif cape > 800 and bwd_6km > 18:
-        return "⛈️", "Multicèl·lula (Cb Incus)"
-
-    # 3. Condicions de Tempesta Aïllada (Air Mass Thunderstorm):
-    # CAPE suficient per a creixement vertical, però poc cisallament. Són tempestes de "pols", fortes però de curta durada.
-    # El núvol és un Cumulonimbus Calvus (part superior llisa, sense enclusa).
-    elif cape > 500 and bwd_6km < 15 and cin > -50:
-        return "⚡", "Tempesta Aïllada (Cb Calvus)"
-
-    # 4. Condicions de Núvols de Gran Desenvolupament Vertical (pre-tempesta):
-    # Hi ha energia (CAPE) i és fàcil d'activar (LFC baix, CIN baix), però potser no prou per a ser un Cb.
-    # Aquests són els Cumulus Congestus, els "castells" de núvols que creixen ràpidament.
-    elif cape > 200 and cin > -75 and lfc_hgt < 2000:
-        return "☁️", "Desenvolupament (Cu Congestus)"
-
-    # 5. Condicions de Núvols Baixos Estratiformes o Boira:
-    # Molt poca energia (CAPE baix), però la base dels núvols (LCL) és molt baixa i hi ha humitat.
-    elif cape < 100 and lcl_hgt < 600 and pwat > 25:
-        return "🌫️", "Núvols Baixos / Boira (St)"
-
-    # 6. Condicions de Núvols de Bon Temps (Cumulus Humilis):
-    # Poca energia, però suficient per formar petits cúmuls amb una base relativament baixa.
-    # Són els núvols "de cotó" típics d'un dia assolellat.
-    elif cape < 200 and lcl_hgt < 1200:
-        return "⛅", "Bon Temps (Cu Humilis)"
+    # == Branca A: Potencial Convectiu Significatiu (CAPE > 350 J/kg i LI < 0) ==
+    # Si l'atmosfera és inestable, avaluem el potencial d'organització i severitat.
+    if cape > 350 and li < 0:
         
-    # 7. Condicions de Núvols Alts o Mitjans:
-    # La base dels núvols (LCL) és alta, indicant aire més sec a nivells baixos. Poca energia.
-    elif lcl_hgt > 2000 and cape < 200:
-        return "🌤️", "Núvols Alts (Ac / Ci)"
+        # A.1: Condicions de Supercèl·lula -> El més sever.
+        # Requereix molta energia, cisallament fort i helicitat per a la rotació.
+        if cape > 1500 and bwd_6km > 20 and srh_1km > 100 and li < -4:
+            return "🌪️", "Supercèl·lula (Potencial)"
 
-    # 8. Condicions d'Atmosfera Estable (Capada) o Cel Serè:
-    # Molt poca energia (CAPE) i una forta inversió que impedeix el creixement (CIN alt).
-    elif cape < 100 and cin < -150:
-        return "☀️", "Cel Serè / Estable"
+        # A.2: Condicions de Tempestes Multicel·lulars Organitzades (MCS, Línies).
+        # Requereix energia i, crucialment, cisallament per a l'organització.
+        elif cape > 800 and bwd_6km > 18:
+            return "⛈️", "Multicèl·lula (Cb Incus)"
 
-    # 9. Condició per defecte per a casos intermedis:
-    # Si cap de les anteriors es compleix, és una situació mixta.
+        # A.3: Condicions de Tempesta Aïllada (de massa d'aire).
+        # Energia suficient, però poc cisallament. La "tapa" (CIN) ha de ser feble.
+        elif cin > -60: # Si la inhibició és baixa, la convecció es pot disparar fàcilment.
+            return "⚡", "Tempesta Aïllada (Cb Calvus)"
+            
+        # A.4: Desenvolupament Vertical Actiu (pre-tempesta).
+        # Hi ha energia, però potser no prou organització o una "tapa" feble que impedeix la tempesta.
+        # El LFC baix indica que la convecció pot iniciar-se fàcilment.
+        elif lfc_hgt < 2500:
+             return "☁️", "Desenvolupament (Cu Congestus)"
+        
+        # A.5: Inestabilitat "Capada".
+        # Hi ha energia (CAPE), però una forta inversió (CIN alt) impedeix que s'alliberi.
+        else: # cin < -60
+            return "🌤️", "Inestabilitat Capada"
+
+    # == Branca B: Potencial Convectiu Marginal o Temps Estable (CAPE < 350 J/kg o LI >= 0) ==
+    # Si no hi ha prou energia per a tempestes, analitzem la humitat i l'estructura de capes baixes.
     else:
-        return "🌥️", "Intervals de Núvols"
+        # B.1: Condicions de Núvols Baixos Estratiformes o Boira -> L'escenari més estable i humit.
+        # La clau és un LCL molt baix (núvols enganxats a terra) i alta humitat (PWAT).
+        if lcl_hgt < 400 and pwat > 25:
+            return "🌫️", "Núvols Baixos / Boira (St)"
+            
+        # B.2: Condicions de Ruixats Febles o Plugims.
+        # No hi ha CAPE, però l'atmosfera està saturada (PWAT alt).
+        elif pwat > 35:
+            return "🌧️", "Ruixats / Plugims"
+
+        # B.3: Condicions de Cúmuls de Bon Temps.
+        # Poca o cap energia, però un LCL prou baix per formar núvols petits i dispersos.
+        elif lcl_hgt < 1300 and pwat > 15:
+            return "⛅", "Bon Temps (Cu Humilis)"
+        
+        # B.4: Condicions de Núvols Alts o Mitjans.
+        # L'LCL és alt, indicant que la capa baixa de l'atmosfera és seca.
+        elif lcl_hgt < 3000:
+            return "🌤️", "Núvols Alts (Ac / Ci)"
+
+        # B.5: Condicions de Cel Serè o Gairebé Serè.
+        # L'atmosfera és estable (LI > 1), seca (PWAT baix) i amb una base de núvols molt alta.
+        else: # LI > 1, PWAT baix, LCL alt
+            return "☀️", "Cel Serè"
 
 if __name__ == "__main__":
     main()
