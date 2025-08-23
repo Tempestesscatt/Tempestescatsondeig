@@ -293,31 +293,6 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                 print(f"Error cálculo manual LI: {e}")
                 params_calc['LI'] = np.nan
         
-        # Cálculo de DCAPE - CORREGIDO CON DEPURACIÓN
-        try:
-            dcape = mpcalc.dcape(p, T, Td, prof)
-            if hasattr(dcape, 'magnitude'):
-                params_calc['DCAPE'] = float(dcape.magnitude)
-            elif hasattr(dcape, 'm'):
-                params_calc['DCAPE'] = float(dcape.m)
-            elif isinstance(dcape, units.Quantity):
-                params_calc['DCAPE'] = float(dcape.magnitude)
-            else:
-                params_calc['DCAPE'] = float(dcape)
-            print(f"DEBUG: DCAPE (MetPy) = {params_calc['DCAPE']} J/kg") # ← MISSATGE DE DEPURACIÓ AFEGIT
-        except Exception as e:
-            print(f"Error DCAPE (MetPy): {e}")
-            params_calc['DCAPE'] = np.nan
-        
-        # Fallback para DCAPE si el cálculo principal falló
-        if np.isnan(params_calc.get('DCAPE', np.nan)):
-            try:
-                dcape_manual = calcular_dcape_manual(p, T, Td, heights)
-                params_calc['DCAPE'] = dcape_manual
-                print(f"DEBUG: DCAPE (Manual) = {dcape_manual} J/kg") # ← MISSATGE DE DEPURACIÓ AFEGIT
-            except Exception as e:
-                print(f"Error cálculo manual DCAPE: {e}")
-                params_calc['DCAPE'] = np.nan
         
         # Cálculo de LFC
         try:
@@ -679,7 +654,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
 
 def ui_caixa_parametres_sondeig(params):
     def get_color(value, thresholds, reverse_colors=False):
-        # Asegurarse de que el valor es escalar, no un array
+        # Assegurar-se que el valor és escalar, no un array
         if hasattr(value, '__len__') and not isinstance(value, str):
             if len(value) > 0:
                 value = value[0]  # Tomar el primer elemento si es un array
@@ -698,102 +673,82 @@ def ui_caixa_parametres_sondeig(params):
         return colors[-1]
     
     THRESHOLDS = {
-        'SBCAPE': (100, 500, 1500, 2500), 
-        'MUCAPE': (100, 500, 1500, 2500), 
-        'MLCAPE': (50, 250, 1000, 2000), 
-        'CAPE_0-3km': (25, 75, 150, 250), 
-        'DCAPE': (200, 500, 800, 1200), 
-        'SBCIN': (0, -25, -75, -150), 
-        'MUCIN': (0, -25, -75, -150),
-        'MLCIN': (0, -25, -75, -150),
-        'LI': (0, -2, -5, -8), 
-        'PWAT': (20, 30, 40, 50), 
-        'BWD_0-6km': (10, 20, 30, 40), 
-        'BWD_0-1km': (5, 10, 15, 20),
-        'SRH_0-1km': (50, 100, 150, 250),
+        'SBCAPE': (100, 500, 1500, 2500), 'MUCAPE': (100, 500, 1500, 2500), 
+        'MLCAPE': (50, 250, 1000, 2000), 'CAPE_0-3km': (25, 75, 150, 250), 
+        'SBCIN': (0, -25, -75, -150), 'MUCIN': (0, -25, -75, -150),
+        'MLCIN': (0, -25, -75, -150), 'LI': (0, -2, -5, -8), 
+        'PWAT': (20, 30, 40, 50), 'BWD_0-6km': (10, 20, 30, 40), 
+        'BWD_0-1km': (5, 10, 15, 20), 'SRH_0-1km': (50, 100, 150, 250),
         'SRH_0-3km': (100, 200, 300, 400)
     }
     
     def styled_metric(label, value, unit, param_key, precision=0, reverse_colors=False):
-        # Asegurarse de que el valor es escalar para formateo
         if hasattr(value, '__len__') and not isinstance(value, str):
-            if len(value) > 0:
-                value = value[0]  # Tomar el primer elemento si es un array
-            else:
-                value = np.nan
-                
+            if len(value) > 0: value = value[0]
+            else: value = np.nan
         color = get_color(value, THRESHOLDS.get(param_key, []), reverse_colors)
         val_str = f"{value:.{precision}f}" if not pd.isna(value) else "---"
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;"><span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit})</span><br><strong style="font-size: 1.6em; color: {color};">{val_str}</strong></div>""", unsafe_allow_html=True)
     
     st.markdown("##### Paràmetres del Sondeig")
     
+    # Obtenim l'emoji i la descripció cridant a la nova funció
+    emoji, descripcio = determinar_emoji_temps(params)
+
     # Primera fila: CAPE values
     cols = st.columns(3)
-    with cols[0]: 
-        styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE')
-    with cols[1]: 
-        styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE')
-    with cols[2]: 
-        styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE')
+    with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE')
+    with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE')
+    with cols[2]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE')
     
     # Segunda fila: CIN and other stability indices
     cols = st.columns(3)
-    with cols[0]: 
-        styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True)
-    with cols[1]: 
-        styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True)
-    with cols[2]: 
-        styled_metric("MLCIN", params.get('MLCIN', np.nan), "J/kg", 'MLCIN', reverse_colors=True)
+    with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True)
+    with cols[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True)
+    with cols[2]: styled_metric("MLCIN", params.get('MLCIN', np.nan), "J/kg", 'MLCIN', reverse_colors=True)
     
-    # Tercera fila: LI and moisture - CORREGIDO
+    # Tercera fila: LI, PWAT i el nou EMOJI
     cols = st.columns(3)
     with cols[0]: 
-        # Asegurar que LI es un valor escalar
         li_value = params.get('LI', np.nan)
-        if hasattr(li_value, '__len__') and not isinstance(li_value, str) and len(li_value) > 0:
-            li_value = li_value[0]
+        if hasattr(li_value, '__len__') and not isinstance(li_value, str) and len(li_value) > 0: li_value = li_value[0]
         styled_metric("LI", li_value, "°C", 'LI', precision=1, reverse_colors=True)
     with cols[1]: 
         styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1)
-    with cols[2]: 
-        styled_metric("DCAPE", params.get('DCAPE', np.nan), "J/kg", 'DCAPE')
-    
-    # Cuarta fila: Levels - CORREGIDO
+    with cols[2]:
+        # Aquí mostrem l'emoji en lloc de DCAPE
+        st.markdown(f"""
+        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
+            <span style="font-size: 0.8em; color: #FAFAFA;">Tipus de Cel Previst</span>
+            <strong style="font-size: 1.8em; line-height: 1;">{emoji}</strong>
+            <span style="font-size: 0.8em; color: #E0E0E0;">{descripcio}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Cuarta fila: Levels
     cols = st.columns(3)
-    with cols[0]: 
-        styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
-    with cols[1]: 
-        styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
+    with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
+    with cols[1]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
     with cols[2]: 
-        # Asegurar que FRZG es un valor escalar
         frzg_value = params.get('FRZG_Lvl_p', np.nan)
-        if hasattr(frzg_value, '__len__') and not isinstance(frzg_value, str) and len(frzg_value) > 0:
-            frzg_value = frzg_value[0]
+        if hasattr(frzg_value, '__len__') and not isinstance(frzg_value, str) and len(frzg_value) > 0: frzg_value = frzg_value[0]
         styled_metric("FRZG", frzg_value, "hPa", '', precision=0)
     
     # Quinta fila: Wind parameters
     cols = st.columns(3)
-    with cols[0]: 
-        styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
-    with cols[1]: 
-        styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km')
-    with cols[2]: 
-        styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
+    with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
+    with cols[1]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km')
+    with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
     
-    # Sexta fila: SRH and updraft - CORREGIDO
+    # Sexta fila: SRH and updraft
     cols = st.columns(3)
     with cols[0]: 
-        # Asegurar que SRH 0-1km es un valor escalar
         srh1_value = params.get('SRH_0-1km', np.nan)
-        if hasattr(srh1_value, '__len__') and not isinstance(srh1_value, str) and len(srh1_value) > 0:
-            srh1_value = srh1_value[0]
+        if hasattr(srh1_value, '__len__') and not isinstance(srh1_value, str) and len(srh1_value) > 0: srh1_value = srh1_value[0]
         styled_metric("SRH 0-1km", srh1_value, "m²/s²", 'SRH_0-1km')
     with cols[1]: 
-        # Asegurar que SRH 0-3km es un valor escalar
         srh3_value = params.get('SRH_0-3km', np.nan)
-        if hasattr(srh3_value, '__len__') and not isinstance(srh3_value, str) and len(srh3_value) > 0:
-            srh3_value = srh3_value[0]
+        if hasattr(srh3_value, '__len__') and not isinstance(srh3_value, str) and len(srh3_value) > 0: srh3_value = srh3_value[0]
         styled_metric("SRH 0-3km", srh3_value, "m²/s²", 'SRH_0-3km')
     with cols[2]: 
         styled_metric("UPDRAFT", params.get('MAX_UPDRAFT', np.nan), "m/s", 'UPDRAFT', precision=1)
@@ -1361,6 +1316,35 @@ def main():
     elif not st.session_state['zone_selected']: ui_zone_selection()
     elif st.session_state['zone_selected'] == 'catalunya': run_catalunya_app()
     elif st.session_state['zone_selected'] == 'valley_halley': run_valley_halley_app()
+    
+def determinar_emoji_temps(params):
+    """
+    Analitza els paràmetres del sondeig i retorna un emoji i una descripció
+    del tipus de temps més probable.
+    """
+    # Obtenim els valors de forma segura, assignant 0 si no existeixen (o són NaN)
+    cape = params.get('SBCAPE', 0) or 0
+    cin = params.get('SBCIN', 0) or 0
+    pwat = params.get('PWAT', 0) or 0
+    bwd_6km = params.get('BWD_0-6km', 0) or 0
+    srh_1km = params.get('SRH_0-1km', 0) or 0
+    lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
+
+    # Lògica de decisió, de més sever a més estable
+    if cape > 1500 and bwd_6km > 20 and srh_1km > 100:
+        return "🌪️", "Tempestes Severes"
+    elif cape > 800 and bwd_6km > 15:
+        return "⛈️", "Tempestes Organitzades"
+    elif cape > 400 and cin > -80: # Poca inhibició permet iniciar tempestes
+        return "⚡", "Tempestes Aïllades"
+    elif pwat > 35 and cape < 300: # Molta humitat però poca inestabilitat
+        return "🌧️", "Ruixats / Plugims"
+    elif lcl_hgt < 800: # Base dels núvols molt baixa
+        return "☁️", "Cel Cobert / Boira"
+    elif cape < 100 and cin < -100: # Poca energia i molta estabilitat
+        return "☀️", "Cel Serè"
+    else: # Condicions intermèdies
+        return "⛅", "Intervals de Núvols"
 
 if __name__ == "__main__":
     main()
