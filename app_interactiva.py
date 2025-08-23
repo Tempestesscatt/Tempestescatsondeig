@@ -157,29 +157,26 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         heights_agl = heights - heights[0]
         
         with parcel_lock:
-            # Calcular el perfil de la parcela de superficie
             prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
             
-            # Calcular CAPE y CIN de superficie
             try:
                 sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
                 params_calc['SBCAPE'] = sbcape.m if hasattr(sbcape, 'm') else float(sbcape)
                 params_calc['SBCIN'] = sbcin.m if hasattr(sbcin, 'm') else float(sbcin)
                 
-                # --- NOU CÀLCUL: Velocitat màxima del corrent ascendent ---
+                # --- BLOC MODIFICAT: S'afegeix el càlcul del corrent ascendent ---
                 if sbcape.m > 0:
-                    w_max = np.sqrt(2 * sbcape.m) * units('m/s')
-                    params_calc['MAX_UPDRAFT'] = w_max.m
+                    w_max = np.sqrt(2 * sbcape.m)
+                    params_calc['MAX_UPDRAFT'] = w_max
                 else:
                     params_calc['MAX_UPDRAFT'] = 0.0
+                # --- FI DEL BLOC MODIFICAT ---
 
             except:
                 params_calc['SBCAPE'] = np.nan
                 params_calc['SBCIN'] = np.nan
-                params_calc['MAX_UPDRAFT'] = np.nan
+                params_calc['MAX_UPDRAFT'] = np.nan # NOVA LÍNIA
 
-
-            # Calcular CAPE y CIN más inestable
             try:
                 mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td)
                 params_calc['MUCAPE'] = mucape.m if hasattr(mucape, 'm') else float(mucape)
@@ -188,7 +185,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                 params_calc['MUCAPE'] = np.nan
                 params_calc['MUCIN'] = np.nan
             
-            # Calcular CAPE y CIN de capa mezclada
             try:
                 mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td)
                 params_calc['MLCAPE'] = mlcape.m if hasattr(mlcape, 'm') else float(mlcape)
@@ -197,18 +193,12 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
                 params_calc['MLCAPE'] = np.nan
                 params_calc['MLCIN'] = np.nan
             
-            # Cálculo del LI (Lifted Index) - Método Simplificado
             try:
-                p_500 = 500 * units.hPa
-                idx_500 = np.argmin(np.abs(p - p_500))
-                T_500 = T[idx_500]
-                T_parcel_500 = prof[idx_500]
-                li_value = T_500 - T_parcel_500
-                params_calc['LI'] = li_value.m if hasattr(li_value, 'm') else float(li_value)
+                li, _ = mpcalc.lifted_index(p, T, prof)
+                params_calc['LI'] = li.m if hasattr(li, 'm') else float(li)
             except:
                 params_calc['LI'] = np.nan
 
-        # Cálculo del CAPE 0-3km
         try:
             idx_3km = np.argmin(np.abs(heights_agl - 3000 * units.m))
             cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
@@ -216,57 +206,48 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         except:
             params_calc['CAPE_0-3km'] = np.nan
 
-        # Cálculo de PWAT
         try: 
             pwat_value = mpcalc.precipitable_water(p, Td)
-            params_calc['PWAT'] = pwat_value.m if hasattr(pwat_value, 'm') else float(pwat_value)
+            params_calc['PWAT'] = pwat_value.to('mm').m
         except:
             params_calc['PWAT'] = np.nan
         
-        # Cálculo del DCAPE
         try:
-            dcape_val, _ = mpcalc.dcape(p, T, Td, prof)
+            dcape_val, _ = mpcalc.dcape(p, T, Td)
             params_calc['DCAPE'] = dcape_val.m if hasattr(dcape_val, 'm') else float(dcape_val)
         except:
             params_calc['DCAPE'] = np.nan
                 
-        # Cálculo de LCL
         try:
-            lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
-            params_calc['LCL_p'] = lcl_p.m if hasattr(lcl_p, 'm') else float(lcl_p)
-            lcl_height_agl = 125 * (T[0].m - Td[0].m)
-            params_calc['LCL_Hgt'] = lcl_height_agl
+            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0])
+            params_calc['LCL_p'] = lcl_p.m
+            lcl_h_interp = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
+            params_calc['LCL_Hgt'] = lcl_h_interp
         except:
             params_calc['LCL_p'], params_calc['LCL_Hgt'] = np.nan, np.nan
         
-        # Cálculo de LFC
         try:
             lfc_p, _ = mpcalc.lfc(p, T, Td, prof)
-            params_calc['LFC_p'] = lfc_p.m if hasattr(lfc_p, 'm') else float(lfc_p)
-            # Interpolar para encontrar la altura del LFC
+            params_calc['LFC_p'] = lfc_p.m
             lfc_h_interp = np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1])
             params_calc['LFC_Hgt'] = lfc_h_interp
         except:
             params_calc['LFC_p'], params_calc['LFC_Hgt'] = np.nan, np.nan
         
-        # Cálculo de EL
         try:
             el_p, _ = mpcalc.el(p, T, Td, prof)
-            params_calc['EL_p'] = el_p.m if hasattr(el_p, 'm') else float(el_p)
-            # Interpolar para encontrar la altura del EL
+            params_calc['EL_p'] = el_p.m
             el_h_interp = np.interp(el_p.m, p.m[::-1], heights_agl.m[::-1])
             params_calc['EL_Hgt'] = el_h_interp
         except:
             params_calc['EL_p'], params_calc['EL_Hgt'] = np.nan, np.nan
         
-        # Cálculo del nivel de congelación
         try:
-            p_frz = np.interp(0, T.magnitude[::-1], p.magnitude[::-1])
-            params_calc['FRZG_Lvl_p'] = float(p_frz)
+            p_frz, _ = mpcalc.freezing_level(p, T)
+            params_calc['FRZG_Lvl_p'] = p_frz.m
         except:
             params_calc['FRZG_Lvl_p'] = np.nan
 
-        # Cálculo de movimientos de tormenta
         try:
             rm, lm, mean_wind = mpcalc.storm_motion(p, u, v, heights)
             params_calc['RM'] = (rm[0].m, rm[1].m)
@@ -275,16 +256,14 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
         except:
             params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan), 'Mean_Wind': (np.nan, np.nan)})
         
-        # Cálculo de cortantes de viento
         for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
             try:
-                bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, heights=heights, depth=depth_m * units.m)
+                bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights_agl, depth=depth_m * units.m)
                 shear_speed = mpcalc.wind_speed(bwd_u, bwd_v)
                 params_calc[f'BWD_{name}'] = shear_speed.to('kt').m
             except:
                 params_calc[f'BWD_{name}'] = np.nan
         
-        # Cálculo de SRH
         if not np.isnan(params_calc['RM'][0]):
             try:
                 u_storm, v_storm = params_calc['RM'] * units('m/s')
@@ -565,7 +544,8 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
 
     y-=0.05
     ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
-    for key, label in [('0-1km', '0-1 km'), ('0-6km', '0-6 km')]: # <- Línia modificada
+    # --- BLOC MODIFICAT: S'ha eliminat la línia 'Efectiu' ---
+    for key, label in [('0-1km', '0-1 km'), ('0-6km', '0-6 km')]:
         val = params_calc.get(f'BWD_{key}', np.nan)
         color = get_color(val, THRESHOLDS['BWD'])
         ax_params.text(0, y, f"{label}:", ha='left', va='center')
@@ -574,14 +554,15 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
 
     y-=0.05
     ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.1
-    for key, label in [('0-1km', '0-1 km'), ('0-3km', '0-3 km')]: # <- Línia modificada
+    # --- BLOC MODIFICAT: S'ha eliminat la línia 'Efectiva' ---
+    for key, label in [('0-1km', '0-1 km'), ('0-3km', '0-3 km')]:
         val = params_calc.get(f'SRH_{key}', np.nan)
         color = get_color(val, THRESHOLDS['SRH'])
         ax_params.text(0, y, f"{label}:", ha='left', va='center')
         ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
         y-=0.08
     
-    # --- NOU BLOC: Corrent Ascendent ---
+    # --- NOU BLOC COMPLET: S'afegeix la secció 'Corrent Ascendent' ---
     y-=0.05
     ax_params.text(0, y, "Corrent Ascendent", ha='left', weight='bold', fontsize=11); y-=0.1
     val_updraft = params_calc.get('MAX_UPDRAFT', np.nan)
