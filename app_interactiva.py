@@ -193,24 +193,46 @@ def calcular_li_manual(p, T, prof):
         return np.nan
 
 def calcular_dcape_manual(p, T, Td, heights):
-    """Cálculo manual de DCAPE - FÓRMULA CORREGIDA"""
+    """Cálculo manual de DCAPE - Versió robusta i depurada"""
     try:
-        # Convertir temperaturas a Kelvin para el cálculo correcto
-        T_kelvin = T.to('kelvin').m
-        Td_kelvin = Td.to('kelvin').m
-        
-        # Calcular la diferencia de temperatura virtual (aproximación)
-        # La fórmula correcta es: g * (T_v - T_vd) / T_v
-        # Donde T_v es temperatura virtual y T_vd es temperatura virtual del punto de rocío
-        # Para simplificar, usamos (T - Td) / T_kelvin
-        delta_temp_virtual = (T.m - Td.m) / T_kelvin
-        
-        # Integrar g * delta_temp_virtual respecto a la altura
-        dcape = np.trapz(9.8 * delta_temp_virtual, x=heights.m) if len(T) > 0 else np.nan
-        
-        return max(0, dcape)
+        # 1. Assegurar-nos que tenim dades vàlides i en les unitats correctes
+        if len(T) < 2:  # Necessitem com a mínim 2 punts per integrar
+            return np.nan
+
+        # 2. Convertir les llistes a arrays de NumPy amb unitats (evita problemes amb MetPy)
+        #    Aquests 'heights' ja haurien de venir amb unitats de 'meter' de la funció principal.
+        #    T i Td haurien de venir amb 'degC'. Els convertim a Kelvin per al càlcul.
+        T_env_K = T.to('kelvin')
+        Td_parcel_K = Td.to('kelvin')  # Assumim que la parcel·la descendente té la Td de l'entorn
+
+        # 3. Càlcul de la diferència de temperatura virtual (aproximació)
+        #    La fórmula és: g * ( (T_env - T_parcel) / T_env )
+        #    On T_parcel per a un downdraft és propera a la temperatura del punt de rosada (Td)
+        difference = (T_env_K.m - Td_parcel_K.m) / T_env_K.m
+
+        # 4. Assegurar-nos que les alçades estan en metres i en ordre ascendent
+        #    (np.trapz espera que 'x' sigui ascendent)
+        heights_m = heights.to('meter')
+        #    Crear una mascara per ordenar per altura i eliminar NaNs
+        sort_idx = np.argsort(heights_m.m)
+        heights_sorted = heights_m.m[sort_idx]
+        difference_sorted = difference[sort_idx]
+
+        # 5. Calcular la integral: DCAPE = ∫ [g * (ΔT / T)] dz
+        integrand = 9.8 * difference_sorted  # g * (ΔT / T)
+        dcape_value = np.trapz(integrand, x=heights_sorted)
+
+        # 6. DCAPE ha de ser positiu. Retornar 0 si és negatiu.
+        return max(0, dcape_value)
+
     except Exception as e:
-        print(f"Error cálculo manual DCAPE: {e}")
+        # Imprimir l'error per depurar
+        print(f"ERROR crític en calcular_dcape_manual: {e}")
+        print(f"Tipus de dades d'entrada - Heights: {type(heights)}, T: {type(T)}, Td: {type(Td)}")
+        if hasattr(heights, 'm'):
+            print(f"Rang d'altures: {heights.m.min()} - {heights.m.max()} meters")
+        if hasattr(T, 'm'):
+            print(f"Rang de Temperatura: {T.m.min()} - {T.m.max()} °C")
         return np.nan
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
