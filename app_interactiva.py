@@ -645,19 +645,20 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
     
     y = 0.95
-    motion_data = {'RM': params_calc.get('RM'), 'LM': params_calc.get('LM'), 'Vent Mitjà': params_calc.get('Mean_Wind')}
     
     # --- INICI DE LA MODIFICACIÓ ---
-    # Tornem a les etiquetes originals per RM i LM
-    label_map = {
-        'Vent Mitjà': "Vent Mitjà (0-6 km)"
+    # Definim les dades de moviment directament amb les noves etiquetes
+    motion_data = {
+        'MD': params_calc.get('RM'),
+        'ML': params_calc.get('LM'),
+        'VM (0-6 km)': params_calc.get('Mean_Wind')
     }
-    # --- FI DE LA MODIFICACI ´O ---
+    # --- FI DE LA MODIFICACIÓ ---
 
     ax_params.text(0, y, "Moviment (dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
 
-    for key, vec in motion_data.items():
-        display_name = label_map.get(key, key) 
+    # Iterem sobre el nou diccionari directament
+    for display_name, vec in motion_data.items():
         if vec is not None:
             u_motion_ms = vec[0] * units('m/s'); v_motion_ms = vec[1] * units('m/s')
             speed_kmh = mpcalc.wind_speed(u_motion_ms, v_motion_ms).to('km/h').m
