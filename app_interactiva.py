@@ -742,44 +742,103 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
             fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
+            
+            # PRIMERO los parámetros del sondeig
             with st.container(border=True):
                 ui_caixa_parametres_sondeig(params_calculats)
+            
+            # LUEGO la caja desplegable explicativa DEBAJO de los parámetros
+            with st.expander("📚 Guia Completa d'Interpretació dels Paràmetres", expanded=False):
+                st.markdown("""
+                ## 🎯 **Com Interpretar els Paràmetres de Sondeig**
+                
+                ### ⚡ **ENERGIA DISPONIBLE (CAPE)**
+                **Què és**: Energia que té una parcel·la d'aire per pujar i formar núvols de desenvolupament vertical.
+                
+                **Escala i Exemples**:
+                - **0-500 J/kg**: 🟢 Energia baixa - Núvols poc desenvolupats
+                - **500-1500 J/kg**: 🟡 Energia moderada - Possibles xàfecs
+                - **1500-2500 J/kg**: 🟠 Energia alta - Tempestes fortes
+                - **>2500 J/kg**: 🔴 Energia molt alta - Tempestes violentes
+                *Exemple: 1800 J/kg = Bon potencial per a calamarsa*
+                
+                ### 🚫 **ENERGIA D'INHIBICIÓ (CIN)**
+                **Què és**: Energia que impedeix que comenci la convecció (com una "tapa").
+                
+                **Escala i Exemples**:
+                - **0 a -25 J/kg**: 🟢 Poca inhibició - Fàcil inici
+                - **-25 a -75 J/kg**: 🟡 Inhibició moderada - Cal forçament
+                - **-75 a -150 J/kg**: 🟠 Forta inhibició - Difícil inici
+                - **< -150 J/kg**: 🔴 Inhibició molt forta - Gairebé impossible
+                *Exemple: -50 J/kg = Cal un front o orografia per iniciar*
+                
+                ### 🌬️ **CISALLAMENT DEL VENT**
+                **Què és**: Canvi de vent amb l'altura. Essencial per organitzar les tempestes.
+                
+                **0-6 km Cisallament**:
+                - **<20 nusos**: 🟢 Cisallament feble - Tempestes poc organitzades
+                - **20-30 nusos**: 🟡 Cisallament moderat - Cèl·lules multicel·lulars
+                - **30-40 nusos**: 🟠 Cisallament fort - Possibles supercèl·lules
+                - **>40 nusos**: 🔴 Cisallament molt fort - Supercèl·lules probables
+                *Exemple: 35 nusos = Condicions favorables per a supercèl·lules*
+                
+                ### 🌀 **HELICITAT (SRH)**
+                **Què és**: Potencial de rotació en les tempestes.
+                
+                **SRH 0-3 km**:
+                - **<150 m²/s²**: 🟢 Poca rotació - Tempestes sense rotació
+                - **150-300 m²/s²**: 🟡 Rotació moderada - Possibles mesociclons
+                - **300-450 m²/s²**: 🟠 Rotació forta - Alt potencial de rotació
+                - **>450 m²/s²**: 🔴 Rotació molt forta - Alt risc de tornados
+                *Exemple: 280 m²/s² = Possible mesociclon i calamarsa grossa*
+                
+                ### 🌡️ **NIVELLS CLAU**
+                **LCL (Nivell de Condensació)**:
+                - **<800m**: 🟢 Molt favorable - Base de núvols baixa
+                - **800-1200m**: 🟡 Favorable - Bones condicions
+                - **1200-1500m**: 🟠 Regular - Condicions mitjanes
+                - **>1500m**: 🔴 Desfavorable - Base massa alta
+                
+                **LI (Índex d'Elevació)**:
+                - **>0**: 🔴 Estable - Cap tempesta
+                - **0 a -2**: 🟡 lleugerament inestable - Xàfecs febles
+                - **-2 a -5**: 🟠 Moderadament inestable - Tempestes moderades
+                - **< -5**: 🟢 Molt inestable - Tempestes fortes
+                *Exemple: LI = -4 i LCL = 900m = Bones condicions*
+                
+                ### 💧 **HUMITAT (PWAT)**
+                **Què és**: Aigua precipitable total en la columna d'aire.
+                
+                **Valors**:
+                - **<20mm**: 🔴 Sec - Poca humitat
+                - **20-30mm**: 🟡 Normal - Humitat moderada
+                - **30-40mm**: 🟠 Humit - Molta humitat
+                - **>40mm**: 🟢 Molt humit - Alt potencial pluja
+                *Exemple: PWAT = 35mm + Alt CAPE = Risc d'inundacions sobtades*
+                
+                ## 🎪 **ESCENARIS TÍPICS A CATALUNYA**
+                
+                **Escenari 1 - Tempestes d'estiu típiques**:
+                - CAPE: 800-1500 J/kg | CIN: -30 J/kg | Cisallament: 15-20 nusos
+                - *Resultat: Xàfecs aïllats, calamarsa petita*
+                
+                **Escenari 2 - Tempestes organitzades**:
+                - CAPE: 1500-2500 J/kg | CIN: -20 J/kg | Cisallament: 25-35 nusos
+                - *Resultat: Linies de tempesta, calamarsa grossa*
+                
+                **Escenari 3 - Supercèl·lules**:
+                - CAPE: 2000-3000 J/kg | CIN: -10 J/kg | Cisallament: 35-45 nusos | SRH: 250-400 m²/s²
+                - *Resultat: Tempestes rotatives, risc de tornado*
+                
+                **Escenari 4 - Inestabilitat seca**:
+                - CAPE: 1000-1800 J/kg | PWAT: <25mm | CIN: -40 J/kg
+                - *Resultat: Tempestes amb poca pluja però molta calamarsa*
+                """)
         
         with col2:
             fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
-
-            # CAJA DESPLEGABLE EXPLICATIVA - NUEVA SECCIÓN
-            with st.expander("📚 Explicació dels Paràmetres i Gràfics", expanded=False):
-                st.markdown("""
-                ### 📊 **Sondeig Vertical (Diagrama Skew-T)**
-                El diagrama Skew-T mostra el perfil vertical de l'atmosfera:
-                - **Línia Vermella**: Temperatura ambient (°C)
-                - **Línia Lila**: Punt de rosada (°C)  
-                - **Línia Negra**: Trajectòria d'una parcel·la d'aire ascendent
-                - **Àrea Groga**: Energia positiva (CAPE) - favorables per a tempestes
-                - **Àrea Gris**: Energia negativa (CIN) - inhibeix el desenvolupament
-
-                ### 🌀 **Hodògraf**
-                Mostra l'evolució del vent amb l'altura:
-                - **Colors**: Indiquen diferents capes d'altitud (0-1km, 1-3km, etc.)
-                - **Fletxes**: Direcció i velocitat del vent a cada nivell
-                - **Marcadors**: Moviment de les tempestes (MD, ML, VM)
-
-                ### ⚡ **Paràmetres Clau**
-                - **CAPE**: Energia disponible per a convecció (valors >1000 J/kg significatius)
-                - **CIN**: Energia que inhibeix l'inici de tempestes (valors >-50 J/kg acceptables)
-                - **Cisallament**: Diferència de vent entre capes (>20 nusos per organització)
-                - **SRH**: Potencial de rotació (>150 m²/s² per supercèl·lules)
-                - **LCL**: Alçada de la base dels núvols (<1500m favorable)
-
-                ### 🎯 **Interpretació Ràpida**
-                - **Alt CAPE + Fort Cisallament**: Tempestes organitzades possibles
-                - **Alt CAPE + Baix Cisallament**: Tempestes puntuals, poc organitzades
-                - **Baix CAPE + Fort Cisallament**: Vent fort, poca activitat elèctrica
-                - **LCL Baix**: Base de núvols baixa, més favorable per a temps sever
-                """)
 
             st.markdown("##### Radar de Precipitació en Temps Real")
             radar_url = f"https://www.rainviewer.com/map.html?loc={lat_sel},{lon_sel},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
