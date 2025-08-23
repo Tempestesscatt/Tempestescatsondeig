@@ -128,49 +128,64 @@ def show_login_page():
 # --- BLOC DE CODI CORREGIT I EN L'ORDRE CORRECTE ---
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base(variables, hourly_index):
-    """Función auxiliar para cargar datos base del mapa"""
     try:
-        # Crear una cuadrícula regular de puntos
-        lats = np.arange(MAP_EXTENT[2], MAP_EXTENT[3], 0.1)  # Reducimos la resolución para evitar demasiados puntos
-        lons = np.arange(MAP_EXTENT[0], MAP_EXTENT[1], 0.1)
+        # Reducir significativamente el número de puntos para evitar errores de URL demasiado larga
+        lats, lons = np.linspace(MAP_EXTENT[2], MAP_EXTENT[3], 8), np.linspace(MAP_EXTENT[0], MAP_EXTENT[1], 8)
+        lon_grid, lat_grid = np.meshgrid(lons, lats)
         
-        # Crear todas las combinaciones de lat/lon
-        lons_grid, lats_grid = np.meshgrid(lons, lats)
-        lats_list = lats_grid.ravel()
-        lons_list = lons_grid.ravel()
+        # Hacer solicitudes en lotes más pequeños para evitar errores
+        all_lats, all_lons = [], []
+        all_data = {var: [] for var in variables}
         
-        params = {
-            "latitude": lats_list.tolist(),
-            "longitude": lons_list.tolist(),
-            "hourly": variables,
-            "models": "arome_seamless",
-            "forecast_days": FORECAST_DAYS
-        }
+        # Dividir los puntos en lotes más pequeños
+        batch_size = 16
+        points = list(zip(lat_grid.flatten(), lon_grid.flatten()))
         
-        # Realitzem la crida a l'API
-        response = openmeteo.weather_api(API_URL, params=params)[0]
-        hourly = response.Hourly()
+        for i in range(0, len(points), batch_size):
+            batch_points = points[i:i+batch_size]
+            batch_lats = [p[0] for p in batch_points]
+            batch_lons = [p[1] for p in batch_points]
+            
+            params = {
+                "latitude": batch_lats,
+                "longitude": batch_lons,
+                "hourly": variables,
+                "models": "arome_seamless",
+                "forecast_days": FORECAST_DAYS
+            }
+            
+            try:
+                responses = openmeteo.weather_api(API_URL, params=params)
+                for r in responses:
+                    hourly = r.Hourly()
+                    vals = [hourly.Variables(j).ValuesAsNumpy()[hourly_index] for j in range(len(variables))]
+                    
+                    # Solo añadir puntos con datos válidos
+                    if not any(np.isnan(v) for v in vals):
+                        all_lats.append(r.Latitude())
+                        all_lons.append(r.Longitude())
+                        for j, var in enumerate(variables):
+                            all_data[var].append(vals[j])
+                
+                # Pequeña pausa entre lotes
+                time.sleep(0.1)
+                    
+            except Exception as e:
+                print(f"Error procesando lote: {e}")
+                continue
         
-        # Creem el diccionari de resultats
-        map_data_raw = {
-            'lats': hourly.Latitude(),
-            'lons': hourly.Longitude()
-        }
+        if not all_lats:
+            return None, "No s'han rebut dades vàlides."
         
-        # Afegim les dades de cada variable per a l'hora seleccionada
-        for i, var in enumerate(variables):
-            data_array = hourly.Variables(i).ValuesAsNumpy()
-            if hourly_index < len(data_array):
-                map_data_raw[var] = data_array[hourly_index]
-            else:
-                return None, f"Índex horari ({hourly_index}) fora de rang."
+        # Crear el diccionario de salida
+        output = {"lats": np.array(all_lats), "lons": np.array(all_lons)}
+        for var in variables:
+            output[var] = np.array(all_data[var])
+            
+        return output, None
         
-        if any(np.isnan(v).all() for k, v in map_data_raw.items() if k not in ['lats', 'lons']):
-             return None, "Les dades del mapa contenen valors invàlids (NaN)."
-        
-        return map_data_raw, None
-    except Exception as e: 
-        return None, f"Error en processar dades del mapa base: {e}"
+    except Exception as e:
+        return None, f"Error en carregar dades del mapa: {e}"
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa(nivell, hourly_index):
