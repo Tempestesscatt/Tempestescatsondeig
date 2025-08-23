@@ -546,7 +546,6 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     
     return fig
 
-
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
     
