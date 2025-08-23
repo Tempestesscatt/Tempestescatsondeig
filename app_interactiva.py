@@ -712,7 +712,8 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         col1, col2 = st.columns(2, gap="large")
 
         with col1:
-            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
+            # --- CORRECCIÓ: S'ha afegit 'heights' a la crida de la funció ---
+            fig_skewt = crear_skewt(p, T, Td, u, v, heights, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             with st.container(border=True):
@@ -805,7 +806,8 @@ Recorda, l'usuari té accés a aquests pobles: """ + ', '.join(CIUTATS_CATALUNYA
                     sounding_data, params_calculats = data_tuple
                     p, T, Td, u, v, heights, prof = sounding_data
                     
-                    fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
+                    # --- CORRECCIÓ: S'ha afegit 'heights' a la crida de la funció ---
+                    fig_skewt = crear_skewt(p, T, Td, u, v, heights, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
                     buf_skewt = io.BytesIO(); fig_skewt.savefig(buf_skewt, format='png', dpi=150, bbox_inches='tight'); buf_skewt.seek(0); img_skewt = Image.open(buf_skewt); plt.close(fig_skewt); contingut_per_ia.append(img_skewt)
                     
                     fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
