@@ -469,7 +469,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density= 4, zorder=4, transform=ccrs.PlateCarree())
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6, density= 4.5, zorder=4, transform=ccrs.PlateCarree())
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
     dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1); dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
     convergence_scaled = -(dudx + dvdy).to('1/s').magnitude * 1e5
@@ -599,7 +599,7 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
 
     # 4. Dibuixar les línies de corrent del vent (streamplot)
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=2.5, zorder=4, transform=ccrs.PlateCarree())
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=4.5, zorder=4, transform=ccrs.PlateCarree())
     
     # 5. Calcular i dibuixar la convergència
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
@@ -626,7 +626,10 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
     # Afegir ciutats per a referència
     for city, coords in USA_CITIES.items():
         ax.plot(coords['lon'], coords['lat'], 'o', color='red', markersize=6, markeredgecolor='black', transform=ccrs.PlateCarree(), zorder=10)
-        ax.text(coords['lon'] + 0.2, coords['lat'] + 0.2, city, fontsize=9, transform=ccrs.PlateCarree(), zorder=10,
+        
+        # --- LÍNIA MODIFICADA ---
+        # S'ha canviat el valor de 'fontsize' de 9 a 7 per fer el text més petit.
+        ax.text(coords['lon'] + 0.2, coords['lat'] + 0.2, city, fontsize=5, transform=ccrs.PlateCarree(), zorder=10,
                 path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
 
     ax.set_title(f"Vent i Nuclis de convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
