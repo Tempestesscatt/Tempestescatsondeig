@@ -968,6 +968,93 @@ def hide_streamlit_style():
         """
     st.markdown(hide_style, unsafe_allow_html=True)
 
+def generar_prompt_per_ia(params, pregunta_usuari, poble):
+    """
+    Crea un prompt detallat i estructurat per a l'assistent d'IA,
+    combinant el rol, les dades del sondeig i la pregunta de l'usuari.
+    """
+    # Iniciem la construcció del prompt amb el rol i les instruccions
+    prompt_parts = [
+        "### ROL I INSTRUCCIONS",
+        "Ets un meteoròleg expert en temps sever, especialitzat en la interpretació de sondejos atmosfèrics.",
+        "Analitza les següents dades de sondeig per a la localitat indicada i respon la pregunta de l'usuari.",
+        "La teva resposta ha de ser tècnica però clara, concisa i basada ÚNICAMENT en les dades proporcionades.",
+        "No inventis informació. Si una dada no hi és, indica que no està disponible.",
+        "Respon sempre en català.",
+        "\n### DADES DEL SONDEIG",
+        f"**Localitat:** {poble}",
+    ]
+
+    # Diccionari per a noms més clars i unitats
+    noms_parametres = {
+        'SBCAPE': ('SBCAPE', 'J/kg'), 'MUCAPE': ('MUCAPE', 'J/kg'), 'MLCAPE': ('MLCAPE', 'J/kg'),
+        'SBCIN': ('SBCIN', 'J/kg'), 'MUCIN': ('MUCIN', 'J/kg'), 'MLCIN': ('MLCIN', 'J/kg'),
+        'LI': ('Lifted Index', '°C'), 'PWAT': ('Aigua Precipitable', 'mm'),
+        'LCL_Hgt': ('Base del Núvol (LCL)', 'm'), 'LFC_Hgt': ('Nivell de Conv. Lliure (LFC)', 'm'),
+        'BWD_0-6km': ('Cisallament 0-6km', 'nusos'), 'BWD_0-1km': ('Cisallament 0-1km', 'nusos'),
+        'SRH_0-1km': ('Helicitat 0-1km', 'm²/s²'), 'SRH_0-3km': ('Helicitat 0-3km', 'm²/s²'),
+        'MAX_UPDRAFT': ('Corrent Ascendent Màx.', 'm/s')
+    }
+
+    # Afegim cada paràmetre al prompt de forma estructurada
+    for key, (nom, unitat) in noms_parametres.items():
+        valor = params.get(key)
+        if valor is not None and not np.isnan(valor):
+            prompt_parts.append(f"- **{nom}:** {valor:.1f} {unitat}")
+        else:
+            prompt_parts.append(f"- **{nom}:** No disponible")
+
+    # Afegim la pregunta de l'usuari al final
+    prompt_parts.append("\n### PREGUNTA DE L'USUARI")
+    prompt_parts.append(pregunta_usuari)
+
+    return "\n".join(prompt_parts)
+
+def ui_pestanya_assistent_ia(params_calc, poble_sel):
+    """
+    Crea la interfície d'usuari per a la pestanya de l'assistent d'IA.
+    """
+    st.markdown("#### Assistent d'Anàlisi (IA Gemini)")
+    st.info("Fes una pregunta en llenguatge natural sobre les dades del sondeig. Per exemple: *'Quin és el potencial de calamarsa?'* o *'Hi ha risc de tornados segons aquestes dades?'*")
+
+    # Inicialització de l'historial del xat
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # Mostrar l'historial
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Captura de la pregunta de l'usuari
+    if prompt := st.chat_input("Fes una pregunta sobre el sondeig..."):
+        # Afegir i mostrar el missatge de l'usuari
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # Generar i mostrar la resposta de l'IA
+        with st.chat_message("assistant"):
+            try:
+                # Configurem el model de Gemini
+                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                # Creem el prompt complet i el mostrem en un expander (per depuració)
+                prompt_complet = generar_prompt_per_ia(params_calc, prompt, poble_sel)
+                with st.expander("Veure el prompt enviat a la IA"):
+                    st.text(prompt_complet)
+                
+                # Cridem a la IA i mostrem la resposta amb efecte "stream"
+                response = model.generate_content(prompt_complet, stream=True)
+                resposta_completa = st.write_stream(response)
+                
+                # Guardem la resposta completa a l'historial
+                st.session_state.messages.append({"role": "assistant", "content": resposta_completa})
+            
+            except Exception as e:
+                st.error(f"Hi ha hagut un error en contactar amb l'assistent d'IA: {e}")
+
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya"):
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
@@ -1166,7 +1253,7 @@ def run_catalunya_app():
     data_tuple, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
     if error_msg: 
         st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
-        return # Aturem l'execució si el sondeig falla per evitar més errors
+        return
 
     nivell_sel = 925 # Valor per defecte
     if not is_guest:
@@ -1183,20 +1270,37 @@ def run_catalunya_app():
         st.info("ℹ️ L'anàlisi de vent i convergència està fixada a **925 hPa** en el mode convidat.")
 
     map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
+    
+    # Aquesta línia és important per assegurar-nos que 'params_calc' existeix
+    params_calc = data_tuple[1] if data_tuple else {}
 
     if data_tuple and map_data_conv:
-        _, params_calc = data_tuple
         conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
         params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
     
-    # --- VISUALITZACIÓ EN PESTANYES (ARA IGUAL PER A TOTS) ---
-    tab_mapes, tab_vertical, tab_estacions = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Estacions Meteorològiques"])
-    with tab_mapes: 
-        ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
-    with tab_vertical: 
-        ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
-    with tab_estacions: 
-        ui_pestanya_estacions_meteorologiques()
+    # --- VISUALITZACIÓ EN PESTANYES (ARA AMB LÒGICA PER A IA) ---
+    
+    if is_guest:
+        # PESTANYES PER A CONVIDATS (SENSE IA)
+        tab_mapes, tab_vertical, tab_estacions = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Estacions Meteorològiques"])
+        with tab_mapes: 
+            ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
+        with tab_vertical: 
+            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
+        with tab_estacions: 
+            ui_pestanya_estacions_meteorologiques()
+    else:
+        # PESTANYES PER A USUARIS REGISTRATS (AMB IA)
+        tab_mapes, tab_vertical, tab_ia, tab_estacions = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "💬 Assistent IA", "Estacions Meteorològiques"])
+        with tab_mapes: 
+            ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
+        with tab_vertical: 
+            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
+        with tab_ia:
+            # Cridem a la nova funció de la interfície de la IA
+            ui_pestanya_assistent_ia(params_calc, poble_sel)
+        with tab_estacions: 
+            ui_pestanya_estacions_meteorologiques()
         
 
 def ui_zone_selection():
