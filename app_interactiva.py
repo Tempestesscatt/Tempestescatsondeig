@@ -632,6 +632,8 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
     ax.set_title(f"Vent i Nuclis de convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
+# --- Seccions UI i Lògica Principal ---
+
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya"):
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
@@ -732,10 +734,12 @@ def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str):
 
 def ui_pestanya_satelit_usa():
     st.markdown("#### Imatge de Satèl·lit GOES-East (Temps Real)")
-    sat_url = f"https://cdn.star.nesdis.noaa.gov/GOES16/ABI/MESO/M1/GEOCOLOR/latest.jpg?{int(time.time())}"
-    st.image(sat_url, caption="Imatge del satèl·lit GOES-East - Mesoscale 1 (NOAA STAR)", use_container_width=True)
-    st.markdown("[Font: NOAA STAR](https://www.star.nesdis.noaa.gov/GOES/meso_index.php?sat=G16&sector=M1)")
-    st.info("Aquesta imatge mostra un dels dos sectors de mesoescala, que s'actualitzen cada minut. El sector actiu es posiciona sobre les àrees de temps més significatiu als EUA.")
+    # --- LÍNIA CORREGIDA ---
+    # S'ha canviat l'URL del satèl·lit de MESO (mòbil) a CONUS (fixa).
+    sat_url = f"https://cdn.star.nesdis.noaa.gov/GOES16/ABI/CONUS/GEOCOLOR/latest.jpg?{int(time.time())}"
+    st.image(sat_url, caption="Imatge del satèl·lit GOES-East - CONUS (NOAA STAR)", use_container_width=True)
+    st.markdown("[Font: NOAA STAR](https://www.star.nesdis.noaa.gov/GOES/index.php)")
+    st.info("Aquesta imatge mostra la vista completa dels Estats Units continentals i s'actualitza cada 5-10 minuts.")
 
 # ... (La resta de funcions es mantenen igual, com ui_pestanya_estacions_meteorologiques, ui_peu_de_pagina, etc.)
 SMC_STATION_CODES = {'Amposta': 'D5', 'Balaguer': 'C9', 'Banyoles': 'UB', 'Barcelona': 'X4', 'Berga': 'C8', 'Cervera': 'CE', 'El Pont de Suert': 'C7', 'El Vendrell': 'TT', 'Falset': 'T5', 'Figueres': 'UF', 'Gandesa': 'T9', 'Girona': 'UG', 'Granollers': 'XN', 'Igualada': 'C6', 'La Bisbal d\'Empordà': 'UH', 'La Seu d\'Urgell': 'U7', 'Les Borges Blanques': 'C5', 'Lleida': 'UL', 'Manresa': 'C4', 'Mataró': 'XL', 'Moià': 'WM', 'Mollerussa': 'U4', 'Montblanc': 'T2', 'Móra d\'Ebre': 'T8', 'Olot': 'U6', 'Prats de Lluçanès': 'WP', 'Puigcerdà': 'U8', 'Reus': 'T4', 'Ripoll': 'U5', 'Sant Feliu de Llobregat': 'WZ', 'Santa Coloma de Farners': 'U1', 'Solsona': 'C3', 'Sort': 'U2', 'Tarragona': 'UT', 'Tàrrega': 'U3', 'Terrassa': 'X2', 'Tortosa': 'D4', 'Tremp': 'C2', 'Valls': 'T3', 'Vic': 'W2', 'Vielha': 'VA', 'Vilafranca del Penedès': 'X8', 'Vilanova i la Geltrú': 'XD'}
