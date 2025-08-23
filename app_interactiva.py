@@ -478,36 +478,81 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
 
 def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(7, 8))
-    skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
-    skew.ax.grid(True, linestyle='-', alpha=0.5)
-    
-    skew.plot_dry_adiabats(color='coral', linestyle='--', alpha=0.5)
-    skew.plot_moist_adiabats(color='cornflowerblue', linestyle='--', alpha=0.5)
-    skew.plot_mixing_lines(color='limegreen', linestyle='--', alpha=0.5)
+    skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.85, 0.85))
 
-    if prof is not None:
-        skew.shade_cape(p, T, prof, color='red', alpha=0.2)
-        skew.shade_cin(p, T, prof, color='blue', alpha=0.2)
+    # Mantenemos las adiabáticas de fondo como referencia sutil
+    skew.plot_dry_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
+    skew.plot_moist_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
+    skew.plot_mixing_lines(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     
+    # Sombreado de CAPE y CIN
+    if prof is not None:
+        skew.shade_cape(p, T, prof, color='red', alpha=0.25)
+        skew.shade_cin(p, T, prof, color='blue', alpha=0.25)
+
+    # --- INICIO DE LA CORRECCIÓN CLAVE ---
+    # Dibujamos las líneas de ascenso específicas de la parcela para que se vea su origen.
+    if prof is not None and len(p) > 0:
+        try:
+            # Obtenemos las condiciones de superficie
+            p_sfc = p[0]
+            T_sfc = T[0]
+            Td_sfc = Td[0]
+            
+            # Calculamos el Nivel de Condensación por Ascenso (LCL)
+            lcl_p, lcl_T = mpcalc.lcl(p_sfc, T_sfc, Td_sfc)
+
+            # 1. Dibuja la ADIABÁTICA SECA desde la temperatura de superficie hasta el LCL
+            p_dry = np.arange(p_sfc.m, lcl_p.m - 1, -10) * units.hPa
+            t_dry = mpcalc.dry_lapse(p_dry, T_sfc)
+            skew.plot(p_dry, t_dry, color='orange', linestyle=':', linewidth=2.5, label='Ascens Sec')
+
+            # 2. Dibuja la LÍNEA DE MEZCLA desde el punto de rocío de superficie hasta el LCL
+            skew.plot_mixing_lines(w=mpcalc.mixing_ratio(p_sfc, Td_sfc), pressure=[p_sfc, lcl_p],
+                                   color='lime', linestyle=':', linewidth=2.5, label='Línia de Mescla')
+
+            # 3. Dibuja la ADIABÁTICA HÚMEDA desde el LCL hacia arriba
+            p_moist = p[p <= lcl_p]
+            t_moist = mpcalc.moist_lapse(p_moist, lcl_T)
+            skew.plot(p_moist, t_moist, color='#8A2BE2', linestyle=':', linewidth=2.5, label='Ascens Humit')
+
+        except Exception as e:
+            # Si hay algún error en el cálculo, simplemente no se dibujan estas líneas
+            print(f"No s'han pogut dibuixar les línies d'ascens: {e}")
+    # --- FIN DE LA CORRECCIÓN CLAVE ---
+
+    # Perfiles principales (se dibujan encima para que sean los protagonistas)
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
     skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
     if prof is not None:
-        skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
-    
+        skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la',
+                  path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+
+    # Barbas de viento y configuración de ejes
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
+    skew.ax.set_ylim(1000, 100)
+    skew.ax.set_xlim(-40, 40)
+
+    # Títulos y etiquetas
+    skew.ax.set_title(titol, weight='bold', fontsize=14, pad=20)
+    skew.ax.set_xlabel("Temperatura (°C)")
+    skew.ax.set_ylabel("Pressió (hPa)")
     
-    skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40)
-    skew.ax.set_title(titol, weight='bold', fontsize=14, pad=15)
-    skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
-    
-    levels_to_plot = {'LCL_p': 'LCL', 'FRZG_Lvl_p': '0°C', 'LFC_p': 'LFC'}
+    # Anotaciones de niveles
+    levels_to_plot = {'LCL_p': 'LCL', 'LFC_p': 'LFC', 'FRZG_Lvl_p': '0°C'}
     for key, name in levels_to_plot.items():
         p_lvl = params_calc.get(key)
-        if p_lvl is not None and hasattr(p_lvl, 'm') and not np.isnan(p_lvl.m):
-            skew.ax.axhline(p_lvl.m, color='blue', linestyle='--', linewidth=1.5)
-            skew.ax.text(skew.ax.get_xlim()[1] - 2, p_lvl.m, f' {name}', color='blue', ha='right', va='center', fontsize=10, weight='bold')
+        if p_lvl is not None and not pd.isna(p_lvl):
+            p_val = p_lvl.m if hasattr(p_lvl, 'm') else p_lvl
+            if 100 < p_val < 1000:
+                skew.ax.axhline(p_val, color='darkblue', linestyle='--', linewidth=1.2)
+                skew.ax.text(skew.ax.get_xlim()[1] - 1, p_val, f' {name}',
+                            color='darkblue', ha='right', va='center', fontsize=9, weight='bold',
+                            bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', boxstyle='round,pad=0.2'))
 
+    skew.ax.grid(False)
     skew.ax.legend()
+    
     return fig
 
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
