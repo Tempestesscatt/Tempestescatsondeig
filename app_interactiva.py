@@ -581,46 +581,40 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     u_barbs = units.Quantity(u_barbs_list, u.units)
     v_barbs = units.Quantity(v_barbs_list, v.units)
     
-    # --- INICI DE LA MILLORA: Codi de colors i etiquetes de velocitat ---
+    # --- INICI DE LA CORRECCIÓ: Nova paleta de colors amb més contrast ---
     
-    # Calculem la velocitat en km/h per a cada barba
     speed_kmh = np.sqrt(u_barbs**2 + v_barbs**2).to('km/h').m
 
-    # Definim els llindars de velocitat (en km/h) i els colors corresponents
+    # Definim llindars de velocitat (km/h) i la NOVA paleta de colors
     thresholds = [10, 40, 70, 100, 130]
-    colors = ['grey', '#6495ed', '#90ee90', '#f0e68c', '#cd5c5c', '#9370db'] # Gris, Blau, Verd, Groc, Vermell, Lila
+    colors = ['dimgrey', '#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd']
+    # Gris Fosc -> Blau -> Verd -> Taronja -> Vermell -> Lila
 
     x_pos = np.arange(len(barb_altitudes_km))
     u_barbs_kt = u_barbs.to('kt')
     v_barbs_kt = v_barbs.to('kt')
 
-    # Dibuixem cada barba individualment per assignar-li color i text
     for i, spd_kmh in enumerate(speed_kmh):
         if not np.isnan(spd_kmh):
-            # Trobem l'índex del color correcte basat en la velocitat
             color_index = np.searchsorted(thresholds, spd_kmh)
             color = colors[color_index]
             
-            # Dibuixem la barba amb el color determinat
             ax_barbs.barbs(x_pos[i], 0, u_barbs_kt[i], v_barbs_kt[i], 
                            length=8, pivot='middle', color=color)
             
-            # Afegim l'etiqueta de text amb la velocitat i el mateix color
             ax_barbs.text(x_pos[i], -0.8, f"{spd_kmh:.0f} km/h", 
                           ha='center', va='top', fontsize=9, color=color, weight='bold')
         else:
-            # Si no hi ha dades, mostrem "N/A"
             ax_barbs.text(x_pos[i], 0, "N/A", ha='center', va='center', fontsize=9, color='grey')
 
-    # Ajustem la visualització de l'eix de les barbes
     ax_barbs.set_xticks(x_pos)
     ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km])
     ax_barbs.set_yticks([])
     ax_barbs.spines[:].set_visible(False)
     ax_barbs.tick_params(axis='x', length=0, pad=5)
     ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5)
-    ax_barbs.set_ylim(-1.5, 1.5) # Assegurem espai per al text
-    # --- FI DE LA MILLORA ---
+    ax_barbs.set_ylim(-1.5, 1.5)
+    # --- FI DE LA CORRECCIÓ ---
 
     # --- Dibuix de l'hodògraf (ara a ax_hodo) ---
     h = Hodograph(ax_hodo, component_range=80.)
@@ -691,6 +685,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         y-=0.07
         
     return fig
+    
     
 
 def ui_caixa_parametres_sondeig(params):
