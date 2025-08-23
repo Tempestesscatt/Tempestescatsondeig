@@ -566,41 +566,37 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             ax_hodo.text(u[idx].to('kt').m + 1, v[idx].to('kt').m + 1, f'{alt_km}km', fontsize=9, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
         except: continue
     
-    # --- INICIO DE LA MEJORA: Eliminamos marcadores y añadimos flecha de viento relativo ---
+    # --- INICIO DE LA MEJORA: Eliminamos marcadores y añadimos flecha de VIENTO MEDIO ---
     
-    # 1. Eliminamos los marcadores de movimiento de tormenta para un gráfico más limpio.
-    # El bucle que dibujaba los círculos y cuadrados ha sido eliminado.
+    # 1. Los marcadores de movimiento (círculos, etc.) ya no se dibujan en el gráfico.
     
-    # 2. Añadimos una flecha para el viento de superficie relativo a la tormenta (RM).
-    # Esta flecha es clave para visualizar el "inflow" o flujo de entrada.
+    # 2. Añadimos una flecha desde el origen (0,0) que representa el vector del viento medio.
+    #    Esto indica la dirección y velocidad general de propagación de las tormentas.
     try:
-        rm_vec = params_calc.get('RM')
-        if rm_vec is not None and len(u) > 0:
-            # Convertimos todas las unidades a nudos para el gráfico
-            u_rm_kt = (rm_vec[0] * units('m/s')).to('kt').m
-            v_rm_kt = (rm_vec[1] * units('m/s')).to('kt').m
-            u_sfc_kt = u[0].to('kt').m
-            v_sfc_kt = v[0].to('kt').m
-            
-            # La flecha empieza en el vector de movimiento de la tormenta (RM)
-            # y apunta hacia el vector de viento en superficie.
-            ax_hodo.arrow(u_rm_kt, v_rm_kt, (u_sfc_kt - u_rm_kt), (v_sfc_kt - v_rm_kt),
-                          color='dodgerblue', linestyle='--', linewidth=2,
+        mean_wind_vec = params_calc.get('Mean_Wind')
+        if mean_wind_vec is not None:
+            # Convertimos las componentes del viento medio a nudos para el gráfico
+            u_mean_kt = (mean_wind_vec[0] * units('m/s')).to('kt').m
+            v_mean_kt = (mean_wind_vec[1] * units('m/s')).to('kt').m
+
+            # Dibujamos la flecha desde (0,0) hasta el punto (u,v) del viento medio
+            ax_hodo.arrow(0, 0, u_mean_kt, v_mean_kt,
+                          color='black', linewidth=2.5,
                           head_width=4, length_includes_head=True, zorder=10)
-            
-            # Añadimos una etiqueta para identificar el movimiento de la supercélula (RM)
-            ax_hodo.text(u_rm_kt, v_rm_kt - 5, 'RM', color='dodgerblue',
-                         ha='center', va='top', weight='bold', fontsize=12,
+                          
+            # Añadimos una etiqueta al final de la flecha para identificarla
+            ax_hodo.text(u_mean_kt * 1.1, v_mean_kt * 1.1, 'Vent Mitjà',
+                         color='black', ha='center', va='center', weight='bold', fontsize=10,
                          path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
-    except Exception:
-        pass # Si falla, simplemente no se dibuja la flecha.
+    except Exception as e:
+        print(f"Error en dibuixar la fletxa de vent mitjà: {e}")
 
     # --- FIN DE LA MEJORA ---
 
     try:
         shear_vec = mpcalc.bulk_shear(p, u, v, height=heights - heights[0], depth=6000 * units.m)
         ax_hodo.arrow(0, 0, shear_vec[0].to('kt').m, shear_vec[1].to('kt').m,
-                      color='black', linestyle='--', alpha=0.7, head_width=2, length_includes_head=True)
+                      color='dimgray', linestyle='--', alpha=0.7, head_width=2, length_includes_head=True)
     except: pass
     ax_hodo.set_xlabel('U-Component (nusos)')
     ax_hodo.set_ylabel('V-Component (nusos)')
