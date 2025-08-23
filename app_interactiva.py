@@ -180,72 +180,168 @@ def show_login_page():
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """Funció genèrica que processa dades de sondeig amb MetPy."""
-    if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
+    if len(p_profile) < 4:
+        return None, "Perfil atmosfèric massa curt."
     
-    valid_indices = ~np.isnan(p_profile) & ~np.isnan(T_profile) & ~np.isnan(Td_profile) & ~np.isnan(u_profile) & ~np.isnan(v_profile)
-    p = np.array(p_profile)[valid_indices] * units.hPa
-    T = np.array(T_profile)[valid_indices] * units.degC
-    Td = np.array(Td_profile)[valid_indices] * units.degC
-    u = np.array(u_profile)[valid_indices] * units('m/s')
-    v = np.array(v_profile)[valid_indices] * units('m/s')
-    heights = np.array(h_profile)[valid_indices] * units.meter
+    # Convertir a arrays de numpy y aplicar unidades
+    p = np.array(p_profile) * units.hPa
+    T = np.array(T_profile) * units.degC
+    Td = np.array(Td_profile) * units.degC
+    u = np.array(u_profile) * units('m/s')
+    v = np.array(v_profile) * units('m/s')
+    heights = np.array(h_profile) * units.meter
     
-    params_calc = {}; prof = None; heights_agl = heights - heights[0]
+    # Eliminar valores NaN
+    valid_indices = ~np.isnan(p.m) & ~np.isnan(T.m) & ~np.isnan(Td.m) & ~np.isnan(u.m) & ~np.isnan(v.m)
+    
+    p = p[valid_indices]
+    T = T[valid_indices]
+    Td = Td[valid_indices]
+    u = u[valid_indices]
+    v = v[valid_indices]
+    heights = heights[valid_indices]
+    
+    if len(p) < 3:
+        return None, "No hay suficientes datos válidos después de eliminar NaN"
+    
+    # Ordenar por presión (descendente)
+    sort_idx = np.argsort(p.m)[::-1]
+    p = p[sort_idx]
+    T = T[sort_idx]
+    Td = Td[sort_idx]
+    u = u[sort_idx]
+    v = v[sort_idx]
+    heights = heights[sort_idx]
+    
+    params_calc = {}
+    prof = None
+    heights_agl = heights - heights[0]
+    
     with parcel_lock:
-        prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
+        # Calcular perfil de parcela
         try:
-            sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof); params_calc['SBCAPE'] = sbcape.m; params_calc['SBCIN'] = sbcin.m
+            prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
+        except Exception as e:
+            return None, f"Error calculant el perfil de la parcel·la: {e}"
+        
+        # Cálculo de CAPE/CIN para superficie
+        try:
+            sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
+            params_calc['SBCAPE'] = sbcape.m if not np.isnan(sbcape.m) else np.nan
+            params_calc['SBCIN'] = sbcin.m if not np.isnan(sbcin.m) else np.nan
             params_calc['MAX_UPDRAFT'] = np.sqrt(2 * sbcape.m) if sbcape.m > 0 else 0.0
-        except Exception: params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
-        try: mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td, as_pentads=False); params_calc['MUCAPE'] = mucape.m; params_calc['MUCIN'] = mucin.m
-        except Exception: params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
-        try: mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td, depth=100 * units.hPa); params_calc['MLCAPE'] = mlcape.m; params_calc['MLCIN'] = mlcin.m
-        except Exception: params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
-        try: li, _ = mpcalc.lifted_index(p, T, prof); params_calc['LI'] = li.m
-        except Exception: params_calc['LI'] = np.nan
-        try: dcape, _ = mpcalc.dcape(p, T, Td, prof); params_calc['DCAPE'] = dcape.m
-        except Exception: params_calc['DCAPE'] = np.nan
+        except Exception:
+            params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
+        
+        # Cálculo de CAPE/CIN más inestable
         try:
-            lfc_p, _ = mpcalc.lfc(p, T, Td, prof); params_calc['LFC_p'] = lfc_p.m
-            params_calc['LFC_Hgt'] = np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1])
-        except Exception: params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
+            mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td, depth=300 * units.hPa)
+            params_calc['MUCAPE'] = mucape.m if not np.isnan(mucape.m) else np.nan
+            params_calc['MUCIN'] = mucin.m if not np.isnan(mucin.m) else np.nan
+        except Exception:
+            params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
+        
+        # Cálculo de CAPE/CIN de capa mezclada
         try:
-            el_p, _ = mpcalc.el(p, T, Td, prof); params_calc['EL_p'] = el_p.m
-            params_calc['EL_Hgt'] = np.interp(el_p.m, p.m[::-1], heights_agl.m[::-1])
-        except Exception: params_calc.update({'EL_p': np.nan, 'EL_Hgt': np.nan})
+            mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td, depth=100 * units.hPa)
+            params_calc['MLCAPE'] = mlcape.m if not np.isnan(mlcape.m) else np.nan
+            params_calc['MLCIN'] = mlcin.m if not np.isnan(mlcin.m) else np.nan
+        except Exception:
+            params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
+        
+        # Cálculo del Lifted Index
         try:
-            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); params_calc['LCL_p'] = lcl_p.m
-            params_calc['LCL_Hgt'] = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
-        except Exception: params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
-        try: pwat = mpcalc.precipitable_water(p, Td); params_calc['PWAT'] = pwat.to('mm').m
-        except Exception: params_calc['PWAT'] = np.nan
-        try: frz_lvl, _ = mpcalc.freezing_level(p, T); params_calc['FRZG_Lvl_p'] = frz_lvl.m
-        except Exception: params_calc['FRZG_Lvl_p'] = np.nan
+            li = mpcalc.lifted_index(p, T, prof)
+            params_calc['LI'] = li.m if not np.isnan(li.m) else np.nan
+        except Exception:
+            params_calc['LI'] = np.nan
+        
+        # Cálculo de DCAPE
+        try:
+            dcape = mpcalc.dcape(p, T, Td)
+            params_calc['DCAPE'] = dcape.m if not np.isnan(dcape.m) else np.nan
+        except Exception:
+            params_calc['DCAPE'] = np.nan
+        
+        # Cálculo de LFC
+        try:
+            lfc_p, lfc_t = mpcalc.lfc(p, T, Td, prof)
+            params_calc['LFC_p'] = lfc_p.m if not np.isnan(lfc_p.m) else np.nan
+            if not np.isnan(lfc_p.m):
+                params_calc['LFC_Hgt'] = np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1])
+            else:
+                params_calc['LFC_Hgt'] = np.nan
+        except Exception:
+            params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
+        
+        # Cálculo de LCL
+        try:
+            lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
+            params_calc['LCL_p'] = lcl_p.m if not np.isnan(lcl_p.m) else np.nan
+            if not np.isnan(lcl_p.m):
+                params_calc['LCL_Hgt'] = np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1])
+            else:
+                params_calc['LCL_Hgt'] = np.nan
+        except Exception:
+            params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
+        
+        # Cálculo de agua precipitable
+        try:
+            pwat = mpcalc.precipitable_water(p, Td)
+            params_calc['PWAT'] = pwat.to('mm').m if not np.isnan(pwat.m) else np.nan
+        except Exception:
+            params_calc['PWAT'] = np.nan
+        
+        # Cálculo de nivel de congelación
+        try:
+            frz_lvl = mpcalc.freezing_level_height(p, T)
+            params_calc['FRZG_Lvl_p'] = frz_lvl.m if not np.isnan(frz_lvl.m) else np.nan
+        except Exception:
+            params_calc['FRZG_Lvl_p'] = np.nan
+    
+    # Cálculo de movimiento de tormenta
     try:
-        rm, lm, mean_wind = mpcalc.storm_motion(p, u, v, heights)
-        params_calc['RM'] = (rm[0].m, rm[1].m); params_calc['LM'] = (lm[0].m, lm[1].m); params_calc['Mean_Wind'] = (mean_wind[0].m, mean_wind[1].m)
-    except Exception: params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan), 'Mean_Wind': (np.nan, np.nan)})
+        rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
+        params_calc['RM'] = (rm[0].m, rm[1].m)
+        params_calc['LM'] = (lm[0].m, lm[1].m)
+        params_calc['Mean_Wind'] = (mean_wind[0].m, mean_wind[1].m)
+    except Exception:
+        params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan), 'Mean_Wind': (np.nan, np.nan)})
+    
+    # Cálculo de cizalladura del viento (BWD)
     for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
         try:
-            bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights_agl, depth=depth_m * units.m)
-            params_calc[f'BWD_{name}'] = mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m
-        except Exception: params_calc[f'BWD_{name}'] = np.nan
-    if not np.isnan(params_calc.get('RM', [(np.nan, np.nan)])[0]):
+            bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter)
+            bwd_speed = mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m
+            params_calc[f'BWD_{name}'] = bwd_speed if not np.isnan(bwd_speed) else np.nan
+        except Exception:
+            params_calc[f'BWD_{name}'] = np.nan
+    
+    # Cálculo de helicidad relativa a la tormenta (SRH)
+    if not np.isnan(params_calc.get('RM', (np.nan, np.nan))[0]):
         try:
-            u_storm, v_storm = params_calc['RM'] * units('m/s')
+            u_storm, v_storm = params_calc['RM']
+            u_storm = u_storm * units('m/s')
+            v_storm = v_storm * units('m/s')
+            
             for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
-                srh, _, _ = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.m, storm_u=u_storm, storm_v=v_storm)
-                params_calc[f'SRH_{name}'] = srh.m
-        except Exception: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-    else: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
+                srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.meter, 
+                                                    storm_u=u_storm, storm_v=v_storm)
+                params_calc[f'SRH_{name}'] = srh.m if not np.isnan(srh.m) else np.nan
+        except Exception:
+            params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
+    else:
+        params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
+    
+    # Cálculo de CAPE en capa 0-3km
     try:
         idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
         cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
-        params_calc['CAPE_0-3km'] = cape_0_3.m
-    except Exception: params_calc['CAPE_0-3km'] = np.nan
+        params_calc['CAPE_0-3km'] = cape_0_3.m if not np.isnan(cape_0_3.m) else np.nan
+    except Exception:
+        params_calc['CAPE_0-3km'] = np.nan
     
     return ((p, T, Td, u, v, heights, prof), params_calc), None
-
 def crear_mapa_base(map_extent, projection=ccrs.PlateCarree()):
     fig, ax = plt.subplots(figsize=(8, 8), dpi=100, subplot_kw={'projection': projection})
     ax.set_extent(map_extent, crs=ccrs.PlateCarree()) 
@@ -287,110 +383,247 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
     gs = fig.add_gridspec(nrows=2, ncols=2, height_ratios=[1.5, 6], width_ratios=[1.5, 1], hspace=0.4, wspace=0.3)
-    ax_barbs = fig.add_subplot(gs[0, :]); ax_hodo = fig.add_subplot(gs[1, 0]); ax_params = fig.add_subplot(gs[1, 1])
+    ax_barbs = fig.add_subplot(gs[0, :])
+    ax_hodo = fig.add_subplot(gs[1, 0])
+    ax_params = fig.add_subplot(gs[1, 1])
     fig.suptitle(titol, weight='bold', fontsize=16)
+    
+    # Configurar gráfico de barbas de viento
     ax_barbs.set_title("Vent a Nivells Clau", fontsize=11, pad=15)
     heights_agl = heights - heights[0]
-    barb_altitudes_km = [1, 3, 6, 9]; barb_altitudes_m = [h * 1000 for h in barb_altitudes_km] * units.m
+    barb_altitudes_km = [1, 3, 6, 9]
+    barb_altitudes_m = [h * 1000 for h in barb_altitudes_km] * units.m
+    
     u_barbs_list, v_barbs_list = [], []
     for h_m in barb_altitudes_m:
         if h_m <= heights_agl.max():
-            u_interp_val = np.interp(h_m.m, heights_agl.m, u.m); v_interp_val = np.interp(h_m.m, heights_agl.m, v.m)
-            u_barbs_list.append(u_interp_val); v_barbs_list.append(v_interp_val)
+            u_interp_val = np.interp(h_m.m, heights_agl.m, u.m)
+            v_interp_val = np.interp(h_m.m, heights_agl.m, v.m)
+            u_barbs_list.append(u_interp_val)
+            v_barbs_list.append(v_interp_val)
         else:
-            u_barbs_list.append(np.nan); v_barbs_list.append(np.nan)
-    u_barbs = units.Quantity(u_barbs_list, u.units); v_barbs = units.Quantity(v_barbs_list, v.units)
+            u_barbs_list.append(np.nan)
+            v_barbs_list.append(np.nan)
+    
+    u_barbs = units.Quantity(u_barbs_list, u.units)
+    v_barbs = units.Quantity(v_barbs_list, v.units)
     speed_kmh_barbs = np.sqrt(u_barbs**2 + v_barbs**2).to('km/h').m
-    thresholds_barbs = [10, 40, 70, 100, 130]; colors_barbs = ['dimgrey', '#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd']
-    x_pos = np.arange(len(barb_altitudes_km)); u_barbs_kt = u_barbs.to('kt'); v_barbs_kt = v_barbs.to('kt')
+    
+    thresholds_barbs = [10, 40, 70, 100, 130]
+    colors_barbs = ['dimgrey', '#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd']
+    
+    x_pos = np.arange(len(barb_altitudes_km))
+    u_barbs_kt = u_barbs.to('kt')
+    v_barbs_kt = v_barbs.to('kt')
+    
     for i, spd_kmh in enumerate(speed_kmh_barbs):
         if not np.isnan(spd_kmh):
-            color_index = np.searchsorted(thresholds_barbs, spd_kmh); color = colors_barbs[color_index]
+            color_index = np.searchsorted(thresholds_barbs, spd_kmh)
+            color = colors_barbs[color_index]
             ax_barbs.barbs(x_pos[i], 0, u_barbs_kt[i], v_barbs_kt[i], length=8, pivot='middle', color=color)
             ax_barbs.text(x_pos[i], -0.8, f"{spd_kmh:.0f} km/h", ha='center', va='top', fontsize=9, color=color, weight='bold')
         else:
             ax_barbs.text(x_pos[i], 0, "N/A", ha='center', va='center', fontsize=9, color='grey')
-    ax_barbs.set_xticks(x_pos); ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km])
-    ax_barbs.set_yticks([]); ax_barbs.spines[:].set_visible(False)
-    ax_barbs.tick_params(axis='x', length=0, pad=5); ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5); ax_barbs.set_ylim(-1.5, 1.5)
-    h = Hodograph(ax_hodo, component_range=80.); h.add_grid(increment=20, color='gray', linestyle='--')
+    
+    ax_barbs.set_xticks(x_pos)
+    ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km])
+    ax_barbs.set_yticks([])
+    ax_barbs.spines[:].set_visible(False)
+    ax_barbs.tick_params(axis='x', length=0, pad=5)
+    ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5)
+    ax_barbs.set_ylim(-1.5, 1.5)
+    
+    # Configurar hodógrafo
+    h = Hodograph(ax_hodo, component_range=80.)
+    h.add_grid(increment=20, color='gray', linestyle='--')
+    
     intervals = np.array([0, 1, 3, 6, 9, 12]) * units.km
     colors_hodo = ['red', 'blue', 'green', 'purple', 'gold']
+    
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
+    
+    # Añadir movimiento de tormenta si está disponible
     try:
         rm_vec = params_calc.get('RM')
         if rm_vec and not np.isnan(rm_vec[0]):
-            u_rm_kt = (rm_vec[0] * units('m/s')).to('kt').m; v_rm_kt = (rm_vec[1] * units('m/s')).to('kt').m
+            u_rm_kt = (rm_vec[0] * units('m/s')).to('kt').m
+            v_rm_kt = (rm_vec[1] * units('m/s')).to('kt').m
             ax_hodo.plot(u_rm_kt, v_rm_kt, 'o', color='blue', markersize=8, label='Mov. Dret')
-    except Exception: pass
-    ax_hodo.set_xlabel('U-Component (nusos)'); ax_hodo.set_ylabel('V-Component (nusos)')
+    except Exception:
+        pass
+    
+    ax_hodo.set_xlabel('U-Component (nusos)')
+    ax_hodo.set_ylabel('V-Component (nusos)')
+    
+    # Configurar panel de parámetros
     ax_params.axis('off')
+    
     def degrees_to_cardinal(d):
         dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
-        ix = int(round(d / 22.5)); return dirs[ix % 16]
+        ix = int(round(d / 22.5))
+        return dirs[ix % 16]
+    
     def get_color(value, thresholds):
         if pd.isna(value): return "grey"
-        colors = ["grey", "green", "#E69F00", "orange", "red", "#C71585"]; thresholds = sorted(thresholds)
+        colors = ["grey", "green", "#E69F00", "orange", "red", "#C71585"]
+        thresholds = sorted(thresholds)
         for i, threshold in enumerate(thresholds):
             if value < threshold: return colors[i]
         return colors[-1]
-    THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (50, 150, 250, 400), 'UPDRAFT': (15, 25, 40, 50)}
-    y = 0.98; motion_data = {'MD': params_calc.get('RM'), 'ML': params_calc.get('LM'), 'VM (0-6 km)': params_calc.get('Mean_Wind')}
-    ax_params.text(0, y, "Moviment (dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
+    
+    THRESHOLDS = {
+        'BWD': (10, 20, 30, 40), 
+        'SRH': (50, 150, 250, 400), 
+        'UPDRAFT': (15, 25, 40, 50)
+    }
+    
+    y = 0.98
+    motion_data = {
+        'MD': params_calc.get('RM'), 
+        'ML': params_calc.get('LM'), 
+        'VM (0-6 km)': params_calc.get('Mean_Wind')
+    }
+    
+    ax_params.text(0, y, "Moviment (dir/km/h)", ha='left', weight='bold', fontsize=11)
+    y -= 0.1
+    
     for display_name, vec in motion_data.items():
         if vec and not any(pd.isna(v) for v in vec):
             u_motion_ms, v_motion_ms = vec[0] * units('m/s'), vec[1] * units('m/s')
             speed_kmh = mpcalc.wind_speed(u_motion_ms, v_motion_ms).to('km/h').m
             direction_from_deg = mpcalc.wind_direction(u_motion_ms, v_motion_ms, convention='from').to('deg').m
             cardinal_dir = degrees_to_cardinal(direction_from_deg)
-            ax_params.text(0, y, f"{display_name}:", ha='left', va='center'); ax_params.text(1, y, f"{direction_from_deg:.0f}° ({cardinal_dir}) / {speed_kmh:.0f}", ha='right', va='center')
+            ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
+            ax_params.text(1, y, f"{direction_from_deg:.0f}° ({cardinal_dir}) / {speed_kmh:.0f}", ha='right', va='center')
         else:
-            ax_params.text(0, y, f"{display_name}:", ha='left', va='center'); ax_params.text(1, y, "---", ha='right', va='center')
-        y-=0.08
-    y-=0.05; ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
+            ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
+            ax_params.text(1, y, "---", ha='right', va='center')
+        y -= 0.08
+    
+    y -= 0.05
+    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11)
+    y -= 0.1
+    
     for key, label in [('0-1km', '0-1 km'), ('0-6km', '0-6 km')]:
-        val = params_calc.get(f'BWD_{key}', np.nan); color = get_color(val, THRESHOLDS['BWD'])
-        ax_params.text(0, y, f"{label}:", ha='left', va='center'); ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color); y-=0.08
-    y-=0.05; ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.1
+        val = params_calc.get(f'BWD_{key}', np.nan)
+        color = get_color(val, THRESHOLDS['BWD'])
+        ax_params.text(0, y, f"{label}:", ha='left', va='center')
+        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
+        y -= 0.08
+    
+    y -= 0.05
+    ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11)
+    y -= 0.1
+    
     for key, label in [('0-1km', '0-1 km'), ('0-3km', '0-3 km')]:
-        val = params_calc.get(f'SRH_{key}', np.nan); color = get_color(val, THRESHOLDS['SRH'])
-        ax_params.text(0, y, f"{label}:", ha='left', va='center'); ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color); y-=0.08
-    y-=0.05; ax_params.text(0, y, "Corrent Ascendent", ha='left', weight='bold', fontsize=11); y-=0.1
-    val_updraft = params_calc.get('MAX_UPDRAFT', np.nan); color_updraft = get_color(val_updraft, THRESHOLDS['UPDRAFT'])
-    ax_params.text(0, y, f"Vel. Max (0-6km):", ha='left', va='center'); ax_params.text(1, y, f"{val_updraft:.1f} m/s" if not pd.isna(val_updraft) else "---", ha='right', va='center', weight='bold', color=color_updraft)
-    y-=0.08; return fig
+        val = params_calc.get(f'SRH_{key}', np.nan)
+        color = get_color(val, THRESHOLDS['SRH'])
+        ax_params.text(0, y, f"{label}:", ha='left', va='center')
+        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
+        y -= 0.08
+    
+    y -= 0.05
+    ax_params.text(0, y, "Corrent Ascendent", ha='left', weight='bold', fontsize=11)
+    y -= 0.1
+    
+    val_updraft = params_calc.get('MAX_UPDRAFT', np.nan)
+    color_updraft = get_color(val_updraft, THRESHOLDS['UPDRAFT'])
+    ax_params.text(0, y, f"Vel. Max (0-6km):", ha='left', va='center')
+    ax_params.text(1, y, f"{val_updraft:.1f} m/s" if not pd.isna(val_updraft) else "---", ha='right', va='center', weight='bold', color=color_updraft)
+    y -= 0.08
+    
+    return fig
 
 def ui_caixa_parametres_sondeig(params):
     def get_color(value, thresholds, reverse_colors=False):
         if pd.isna(value): return "#808080"
         colors = ["#808080", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
-        if reverse_colors: thresholds = sorted(thresholds, reverse=True); colors = list(reversed(colors))
-        else: thresholds = sorted(thresholds)
+        if reverse_colors: 
+            thresholds = sorted(thresholds, reverse=True)
+            colors = list(reversed(colors))
+        else: 
+            thresholds = sorted(thresholds)
         for i, threshold in enumerate(thresholds):
             if value < threshold: return colors[i]
         return colors[-1]
-    THRESHOLDS = {'SBCAPE': (100, 500, 1500, 2500), 'MUCAPE': (100, 500, 1500, 2500), 'MLCAPE': (50, 250, 1000, 2000), 'CAPE_0-3km': (25, 75, 150, 250), 'DCAPE': (200, 500, 800, 1200), 'SBCIN': (0, -25, -75, -150), 'LI': (0, -2, -5, -8), 'PWAT': (20, 30, 40, 50), 'BWD_0-6km': (10, 20, 30, 40), 'SRH_0-1km': (50, 100, 150, 250)}
+    
+    THRESHOLDS = {
+        'SBCAPE': (100, 500, 1500, 2500), 
+        'MUCAPE': (100, 500, 1500, 2500), 
+        'MLCAPE': (50, 250, 1000, 2000), 
+        'CAPE_0-3km': (25, 75, 150, 250), 
+        'DCAPE': (200, 500, 800, 1200), 
+        'SBCIN': (0, -25, -75, -150), 
+        'MUCIN': (0, -25, -75, -150),
+        'MLCIN': (0, -25, -75, -150),
+        'LI': (0, -2, -5, -8), 
+        'PWAT': (20, 30, 40, 50), 
+        'BWD_0-6km': (10, 20, 30, 40), 
+        'BWD_0-1km': (5, 10, 15, 20),
+        'SRH_0-1km': (50, 100, 150, 250),
+        'SRH_0-3km': (100, 200, 300, 400)
+    }
+    
     def styled_metric(label, value, unit, param_key, precision=0, reverse_colors=False):
         color = get_color(value, THRESHOLDS.get(param_key, []), reverse_colors)
         val_str = f"{value:.{precision}f}" if not pd.isna(value) else "---"
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;"><span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit})</span><br><strong style="font-size: 1.6em; color: {color};">{val_str}</strong></div>""", unsafe_allow_html=True)
+    
     st.markdown("##### Paràmetres del Sondeig")
+    
+    # Primera fila: CAPE values
     cols = st.columns(3)
-    with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE')
-    with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE')
-    with cols[2]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE')
+    with cols[0]: 
+        styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE')
+    with cols[1]: 
+        styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE')
+    with cols[2]: 
+        styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE')
+    
+    # Segunda fila: CIN and other stability indices
     cols = st.columns(3)
-    with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True)
-    with cols[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', precision=1, reverse_colors=True)
-    with cols[2]: styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1)
+    with cols[0]: 
+        styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True)
+    with cols[1]: 
+        styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True)
+    with cols[2]: 
+        styled_metric("MLCIN", params.get('MLCIN', np.nan), "J/kg", 'MLCIN', reverse_colors=True)
+    
+    # Tercera fila: LI and moisture
     cols = st.columns(3)
-    with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
-    with cols[1]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
-    with cols[2]: styled_metric("DCAPE", params.get('DCAPE', np.nan), "J/kg", 'DCAPE')
+    with cols[0]: 
+        styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', precision=1, reverse_colors=True)
+    with cols[1]: 
+        styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1)
+    with cols[2]: 
+        styled_metric("DCAPE", params.get('DCAPE', np.nan), "J/kg", 'DCAPE')
+    
+    # Cuarta fila: Levels
     cols = st.columns(3)
-    with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
-    with cols[1]: styled_metric("SRH 0-1km", params.get('SRH_0-1km', np.nan), "m²/s²", 'SRH_0-1km')
-    with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
+    with cols[0]: 
+        styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
+    with cols[1]: 
+        styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
+    with cols[2]: 
+        styled_metric("FRZG", params.get('FRZG_Lvl_p', np.nan), "hPa", '', precision=0)
+    
+    # Quinta fila: Wind parameters
+    cols = st.columns(3)
+    with cols[0]: 
+        styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
+    with cols[1]: 
+        styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km')
+    with cols[2]: 
+        styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
+    
+    # Sexta fila: SRH and updraft
+    cols = st.columns(3)
+    with cols[0]: 
+        styled_metric("SRH 0-1km", params.get('SRH_0-1km', np.nan), "m²/s²", 'SRH_0-1km')
+    with cols[1]: 
+        styled_metric("SRH 0-3km", params.get('SRH_0-3km', np.nan), "m²/s²", 'SRH_0-3km')
+    with cols[2]: 
+        styled_metric("UPDRAFT", params.get('MAX_UPDRAFT', np.nan), "m/s", 'UPDRAFT', precision=1)
 
 # --- Funcions Específiques per a Catalunya ---
 
