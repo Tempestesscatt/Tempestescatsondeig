@@ -178,6 +178,50 @@ def show_login_page():
 
 # --- Funcions Base de Càlcul i Gràfics (Compartides) ---
 
+def calcular_convergencia_puntual(map_data, lat_sel, lon_sel):
+    """
+    Calcula la convergència en un punt específic (lat_sel, lon_sel)
+    a partir de les dades d'una graella de model (map_data).
+
+    Retorna:
+        El valor de la convergència (escalat per 1e5) o np.nan si no es pot calcular.
+    """
+    if not map_data or 'lons' not in map_data or len(map_data['lons']) < 4:
+        return np.nan
+
+    try:
+        lons, lats = map_data['lons'], map_data['lats']
+        speed_data, dir_data = map_data['speed_data'], map_data['dir_data']
+
+        # Crear una graella fina per a la interpolació
+        grid_lon, grid_lat = np.meshgrid(
+            np.linspace(min(lons), max(lons), 100),
+            np.linspace(min(lats), max(lats), 100)
+        )
+
+        # Calcular components del vent i interpolar-los
+        u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+        grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+        grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+
+        # Calcular la divergència a tota la graella
+        dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+        divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
+        
+        # La convergència és la divergència negativa, escalada per a una millor visualització.
+        convergence_scaled = -divergence.to('1/s').magnitude * 1e5
+
+        # Trobar l'índex de la graella més proper al punt seleccionat
+        dist_sq = (grid_lat - lat_sel)**2 + (grid_lon - lon_sel)**2
+        min_dist_idx = np.unravel_index(np.argmin(dist_sq, axis=None), dist_sq.shape)
+
+        # Retornar el valor de convergència en aquest punt
+        return convergence_scaled[min_dist_idx]
+    except Exception as e:
+        print(f"Error calculant la convergència puntual: {e}")
+        return np.nan
+        
+
 def calcular_li_manual(p, T, prof):
     """Cálculo manual del Lifted Index"""
     try:
@@ -652,6 +696,15 @@ def ui_caixa_parametres_sondeig(params):
             if len(value) > 0: value = value[0]
             else: return "#808080"
         if pd.isna(value): return "#808080"
+        # Valors negatius (divergència) seran verds, positius (convergència) seran vermells
+        if param_key == 'CONV_925hPa':
+            colors = ["#28a745", "#808080", "#ffc107", "#fd7e14", "#dc3545"]
+            thresholds = sorted(thresholds)
+            if value < thresholds[0]: return colors[0] # Divergència forta
+            for i, threshold in enumerate(thresholds):
+                if value < threshold: return colors[i+1]
+            return colors[-1]
+
         colors = ["#808080", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
         if reverse_colors: 
             thresholds = sorted(thresholds, reverse=True)
@@ -670,34 +723,38 @@ def ui_caixa_parametres_sondeig(params):
         'PWAT': (20, 30, 40, 50), 'BWD_0-6km': (10, 20, 30, 40), 
         'BWD_0-1km': (5, 10, 15, 20), 'SRH_0-1km': (50, 100, 150, 250),
         'SRH_0-3km': (100, 200, 300, 400),
-        'FRZG_Lvl_m': (4000, 3000, 2000, 1000) # Llindars per l'altitud en metres
+        # Llindars per a la convergència. Negatiu=Divergència, Positiu=Convergència
+        'CONV_925hPa': (-2, 2, 5, 10) 
     }
     
     def styled_metric(label, value, unit, param_key, precision=0, reverse_colors=False):
+        # Aquesta variable global s'utilitza per a la lògica de color específica
+        nonlocal get_color_param_key
+        get_color_param_key = param_key
+        
         if hasattr(value, '__len__') and not isinstance(value, str):
             if len(value) > 0: value = value[0]
             else: value = np.nan
+        
         color = get_color(value, THRESHOLDS.get(param_key, []), reverse_colors)
         val_str = f"{value:.{precision}f}" if not pd.isna(value) else "---"
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;"><span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit})</span><br><strong style="font-size: 1.6em; color: {color};">{val_str}</strong></div>""", unsafe_allow_html=True)
     
-    st.markdown("##### Paràmetres del Sondeig")
+    # Variable per passar el param_key a la funció de color
+    get_color_param_key = None
     
+    st.markdown("##### Paràmetres del Sondeig")
     emoji, descripcio = determinar_emoji_temps(params)
 
-    # Primera fila: CAPE values
+    # ... (Files de CAPE, CIN, LI, PWAT, Emoji es queden iguals) ...
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE')
     with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE')
     with cols[2]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE')
-    
-    # Segunda fila: CIN and other stability indices
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True)
     with cols[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True)
     with cols[2]: styled_metric("MLCIN", params.get('MLCIN', np.nan), "J/kg", 'MLCIN', reverse_colors=True)
-    
-    # Tercera fila: LI, PWAT i el nou EMOJI
     cols = st.columns(3)
     with cols[0]: 
         li_value = params.get('LI', np.nan)
@@ -714,23 +771,22 @@ def ui_caixa_parametres_sondeig(params):
         </div>
         """, unsafe_allow_html=True)
 
-    # Cuarta fila: Levels
+    # --- CANVI A LA QUARTA FILA ---
     cols = st.columns(3)
     with cols[0]: 
         styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", '', precision=0)
     with cols[1]: 
         styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", '', precision=0)
     with cols[2]: 
-        frzg_alt_value = params.get('FRZG_Lvl_m', np.nan)
-        styled_metric("Nivell 0°C", frzg_alt_value, "m", 'FRZG_Lvl_m', precision=0, reverse_colors=True)
+        # MODIFICAT: Ara mostrem la convergència a 925hPa
+        conv_value = params.get('CONV_925hPa', np.nan)
+        styled_metric("Conv. 925hPa", conv_value, "10⁻⁵/s", 'CONV_925hPa', precision=1)
 
-    # Quinta fila: Wind parameters
+    # ... (les files de BWD, CAPE 0-3km, SRH i UPDRAFT es queden iguals) ...
     cols = st.columns(3)
     with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km')
     with cols[1]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km')
     with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km')
-    
-    # Sexta fila: SRH and updraft
     cols = st.columns(3)
     with cols[0]: 
         srh1_value = params.get('SRH_0-1km', np.nan)
@@ -742,7 +798,6 @@ def ui_caixa_parametres_sondeig(params):
         styled_metric("SRH 0-3km", srh3_value, "m²/s²", 'SRH_0-3km')
     with cols[2]: 
         styled_metric("UPDRAFT", params.get('MAX_UPDRAFT', np.nan), "m/s", 'UPDRAFT', precision=1)
-
 # --- Funcions Específiques per a Catalunya ---
 
 @st.cache_data(ttl=3600)
@@ -1219,9 +1274,21 @@ def run_catalunya_app():
     
     timestamp_str = f"{st.session_state.dia_selector} a les {st.session_state.hora_selector} (Hora Local)"
     lat_sel, lon_sel = ciutats_per_selector[poble_sel]['lat'], ciutats_per_selector[poble_sel]['lon']
+    
+    # 1. Carreguem el sondeig com sempre
     data_tuple, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
     if error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
     
+    # 2. Carreguem les dades del mapa de 925hPa per al càlcul de la convergència
+    map_data_925, _ = carregar_dades_mapa_cat(925, hourly_index_sel)
+
+    # 3. Si tenim les dades, calculem la convergència i l'afegim als paràmetres
+    if data_tuple and map_data_925:
+        _, params_calc = data_tuple
+        conv_value = calcular_convergencia_puntual(map_data_925, lat_sel, lon_sel)
+        params_calc['CONV_925hPa'] = conv_value
+    
+    # La resta de la lògica de les pestanyes es queda igual
     if is_guest:
         tab_mapes, tab_vertical, tab_estacions = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Estacions Meteorològiques"])
         with tab_mapes: ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str)
@@ -1230,8 +1297,7 @@ def run_catalunya_app():
     else:
         # Lògica per a usuaris registrats (amb IA i Xat)
         st.warning("La funcionalitat completa per a usuaris registrats encara s'ha d'implementar en aquest refactor.")
-
-def run_valley_halley_app():
+        
     ui_capcalera_selectors(None, zona_activa="tornado_alley")
     
     poble_sel = st.session_state.poble_selector_usa
