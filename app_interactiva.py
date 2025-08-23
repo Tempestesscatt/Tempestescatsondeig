@@ -125,15 +125,10 @@ def show_login_page():
     if st.button("Entrar com a Convidat", use_container_width=True, type="secondary"):
         st.session_state.update({'guest_mode': True, 'logged_in': False}); st.rerun()
 
-# --- INICI DEL BLOC AFEGIT ---
+# --- BLOC DE CODI CORREGIT I EN L'ORDRE CORRECTE ---
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base(variables, hourly_index):
-    """
-    Funció base per carregar dades grillades del model AROME per a un conjunt
-    específic de variables i una hora concreta.
-    """
     try:
-        # Paràmetres per a la crida a l'API de Open-Meteo per a dades de mapa
         params = {
             "latitude": list(np.arange(MAP_EXTENT[2], MAP_EXTENT[3], 0.025)),
             "longitude": list(np.arange(MAP_EXTENT[0], MAP_EXTENT[1], 0.025)),
@@ -141,38 +136,42 @@ def carregar_dades_mapa_base(variables, hourly_index):
             "models": "arome_seamless",
             "forecast_days": FORECAST_DAYS
         }
-        
-        # Realitzem la crida a l'API
         response = openmeteo.weather_api(API_URL, params=params)[0]
-
-        # Extraiem les dades horàries
         hourly = response.Hourly()
-        
-        # Creem el diccionari de resultats amb les latituds i longituds
-        map_data = {
-            'lats': hourly.Latitude(),
-            'lons': hourly.Longitude()
-        }
-        
-        # Afegim les dades de cada variable per a l'hora seleccionada
+        map_data = {'lats': hourly.Latitude(), 'lons': hourly.Longitude()}
         for i, var in enumerate(variables):
             data_array = hourly.Variables(i).ValuesAsNumpy()
-            # Assegurem que l'índex no estigui fora de rang
             if hourly_index < data_array.shape[1]:
                 map_data[var] = data_array[:, hourly_index]
             else:
-                # Si l'índex és invàlid, retornem un error
                 return None, f"Índex horari ({hourly_index}) fora de rang."
-        
-        # Si alguna dada és invàlida (NaN), retornem un error
         if any(np.isnan(v).all() for k, v in map_data.items() if k not in ['lats', 'lons']):
              return None, "Les dades del mapa contenen valors invàlids (NaN)."
-
         return map_data, None
-
     except Exception as e:
-        # En cas de qualsevol altre error, el capturem i el retornem
         return None, f"Error en la càrrega de dades base del mapa: {e}"
+
+@st.cache_data(ttl=3600)
+def carregar_dades_mapa(nivell, hourly_index):
+    try:
+        if nivell >= 950:
+            variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            map_data_raw, error = carregar_dades_mapa_base(variables, hourly_index)
+            if error: return None, error
+            map_data_raw['dewpoint_data'] = map_data_raw.pop('dew_point_2m')
+        else:
+            variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            map_data_raw, error = carregar_dades_mapa_base(variables, hourly_index)
+            if error: return None, error
+            temp_data = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
+            rh_data = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
+            map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
+        map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
+        map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
+        return map_data_raw, None
+    except Exception as e: return None, f"Error en processar dades del mapa: {e}"
+# --- FI DEL BLOC CORREGIT ---
+
 
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig(lat, lon, hourly_index):
@@ -433,27 +432,6 @@ def carregar_dades_sondeig(lat, lon, hourly_index):
 
 
 @st.cache_data(ttl=3600)
-def carregar_dades_mapa(nivell, hourly_index):
-    try:
-        if nivell >= 950:
-            variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-            map_data_raw, error = carregar_dades_mapa_base(variables, hourly_index)
-            if error: return None, error
-            map_data_raw['dewpoint_data'] = map_data_raw.pop('dew_point_2m')
-        else:
-            variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-            map_data_raw, error = carregar_dades_mapa_base(variables, hourly_index)
-            if error: return None, error
-            temp_data = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
-            rh_data = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
-            map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
-        map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
-        map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
-        return map_data_raw, None
-    except Exception as e: return None, f"Error en processar dades del mapa: {e}"
-        
-
-@st.cache_data(ttl=3600)
 def obtenir_ciutats_actives(hourly_index):
     nivell = 925
     map_data, error_map = carregar_dades_mapa(nivell, hourly_index)
@@ -525,10 +503,6 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.7, density=2.5, arrowsize=0.6, zorder=3, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, ticks=cbar_ticks)
     cbar.set_label("Velocitat del Vent (km/h)"); ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
-
-# --- BLOQUE DE CÓDIGO ACTUALIZADO ---
-
-
 
 def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     """
@@ -834,9 +808,6 @@ def ui_caixa_parametres_sondeig(params):
             - **CAPE 0-3km:** Energia a nivells baixos. Combinat amb SRH alt, augmenta el risc de tornados.
             """)
 
-        
-        
-
 def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
     if data_tuple:
         lat_sel = CIUTATS_CATALUNYA[poble_sel]['lat']
@@ -848,7 +819,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         col1, col2 = st.columns(2, gap="large")
 
         with col1:
-            # --- CORRECCIÓ: S'ha afegit 'heights' a la crida de la funció ---
             fig_skewt = crear_skewt(p, T, Td, u, v, heights, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
@@ -856,16 +826,12 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                 ui_caixa_parametres_sondeig(params_calculats)
         
         with col2:
-            # --- INICI DE LA MILLORA: Botó d'ajuda contextual ---
-            
-            # Creem dues columnes per alinear el títol a l'esquerra i el botó a la dreta
             col_titol, col_boto = st.columns([0.85, 0.15])
             
             with col_titol:
-                st.markdown("##### Hodògraf Avançat") # Un títol estàtic per a la secció
+                st.markdown("##### Hodògraf Avançat")
 
             with col_boto:
-                # Creem el popover. L'emoji '❓' serà el botó.
                 with st.popover("❓"):
                     st.markdown("""
                     **Què signifiquen aquestes sigles?**
@@ -883,8 +849,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
                     **VM (Vent Mitjà 0-6 km):**
                     Mostra la direcció general del flux de vent. Una tempesta normal seguiria aquesta ruta, però les supercèl·lules organitzades es desvien seguint les trajectòries **MD** o **ML**.
                     """)
-
-            # --- FI DE LA MILLORA ---
 
             fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Anàlisi del Vent per a {poble_sel}")
             st.pyplot(fig_hodo, use_container_width=True)
@@ -972,7 +936,6 @@ Recorda, l'usuari té accés a aquests pobles: """ + ', '.join(CIUTATS_CATALUNYA
                     sounding_data, params_calculats = data_tuple
                     p, T, Td, u, v, heights, prof = sounding_data
                     
-                    # --- CORRECCIÓ: S'ha afegit 'heights' a la crida de la funció ---
                     fig_skewt = crear_skewt(p, T, Td, u, v, heights, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
                     buf_skewt = io.BytesIO(); fig_skewt.savefig(buf_skewt, format='png', dpi=150, bbox_inches='tight'); buf_skewt.seek(0); img_skewt = Image.open(buf_skewt); plt.close(fig_skewt); contingut_per_ia.append(img_skewt)
                     
@@ -1109,8 +1072,6 @@ def ui_pestanya_mapes(hourly_index_sel, timestamp_str, data_tuple):
         with st.container(border=True):
             ui_info_desenvolupament_tempesta()
             
-
-
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME via Open-Meteo | Imatges via Meteologix & Rainviewer | IA per Google Gemini.</p>", unsafe_allow_html=True)
 
