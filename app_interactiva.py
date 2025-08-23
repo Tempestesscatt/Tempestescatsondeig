@@ -130,13 +130,18 @@ def show_login_page():
 def carregar_dades_mapa_base(variables, hourly_index):
     """Función auxiliar para cargar datos base del mapa"""
     try:
-        # Paràmetres per a la crida a l'API
-        lats = list(np.arange(MAP_EXTENT[2], MAP_EXTENT[3], 0.025))
-        lons = list(np.arange(MAP_EXTENT[0], MAP_EXTENT[1], 0.025))
+        # Crear una cuadrícula regular de puntos
+        lats = np.arange(MAP_EXTENT[2], MAP_EXTENT[3], 0.1)  # Reducimos la resolución para evitar demasiados puntos
+        lons = np.arange(MAP_EXTENT[0], MAP_EXTENT[1], 0.1)
+        
+        # Crear todas las combinaciones de lat/lon
+        lons_grid, lats_grid = np.meshgrid(lons, lats)
+        lats_list = lats_grid.ravel()
+        lons_list = lons_grid.ravel()
         
         params = {
-            "latitude": lats,
-            "longitude": lons,
+            "latitude": lats_list.tolist(),
+            "longitude": lons_list.tolist(),
             "hourly": variables,
             "models": "arome_seamless",
             "forecast_days": FORECAST_DAYS
@@ -155,8 +160,8 @@ def carregar_dades_mapa_base(variables, hourly_index):
         # Afegim les dades de cada variable per a l'hora seleccionada
         for i, var in enumerate(variables):
             data_array = hourly.Variables(i).ValuesAsNumpy()
-            if hourly_index < data_array.shape[1]:
-                map_data_raw[var] = data_array[:, hourly_index]
+            if hourly_index < len(data_array):
+                map_data_raw[var] = data_array[hourly_index]
             else:
                 return None, f"Índex horari ({hourly_index}) fora de rang."
         
