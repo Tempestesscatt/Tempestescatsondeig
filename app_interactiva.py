@@ -739,14 +739,38 @@ def ui_pestanya_vertical(data_tuple, poble_sel, dia_sel, hora_sel):
         col1, col2 = st.columns(2, gap="large")
 
         with col1:
-            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
+            fig_skewt = crear_skewt(p, T, Td, u, v, heights, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             with st.container(border=True):
                 ui_caixa_parametres_sondeig(params_calculats)
         
         with col2:
-            fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
+            col_titol, col_boto = st.columns([0.85, 0.15])
+            
+            with col_titol:
+                st.markdown("##### Hodògraf Avançat")
+
+            with col_boto:
+                with st.popover("❓"):
+                    st.markdown("""
+                    **Què signifiquen aquestes sigles?**
+
+                    Aquesta secció mostra la trajectòria més probable de les tempestes en un entorn amb fort cisallament del vent.
+
+                    ---
+
+                    **MD (Moviment Dret):**
+                    Indica la trajectòria de la part **dreta** de la tempesta si aquesta es divideix. A l'hemisferi nord, aquesta és gairebé sempre la cèl·lula **dominant i més perillosa**, amb potencial de generar calamarsa grossa o tornados.
+
+                    **ML (Moviment Esquerre):**
+                    La trajectòria de la part **esquerra** de la tempesta. Sol ser més feble i tendeix a dissipar-se.
+
+                    **VM (Vent Mitjà 0-6 km):**
+                    Mostra la direcció general del flux de vent. Una tempesta normal seguiria aquesta ruta, però les supercèl·lules organitzades es desvien seguint les trajectòries **MD** o **ML**.
+                    """)
+
+            fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Anàlisi del Vent per a {poble_sel}")
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
 
