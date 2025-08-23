@@ -577,11 +577,10 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
     # Assegurem que tenim prous dades per a la interpolació
     if len(lons) < 4:
         st.warning("No hi ha prou dades per generar un mapa interpolat.")
-        # Dibuixa un mapa base buit per evitar un error
         ax.set_title(f"Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
         return fig
 
-    # 2. Crear una graella fina i interpolar les dades del model (com a Catalunya)
+    # 2. Crear una graella fina i interpolar les dades del model
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_USA[0], MAP_EXTENT_USA[1], 200), np.linspace(MAP_EXTENT_USA[2], MAP_EXTENT_USA[3], 200))
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic')
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
@@ -599,7 +598,10 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
 
     # 4. Dibuixar les línies de corrent del vent (streamplot)
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=4.5, zorder=4, transform=ccrs.PlateCarree())
+    # --- LÍNIA MODIFICADA ---
+    # S'ha afegit el paràmetre 'arrowsize' per controlar la mida de les fletxes.
+    # Pots canviar el valor (ex: 0.8) per fer-les més petites o més grans.
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=4.5, arrowsize=0.4, zorder=4, transform=ccrs.PlateCarree())
     
     # 5. Calcular i dibuixar la convergència
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
@@ -607,11 +609,9 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
     dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
     convergence_scaled = -(dudx + dvdy).to('1/s').magnitude * 1e5
     
-    # Llindar de punt de rosada adaptat per a la Tornado Alley (~60°F)
     DEWPOINT_THRESHOLD_USA = 16 
     convergence_in_humid_areas = np.where(grid_dewpoint >= DEWPOINT_THRESHOLD_USA, convergence_scaled, 0)
     
-    # Nivells de convergència lleugerament diferents, més sensibles per a GFS
     fill_levels = [5, 10, 15, 25]
     fill_colors = ['#ffc107', '#ff9800', '#f44336']
     line_levels = [5, 10, 15]
@@ -625,16 +625,12 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
     
     # Afegir ciutats per a referència
     for city, coords in USA_CITIES.items():
-        ax.plot(coords['lon'], coords['lat'], 'o', color='red', markersize=6, markeredgecolor='black', transform=ccrs.PlateCarree(), zorder=10)
-        
-        # --- LÍNIA MODIFICADA ---
-        # S'ha canviat el valor de 'fontsize' de 9 a 7 per fer el text més petit.
-        ax.text(coords['lon'] + 0.2, coords['lat'] + 0.2, city, fontsize=5, transform=ccrs.PlateCarree(), zorder=10,
+        ax.plot(coords['lon'], coords['lat'], 'o', color='red', markersize=1, markeredgecolor='black', transform=ccrs.PlateCarree(), zorder=10)
+        ax.text(coords['lon'] + 0.2, coords['lat'] + 0.2, city, fontsize=7, transform=ccrs.PlateCarree(), zorder=10,
                 path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
 
     ax.set_title(f"Vent i Nuclis de convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
-
 # --- Seccions UI i Lògica Principal ---
 
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya"):
