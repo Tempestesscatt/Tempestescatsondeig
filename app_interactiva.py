@@ -473,7 +473,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     ax_barbs = fig.add_subplot(gs[0, :]); ax_hodo = fig.add_subplot(gs[1, 0]); ax_params = fig.add_subplot(gs[1, 1])
     fig.suptitle(titol, weight='bold', fontsize=16)
     
-    # Configurar gràfic de barbes de vent (sense canvis)
+    # --- GRÀFIC DE BARBES DE VENT (SENSE CANVIS) ---
     ax_barbs.set_title("Vent a Nivells Clau", fontsize=11, pad=15)
     heights_agl = heights - heights[0]
     barb_altitudes_km = [1, 3, 6, 9]; barb_altitudes_m = [h * 1000 for h in barb_altitudes_km] * units.m
@@ -497,7 +497,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             ax_barbs.text(x_pos[i], 0, "N/A", ha='center', va='center', fontsize=9, color='grey')
     ax_barbs.set_xticks(x_pos); ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km]); ax_barbs.set_yticks([]); ax_barbs.spines[:].set_visible(False); ax_barbs.tick_params(axis='x', length=0, pad=5); ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5); ax_barbs.set_ylim(-1.5, 1.5)
     
-    # Configurar hodògraf (sense canvis)
+    # --- HODÒGRAF (SENSE CANVIS) ---
     h = Hodograph(ax_hodo, component_range=80.); h.add_grid(increment=20, color='gray', linestyle='--')
     intervals = np.array([0, 1, 3, 6, 9, 12]) * units.km; colors_hodo = ['red', 'blue', 'green', 'purple', 'gold']
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
@@ -512,7 +512,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     except Exception: pass
     ax_hodo.set_xlabel('U-Component (nusos)'); ax_hodo.set_ylabel('V-Component (nusos)')
     
-    # --- Configurar panell de paràmetres (AMB MODIFICACIONS) ---
+    # --- PANELL DE PARÀMETRES (VERSIÓ CORREGIDA I ROBUSTA) ---
     ax_params.axis('off')
     def degrees_to_cardinal(d):
         dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
@@ -528,7 +528,6 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (50, 150, 250, 400), 'UPDRAFT': (15, 25, 40, 50)}
     y = 0.98
     
-    # MODIFICAT: Ara el diccionari conté totes les dades que hem calculat
     motion_data = {
         'MD': params_calc.get('RM'), 
         'ML': params_calc.get('LM'), 
@@ -537,7 +536,9 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     
     ax_params.text(0, y, "Moviment (dir/km/h)", ha='left', weight='bold', fontsize=11); y -= 0.1
     for display_name, vec in motion_data.items():
-        if vec and not any(pd.isna(v) for v in vec):
+        # AFEGIM UNA COMPROVACIÓ DE SEGURETAT AQUÍ:
+        # El vector ha d'existir I el seu primer element no pot ser NaN.
+        if vec and not pd.isna(vec[0]):
             u_motion_ms, v_motion_ms = vec[0] * units('m/s'), vec[1] * units('m/s')
             speed_kmh = mpcalc.wind_speed(u_motion_ms, v_motion_ms).to('km/h').m
             direction_from_deg = mpcalc.wind_direction(u_motion_ms, v_motion_ms, convention='from').to('deg').m
@@ -545,11 +546,11 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
             ax_params.text(1, y, f"{direction_from_deg:.0f}° ({cardinal_dir}) / {speed_kmh:.0f}", ha='right', va='center')
         else:
-            ax_params.text(0, y, f"{display_name}:", ha='left', va='center'); ax_params.text(1, y, "---", ha='right', va='center')
+            ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
+            ax_params.text(1, y, "---", ha='right', va='center')
         y -= 0.08
     
     y -= 0.05; ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y -= 0.1
-    # MODIFICAT: Afegim 'Efectiu' a la llista
     for key, label in [('0-1km', '0-1 km'), ('0-6km', '0-6 km'), ('EBWD', 'Efectiu')]:
         val = params_calc.get(key if key == 'EBWD' else f'BWD_{key}', np.nan)
         color = get_color(val, THRESHOLDS['BWD'])
@@ -558,7 +559,6 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         y -= 0.08
     
     y -= 0.05; ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y -= 0.1
-    # MODIFICAT: Afegim 'Efectiva' a la llista
     for key, label in [('0-1km', '0-1 km'), ('0-3km', '0-3 km'), ('ESRH', 'Efectiva')]:
         val = params_calc.get(key if key == 'ESRH' else f'SRH_{key}', np.nan)
         color = get_color(val, THRESHOLDS['SRH'])
