@@ -475,79 +475,52 @@ def crear_mapa_vents(lons, lats, speed_data, dir_data, nivell, timestamp_str, ma
 
 def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     """
-    NOTA: Aquesta funció ara requereix la variable 'heights' per poder
-    diferenciar les capes per sota i sobre dels 3 km.
-    Assegura't de passar-la quan cridis la funció.
-    Exemple: crear_skewt(p, T, Td, u, v, heights, prof, ...)
+    Dibuixa un diagrama Skew-T, mostrant explícitament l'ascens de la parcel·la
+    des de la temperatura i el punt de rosada de superfície fins al LCL.
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.1, 0.85, 0.85))
 
-    # Adiabàtiques de fons com a referència subtil
+    # Dibuixa les línies de fons (adiabàtiques, etc.) com a referència general
     skew.plot_dry_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     skew.plot_moist_adiabats(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     skew.plot_mixing_lines(color='gray', linestyle='--', linewidth=0.5, alpha=0.4)
     
-    # Ombrejat personalitzat per capes
+    # Ombrejat de les àrees de CAPE i CIN
     if prof is not None:
-        p_np = p.m
-        T_np = T.m
-        prof_np = prof.m
-        
-        heights_agl = (heights - heights[0]).m
-        
-        try:
-            sort_indices = np.argsort(heights_agl)
-            p_3km = np.interp(3000, heights_agl[sort_indices], p_np[sort_indices])
-        except Exception:
-            p_3km = p_np.min()
+        p_np = p.magnitude
+        T_np = T.magnitude
+        prof_np = prof.magnitude
+        skew.ax.fill_betweenx(p_np, T_np, prof_np, where=prof_np > T_np,
+                              facecolor='red', alpha=0.4, interpolate=True, zorder=5, label='CAPE')
+        skew.ax.fill_betweenx(p_np, T_np, prof_np, where=prof_np < T_np,
+                              facecolor='blue', alpha=0.4, interpolate=True, zorder=5, label='CIN')
 
-        cond_cape = prof_np > T_np
-        cond_cin = prof_np < T_np
-        cond_capa_baixa = p_np >= p_3km
-        cond_capa_alta = p_np < p_3km
-
-        skew.ax.fill_betweenx(p_np, T_np, prof_np, where=cond_cape & cond_capa_baixa,
-                              facecolor='yellow', alpha=0.5, interpolate=True, zorder=5)
-        skew.ax.fill_betweenx(p_np, T_np, prof_np, where=cond_cape & cond_capa_alta,
-                              facecolor='#FFFACD', alpha=0.5, interpolate=True, zorder=5)
-
-        skew.ax.fill_betweenx(p_np, T_np, prof_np, where=cond_cin & cond_capa_baixa,
-                              facecolor='dimgray', alpha=0.5, interpolate=True, zorder=5)
-        skew.ax.fill_betweenx(p_np, T_np, prof_np, where=cond_cin & cond_capa_alta,
-                              facecolor='lightgray', alpha=0.5, interpolate=True, zorder=5)
-
-    # --- INICI DE LA CORRECCIÓ VISUAL FINAL I DEFINITIVA ---
-    # Dibuixem explícitament l'ascens inicial fins al LCL
-    if prof is not None:
-        lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
-        
-        mixing_ratio_sfc = mpcalc.mixing_ratio_from_relative_humidity(
-            p[0], T[0], mpcalc.relative_humidity_from_dewpoint(T[0], Td[0])
-        )
-
-        pressures_for_plot = np.linspace(p[0].m, lcl_p.m, 100) * units.hPa
-        
-        # --- LÍNIES CORREGIDES ---
-        # Creem un objecte Quantity que contingui una llista/array d'un element
-        t0_for_plot = units.Quantity([T[0].m], T[0].units)
-        mixing_ratio_for_plot = units.Quantity([mixing_ratio_sfc.m], mixing_ratio_sfc.units)
-
-        skew.plot_mixing_lines(mixing_ratio_for_plot, pressures_for_plot,
-                               color='darkgreen', linestyle='--', linewidth=2)
-        
-        skew.plot_dry_adiabats(t0_for_plot, pressures_for_plot,
-                               color='darkorange', linestyle='--', linewidth=2)
-    # --- FI DE LA CORRECCIÓ VISUAL FINAL I DEFINITIVA ---
-
-    # Perfils principals
+    # Perfils principals de l'atmosfera
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
     skew.plot(p, Td, 'purple', lw=2.5, label='Punt de Rosada')
+    
+    # --- INICI DE LA VISUALITZACIÓ EXPLÍCITA DE LA TRAJECTÒRIA ---
     if prof is not None:
+        # 1. Dibuixa la trajectòria completa de la parcel·la (ja calculada per MetPy)
+        #    Aquesta línia ja segueix l'adiabàtica seca i després la humida.
         skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la',
                   path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+        
+        # 2. Per a més claredat, superposem les línies inicials que l'usuari vol veure.
+        #    Això no canvia la trajectòria, només la ressalta.
+        lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
+        
+        # Puja per la línia de relació de barreja (mixing ratio) des del punt de rosada
+        skew.plot_mixing_lines(mpcalc.mixing_ratio(lcl_p, lcl_t), p, 
+                               color='green', linestyle='--', linewidth=1.5)
 
-    # Configuració final
+        # Puja per l'adiabàtica seca des de la temperatura
+        skew.plot_dry_adiabats(mpcalc.potential_temperature(p[0], T[0]), p,
+                               color='orange', linestyle='--', linewidth=1.5)
+    # --- FI DE LA VISUALITZACIÓ EXPLÍCITA ---
+
+    # Configuració final del gràfic
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
     skew.ax.set_ylim(1000, 100)
     skew.ax.set_xlim(-40, 40)
@@ -555,10 +528,13 @@ def crear_skewt(p, T, Td, u, v, heights, prof, params_calc, titol):
     skew.ax.set_xlabel("Temperatura (°C)")
     skew.ax.set_ylabel("Pressió (hPa)")
     skew.ax.grid(False)
-    skew.ax.legend()
+    
+    # Gestionar la llegenda per evitar duplicats
+    handles, labels = skew.ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    skew.ax.legend(by_label.values(), by_label.keys())
     
     return fig
-
 
 
 
