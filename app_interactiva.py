@@ -1470,7 +1470,19 @@ def determinar_emoji_temps(params, nivell_conv):
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
 
-    # --- 2. DIAGNÒSTIC ESPECÍFIC PER A NIMBOSTRATUS (ALTA PRIORITAT) ---
+    # --- 2. FACTOR D'ESFORÇ NECESSARI (basat en el CIN) ---
+    # A major CIN, més forçament (convergència) es necessita
+    esforç_necessari = 1.0
+    if cin < -100:
+        esforç_necessari = 3.0  # CIN fort → necessitem 3x més convergència
+    elif cin < -50:
+        esforç_necessari = 2.0  # CIN moderat → 2x més convergència
+    elif cin < -25:
+        esforç_necessari = 1.5  # CIN dèbil → 1.5x més convergència
+
+    conv_efectiva = conv * esforç_necessari
+
+    # --- 3. DIAGNÒSTIC ESPECÍFIC PER A NIMBOSTRATUS (ALTA PRIORITAT) ---
     if (pwat > 35 and cape < 200 and mlcape < 250 and li > 2 and
         abs(cin) < 50):
         if pwat > 50:
@@ -1480,7 +1492,7 @@ def determinar_emoji_temps(params, nivell_conv):
         else:
             return "🌧️", "Nimboestratus - Ruixats/Pluja Feble"
     
-    # --- 3. DIAGNÒSTIC PER A NÚVOLS BAIXOS I BOIRA ---
+    # --- 4. DIAGNÒSTIC PER A NÚVOLS BAIXOS I BOIRA ---
     if lcl_hgt < 100 and pwat > 20 and cape < 50 and cin > -25:
         if pwat > 28:
             return "🌫️", "Boira Densa (Visibilitat < 200m)"
@@ -1495,33 +1507,29 @@ def determinar_emoji_temps(params, nivell_conv):
         pwat > 20 and pwat < 35 and conv < 3):
         return "☁️", "Estratocúmulus - Cel Ennuvolat amb Estructures"
 
-    # --- 4. ALTCÚMULUS CASTELLANUS (ALTA PRIORITAT) ---
-    # Indicador d'inestabilitat en nivells mitjans - molt important!
+    # --- 5. ALTCÚMULUS CASTELLANUS ---
     if (2000 <= lcl_hgt < 5000 and pwat > 25 and 
         100 <= cape <= 500 and li < 2 and li > -3 and
-        conv > 2 and bwd_6km > 15):
-        # Diferenciem entre castellanus desenvolupats i incipients
-        if cape > 300 and conv > 4:
+        conv_efectiva > 2 and bwd_6km > 15):
+        if cape > 300 and conv_efectiva > 4:
             return "🌥️", "Altocúmulus Castellanus - Inestabilitat Mitjana"
         else:
             return "🌥️", "Altocúmulus Castellanus - Incipient"
     
-    # --- 5. DIAGNÒSTIC DE NÚVOLS MITJANS I ALTS ---
-    # Altocúmulus / Altostratus normals (sense desenvolupament vertical)
+    # --- 6. DIAGNÒSTIC DE NÚVOLS MITJANS I ALTS ---
     if 2000 <= lcl_hgt < 5000:
         if pwat > 25:
             return "🌥️", "Altostratus - Ennuvolament Mitjà"
         else:
             return "🌥️", "Altocúmulus - Núvols Mitjans"
     
-    # Cirrus / Cirrostratus
     if lcl_hgt >= 5000:
         if pwat > 20:
             return "🌥️", "Cirrostratus - Velat Alt"
         else:
             return "☀️", "Cirrus - Filaments Alts"
     
-    # --- 6. DIAGNÒSTIC CONVECTIU ---
+    # --- 7. DIAGNÒSTIC CONVECTIU (AMB FACTOR CIN) ---
     if (cape > 200 and li < 0) or mlcape > 250:
         
         if lfc_hgt > 3500:
@@ -1529,20 +1537,28 @@ def determinar_emoji_temps(params, nivell_conv):
         if cin < -150:
             return "🚫", "Inhibició Forta (CIN elevat)"
         
+        # Supercèl·lules - necessiten molt forçament si hi ha CIN
         if (cape > 1500 and bwd_6km > 25 and srh_1km > 150 and 
-            lcl_hgt < 1500 and lfc_hgt < 2500):
+            lcl_hgt < 1500 and lfc_hgt < 2500 and conv_efectiva > 8):
             if srh_1km > 250 and bwd_6km > 35:
                 return "🌪️", "Supercèl·lula - Alt Potencial Sever"
             else:
                 return "🌪️", "Supercèl·lula - Potencial Sever"
         
-        if (cape > 1000 and bwd_6km > 20 and conv > 5 and 
+        # Multicèl·lules - forçament moderat-alt
+        if (cape > 1000 and bwd_6km > 20 and conv_efectiva > 6 and 
             lcl_hgt < 1800 and lfc_hgt < 3000):
             return "⛈️", "Multicèl·lules / Línia de Tempesta"
         
+        # Tempestes aïllades - forçament variable segons CIN
         gap_lcl_lfc = lfc_hgt - lcl_hgt
-        iniciacio_facil = (gap_lcl_lfc < 1000 and cin > -50)
-        disparador_actiu = (conv > 4) or (conv > 2 and iniciacio_facil)
+        iniciacio_facil = (gap_lcl_lfc < 1000 and cin > -25)
+        
+        # Més forçament necessari quan hi ha més CIN
+        if iniciacio_facil:
+            disparador_actiu = conv_efectiva > 3
+        else:
+            disparador_actiu = conv_efectiva > 5
         
         if disparador_actiu:
             if cape > 600:
@@ -1550,22 +1566,22 @@ def determinar_emoji_temps(params, nivell_conv):
             elif cape > 300:
                 return "☁️", "Cúmulus Congestus - Desenvolupament"
         
-        return "🌤️", "Inestabilitat Capada - Possibles Desenvolupaments"
+        return "🌤️", "Inestabilitat Capada - Forçament Insuficient"
     
-    # --- 7. CONVECCIÓ DÈBIL O AILLADA ---
+    # --- 8. CONVECCIÓ DÈBIL O AILLADA ---
     if 50 < cape <= 200:
-        if conv > 3:
+        if conv_efectiva > 3:
             return "🌤️", "Cúmulus Humilis - Convecció Dèbil"
     
-    # --- 8. CONDICIONS ESTABLES / BON TEMPS ---
+    # --- 9. CONDICIONS ESTABLES / BON TEMPS ---
     if cape < 50 and lcl_hgt > 1000:
         if pwat < 20:
             return "☀️", "Cel Serè - Anticiclònic"
         else:
             return "🌤️", "Cel Poc Ennuvolat - Estable"
     
-    # --- 9. CAS PER DEFECTE ---
-    return "❓", "Patró No Classificat"
+    # --- 10. CAS PER DEFECTE ---
+    return "❓", f"Patró No Classificat (CIN: {cin} J/kg)"
 
 
 
