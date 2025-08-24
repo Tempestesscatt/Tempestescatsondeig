@@ -1240,6 +1240,39 @@ def hide_streamlit_style():
         """
     st.markdown(hide_style, unsafe_allow_html=True)
 
+def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi):
+    """
+    Crea la interfície d'usuari per a la pestanya de l'assistent d'IA.
+    Rep una pre-anàlisi per guiar l'IA.
+    """
+    st.markdown("#### Assistent d'Anàlisi (IA Gemini)")
+    st.info("Fes una pregunta en llenguatge natural. L'assistent utilitzarà una pre-anàlisi automàtica per donar-te una resposta raonada i de confiança.")
+
+    if "messages" not in st.session_state: st.session_state.messages = []
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]): st.markdown(message["content"])
+
+    if prompt := st.chat_input("Fes una pregunta sobre el sondeig..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"): st.markdown(prompt)
+        with st.chat_message("assistant"):
+            try:
+                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                # Passem la pre-anàlisi al generador de prompts
+                prompt_complet = generar_prompt_per_ia(params_calc, prompt, poble_sel, pre_analisi)
+                
+                with st.expander("Veure el prompt enviat a la IA (amb la pre-anàlisi)"):
+                    st.text(prompt_complet)
+                
+                response = model.generate_content(prompt_complet, stream=True)
+                resposta_completa = st.write_stream(response)
+                st.session_state.messages.append({"role": "assistant", "content": resposta_completa})
+            except Exception as e:
+                st.error(f"Hi ha hagut un error en contactar amb l'assistent d'IA: {e}")
+                
+
 def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi):
     """
     Genera el prompt definitiu (v4), amb un format de sortida estricte per
@@ -1635,18 +1668,13 @@ def run_catalunya_app():
             params_calc = data_tuple[1] if data_tuple else {}
             if poble_sel in pre_convergencies: params_calc[f'CONV_{nivell_sel}hPa'] = pre_convergencies[poble_sel]
             
-            # --- INICI DE LA CORRECCIÓ ---
-            # Calculem la pre-anàlisi aquí, ja que tant la pestanya vertical com la de l'IA la necessiten.
             analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
             
             if selected_tab == "Anàlisi Vertical":
-                # La pestanya vertical només necessita els paràmetres, no la pre-anàlisi completa.
                 ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str)
             
             elif selected_tab == "💬 Assistent IA":
-                # Aquí és on cridem a la funció de l'IA, passant-li l'argument que faltava.
                 ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps)
-            # --- FI DE LA CORRECCIÓ ---
 
     elif selected_tab == "Estacions Meteorològiques":
         ui_pestanya_estacions_meteorologiques()
