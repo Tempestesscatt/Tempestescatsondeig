@@ -666,8 +666,9 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
 
 def analitzar_amenaces_especifiques(params):
     """
-    Analitza paràmetres específics per determinar el potencial de calamarsa,
+    Analitza paràmetres visibles per determinar el potencial de calamarsa,
     esclafits i activitat elèctrica, retornant un text i un color per a la UI.
+    Versió 2.0 - Independent de MLCAPE i DCAPE.
     """
     resultats = {
         'calamarsa': {'text': 'Nul·la', 'color': '#808080'},
@@ -675,8 +676,7 @@ def analitzar_amenaces_especifiques(params):
         'llamps': {'text': 'Nul·la', 'color': '#808080'}
     }
 
-    # 1. Anàlisi de Calamarsa Gran (>2cm)
-    # Basat principalment en MAX_UPDRAFT i la isozero (FREEZING_LVL_HGT)
+    # 1. Anàlisi de Calamarsa Gran (>2cm) - (Sense canvis, ja depèn de paràmetres visibles)
     updraft = params.get('MAX_UPDRAFT', 0) or 0
     isozero = params.get('FREEZING_LVL_HGT', 5000) or 5000
     if updraft > 55 or (updraft > 45 and isozero < 3500):
@@ -688,29 +688,29 @@ def analitzar_amenaces_especifiques(params):
     elif updraft > 15:
         resultats['calamarsa'] = {'text': 'Baixa', 'color': '#2ca02c'}
 
-    # 2. Anàlisi d'Esclafits (Ventades fortes)
-    # Basat principalment en DCAPE
-    dcape = params.get('DCAPE', 0) or 0
-    if dcape > 1200:
-        resultats['esclafits'] = {'text': 'Molt Alta', 'color': '#dc3545'}
-    elif dcape > 900:
+    # 2. Anàlisi d'Esclafits (Ventades fortes) - *** LÒGICA NOVA ***
+    # Basat en el Gradient Tèrmic a nivells baixos (LR 0-3km) i la humitat (PWAT).
+    # Un ambient sec i amb refredament ràpid afavoreix els esclafits.
+    lr_0_3km = params.get('LR_0-3km', 0) or 0
+    pwat = params.get('PWAT', 100) or 100
+    if lr_0_3km > 8.0 and pwat < 35:
         resultats['esclafits'] = {'text': 'Alta', 'color': '#fd7e14'}
-    elif dcape > 600:
+    elif lr_0_3km > 7.0 and pwat < 40:
         resultats['esclafits'] = {'text': 'Moderada', 'color': '#ffc107'}
-    elif dcape > 300:
+    elif lr_0_3km > 6.5:
         resultats['esclafits'] = {'text': 'Baixa', 'color': '#2ca02c'}
 
-    # 3. Anàlisi d'Activitat Elèctrica (Llamps)
-    # Basat en l'energia (MLCAPE) i l'alçada del núvol (EL_Hgt)
-    mlcape = params.get('MLCAPE', 0) or 0
+    # 3. Anàlisi d'Activitat Elèctrica (Llamps) - *** LÒGICA NOVA ***
+    # Basat en la inestabilitat (LI) i la profunditat de la tempesta (EL_Hgt).
+    li = params.get('LI', 5) or 5
     el_hgt = params.get('EL_Hgt', 0) or 0
-    if mlcape > 2000 or (mlcape > 1000 and el_hgt > 12000):
+    if li < -7 or (li < -5 and el_hgt > 12000):
         resultats['llamps'] = {'text': 'Extrema', 'color': '#dc3545'}
-    elif mlcape > 1200 or (mlcape > 700 and el_hgt > 10000):
+    elif li < -4 or (li < -2 and el_hgt > 10000):
         resultats['llamps'] = {'text': 'Alta', 'color': '#fd7e14'}
-    elif mlcape > 500:
+    elif li < -1:
         resultats['llamps'] = {'text': 'Moderada', 'color': '#ffc107'}
-    elif mlcape > 150:
+    elif params.get('MUCAPE', 0) > 150: # Si hi ha una mínima inestabilitat
         resultats['llamps'] = {'text': 'Baixa', 'color': '#2ca02c'}
         
     return resultats
@@ -769,16 +769,15 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual)
         'SRH_0-1km': "Helicitat Relativa a la Tempesta (SRH) entre 0 i 1 km. Mesura el potencial de rotació a nivells baixos que pot ser 'ingerit' per una tempesta. Clau per a la formació de tornados.",
         'SRH_0-3km': "Helicitat Relativa a la Tempesta (SRH) entre 0 i 3 km. Mesura el potencial de rotació del mesocicló d'una supercèl·lula.",
         'MAX_UPDRAFT': "Estimació de la velocitat màxima del corrent ascendent dins la tempesta, calculada a partir del CAPE. És un indicador directe del potencial de calamarsa.",
-        'AMENACA_CALAMARSA': "Probabilitat de calamarsa de mida significativa (>2 cm). Es basa en una combinació de la potència del corrent ascendent (MAX_UPDRAFT) i l'alçada de la isoterma de 0°C (FREEZING_LVL_HGT). Corrents molt forts i nivells de congelació baixos augmenten dràsticament aquest risc.",
-        'AMENACA_ESCLAFITS': "Probabilitat de forts corrents descendents (esclafits o 'downbursts') que causen danys per vent. Es basa gairebé exclusivament en el DCAPE (Downdraft CAPE), que mesura l'energia disponible per a aquests fenòmens. Valors de DCAPE > 1000 J/kg són molt preocupants.",
-        'AMENACA_LLAMPS': "Potencial d'activitat elèctrica. S'estima a partir de l'energia de la tempesta (MLCAPE) i la seva profunditat (alçada del cim, EL_Hgt). Tempestes més energètiques i profundes generen molta més separació de càrrega i, per tant, més llamps."
+        'AMENACA_CALAMARSA': "Probabilitat de calamarsa de mida significativa (>2 cm). Es basa en una combinació de la potència del corrent ascendent (MAX_UPDRAFT) i l'alçada de la isoterma de 0°C. Corrents molt forts i nivells de congelació baixos augmenten dràsticament aquest risc.",
+        'AMENACA_ESCLAFITS': "Probabilitat de forts corrents descendents (esclafits o 'downbursts'). S'estima a partir del Gradient Tèrmic (LR 0-3km) i la humitat disponible (PWAT). Un refredament ràpid de l'aire amb l'alçada (gradient alt) en un entorn no gaire humit afavoreix aquest fenomen.",
+        'AMENACA_LLAMPS': "Potencial d'activitat elèctrica. S'estima a partir de la inestabilitat (Índex d'Elevació - LI) i la profunditat de la tempesta (Cim - EL_Hgt). Tempestes molt inestables (LI molt negatiu) i profundes generen molta més separació de càrrega i, per tant, més llamps."
     }
     
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
         color = "#FFFFFF" # Color per defecte
         if pd.notna(value):
             if 'CONV' in param_key:
-                # Llindars per la convergència: <5 (gris), 5-15 (verd), 15-30 (groc), >30 (taronja), >40 (vermell)
                 thresholds = [5, 15, 30, 40]
                 colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
                 color = colors[np.searchsorted(thresholds, value)]
@@ -824,7 +823,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual)
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE', tooltip_text=TOOLTIPS.get('SBCAPE'))
     with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
-    # --- WIDGET DE MLCAPE CANVIAT PER CONVERGÈNCIA ---
     with cols[2]: 
         conv_key = f'CONV_{nivell_conv}hPa'
         styled_metric("Convergència", params.get(conv_key, np.nan), "10⁻⁵ s⁻¹", conv_key, precision=1, tooltip_text=TOOLTIPS.get('CONVERGENCIA'))
@@ -832,7 +830,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual)
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
-    # --- WIDGET DE MLCIN CANVIAT PER COMPONENT MARÍTIMA ---
     with cols[2]:
         maritim_analysis = analitzar_component_maritima(sounding_data)
         styled_qualitative("Comp. Marítima", maritim_analysis, tooltip_text=TOOLTIPS.get('COMPONENT_MARITIMA'))
@@ -860,19 +857,9 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual)
     cols = st.columns(3)
     with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km', tooltip_text=TOOLTIPS.get('BWD_0-6km'))
     with cols[1]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km', tooltip_text=TOOLTIPS.get('BWD_0-1km'))
-    with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
-    
-    cols = st.columns(3)
-    with cols[0]: 
-        srh1_value = params.get('SRH_0-1km', np.nan)
-        if hasattr(srh1_value, '__len__') and not isinstance(srh1_value, str) and len(srh1_value) > 0: srh1_value = srh1_value[0]
-        styled_metric("SRH 0-1km", srh1_value, "m²/s²", 'SRH_0-1km', tooltip_text=TOOLTIPS.get('SRH_0-1km'))
-    with cols[1]: 
-        srh3_value = params.get('SRH_0-3km', np.nan)
-        if hasattr(srh3_value, '__len__') and not isinstance(srh3_value, str) and len(srh3_value) > 0: srh3_value = srh3_value[0]
-        styled_metric("SRH 0-3km", srh3_value, "m²/s²", 'SRH_0-3km', tooltip_text=TOOLTIPS.get('SRH_0-3km'))
+    # --- AFEGIM EL GRADIENT TÈRMIC (LR 0-3KM) A LA VISTA PRINCIPAL ---
     with cols[2]: 
-        styled_metric("UPDRAFT", params.get('MAX_UPDRAFT', np.nan), "m/s", 'MAX_UPDRAFT', precision=1, tooltip_text=TOOLTIPS.get('MAX_UPDRAFT'))
+        styled_metric("LR 0-3km", params.get('LR_0-3km', np.nan), "°C/km", 'LR_0-3km', precision=1, tooltip_text=TOOLTIPS.get('LR_0-3km'))
 
     st.markdown("##### Potencial d'Amenaces Severes")
     amenaces = analitzar_amenaces_especifiques(params)
