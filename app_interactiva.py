@@ -712,6 +712,7 @@ def calcular_convergencia_per_ciutats(map_data):
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig_cat(lat, lon, hourly_index):
     try:
+        mostrar_barra_carrega()
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS_AROME]
         params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_seamless", "forecast_days": 4}
@@ -737,7 +738,10 @@ def carregar_dades_sondeig_cat(lat, lon, hourly_index):
                 u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m); h_profile.append(p_data["H"][i])
         
         return processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
-    except Exception as e: return None, f"Error en carregar dades del sondeig AROME: {e}"
+    except Exception as e: 
+        return None, f"Error en carregar dades del sondeig AROME: {e}"
+    finally:
+        amagar_barra_carrega()
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base_cat(variables, hourly_index):
@@ -759,7 +763,7 @@ def carregar_dades_mapa_base_cat(variables, hourly_index):
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_cat(nivell, hourly_index):
     try:
-        # Revertim a la versió original, sense demanar 'cape'.
+        mostrar_barra_carrega()
         if nivell >= 950:
             variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
             map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
@@ -776,7 +780,10 @@ def carregar_dades_mapa_cat(nivell, hourly_index):
         map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
         map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
         return map_data_raw, None
-    except Exception as e: return None, f"Error en processar dades del mapa: {e}"
+    except Exception as e:
+        return None, f"Error en processar dades del mapa: {e}"
+    finally:
+        amagar_barra_carrega()
         
 @st.cache_data(ttl=3600)
 def obtenir_ciutats_actives(hourly_index):
@@ -849,9 +856,9 @@ def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str
 
 # --- Funcions Específiques per a Tornado Alley ---
 
-@st.cache_data(ttl=3600)
 def carregar_dades_sondeig_usa(lat, lon, hourly_index):
     try:
+        mostrar_barra_carrega()
         h_base = ["temperature_2m", "relative_humidity_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS_GFS]
         params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "gfs_seamless", "forecast_days": 3}
@@ -860,7 +867,6 @@ def carregar_dades_sondeig_usa(lat, lon, hourly_index):
         sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i, v in enumerate(h_base)}
         if any(np.isnan(val) for val in sfc_data.values()): return None, "Dades de superfície invàlides."
 
-        # Calculem el punt de rosada a partir de la temperatura i la humitat relativa
         sfc_temp_C = sfc_data["temperature_2m"] * units.degC
         sfc_rh_percent = sfc_data["relative_humidity_2m"] * units.percent
         sfc_dew_point = mpcalc.dewpoint_from_relative_humidity(sfc_temp_C, sfc_rh_percent).m
@@ -884,27 +890,26 @@ def carregar_dades_sondeig_usa(lat, lon, hourly_index):
         return processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
     except Exception as e:
         return None, f"Error en carregar dades del sondeig GFS: {e}"
+    finally:
+        amagar_barra_carrega()
 
 @st.cache_data(ttl=3600)
-def carregar_dades_mapa_base_usa(variables, hourly_index):
+def carregar_dades_mapa_usa(nivell, hourly_index):
     try:
-        lats, lons = np.linspace(MAP_EXTENT_USA[2], MAP_EXTENT_USA[3], 10), np.linspace(MAP_EXTENT_USA[0], MAP_EXTENT_USA[1], 10)
-        lon_grid, lat_grid = np.meshgrid(lons, lats)
-        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "gfs_seamless", "forecast_days": 3}
-        responses = openmeteo.weather_api(API_URL_USA, params=params)
-        output = {var: [] for var in ["lats", "lons"] + variables}
-        for r in responses:
-            if not r.Hourly(): continue
-            hourly_vars = r.Hourly()
-            vals = [hourly_vars.Variables(i).ValuesAsNumpy() for i in range(len(variables))]
-            if any(hourly_index >= len(v) for v in vals): continue
-            current_vals = [v[hourly_index] for v in vals]
-            if not any(np.isnan(v) for v in current_vals):
-                output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
-                for i, var in enumerate(variables): output[var].append(current_vals[i])
-        if not output["lats"]: return None, "No s'han rebut dades vàlides del GFS."
-        return output, None
-    except Exception as e: return None, f"Error en carregar dades del mapa GFS: {e}"
+        mostrar_barra_carrega()
+        variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+        map_data_raw, error = carregar_dades_mapa_base_usa(variables, hourly_index)
+        if error: return None, error
+        temp_data = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
+        rh_data = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
+        map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
+        map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
+        map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
+        return map_data_raw, None
+    except Exception as e:
+        return None, f"Error en processar dades del mapa GFS: {e}"
+    finally:
+        amagar_barra_carrega()
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_usa(nivell, hourly_index):
@@ -919,6 +924,134 @@ def carregar_dades_mapa_usa(nivell, hourly_index):
         map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
         return map_data_raw, None
     except Exception as e: return None, f"Error en processar dades del mapa GFS: {e}"
+
+def mostrar_barra_carrega():
+    """Mostra una barra de càrrega animada al centre de la pantalla"""
+    css_carrega = """
+    <style>
+    .loading-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        flex-direction: column;
+    }
+    
+    .meteo-loader {
+        width: 80px;
+        height: 80px;
+        position: relative;
+    }
+    
+    .meteo-loader:before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border: 4px solid transparent;
+        border-top: 4px solid #FF6B6B;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+    
+    .meteo-loader:after {
+        content: '';
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        width: 60px;
+        height: 60px;
+        border: 4px solid transparent;
+        border-bottom: 4px solid #4ECDC4;
+        border-radius: 50%;
+        animation: spinReverse 1.5s linear infinite;
+    }
+    
+    .loading-text {
+        color: white;
+        margin-top: 20px;
+        font-size: 18px;
+        font-weight: bold;
+        text-align: center;
+        text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+    }
+    
+    .weather-icon {
+        font-size: 30px;
+        margin-bottom: 10px;
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    @keyframes spinReverse {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(-360deg); }
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.7; transform: scale(1.1); }
+    }
+    
+    .progress-bar {
+        width: 200px;
+        height: 6px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 3px;
+        margin-top: 15px;
+        overflow: hidden;
+    }
+    
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #FF6B6B, #4ECDC4);
+        border-radius: 3px;
+        animation: progress 2s ease-in-out infinite;
+    }
+    
+    @keyframes progress {
+        0% { width: 0%; }
+        50% { width: 70%; }
+        100% { width: 100%; }
+    }
+    </style>
+    """
+    
+    html_carrega = """
+    <div class="loading-container">
+        <div class="weather-icon">⛈️</div>
+        <div class="meteo-loader"></div>
+        <div class="loading-text">Analitzant dades meteorològiques</div>
+        <div class="progress-bar"><div class="progress-fill"></div></div>
+    </div>
+    """
+    
+    st.markdown(css_carrega, unsafe_allow_html=True)
+    st.markdown(html_carrega, unsafe_allow_html=True)
+
+def amagar_barra_carrega():
+    """Amaga la barra de càrrega"""
+    js = """
+    <script>
+    // Amagar qualsevol barra de càrrega existent
+    const loaders = document.querySelectorAll('.loading-container');
+    loaders.forEach(loader => loader.remove());
+    </script>
+    """
+    st.components.v1.html(js, height=0)
+    
         
 def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     # 1. Crear el mapa base amb la projecció correcta per als EUA
@@ -1171,29 +1304,32 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                  
                  
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
-    st.markdown("#### Mapes de Pronòstic (Model AROME)")
-    col_capa, col_zoom = st.columns(2)
-    with col_capa:
-        # ELIMINAT: El selector de nivell ja no és aquí.
-        mapa_sel = st.selectbox("Selecciona la capa del mapa:", ["Anàlisi de Vent i Convergència", "Vent a 700hPa", "Vent a 300hPa"], key="map_cat")
-    with col_zoom: zoom_sel = st.selectbox("Nivell de Zoom:", options=list(MAP_ZOOM_LEVELS_CAT.keys()), key="zoom_cat")
-    selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
-    
-    if "Convergència" in mapa_sel:
-        # MODIFICAT: Utilitzem el 'nivell_sel' que rebem com a argument.
-        with st.spinner(f"Carregant dades del mapa AROME a {nivell_sel}hPa..."): 
+    try:
+        mostrar_barra_carrega()
+        st.markdown("#### Mapes de Pronòstic (Model AROME)")
+        col_capa, col_zoom = st.columns(2)
+        with col_capa:
+            mapa_sel = st.selectbox("Selecciona la capa del mapa:", ["Anàlisi de Vent i Convergència", "Vent a 700hPa", "Vent a 300hPa"], key="map_cat")
+        with col_zoom: 
+            zoom_sel = st.selectbox("Nivell de Zoom:", options=list(MAP_ZOOM_LEVELS_CAT.keys()), key="zoom_cat")
+        selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
+        
+        if "Convergència" in mapa_sel:
             map_data, error_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
-        if error_map: st.error(f"Error en carregar el mapa: {error_map}")
-        elif map_data:
-            fig = crear_mapa_forecast_combinat_cat(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str, selected_extent)
-            st.pyplot(fig, use_container_width=True); plt.close(fig)
-    else:
-        nivell = 700 if "700" in mapa_sel else 300; variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-        with st.spinner(f"Carregant vent a {nivell}hPa..."): map_data, error_map = carregar_dades_mapa_base_cat(variables, hourly_index_sel)
-        if error_map: st.error(f"Error: {error_map}")
-        elif map_data: 
-            fig = crear_mapa_vents_cat(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str, selected_extent)
-            st.pyplot(fig, use_container_width=True); plt.close(fig)
+            if error_map: st.error(f"Error en carregar el mapa: {error_map}")
+            elif map_data:
+                fig = crear_mapa_forecast_combinat_cat(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str, selected_extent)
+                st.pyplot(fig, use_container_width=True); plt.close(fig)
+        else:
+            nivell = 700 if "700" in mapa_sel else 300
+            variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            map_data, error_map = carregar_dades_mapa_base_cat(variables, hourly_index_sel)
+            if error_map: st.error(f"Error: {error_map}")
+            elif map_data: 
+                fig = crear_mapa_vents_cat(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str, selected_extent)
+                st.pyplot(fig, use_container_width=True); plt.close(fig)
+    finally:
+        amagar_barra_carrega()
 
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual):
     if data_tuple:
@@ -1217,21 +1353,21 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
     
 
 def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel):
-    st.markdown("#### Mapes de Pronòstic (Model GFS)")
-    
-    # ELIMINAT: El selector de nivell ja no és aquí, el rebem com a 'nivell_sel'.
-    # nivell_sel = st.selectbox(...)
-
-    with st.spinner(f"Carregant dades del mapa GFS a {nivell_sel}hPa..."):
-        map_data, error_map = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
-    
-    if error_map:
-        st.error(f"Error en carregar el mapa: {error_map}")
-    elif map_data:
-        fig = crear_mapa_forecast_combinat_usa(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str)
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
-
+    try:
+        mostrar_barra_carrega()
+        st.markdown("#### Mapes de Pronòstic (Model GFS)")
+        with st.spinner(f"Carregant dades del mapa GFS a {nivell_sel}hPa..."):
+            map_data, error_map = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
+        
+        if error_map:
+            st.error(f"Error en carregar el mapa: {error_map}")
+        elif map_data:
+            fig = crear_mapa_forecast_combinat_usa(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str)
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
+    finally:
+        amagar_barra_carrega()
+        
 def ui_pestanya_satelit_usa():
     st.markdown("#### Imatge de Satèl·lit GOES-East (Temps Real)")
     
