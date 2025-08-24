@@ -886,19 +886,25 @@ def carregar_dades_sondeig_usa(lat, lon, hourly_index):
         return None, f"Error en carregar dades del sondeig GFS: {e}"
 
 @st.cache_data(ttl=3600)
-def carregar_dades_mapa_usa(nivell, hourly_index):
+def carregar_dades_mapa_base_usa(variables, hourly_index):
     try:
-        variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-        map_data_raw, error = carregar_dades_mapa_base_usa(variables, hourly_index)
-        if error: return None, error
-        temp_data = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
-        rh_data = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
-        map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
-        map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
-        map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
-        return map_data_raw, None
-    except Exception as e:
-        return None, f"Error en processar dades del mapa GFS: {e}"
+        lats, lons = np.linspace(MAP_EXTENT_USA[2], MAP_EXTENT_USA[3], 12), np.linspace(MAP_EXTENT_USA[0], MAP_EXTENT_USA[1], 12)
+        lon_grid, lat_grid = np.meshgrid(lons, lats)
+        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "gfs_seamless", "forecast_days": 3}
+        responses = openmeteo.weather_api(API_URL_USA, params=params)
+        output = {var: [] for var in ["lats", "lons"] + variables}
+        for r in responses:
+            vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
+            if not any(np.isnan(v) for v in vals):
+                output["lats"].append(r.Latitude())
+                output["lons"].append(r.Longitude())
+                for i, var in enumerate(variables): 
+                    output[var].append(vals[i])
+        if not output["lats"]: 
+            return None, "No s'han rebut dades vàlides."
+        return output, None
+    except Exception as e: 
+        return None, f"Error en carregar dades del mapa USA: {e}"
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_usa(nivell, hourly_index):
@@ -912,7 +918,8 @@ def carregar_dades_mapa_usa(nivell, hourly_index):
         map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
         map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
         return map_data_raw, None
-    except Exception as e: return None, f"Error en processar dades del mapa GFS: {e}"
+    except Exception as e:
+        return None, f"Error en processar dades del mapa GFS: {e}"
 
 
         
