@@ -65,6 +65,11 @@ CIUTATS_CATALUNYA = {
     'Valls': {'lat': 41.2872, 'lon': 1.2505}, 'Vic': {'lat': 41.9301, 'lon': 2.2545},
     'Vielha': {'lat': 42.7027, 'lon': 0.7966}, 'Vilafranca del Penedès': {'lat': 41.3453, 'lon': 1.6995},
     'Vilanova i la Geltrú': {'lat': 41.2241, 'lon': 1.7252},
+    
+    # --- NOUS SONDEJOS MARINS AFEGITS ---
+    'Costes de Girona (Mar)': {'lat': 42.05, 'lon': 3.55},      # <-- NOU SONDEIG MARÍ
+    'Litoral Barceloní (Mar)': {'lat': 41.30, 'lon': 2.50},    # <-- NOU SONDEIG MARÍ
+    'Aigües de Tarragona (Mar)': {'lat': 40.90, 'lon': 1.65},  # <-- NOU SONDEIG MARÍ
 }
 CIUTATS_CONVIDAT = {
     'Barcelona': CIUTATS_CATALUNYA['Barcelona'], 'Girona': CIUTATS_CATALUNYA['Girona'],
