@@ -487,11 +487,13 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
     ax_hodo.set_xlabel('U-Component (nusos)'); ax_hodo.set_ylabel('V-Component (nusos)')
     
-    # --- PANELL DE PARÀMETRES (VERSIÓ ANTIGA RESTAURADA) ---
+    # --- PANELL DE PARÀMETRES ---
     ax_params.axis('off')
     def degrees_to_cardinal_ca(d):
-        dirs = ["Nord", "N-NE", "Nord-est", "E-NE", "Est", "E-SE", "Sud-est", "S-SE", "Sud", "S-SO", "Sud-oest", "O-SO", "Oest", "O-NO", "Nord-oest", "N-NO"]
+        # LLISTA DE DIRECCIONS COMPLETA
+        dirs = ["Nord", "Nord-nord-est", "Nord-est", "Est-nord-est", "Est", "Est-sud-est", "Sud-est", "Sud-sud-est", "Sud", "Sud-sud-oest", "Sud-oest", "Oest-sud-oest", "Oest", "Oest-nord-oest", "Nord-oest", "Nord-nord-oest"]
         return dirs[int(round(d / 22.5)) % 16]
+    
     def get_color(value, thresholds):
         if pd.isna(value): return "grey"
         colors = ["grey", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
@@ -503,10 +505,11 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
     y = 0.95
     
+    # DICCIONARI D'ETIQUETES COMPLET
     motion_data = {
-        'MD': params_calc.get('RM'), 
-        'ML': params_calc.get('LM'), 
-        'VM (0-6 km)': params_calc.get('Mean_Wind')
+        'Dret': params_calc.get('RM'), 
+        'Esquerra': params_calc.get('LM'), 
+        'Va cap a': params_calc.get('Mean_Wind')
     }
     
     ax_params.text(0, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
@@ -542,7 +545,6 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         y-=0.07
         
     return fig
-
 
 
         
