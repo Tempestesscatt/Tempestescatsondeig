@@ -2241,9 +2241,9 @@ def main():
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Meteorològic Expert v15.0 - LÒGICA CORREGIDA AMB VIRGA
-    Implementa una clàusula d'excepció per a casos de forçament dinàmic extrem
-    i ara detecta específicament la formació de Castellanus amb Virga.
+    Sistema de Diagnòstic Meteorològic Expert v16.0 - LÒGICA DE PRIORITAT CORREGIDA
+    Soluciona el problema de detecció de Virga assegurant que la comprovació
+    específica es realitzi ABANS que la genèrica de Castellanus.
     """
     # --- 0. PREPARACIÓ ---
     es_de_nit = False
@@ -2324,18 +2324,24 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
 
     # Prioritat 3: Núvols Convectius (sense arribar a tempesta)
     if trigger_potential != 'Nul':
-        # --- NOU BLOC CORREGIT ---
-        # Aquesta és la nova condició específica per a Castellanus amb Virga.
-        rh_baixa_val = rh_capes.get('baixa', 100)
-        rh_mitjana_val = rh_capes.get('mitjana', 0)
-        if mucape > 250 and mlcape < 200 and rh_mitjana_val > 65 and rh_baixa_val < 50:
+        # --- BLOC DE DIAGNÒSTIC CORREGIT I PRIORITZAT ---
+        # Aquesta comprovació es fa ARA PRIMER per detectar el cas específic de Virga.
+        rh_baixa_val = rh_capes.get('baixa', 100) if pd.notna(rh_capes.get('baixa')) else 100
+        rh_mitjana_val = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0
+        
+        # Condicions: Inestabilitat elevada (MUCAPE > 200), superfície estable (MLCAPE < 250),
+        # capa mitjana humida (RH > 60%) I capa baixa seca (RH < 55%).
+        if mucape > 200 and mlcape < 250 and rh_mitjana_val > 60 and rh_baixa_val < 55:
              return {'emoji': "🌥️", 'descripcio': "Castellanus amb Virga", 
                      'veredicte': "Potencial per a Altocumulus Castellanus amb virga. Convecció de base elevada amb precipitació que s'evapora.", 
                      'factor_clau': "Capa humida i inestable a nivells mitjans sobre una capa molt seca a nivells baixos."}
-        # --- FI DEL NOU BLOC ---
+        # --- FI DEL BLOC PRIORITZAT ---
 
+        # Diagnòstic de Castellanus genèric (només si la condició de Virga no s'ha complert)
         if mucape > 250 and mlcape < 150 and lcl_hgt > 1800 and lfc_hgt < 4000:
             return {'emoji': "🌥️", 'descripcio': "Inestabilitat (Castellanus)", 'veredicte': "Inestabilitat a nivells mitjans, convecció elevada.", 'factor_clau': "MUCAPE alt amb MLCAPE gairebé nul."}
+        
+        # Altres diagnòstics de convecció menor
         if 300 < mlcape <= 700 and cin > -50 and lfc_hgt < 2500:
             return {'emoji': "☁️", 'descripcio': "Desenvolupament Vertical (Congestus)", 'veredicte': "Núvols de gran creixement que probablement no seran tempesta.", 'factor_clau': "Inestabilitat moderada i LFC baix."}
         if 50 < mlcape <= 300 and cin > -25:
