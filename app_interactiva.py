@@ -314,9 +314,8 @@ def calcular_li_manual(p, T, prof):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Processa les dades de sondeig brutes per calcular un conjunt complet de paràmetres
-    termodinàmics i cinemàtics, incloent paràmetres de capa efectiva.
-    ARA TAMBÉ CALCULA LA HUMITAT RELATIVA PER CAPES.
+    Versió Ultra-Avançada. Processa les dades de sondeig i calcula un conjunt
+    exhaustiu de paràmetres de temps sever, incloent ARA el Nivell d'Equilibri (EL).
     """
     # --- 1. PREPARACIÓ I NETEJA DE DADES ---
     if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
@@ -330,21 +329,27 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
     params_calc = {}; prof = None; heights_agl = heights - heights[0]
 
-    # --- NOU: CÀLCUL D'HUMITAT RELATIVA PER CAPES ---
+    # Càlculs bàsics inicials
     rh = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
-    rh_capes = {
+    params_calc['RH_CAPES'] = {
         'baixa': np.mean(rh[(p.m <= 1000) & (p.m > 850)]),
         'mitjana': np.mean(rh[(p.m <= 850) & (p.m > 500)]),
         'alta': np.mean(rh[(p.m <= 500) & (p.m > 250)])
     }
-    params_calc['RH_CAPES'] = rh_capes
+    try:
+        fl_p, fl_h = mpcalc.freezing_level(p, T, heights)
+        params_calc['FREEZING_LVL_HGT'] = float(fl_h[0].to('m').m)
+    except: params_calc['FREEZING_LVL_HGT'] = np.nan
 
-    # --- 2. CÀLCULS TERMODINÀMICS (sense canvis) ---
+    # --- 2. CÀLCULS TERMODINÀMICS (AMB EL AFEGIT) ---
     with parcel_lock:
-        try: prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
-        except Exception: return None, "Error crític en el perfil de la parcel·la."
+        try: 
+            ml_p, ml_t, ml_td, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
+        except Exception: 
+            ml_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
+
         try:
-            sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
+            sbcape, sbcin = mpcalc.cape_cin(p, T, Td, mpcalc.parcel_profile(p, T[0], Td[0]).to('degC'))
             params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m)
             params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if sbcape.m > 0 else 0.0
         except: params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
@@ -357,23 +362,31 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
         except: params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
         try:
-            li = mpcalc.lifted_index(p, T, prof)
+            li = mpcalc.lifted_index(p, T, ml_prof)
             params_calc['LI'] = float(li.m)
         except: params_calc['LI'] = np.nan
         try:
-            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0])
+            lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
             params_calc['LCL_p'] = float(lcl_p.m); params_calc['LCL_Hgt'] = float(np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1]))
         except: params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
         try:
-            lfc_p, _ = mpcalc.lfc(p, T, Td, prof)
+            lfc_p, lfc_t = mpcalc.lfc(p, T, Td, ml_prof)
             params_calc['LFC_p'] = float(lfc_p.m); params_calc['LFC_Hgt'] = float(np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1]))
         except: params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
+        
+        try:
+            el_p, el_t = mpcalc.el(p, T, Td, ml_prof)
+            params_calc['EL_p'] = float(el_p.m)
+            params_calc['EL_Hgt'] = float(np.interp(el_p.m, p.m[::-1], heights_agl.m[::-1]))
+        except: 
+            params_calc.update({'EL_p': np.nan, 'EL_Hgt': np.nan})
+
         try:
             pwat = mpcalc.precipitable_water(p, Td)
             params_calc['PWAT'] = float(pwat.to('mm').m)
         except: params_calc['PWAT'] = np.nan
         
-    # --- 3. CÀLCULS CINEMÀTICS (sense canvis) ---
+    # --- 3. CÀLCULS CINEMÀTICS I AVANÇATS ---
     try:
         rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
         params_calc['RM'] = (float(rm[0].m), float(rm[1].m)); params_calc['LM'] = (float(lm[0].m), float(lm[1].m))
@@ -384,6 +397,16 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter)
             params_calc[f'BWD_{name}'] = float(mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m)
         except: params_calc[f'BWD_{name}'] = np.nan
+    try:
+        eff_inflow_bottom, eff_inflow_top = mpcalc.effective_inflow_layer(p, T, Td)
+        eff_bwd_u, eff_bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, bottom=eff_inflow_bottom, top=eff_inflow_top)
+        params_calc['EBWD'] = float(mpcalc.wind_speed(eff_bwd_u, eff_bwd_v).to('kt').m)
+        if not np.isnan(params_calc.get('RM', (np.nan,))[0]):
+            u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
+            esrh_pos, _, _ = mpcalc.storm_relative_helicity(heights, u, v, bottom=eff_inflow_bottom, top=eff_inflow_top, storm_u=u_storm, storm_v=v_storm)
+            params_calc['ESRH'] = float(esrh_pos.m)
+        else: params_calc['ESRH'] = np.nan
+    except: params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
     if not np.isnan(params_calc.get('RM', (np.nan,))[0]):
         u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
         for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
@@ -393,22 +416,29 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             except: params_calc[f'SRH_{name}'] = np.nan
     else: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
     try:
-        eff_bottom, eff_top = mpcalc.effective_inflow_layer(p, T, Td, heights=heights_agl)
-        ebwd_u, ebwd_v = mpcalc.bulk_shear(p, u, v, height=heights_agl, bottom=eff_bottom, top=eff_top)
-        params_calc['EBWD'] = float(mpcalc.wind_speed(ebwd_u, ebwd_v).to('kt').m)
-        if not np.isnan(params_calc.get('RM', (np.nan,))[0]):
-            u_storm_eff, v_storm_eff = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
-            esrh, _, _ = mpcalc.storm_relative_helicity(heights, u, v, bottom=eff_bottom, top=eff_top, storm_u=u_storm_eff, storm_v=v_storm_eff)
-            params_calc['ESRH'] = float(esrh.m)
-        else: params_calc['ESRH'] = np.nan
-    except Exception: params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
-    try:
         idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
-        cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
+        cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], ml_prof[:idx_3km+1])
         params_calc['CAPE_0-3km'] = float(cape_0_3.m)
     except: params_calc['CAPE_0-3km'] = np.nan
+    try:
+        stp_val = mpcalc.significant_tornado(sbcape=params_calc.get('MLCAPE', 0) * units('J/kg'), effective_srh=params_calc.get('ESRH', 0) * units('m**2/s**2'), effective_bulk_shear=params_calc.get('EBWD', 0) * units('kt'), lcl_height=params_calc.get('LCL_Hgt', 9999) * units('m'), cin=params_calc.get('MLCIN', 0) * units('J/kg'))[0]
+        params_calc['STP'] = float(stp_val)
+    except: params_calc['STP'] = np.nan
+    try:
+        scp_val = mpcalc.supercell_composite(mucape=params_calc.get('MUCAPE', 0) * units('J/kg'), effective_srh=params_calc.get('ESRH', 0) * units('m**2/s**2'), effective_bulk_shear=params_calc.get('EBWD', 0) * units('kt'))[0]
+        params_calc['SCP'] = float(scp_val)
+    except: params_calc['SCP'] = np.nan
+    try:
+        dcape_val = mpcalc.dcape(p, T, Td)[0]
+        params_calc['DCAPE'] = float(dcape_val.m)
+    except: params_calc['DCAPE'] = np.nan
+    try:
+        params_calc['LR_0-3km'] = float(mpcalc.lapse_rate(p, T, height=heights_agl, depth=3000 * units('m')).to('delta_degC/km').m)
+    except: params_calc['LR_0-3km'] = np.nan
 
-    return ((p, T, Td, u, v, heights, prof), params_calc), None
+    return ((p, T, Td, u, v, heights, ml_prof), params_calc), None
+
+
 
     
 
@@ -485,10 +515,10 @@ def verificar_datos_entrada(p, T, Td, u, v, heights):
     
     print("=============================")
 
-def crear_skewt(p, T, Td, u, v, params_calc, titol):
+def crear_skewt(p, T, Td, u, v, ml_prof, params_calc, titol):
     """
-    Versió millorada que dibuixa el perfil de la parcel·la de la capa barrejada (Mixed-Layer),
-    fent que l'ombrejat del CAPE sigui coherent amb el valor de MLCAPE.
+    Versió millorada que dibuixa el perfil de la parcel·la de la capa barrejada (Mixed-Layer)
+    i ARA TAMBÉ MARCA EL NIVELL D'EQUILIBRI (EL).
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
@@ -500,30 +530,12 @@ def crear_skewt(p, T, Td, u, v, params_calc, titol):
     skew.plot_moist_adiabats(color='cornflowerblue', linestyle='--', alpha=0.5)
     skew.plot_mixing_lines(color='limegreen', linestyle='--', alpha=0.5)
     
-    # --- CANVI CLAU ---
-    # En lloc de dibuixar sempre el perfil de superfície, ara calculem i dibuixem
-    # el perfil de la capa barrejada (Mixed-Layer), que és molt més representatiu.
-    try:
-        # Calculem el perfil de la parcel·la per a la capa barrejada de 100hPa
-        ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)[3]
-        
-        # Ombregem les àrees de CAPE i CIN basant-nos en aquest nou perfil
+    if ml_prof is not None:
         skew.shade_cape(p, T, ml_prof, color='red', alpha=0.2)
         skew.shade_cin(p, T, ml_prof, color='blue', alpha=0.2)
-        
-        # Dibuixem la trajectòria de la parcel·la
         skew.plot(p, ml_prof, 'k', linewidth=3, label='Trajectòria Parcel·la (ML)', 
                   path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
-    except Exception:
-        # Si el càlcul del perfil de capa barrejada falla, tornem a l'antic (de superfície)
-        # per evitar que l'aplicació es trenqui.
-        sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
-        skew.shade_cape(p, T, sfc_prof, color='red', alpha=0.2)
-        skew.shade_cin(p, T, sfc_prof, color='blue', alpha=0.2)
-        skew.plot(p, sfc_prof, 'k', linewidth=3, label='Trajectòria Parcel·la (SFC)',
-                  path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
-    # --- FI DEL CANVI ---
-
+    
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
     skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
         
@@ -532,7 +544,8 @@ def crear_skewt(p, T, Td, u, v, params_calc, titol):
     skew.ax.set_title(titol, weight='bold', fontsize=14, pad=15)
     skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
 
-    levels_to_plot = {'LCL_p': 'LCL', 'LFC_p': 'LFC'}
+    # Lògica de dibuix de nivells, ara incloent l'EL
+    levels_to_plot = {'LCL_p': 'LCL', 'LFC_p': 'LFC', 'EL_p': 'EL (Cim Tempesta)'}
     for key, name in levels_to_plot.items():
         p_lvl = params_calc.get(key)
         if p_lvl is not None and not np.isnan(p_lvl):
@@ -664,23 +677,28 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
 
 def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
     TOOLTIPS = {
-        'SBCAPE': "Energia Potencial Convectiva Disponible (CAPE) des de la Superfície. És el 'combustible' per a les tempestes. Valors superiors a 1000 J/kg indiquen un alt potencial de temps sever.",
-        'MUCAPE': "El CAPE més alt possible a l'atmosfera (Most Unstable). Molt útil per detectar inestabilitat elevada que no comença a la superfície.",
-        'MLCAPE': "El CAPE calculat a partir d'una capa barrejada (Mixed Layer) de 100hPa. Sovint és el valor més representatiu del potencial real de tempesta durant el dia.",
-        'SBCIN': "Inhibició Convectiva (CIN) des de la Superfície. És la 'tapa' que impedeix que les tempestes es formin. Valors molt negatius (ex: -100) fan la convecció molt difícil.",
+        'SBCAPE': "Energia Potencial Convectiva Disponible (CAPE) des de la Superfície...",
+        'MUCAPE': "El CAPE més alt possible a l'atmosfera (Most Unstable)...",
+        'MLCAPE': "El CAPE calculat a partir d'una capa barrejada (Mixed Layer)...",
+        'SBCIN': "Inhibició Convectiva (CIN) des de la Superfície...",
         'MUCIN': "La CIN associada al MUCAPE.",
-        'MLCIN': "La CIN associada al MLCAPE. Valors petits (prop de 0) indiquen que la 'tapa' és feble i les tempestes es poden disparar fàcilment.",
-        'LI': "Índex d'Elevació (Lifted Index). Mesura l'estabilitat a 500hPa. Com més negatiu, més inestable és l'atmosfera. Valors de -4 o inferiors són significatius.",
-        'PWAT': "Aigua Precipitable Total (Precipitable Water). La quantitat total de vapor d'aigua a la columna atmosfèrica. Valors alts indiquen potencial de pluges molt abundants.",
-        'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació (LCL). És l'alçada on es forma la base del núvol. Bases baixes (<1000m) afavoreixen el temps sever i els tornados.",
-        'LFC_Hgt': "Alçada del Nivell de Convecció Lliure (LFC). L'alçada a partir de la qual una bombolla d'aire puja sola. Un LFC baix indica que les tempestes es formen més fàcilment.",
-        f'CONV_{nivell_conv}hPa': f"Convergència de vent a {nivell_conv}hPa. Indica zones on l'aire s'ajunta i es veu forçat a pujar, actuant com un disparador de tempestes. Valors positius i alts són favorables.",
-        'BWD_0-6km': "Cisallament del Vent (Bulk Wind Shear) entre 0 i 6 km. És la diferència de velocitat i direcció del vent en aquesta capa. Valors superiors a 20 nusos són clau per a l'organització de tempestes (multicèl·lules, supercèl·lules).",
-        'BWD_0-1km': "Cisallament del Vent entre 0 i 1 km. Important per a la rotació a nivells baixos. Valors alts afavoreixen el risc de tornados.",
-        'CAPE_0-3km': "CAPE a la capa de 0 a 3 km. Valors alts indiquen una forta acceleració inicial de les parcel·les d'aire, afavorint el desenvolupament de rotació.",
-        'SRH_0-1km': "Helicitat Relativa a la Tempesta (SRH) entre 0 i 1 km. Mesura el potencial de rotació a nivells baixos. Valors superiors a 150 m²/s² són molt significatius per a la formació de supercèl·lules i tornados.",
-        'SRH_0-3km': "Helicitat Relativa a la Tempesta (SRH) entre 0 i 3 km. Mesura el potencial de rotació de tota la tempesta (mesocicló). Valors superiors a 250 m²/s² són alts.",
-        'MAX_UPDRAFT': "Estimació de la velocitat màxima del corrent ascendent dins de la tempesta, calculada a partir del SBCAPE. Dóna una idea de la potència de la tempesta i el seu potencial per generar calamarsa grossa."
+        'MLCIN': "La CIN associada al MLCAPE...",
+        'LI': "Índex d'Elevació (Lifted Index)...",
+        'PWAT': "Aigua Precipitable Total (Precipitable Water)...",
+        'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació (LCL)...",
+        'LFC_Hgt': "Alçada del Nivell de Convecció Lliure (LFC)...",
+        'EL_Hgt': "Alçada del Nivell d'Equilibri (EL). És l'alçada estimada del cim de la tempesta (top del cumulonimbus). Valors més alts indiquen tempestes més potents.",
+        f'CONV_{nivell_conv}hPa': f"Convergència de vent a {nivell_conv}hPa...",
+        'BWD_0-6km': "Cisallament del Vent (Bulk Wind Shear) entre 0 i 6 km...",
+        'BWD_0-1km': "Cisallament del Vent entre 0 i 1 km...",
+        'CAPE_0-3km': "CAPE a la capa de 0 a 3 km...",
+        'SRH_0-1km': "Helicitat Relativa a la Tempesta (SRH) entre 0 i 1 km...",
+        'SRH_0-3km': "Helicitat Relativa a la Tempesta (SRH) entre 0 i 3 km...",
+        'MAX_UPDRAFT': "Estimació de la velocitat màxima del corrent ascendent...",
+        'STP': "Paràmetre Significatiu de Tornados (STP). Un índex compost que combina diversos ingredients clau per avaluar el risc de tornados significatius (EF2+). Valors > 1 són notables.",
+        'SCP': "Paràmetre Compost de Supercèl·lules (SCP). Un índex que combina energia (CAPE) i cisallament (SRH, BWD) per identificar entorns favorables a la formació de supercèl·lules. Valors > 1 indiquen un entorn propici.",
+        'DCAPE': "Energia Potencial Convectiva Descendent (DCAPE). Mesura el potencial de forts corrents d'aire descendents (downbursts), que causen danys per vent. Valors > 1000 J/kg són molt alts.",
+        'LR_0-3km': "Gradient Tèrmic Vertical (Lapse Rate) de 0 a 3 km. Mesura com es refreda l'aire amb l'altura. Gradients forts (>7.5°C/km) afavoreixen un ràpid creixement de la convecció."
     }
     
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
@@ -735,10 +753,7 @@ def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
     cols = st.columns(3)
     with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
     with cols[1]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
-    with cols[2]: 
-        param_key_conv = f'CONV_{nivell_conv}hPa'
-        conv_value = params.get(param_key_conv, np.nan)
-        styled_metric(f"Conv. {nivell_conv}hPa", conv_value, "10⁻⁵/s", param_key_conv, precision=1, tooltip_text=TOOLTIPS.get(param_key_conv))
+    with cols[2]: styled_metric("CIM (EL)", params.get('EL_Hgt', np.nan), "m", 'EL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('EL_Hgt'))
         
     cols = st.columns(3)
     with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km', tooltip_text=TOOLTIPS.get('BWD_0-6km'))
@@ -756,6 +771,13 @@ def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
         styled_metric("SRH 0-3km", srh3_value, "m²/s²", 'SRH_0-3km', tooltip_text=TOOLTIPS.get('SRH_0-3km'))
     with cols[2]: 
         styled_metric("UPDRAFT", params.get('MAX_UPDRAFT', np.nan), "m/s", 'MAX_UPDRAFT', precision=1, tooltip_text=TOOLTIPS.get('MAX_UPDRAFT'))
+
+    st.markdown("##### Paràmetres Avançats de Temps Sever")
+    cols = st.columns(4)
+    with cols[0]: styled_metric("STP", params.get('STP', np.nan), "índex", 'STP', precision=1, tooltip_text=TOOLTIPS.get('STP'))
+    with cols[1]: styled_metric("SCP", params.get('SCP', np.nan), "índex", 'SCP', precision=1, tooltip_text=TOOLTIPS.get('SCP'))
+    with cols[2]: styled_metric("DCAPE", params.get('DCAPE', np.nan), "J/kg", 'DCAPE', precision=0, tooltip_text=TOOLTIPS.get('DCAPE'))
+    with cols[3]: styled_metric("LR 0-3km", params.get('LR_0-3km', np.nan), "°C/km", 'LR_0-3km', precision=1, tooltip_text=TOOLTIPS.get('LR_0-3km'))
         
         
 
