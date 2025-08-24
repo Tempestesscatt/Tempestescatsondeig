@@ -1031,61 +1031,17 @@ def navegacion_rapida(mensaje):
 
 def mostrar_spinner_mapa(mensaje, funcion_carga, *args, **kwargs):
     """
-    Spinner que funciona con Streamlit usando threading
+    Spinner simple que muestra un mensaje mientras carga
     """
-    # Placeholders para el spinner y el mapa
-    spinner_placeholder = st.empty()
-    result_container = [None]
-    error_container = [None]
-    
-    # Función para ejecutar en segundo plano
-    def cargar_mapa():
+    # Mostrar spinner inmediatamente
+    with st.spinner(f"🌪️ {mensaje}"):
         try:
-            # LA FUNCIÓN DEVUELVE UNA TUPLA (data, error)
+            # Ejecutar la función de carga directamente
             result = funcion_carga(*args, **kwargs)
-            result_container[0] = result
+            return result
         except Exception as e:
-            error_container[0] = e
-    
-    # Iniciar la carga en segundo plano
-    thread = threading.Thread(target=cargar_mapa)
-    thread.start()
-    
-    # Mostrar spinner mientras se carga
-    start_time = time.time()
-    spinner_frames = ["🔄", "⏳", "📡", "🌪️"]
-    frame_index = 0
-    
-    while thread.is_alive():
-        # Actualizar spinner animado
-        frame_index = (frame_index + 1) % len(spinner_frames)
-        tiempo_transcurrido = time.time() - start_time
-        minutos = int(tiempo_transcurrido // 60)
-        segundos = int(tiempo_transcurrido % 60)
-        
-        spinner_placeholder.markdown(f"""
-        <div style="text-align: center; padding: 40px; background-color: #0E1117; border-radius: 10px; margin: 10px 0;">
-            <div style="font-size: 3em; margin-bottom: 20px;">{spinner_frames[frame_index]}</div>
-            <div style="color: white; font-weight: bold; font-size: 1.2em;">{mensaje}</div>
-            <div style="color: #888; margin-top: 10px;">Temps: {minutos}:{segundos:02d}</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        time.sleep(0.5)
-    
-    # Cuando termine el hilo
-    thread.join()
-    
-    # Limpiar spinner
-    spinner_placeholder.empty()
-    
-    # Manejar resultados - LA FUNCIÓN DEVUELVE UNA TUPLA (data, error)
-    if error_container[0]:
-        st.error(f"Error carregant el mapa: {error_container[0]}")
-        return None, str(error_container[0])
-    
-    # Devolver la tupla completa (data, error)
-    return result_container[0]
+            st.error(f"Error carregant el mapa: {e}")
+            return None, str(e)
         
             
 @st.cache_data(ttl=3600)
@@ -1427,30 +1383,26 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
     
     if "Convergència" in mapa_sel:
-        # USAR EL NUEVO SPINNER - AHORA DEVUELVE LA TUPLA COMPLETA
+        # USAR SPINNER SIMPLE
         result = mostrar_spinner_mapa(
             "Generant mapa de convergència...", 
             carregar_dades_mapa_cat, 
             nivell_sel, hourly_index_sel
         )
         
-        # DESEMPAQUETAR LA TUPLA
         if result is not None:
             map_data, error_map = result
-        else:
-            map_data, error_map = None, "Error desconegut"
-        
-        if error_map: 
-            st.error(f"Error en carregar el mapa: {error_map}")
-        elif map_data:
-            fig = crear_mapa_forecast_combinat_cat(
-                map_data['lons'], map_data['lats'], 
-                map_data['speed_data'], map_data['dir_data'], 
-                map_data['dewpoint_data'], nivell_sel, 
-                timestamp_str, selected_extent
-            )
-            st.pyplot(fig, use_container_width=True)
-            plt.close(fig)
+            if error_map: 
+                st.error(f"Error en carregar el mapa: {error_map}")
+            elif map_data:
+                fig = crear_mapa_forecast_combinat_cat(
+                    map_data['lons'], map_data['lats'], 
+                    map_data['speed_data'], map_data['dir_data'], 
+                    map_data['dewpoint_data'], nivell_sel, 
+                    timestamp_str, selected_extent
+                )
+                st.pyplot(fig, use_container_width=True)
+                plt.close(fig)
     
     else:
         # Para otros mapas...
@@ -1463,22 +1415,18 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
             variables, hourly_index_sel
         )
         
-        # DESEMPAQUETAR LA TUPLA
         if result is not None:
             map_data, error_map = result
-        else:
-            map_data, error_map = None, "Error desconegut"
-        
-        if error_map: 
-            st.error(f"Error: {error_map}")
-        elif map_data: 
-            fig = crear_mapa_vents_cat(
-                map_data['lons'], map_data['lats'], 
-                map_data[variables[0]], map_data[variables[1]], 
-                nivell, timestamp_str, selected_extent
-            )
-            st.pyplot(fig, use_container_width=True)
-            plt.close(fig)
+            if error_map: 
+                st.error(f"Error: {error_map}")
+            elif map_data: 
+                fig = crear_mapa_vents_cat(
+                    map_data['lons'], map_data['lats'], 
+                    map_data[variables[0]], map_data[variables[1]], 
+                    nivell, timestamp_str, selected_extent
+                )
+                st.pyplot(fig, use_container_width=True)
+                plt.close(fig)
             
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual):
     if data_tuple:
