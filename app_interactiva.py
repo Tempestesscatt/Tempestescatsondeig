@@ -490,8 +490,57 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     # --- PANELL DE PARÀMETRES ---
     ax_params.axis('off')
     def degrees_to_cardinal_ca(d):
-        dirs = ["Nord", "N-NE", "Nord-est", "E-NE", "Est", "E-SE", "Sud-est", "S-SE", "Sud", "S-SO", "Sud-oest", "O-SO", "Oest", "O-NO", "Nord-oest", "N-NO"]
+        # --- LLISTA DE DIRECCIONS MODIFICADA ---
+        dirs = ["Nord", "Nord-nord-est", "Nord-est", "Est-nord-est", "Est", "Est-sud-est", "Sud-est", "Sud-sud-est", "Sud", "Sud-sud-oest", "Sud-oest", "Oest-sud-oest", "Oest", "Oest-nord-oest", "Nord-oest", "Nord-nord-oest"]
         return dirs[int(round(d / 22.5)) % 16]
+    
+    def get_split_color(angle_diff):
+        if pd.isna(angle_diff) or angle_diff < 30: return 'dimgrey'
+        if angle_diff < 60: return '#ffc107'
+        if angle_diff < 90: return '#fd7e14'
+        return '#dc3545'
+
+    THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
+    y = 0.95
+    
+    motion_data = {
+        'M. Dret': params_calc.get('RM'), 
+        'M. Esquerre': params_calc.get('LM'), 
+        'Es mourà cap a': params_calc.get('Mean_Wind')
+    }
+    
+    ax_params.text(0, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.12
+
+    dir_rm, dir_lm = np.nan, np.nan
+    rm_vec = motion_data['M. Dret']; lm_vec = motion_data['M. Esquerre']
+    if rm_vec and not pd.isna(rm_vec[0]):
+        dir_rm = mpcalc.wind_direction(rm_vec[0] * units('m/s'), rm_vec[1] * units('m/s'), convention='to').m
+    if lm_vec and not pd.isna(lm_vec[0]):
+        dir_lm = mpcalc.wind_direction(lm_vec[0] * units('m/s'), lm_vec[1] * units('m/s'), convention='to').m
+
+    angle_difference = np.nan
+    if not np.isnan(dir_rm) and not np.isnan(dir_lm):
+        angle_difference = 180 - abs(abs(dir_rm - dir_lm) - 180)
+    
+    split_color = get_split_color(angle_difference)
+
+    for display_name, vec in motion_data.items():
+        if vec and not pd.isna(vec[0]):
+            u_motion = vec[0] * units('m/s'); v_motion = vec[1] * units('m/s')
+            speed = mpcalc.wind_speed(u_motion, v_motion).to('km/h').m
+            direction = mpcalc.wind_direction(u_motion, v_motion, convention='to').to('deg').m
+            cardinal = degrees_to_cardinal_ca(direction)
+            
+            text_color = 'white' if display_name == 'Es mourà cap a' else split_color
+
+            ax_params.text(0, y, f"{display_name}:", ha='left', va='center', color=text_color)
+            ax_params.text(0.95, y, f"{cardinal} / {speed:.0f} km/h", ha='right', va='center', color=text_color)
+        else:
+            ax_params.text(0, y, f"{display_name}:", ha='left', va='center', color='dimgrey')
+            ax_params.text(0.95, y, "---", ha='right', va='center', color='dimgrey')
+        y-=0.1
+
+    y-=0.05
     def get_color(value, thresholds):
         if pd.isna(value): return "grey"
         colors = ["grey", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
@@ -499,39 +548,14 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         for i, threshold in enumerate(thresholds):
             if value < threshold: return colors[i]
         return colors[-1]
-
-    THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
-    y = 0.95
     
-    # --- DICCIONARI D'ETIQUETES MODIFICAT ---
-    motion_data = {
-        'M. Dret': params_calc.get('RM'), 
-        'M. Esquerre': params_calc.get('LM'), 
-        'Es mourà cap a': params_calc.get('Mean_Wind')
-    }
-    
-    ax_params.text(0, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
-    for display_name, vec in motion_data.items():
-        if vec and not pd.isna(vec[0]):
-            u_motion = vec[0] * units('m/s'); v_motion = vec[1] * units('m/s')
-            speed = mpcalc.wind_speed(u_motion, v_motion).to('km/h').m
-            direction = mpcalc.wind_direction(u_motion, v_motion, convention='to').to('deg').m
-            cardinal = degrees_to_cardinal_ca(direction)
-            ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
-            ax_params.text(1, y, f"{cardinal} / {speed:.0f}", ha='right', va='center')
-        else:
-            ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
-            ax_params.text(1, y, "---", ha='right', va='center')
-        y-=0.1
-
-    y-=0.05
     ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
     for key, label in [('BWD_0-1km', '0-1 km'), ('BWD_0-6km', '0-6 km'), ('EBWD', 'Efectiu')]:
         val = params_calc.get(key, np.nan)
         color = get_color(val, THRESHOLDS['BWD'])
         ax_params.text(0, y, f"{label}:", ha='left', va='center')
-        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
-        y-=0.07
+        ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
+        y-=0.08
 
     y-=0.05
     ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.1
@@ -539,10 +563,13 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         val = params_calc.get(key, np.nan)
         color = get_color(val, THRESHOLDS['SRH'])
         ax_params.text(0, y, f"{label}:", ha='left', va='center')
-        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
-        y-=0.07
+        ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
+        y-=0.08
         
     return fig
+
+
+
         
 
 def ui_caixa_parametres_sondeig(params, nivell_conv):
