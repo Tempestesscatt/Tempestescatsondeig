@@ -504,17 +504,19 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
     y = 0.95
     
-    motion_data = {'MD': params_calc.get('RM'), 'ML': params_calc.get('LM'), 'VM (0-6 km)': params_calc.get('Mean_Wind')}
-    ax_params.text(0, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1 # Títol canviat per claredat
+    # --- DICCIONARI D'ETIQUETES MODIFICAT ---
+    motion_data = {
+        'Moviment Dret': params_calc.get('RM'), 
+        'Moviment Esquerra': params_calc.get('LM'), 
+        'Es mourà cap a': params_calc.get('Mean_Wind')
+    }
+    
+    ax_params.text(0, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
     for display_name, vec in motion_data.items():
         if vec and not pd.isna(vec[0]):
             u_motion = vec[0] * units('m/s'); v_motion = vec[1] * units('m/s')
             speed = mpcalc.wind_speed(u_motion, v_motion).to('km/h').m
-            
-            # --- LÍNIA CLAU MODIFICADA ---
-            # Canviem la convenció de 'from' (d'on ve) a 'to' (cap a on va).
             direction = mpcalc.wind_direction(u_motion, v_motion, convention='to').to('deg').m
-            
             cardinal = degrees_to_cardinal_ca(direction)
             ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
             ax_params.text(1, y, f"{cardinal} / {speed:.0f}", ha='right', va='center')
