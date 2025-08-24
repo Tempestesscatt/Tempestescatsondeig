@@ -602,7 +602,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     
     return fig
 
-def ui_caixa_parametres_sondeig(params, nivell_conv):
+def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
     def get_color(value, thresholds, param_key, reverse_colors=False):
         if pd.isna(value): return "#808080"
         if 'CONV' in param_key:
@@ -639,11 +639,10 @@ def ui_caixa_parametres_sondeig(params, nivell_conv):
 
     st.markdown("##### Paràmetres del Sondeig")
     
-    # --- MODIFICACIÓ: Obtenir l'hora actual i passar-la a la funció ---
-    hora_actual = st.session_state.get('hora_selector', '12:00')
+    # MODIFICAT: Ara rep l'hora com a paràmetre
     emoji, descripcio = determinar_emoji_temps(params, nivell_conv, hora_actual)
 
-    # El reste de la funció es queda exactament igual...
+    # Resta del codi sense canvis...
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE')
     with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE')
@@ -1156,7 +1155,7 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
             fig = crear_mapa_vents_cat(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str, selected_extent)
             st.pyplot(fig, use_container_width=True); plt.close(fig)
 
-def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv):
+def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual):
     if data_tuple:
         sounding_data, params_calculats = data_tuple
         p, T, Td, u, v, heights, prof = sounding_data
@@ -1165,8 +1164,8 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv):
             fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
             st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
             with st.container(border=True): 
-                # MODIFICAT: Passem el 'nivell_conv' a la caixa de paràmetres.
-                ui_caixa_parametres_sondeig(params_calculats, nivell_conv)
+                # MODIFICAT: Passem l'hora actual
+                ui_caixa_parametres_sondeig(params_calculats, nivell_conv, hora_actual)
         with col2:
             fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
             st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
@@ -1175,6 +1174,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv):
             html_code = f"""<div style="position: relative; width: 100%; height: 410px; border-radius: 10px; overflow: hidden;"><iframe src="{radar_url}" width="100%" height="410" frameborder="0" style="border:0;"></iframe><div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div></div>"""
             st.components.v1.html(html_code, height=410)
     else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
+    
 
 def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model GFS)")
@@ -1347,7 +1347,7 @@ def run_catalunya_app():
     else:
         tab_mapes, tab_vertical, tab_ia, tab_estacions = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "💬 Assistent IA", "Estacions Meteorològiques"])
         with tab_mapes: ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
-        with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
+        with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str)
         with tab_ia: ui_pestanya_assistent_ia(params_calc, poble_sel)
         with tab_estacions: ui_pestanya_estacions_meteorologiques()
         
