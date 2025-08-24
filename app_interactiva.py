@@ -1560,6 +1560,7 @@ def run_catalunya_app():
     # --- PART B: Dibuixar la interfície (capçalera i navegació) ---
     ui_capcalera_selectors(ciutats_per_selector, info_msg, zona_activa="catalunya", convergencies=convergencies)
     
+    # Defineix les opcions del menú
     if is_guest:
         menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical", "Estacions Meteorològiques"]
         menu_icons = ["map", "graph-up-arrow", "broadcast"]
@@ -1567,25 +1568,40 @@ def run_catalunya_app():
         menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical", "💬 Assistent IA", "Estacions Meteorològiques"]
         menu_icons = ["map", "graph-up-arrow", "chat-quote-fill", "broadcast"]
 
+    # --- LÒGICA CLAU PER MANTENIR L'ESTAT DE LA PESTANYA ---
+    # 1. Si no hem guardat mai una pestanya activa, la inicialitzem a la primera opció.
+    if 'active_tab_cat' not in st.session_state:
+        st.session_state.active_tab_cat = menu_options[0]
+
+    # 2. Busquem l'índex de l'última pestanya activa guardada. Aquest serà el nostre default_index.
+    try:
+        default_idx = menu_options.index(st.session_state.active_tab_cat)
+    except ValueError:
+        default_idx = 0 # Si per alguna raó l'estat és invàlid, tornem a la primera.
+
+    # 3. Dibuixem el menú. El seu valor de retorn serà la pestanya actualment seleccionada.
     selected_tab = option_menu(
         menu_title=None, options=menu_options, icons=menu_icons,
-        menu_icon="cast", default_index=0, orientation="horizontal", key="catalunya_nav"
+        menu_icon="cast", default_index=default_idx, orientation="horizontal", key="catalunya_nav"
     )
+    
+    # 4. Actualitzem el nostre estat amb la selecció actual. Així, a la propera execució, el recordarem.
+    st.session_state.active_tab_cat = selected_tab
 
     poble_sel = st.session_state.poble_selector
     lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
     timestamp_str = f"{st.session_state.dia_selector} a les {st.session_state.hora_selector} (Hora Local)"
 
-    # --- PART C: Càrrega condicional i renderitzat del contingut de la pestanya ---
+    # --- PART C: Càrrega condicional basada en `selected_tab` ---
     if selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
         
     elif selected_tab in ["Anàlisi Vertical", "💬 Assistent IA"]:
-        # El sondeig només es carrega si se selecciona una d'aquestes dues pestanyes
-        data_tuple, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+        with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
+            data_tuple, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
         
         if error_msg:
-            st.error(f"No s'ha pogut carregar el sondeig per a {poble_sel}: {error_msg}")
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
             params_calc = data_tuple[1] if data_tuple else {}
             if poble_sel in convergencies:
@@ -1629,22 +1645,33 @@ def run_valley_halley_app():
         format_func=lambda x: f"{x} hPa (⭐ Recomanat)" if x == 850 else f"{x} hPa",
         index=1, key="level_usa_main"
     )
+    
+    menu_options_usa = ["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"]
+    menu_icons_usa = ["map-fill", "graph-up-arrow", "globe-americas"]
+
+    # --- LÒGICA CLAU PER MANTENIR L'ESTAT DE LA PESTANYA ---
+    if 'active_tab_usa' not in st.session_state:
+        st.session_state.active_tab_usa = menu_options_usa[0]
+
+    try:
+        default_idx_usa = menu_options_usa.index(st.session_state.active_tab_usa)
+    except ValueError:
+        default_idx_usa = 0
 
     selected_tab_usa = option_menu(
-        menu_title=None,
-        options=["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"],
-        icons=["map-fill", "graph-up-arrow", "globe-americas"],
-        menu_icon="cast", default_index=0, orientation="horizontal", key="usa_nav"
+        menu_title=None, options=menu_options_usa, icons=menu_icons_usa,
+        menu_icon="cast", default_index=default_idx_usa, orientation="horizontal", key="usa_nav"
     )
+    st.session_state.active_tab_usa = selected_tab_usa
 
     poble_sel = st.session_state.poble_selector_usa
     lat_sel, lon_sel = USA_CITIES[poble_sel]['lat'], USA_CITIES[poble_sel]['lon']
     timestamp_str = f"{st.session_state.dia_selector_usa} a les {st.session_state.hora_selector_usa} (Central Time)"
     
-    # --- PART C: Càrrega condicional i renderitzat del contingut de la pestanya ---
+    # --- PART C: Càrrega condicional i renderitzat ---
     if selected_tab_usa == "Anàlisi de Mapes":
-        # Carreguem les dades del mapa per al nivell seleccionat
-        map_data_final, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
+        with st.spinner(f"Carregant mapa GFS a {nivell_sel}hPa..."):
+            map_data_final, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
         if map_data_final:
             fig = crear_mapa_forecast_combinat_usa(map_data_final['lons'], map_data_final['lats'], map_data_final['speed_data'], map_data_final['dir_data'], map_data_final['dewpoint_data'], nivell_sel, timestamp_str)
             st.pyplot(fig, use_container_width=True)
@@ -1653,20 +1680,20 @@ def run_valley_halley_app():
             st.warning(f"No s'han pogut carregar les dades del mapa per al nivell {nivell_sel}hPa.")
             
     elif selected_tab_usa == "Anàlisi Vertical":
-        # Carreguem el sondeig només per a aquesta pestanya
-        data_tuple, error_msg = carregar_dades_sondeig_usa(lat_sel, lon_sel, hourly_index_sel)
+        with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
+            data_tuple, error_msg = carregar_dades_sondeig_usa(lat_sel, lon_sel, hourly_index_sel)
         
         if error_msg:
-            st.error(f"No s'ha pogut carregar el sondeig per a {poble_sel}: {error_msg}")
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
             params_calc = data_tuple[1] if data_tuple else {}
-            # Calculem la convergència puntual per al nivell seleccionat si cal
             if nivell_sel == NIVELL_ANALISI_INICIAL_USA and poble_sel in convergencies_usa:
                 params_calc[f'CONV_{nivell_sel}hPa'] = convergencies_usa[poble_sel]
             else:
-                map_data_nivell_sel, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
-                if map_data_nivell_sel:
-                    params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_nivell_sel, lat_sel, lon_sel)
+                with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
+                    map_data_nivell_sel, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
+                    if map_data_nivell_sel:
+                        params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_nivell_sel, lat_sel, lon_sel)
             
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str)
         
