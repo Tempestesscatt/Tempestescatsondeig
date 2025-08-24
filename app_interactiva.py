@@ -1013,39 +1013,51 @@ def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str
 
 def mostrar_carga_avanzada(mensaje, funcion_a_ejecutar, *args, **kwargs):
     """
-    Versión optimizada con tiempos ajustados según la zona
+    Versión optimizada que se adapta al contexto de navegación
     """
-    # Determinar si es Catalunya o USA basado en la función o argumentos
-    es_catalunya = "cat" in funcion_a_ejecutar.__name__ or any("cat" in str(arg).lower() for arg in args)
+    # Detectar si es una navegación rápida (entrar/salir/cambiar rápido)
+    palabras_rapidas = ["sortir", "tancar", "canviar", "entrar", "inici", "obrir", "seleccionar"]
+    es_navegacion_rapida = any(palabra in mensaje.lower() for palabra in palabras_rapidas)
     
     # Crear contenedores para la barra y el texto
     progress_bar = st.progress(0)
     status_text = st.empty()
     
     try:
-        # Animación ajustada según la zona
-        tiempo_total = 9 if es_catalunya else 6
-        pasos_animacion = 80
+        # Tiempo ajustado según el contexto
+        if es_navegacion_rapida:
+            tiempo_total = 2.0  # Solo 2 segundos para navegación rápida
+            pasos_animacion = 20  # Menos pasos para que sea más fluido
+        else:
+            # Determinar si es Catalunya o USA
+            es_catalunya = "cat" in funcion_a_ejecutar.__name__ or any("cat" in str(arg).lower() for arg in args)
+            tiempo_total = 9 if es_catalunya else 6
+            pasos_animacion = 80
+        
         tiempo_por_paso = tiempo_total / pasos_animacion
         
         for i in range(pasos_animacion + 1):
             progress_bar.progress(i / pasos_animacion)
-            dots = "." * ((i // 20) % 4)
-            emoji = "🔄" if i % 20 < 10 else "⏳"
+            dots = "." * ((i // 5) % 4) if es_navegacion_rapida else "." * ((i // 20) % 4)
+            emoji = "🚀" if es_navegacion_rapida else "🔄" if i % 20 < 10 else "⏳"
             status_text.text(f"{emoji} {mensaje}{dots}")
             time.sleep(tiempo_por_paso)
             
-        # Ejecutar la función real
-        progress_bar.progress(0.95)
-        status_text.text(f"🚀 Executant anàlisi...")
-        time.sleep(0.5)
-        
-        resultat = funcion_a_ejecutar(*args, **kwargs)
+        # Ejecutar la función real (solo si no es navegación rápida o si es necesaria)
+        if not es_navegacion_rapida or "carregant" in mensaje.lower() or "analitzant" in mensaje.lower():
+            progress_bar.progress(0.95)
+            status_text.text(f"🚀 Executant anàlisi...")
+            time.sleep(0.3 if es_navegacion_rapida else 0.5)
+            
+            resultat = funcion_a_ejecutar(*args, **kwargs)
+        else:
+            # Para navegación rápida sin carga real, simular resultado
+            resultat = None
         
         # Completar al 100% y mostrar éxito
         progress_bar.progress(1.0)
         status_text.text(f"✅ {mensaje}... Completat!")
-        time.sleep(0.3)
+        time.sleep(0.2 if es_navegacion_rapida else 0.3)
         
         return resultat
         
@@ -1053,14 +1065,13 @@ def mostrar_carga_avanzada(mensaje, funcion_a_ejecutar, *args, **kwargs):
         # Mostrar error si ocurre
         progress_bar.progress(1.0)
         status_text.text(f"❌ Error en el procés")
-        time.sleep(0.5)
+        time.sleep(0.3)
         raise e
         
     finally:
         # Siempre limpiar
         progress_bar.empty()
         status_text.empty()
-
 
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig_usa(lat, lon, hourly_index):
