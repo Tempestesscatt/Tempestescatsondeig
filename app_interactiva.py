@@ -520,55 +520,42 @@ def crear_skewt(p, T, Td, u, v, params_calc, titol):
     skew.ax.legend()
     return fig
 
-# AQUESTA ÉS LA LÒGICA CORREGIDA I MÉS ROBUSTA
 def diagnosticar_potencial_tempesta(params):
     """
-    Analitza els paràmetres de cisallament i helicitat per oferir un diagnòstic
-    sobre el tipus de tempesta més probable i la morfologia de la seva base.
+    Versió Definitiva i Lògica v2.0.
+    Retorna el text del diagnòstic I el seu color corresponent, garantint una
+    coherència visual del 100% a l'hodògraf.
     """
-    # Extracció de paràmetres clau
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     srh_1km = params.get('SRH_0-1km', 0) or 0
     lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
-    cape = params.get('MLCAPE', params.get('SBCAPE', 0)) or 0 # Prioritzem MLCAPE si existeix
-    
-    # --- Diagnòstic del Tipus de Tempesta (basat en Cisallament) ---
-    tipus_tempesta = "---"
-    color_tempesta = "grey"
-    
-    # Llindars meteorològicament més estàndard
-    if bwd_6km >= 35 and cape > 1000: # Llindar alt per a supercèl·lules clàssiques
-        tipus_tempesta = "Supercèl·lula"
-        color_tempesta = "#dc3545" # Vermell
-    elif bwd_6km >= 20 and cape > 500: # Llindar per a bona organització multicel·lular
-        tipus_tempesta = "Multicèl·lula"
-        color_tempesta = "#fd7e14" # Taronja
-    elif bwd_6km >= 10: # Cisallament suficient per a certa organització
-        tipus_tempesta = "Cèl·lula Simple Organitzada"
-        color_tempesta = "#ffc107" # Groc
-    else: # Poc cisallament, tempestes de massa d'aire
-        tipus_tempesta = "Cèl·lula Simple (Pols)"
-        color_tempesta = "#2ca02c" # Verd
+    cape = params.get('MLCAPE', params.get('SBCAPE', 0)) or 0
 
-    # --- Diagnòstic de la Base del Núvol (basat en Helicitat i LCL) ---
-    base_nuvol = "---"
-    color_base = "grey"
+    # Carreguem els llindars des de la nostra única font de la veritat
+    bwd_thresh = THRESHOLDS_GLOBALS['BWD_0-6km']
+    srh_thresh = THRESHOLDS_GLOBALS['SRH_0-1km']
 
-    if srh_1km > 200 and lcl_hgt < 1200: # Condicions òptimes per a tornados
-        base_nuvol = "Tornàdica (Wall Cloud)"
-        color_base = "#dc3545" # Vermell
-    elif srh_1km > 100 and lcl_hgt < 1500: # Rotació significativa, bases baixes
-        base_nuvol = "Rotatòria (Inflow)"
-        color_base = "#fd7e14" # Taronja
-    elif lcl_hgt < 800: # Bases molt baixes però sense rotació
-        base_nuvol = "Baixa i Humida"
-        color_base = "#ffc107" # Groc
-    else: # Bases altes i planes
-        base_nuvol = "Plana i Alta"
-        color_base = "#2ca02c" # Verd
+    # --- Diagnòstic del Tipus de Tempesta ---
+    tipus_tempesta = "Cèl·lula Simple"; color_tempesta = "#2ca02c" # Verd per defecte
+
+    if bwd_6km >= bwd_thresh[2] and cape > 1200:
+        tipus_tempesta = "Supercèl·lula"; color_tempesta = "#dc3545" # Vermell
+    elif bwd_6km >= bwd_thresh[1] and cape > 800:
+        tipus_tempesta = "Multicèl·lula Severa"; color_tempesta = "#fd7e14" # Taronja
+    elif bwd_6km >= bwd_thresh[0] and cape > 500:
+        tipus_tempesta = "Multicèl·lula"; color_tempesta = "#ffc107" # Groc
+
+    # --- Diagnòstic de la Base del Núvol ---
+    base_nuvol = "Plana i Alta"; color_base = "#2ca02c" # Verd per defecte
+
+    if srh_1km >= srh_thresh[2] and lcl_hgt < 1200:
+        base_nuvol = "Tornàdica (Wall Cloud)"; color_base = "#dc3545" # Vermell
+    elif srh_1km >= srh_thresh[1] and lcl_hgt < 1500:
+        base_nuvol = "Rotatòria Forta"; color_base = "#fd7e14" # Taronja
+    elif srh_1km >= srh_thresh[0]:
+        base_nuvol = "Rotatòria (Inflow)"; color_base = "#ffc107" # Groc
         
     return tipus_tempesta, color_tempesta, base_nuvol, color_base
-
 
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
@@ -585,8 +572,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         if h_m <= heights_agl.max():
             u_interp_val = np.interp(h_m.m, heights_agl.m, u.m); v_interp_val = np.interp(h_m.m, heights_agl.m, v.m)
             u_barbs_list.append(u_interp_val); v_barbs_list.append(v_interp_val)
-        else:
-            u_barbs_list.append(np.nan); v_barbs_list.append(np.nan)
+        else: u_barbs_list.append(np.nan); v_barbs_list.append(np.nan)
     u_barbs = units.Quantity(u_barbs_list, u.units); v_barbs = units.Quantity(v_barbs_list, v.units)
     speed_kmh_barbs = np.sqrt(u_barbs**2 + v_barbs**2).to('km/h').m
     thresholds_barbs = [10, 40, 70, 100, 130]; colors_barbs = ['dimgrey', '#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd']
@@ -596,8 +582,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             color_index = np.searchsorted(thresholds_barbs, spd_kmh); color = colors_barbs[color_index]
             ax_barbs.barbs(x_pos[i], 0, u_barbs_kt[i], v_barbs_kt[i], length=8, pivot='middle', color=color)
             ax_barbs.text(x_pos[i], -0.8, f"{spd_kmh:.0f} km/h", ha='center', va='top', fontsize=9, color=color, weight='bold')
-        else:
-            ax_barbs.text(x_pos[i], 0, "N/A", ha='center', va='center', fontsize=9, color='grey')
+        else: ax_barbs.text(x_pos[i], 0, "N/A", ha='center', va='center', fontsize=9, color='grey')
     ax_barbs.set_xticks(x_pos); ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km]); ax_barbs.set_yticks([]); ax_barbs.spines[:].set_visible(False); ax_barbs.tick_params(axis='x', length=0, pad=5); ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5); ax_barbs.set_ylim(-1.5, 1.5)
     
     # --- HODÒGRAF (Sense canvis) ---
@@ -606,68 +591,49 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
     ax_hodo.set_xlabel('U-Component (nusos)'); ax_hodo.set_ylabel('V-Component (nusos)')
 
-    # --- PANELL DE PARÀMETRES (AJUSTOS FINALS D'ALINEACIÓ) ---
+    # --- PANELL DE PARÀMETRES AMB LÒGICA DE COLOR CORREGIDA ---
     ax_params.axis('off')
     def degrees_to_cardinal_ca(d):
         dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"]
         return dirs[int(round(d / 22.5)) % 16]
-    def get_color(value, thresholds):
-        if pd.isna(value): return "grey"
-        colors = ["grey", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
-        thresholds = sorted(thresholds)
-        for i, threshold in enumerate(thresholds):
-            if value < threshold: return colors[i]
-        return colors[-1]
 
-    THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
     y = 0.95
-    
-    # Secció 1: Moviment
-    motion_data = {
-        'M. Dret': params_calc.get('RM'), 
-        'M. Esquerre': params_calc.get('LM'), 
-        'Es mourà cap a': params_calc.get('Mean_Wind')
-    }
+    motion_data = {'M. Dret': params_calc.get('RM'), 'M. Esquerre': params_calc.get('LM'), 'Es mourà cap a': params_calc.get('Mean_Wind')}
     ax_params.text(0, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
     for display_name, vec in motion_data.items():
-        # CORRECCIÓ D'ALINEACIÓ: L'etiqueta esquerra es desplaça
-        ax_params.text(-0.05, y, f"{display_name}:", ha='left', va='center') # Desplaçat a l'esquerra
+        ax_params.text(-0.05, y, f"{display_name}:", ha='left', va='center')
         if vec and not pd.isna(vec[0]):
             u_motion = vec[0] * units('m/s'); v_motion = vec[1] * units('m/s')
-            speed = mpcalc.wind_speed(u_motion, v_motion).to('km/h').m
-            direction = mpcalc.wind_direction(u_motion, v_motion, convention='to').to('deg').m
+            speed = mpcalc.wind_speed(u_motion, v_motion).to('km/h').m; direction = mpcalc.wind_direction(u_motion, v_motion, convention='to').to('deg').m
             cardinal = degrees_to_cardinal_ca(direction)
             ax_params.text(1, y, f"{cardinal} / {speed:.0f} km/h", ha='right', va='center')
-        else:
-            ax_params.text(1, y, "---", ha='right', va='center')
+        else: ax_params.text(1, y, "---", ha='right', va='center')
         y-=0.1
 
+    # --- LÒGICA DE COLOR DEFINITIVA ---
+    # 1. Obtenim el text i el color del diagnòstic directament de la funció experta.
     tipus_tempesta, color_tempesta, base_nuvol, color_base = diagnosticar_potencial_tempesta(params_calc)
 
-    # Secció 2: Cisallament
     y-=0.05
     ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
     for key, label in [('BWD_0-1km', '0-1 km'), ('BWD_0-6km', '0-6 km')]:
         val = params_calc.get(key, np.nan)
-        color = get_color(val, THRESHOLDS['BWD'])
+        color = get_color_global(val, key) # El color del número es calcula individualment...
         ax_params.text(0, y, f"{label}:", ha='left', va='center')
         ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
         y-=0.08
-    # CORRECCIÓ D'ALINEACIÓ: El diagnòstic es posa sota l'etiqueta
     ax_params.text(0, y, "Tipus:", ha='left', va='center', weight='bold')
-    ax_params.text(0.05, y - 0.08, tipus_tempesta, ha='left', va='center', weight='bold', color=color_tempesta)
-    y-=0.16 # Deixem més espai per al text de sota
+    ax_params.text(0.05, y - 0.08, tipus_tempesta, ha='left', va='center', weight='bold', color=color_tempesta) # ...però el color del text ve del diagnòstic.
+    y-=0.16
 
-    # Secció 3: Helicitat
     y-=0.05
     ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.1
     for key, label in [('SRH_0-1km', '0-1 km'), ('SRH_0-3km', '0-3 km')]:
         val = params_calc.get(key, np.nan)
-        color = get_color(val, THRESHOLDS['SRH'])
+        color = get_color_global(val, key)
         ax_params.text(0, y, f"{label}:", ha='left', va='center')
         ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
         y-=0.08
-    # CORRECCIÓ D'ALINEACIÓ: El diagnòstic es posa sota l'etiqueta
     ax_params.text(0, y, "Base:", ha='left', va='center', weight='bold')
     ax_params.text(0.05, y - 0.08, base_nuvol, ha='left', va='center', weight='bold', color=color_base)
     
