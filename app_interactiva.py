@@ -1013,72 +1013,77 @@ def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str
 
 def mostrar_carga_avanzada(mensaje, funcion_a_ejecutar, *args, **kwargs):
     """
-    Versión REAL que muestra el progreso actual de la carga
+    Versión simplificada pero que muestra progreso real
     """
     progress_bar = st.progress(0)
     status_text = st.empty()
     
     try:
-        # Iniciar inmediatamente la ejecución en un hilo
+        # Determinar tiempo estimado
+        es_catalunya = "cat" in funcion_a_ejecutar.__name__ or any("cat" in str(arg).lower() for arg in args)
+        tiempo_estimado = 9 if es_catalunya else 6
+        incremento = 1.0 / (tiempo_estimado * 4)  # Actualizar 4 veces por segundo
+        
+        progreso_actual = 0
+        emojis = ["🔄", "⏳", "📡", "🌪️", "📊"]
+        emoji_index = 0
+        
+        # Ejecutar la función y actualizar progreso simultáneamente
         result_container = [None]
         exception_container = [None]
         
-        def ejecutar_funcion():
+        def ejecutar_y_actualizar():
             try:
+                # Ejecutar la función principal
                 result_container[0] = funcion_a_ejecutar(*args, **kwargs)
             except Exception as e:
                 exception_container[0] = e
         
-        # Iniciar el hilo de ejecución
-        thread = threading.Thread(target=ejecutar_funcion)
+        # Iniciar la ejecución
+        import threading
+        thread = threading.Thread(target=ejecutar_y_actualizar)
         thread.start()
         
-        # Animación que se actualiza mientras se ejecuta la función
+        # Actualizar barra de progreso mientras se ejecuta
         start_time = time.time()
-        emojis = ["🔄", "⏳", "📡", "🌪️", "📊"]
-        emoji_index = 0
-        
         while thread.is_alive():
-            # Calcular progreso basado en el tiempo estimado
-            es_catalunya = "cat" in funcion_a_ejecutar.__name__ or any("cat" in str(arg).lower() for arg in args)
-            tiempo_estimado = 9 if es_catalunya else 6
-            
-            tiempo_transcurrido = time.time() - start_time
-            progreso = min(tiempo_transcurrido / tiempo_estimado, 0.95)  # Máximo 95% hasta que termine
-            
-            progress_bar.progress(progreso)
+            if progreso_actual < 0.95:  # No llegar al 100% hasta que termine
+                tiempo_transcurrido = time.time() - start_time
+                progreso_actual = min(tiempo_transcurrido / tiempo_estimado, 0.95)
+                progress_bar.progress(progreso_actual)
             
             # Animación de texto
-            dots = "." * (int(tiempo_transcurrido) % 4)
+            dots = "." * (int(time.time() - start_time) % 4)
             emoji = emojis[emoji_index % len(emojis)]
             emoji_index += 1
             
             status_text.text(f"{emoji} {mensaje}{dots}")
-            time.sleep(0.3)
+            time.sleep(0.25)
         
-        # Esperar a que el hilo termine completamente
-        thread.join()
-        
-        # Comprobar si hubo error
-        if exception_container[0]:
-            raise exception_container[0]
-        
-        # Completar al 100%
+        # Completar
         progress_bar.progress(1.0)
         status_text.text(f"✅ {mensaje}... Completat!")
         time.sleep(0.3)
         
+        # Verificar errores
+        if exception_container[0]:
+            raise exception_container[0]
+            
         return result_container[0]
         
     except Exception as e:
         progress_bar.progress(1.0)
-        status_text.text(f"❌ Error en el procés")
-        time.sleep(0.5)
+        status_text.text(f"❌ Error: {str(e)}")
+        time.sleep(1.0)
         raise e
         
     finally:
-        progress_bar.empty()
-        status_text.empty()
+        try:
+            progress_bar.empty()
+            status_text.empty()
+        except:
+            pass
+            
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig_usa(lat, lon, hourly_index):
     try:
