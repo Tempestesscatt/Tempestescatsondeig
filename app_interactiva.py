@@ -1478,21 +1478,26 @@ def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi):
 
 def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi):
     """
-    Genera el prompt definitiu (v5.1), optimitzat per a la brevetat i la rellevància.
-    Força l'IA a ser concisa i a centrar-se en el contrast meteorològic clau.
+    Genera el prompt definitiu (v6.0), que força un procés de raonament
+    lògic i jeràrquic, prioritzant l'anàlisi del disparador (convergència)
+    abans d'avaluar la inhibició (CIN).
     """
     # --- ROL I PERSONALITAT ---
     prompt_parts = [
         "### ROL I PERSONALITAT",
         "Ets un expert apassionat de la meteorologia. El teu to és de confiança, didàctic i molt directe, com si donessis un titular clau a un amic.",
         
-        "\n### MISSIÓ I REGLES DE BREVETAT",
-        "La teva única missió és analitzar les dades i respondre la pregunta del teu amic de la manera més eficient possible.",
-        "1. **SIGUES BREU:** La teva resposta ha de ser curta i anar al gra. Màxim 4-5 frases en total.",
-        "2. **CENTRA'T EN EL CONTRAST:** No descriguis tots els paràmetres. Identifica la 'lluita' principal del sondeig (ex: molt CAPE vs. molt CIN) i centra tota la teva explicació en això.",
-        "3. **RESPON DIRECTAMENT:** Comença la teva resposta anant directament al gra, basant-te en el 'Veredicte de l'Ordinador'. No facis salutacions ni repeteixis la pregunta.",
-        "4. **TRADUEIX, NO LLISTIS:** Integra 1 o 2 valors numèrics clau a la teva explicació per donar-li força, però no facis una llista.",
-        "5. **IDIOMA:** Català col·loquial i directe.",
+        "\n### LA TEVA MISSIÓ",
+        "La teva única missió és explicar de manera senzilla i correcta la 'lluita' entre els 'disparadors' atmosfèrics i la 'tapa' d'inhibició per respondre la pregunta del teu amic. La teva anàlisi ha de girar al voltant de la pregunta clau: **El disparador (Convergència) és prou fort per a trencar la 'tapa' (CIN)?**",
+
+        "\n### EL TEU PROCÉS DE RAONAMENT (OBLIGATORI)",
+        "Has de seguir aquests passos en el teu raonament:",
+        "1. **Analitza Primer el Disparador:** Mira primer la **Convergència**. Si és un valor positiu i alt (ex: > 15), és la protagonista absoluta. Aquest és el mecanisme que força l'aire a pujar.",
+        "2. **Analitza la Resistència:** Després, mira el **MLCIN**. Aquesta és la 'tapa' o la resistència. Un valor molt negatiu (ex: -100) és una tapa molt forta, mentre que un valor proper a zero (ex: -10) és una tapa feble.",
+        "3. **Emet el Veredicte:** Finalment, **compara'ls**. Explica clarament si creus que la força del disparador serà suficient per 'trencar' la tapa i alliberar el combustible (MLCAPE). Basa la teva resposta final en aquesta conclusió.",
+
+        "\n### REGLA DE BREVETAT",
+        "Mantingues la resposta directa i sense anar-te'n per les branques. Un parell de paràgrafs com a màxim.",
 
         "\n### ANÀLISI AUTOMÀTICA (El teu punt de partida)",
         f"**Localitat:** {poble}",
@@ -1502,28 +1507,34 @@ def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi):
         "\n### DADES EN BRUT ('LA CHICHA')",
     ]
     
+    # Paràmetres amb etiquetes descriptives per guiar l'IA
     parametres_info = {
-        'inestabilitat': {'MLCAPE': 'MLCAPE', 'MUCAPE': 'MUCAPE', 'MLCIN': 'MLCIN', 'LI': 'LI', 'MAX_UPDRAFT': 'Corrent Ascendent', 'LCL_Hgt': 'Base Núvol', 'LFC_Hgt': 'Nivell Explosió'},
-        'dinamics': {'BWD_0-6km': 'Cisallament 0-6km', 'BWD_0-1km': 'Cisallament 0-1km', 'SRH_0-1km': 'Helicitat 0-1km', 'SRH_0-3km': 'Helicitat 0-3km', 'CONV': 'Convergència'}
+        'inestabilitat': {'MLCAPE': 'MLCAPE (El combustible)', 'MLCIN': "MLCIN (La 'tapa' que frena)", 'LI': 'Lifted Index'},
+        'dinamics': {'CONV': "Convergència (El 'disparador' que inicia)", 'BWD_0-6km': 'Cisallament (L\'organitzador)'}
     }
-    prompt_parts.append("\n**Combustible:**")
-    for key, nom in parametres_info['inestabilitat'].items():
-        valor = params.get(key)
-        if valor is not None and not np.isnan(valor): prompt_parts.append(f"- {nom}: {valor:.1f}")
     
-    prompt_parts.append("\n**Dinàmica:**")
+    prompt_parts.append("\n**Factors Clau:**")
+    # Afegim primer els paràmetres de la 'lluita' principal
     conv_key = next((k for k in params if k.startswith('CONV_')), None)
-    for key, nom in parametres_info['dinamics'].items():
-        if key == 'CONV' and conv_key:
-            valor = params.get(conv_key)
-            if valor is not None and not np.isnan(valor): prompt_parts.append(f"- {nom}: {valor:.1f}")
-        else:
-            valor = params.get(key)
-            if valor is not None and not np.isnan(valor): prompt_parts.append(f"- {nom}: {valor:.1f}")
+    if conv_key:
+        valor = params.get(conv_key)
+        if valor is not None and not np.isnan(valor): 
+            prompt_parts.append(f"- {parametres_info['dinamics']['CONV']}: {valor:.1f}")
+    
+    valor_mlcin = params.get('MLCIN')
+    if valor_mlcin is not None and not np.isnan(valor_mlcin):
+        prompt_parts.append(f"- {parametres_info['inestabilitat']['MLCIN']}: {valor_mlcin:.1f}")
+
+    valor_mlcape = params.get('MLCAPE')
+    if valor_mlcape is not None and not np.isnan(valor_mlcape):
+        prompt_parts.append(f"- {parametres_info['inestabilitat']['MLCAPE']}: {valor_mlcape:.1f}")
+
+    valor_bwd = params.get('BWD_0-6km')
+    if valor_bwd is not None and not np.isnan(valor_bwd):
+        prompt_parts.append(f"- {parametres_info['dinamics']['BWD_0-6km']}: {valor_bwd:.1f}")
 
     prompt_parts.append("\n### INSTRUCCIÓ FINAL")
-    # --- LÍNIA CORREGIDA ---
-    prompt_parts.append(f"Ara, escriu la teva anàlisi breu i directa. La pregunta del teu amic és: \"{pregunta_usuari}\"")
+    prompt_parts.append(f"Ara, construeix la teva anàlisi seguint el procés de raonament obligatori. La pregunta del teu amic és: \"{pregunta_usuari}\"")
 
     return "\n".join(prompt_parts)
     
