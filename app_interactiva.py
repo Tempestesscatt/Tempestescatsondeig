@@ -1463,7 +1463,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
-    # ... (la part dels botons de canviar anàlisi i sortir es manté igual) ...
     col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
     with col_text:
         if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username')}**!")
@@ -1479,72 +1478,93 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             st.rerun()
 
     with st.container(border=True):
+        def formatar_llista_ciutats(ciutats, conv_data):
+            base_list = sorted(list(ciutats))
+            if not conv_data: return base_list
+            formated_list = []
+            for city in base_list:
+                conv = conv_data.get(city, 0)
+                if conv >= 40: formated_list.append(f"{city} (🔴 Potencial Alt)")
+                elif conv >= 25: formated_list.append(f"{city} (🟠 Interessant)")
+                elif conv >= 15: formated_list.append(f"{city} (🟡 Moderat)")
+                else: formated_list.append(city)
+            return sorted(formated_list, key=lambda c: (0 if "🔴" in c else 1 if "🟠" in c else 2 if "🟡" in c else 3, c))
+
         if zona_activa == 'catalunya':
-            # --- LÒGICA PER ALS DOS SELECTORS SEPARATS ---
             col_terra, col_mar, col_dia, col_hora, col_nivell = st.columns(5)
+            PLACEHOLDER_TERRA = "--- Selecciona Població ---"; PLACEHOLDER_MAR = "--- Selecciona Punt Marí ---"
 
-            # Placeholders per als selectors
-            PLACEHOLDER_TERRA = "--- Selecciona una Població ---"
-            PLACEHOLDER_MAR = "--- Selecciona un Punt Marí ---"
-
-            # Funcions de callback per sincronitzar els selectors
             def handle_terra_selection():
-                if st.session_state.selector_terra != PLACEHOLDER_TERRA:
-                    st.session_state.poble_selector = st.session_state.selector_terra
+                seleccio = st.session_state.selector_terra
+                if seleccio != PLACEHOLDER_TERRA:
+                    clau_original = next((key for key in POBLACIONS_TERRA if seleccio.startswith(key)), None)
+                    if clau_original: st.session_state.poble_selector = clau_original
                     st.session_state.selector_mar = PLACEHOLDER_MAR
 
             def handle_mar_selection():
-                if st.session_state.selector_mar != PLACEHOLDER_MAR:
-                    st.session_state.poble_selector = st.session_state.selector_mar
+                seleccio = st.session_state.selector_mar
+                if seleccio != PLACEHOLDER_MAR:
+                    clau_original = next((key for key in PUNTS_MAR if seleccio.startswith(key)), None)
+                    if clau_original: st.session_state.poble_selector = clau_original
                     st.session_state.selector_terra = PLACEHOLDER_TERRA
             
-            # Funció per formatar les llistes
-            def formatar_llista(ciutats_dict, conv_data):
-                base_list = sorted(list(ciutats_dict.keys()))
-                if not conv_data: return base_list
-                formated_list = []
-                for city in base_list:
-                    conv = conv_data.get(city, 0)
-                    if conv >= 40: formated_list.append(f"{city} (🔴 Potencial Alt)")
-                    elif conv >= 25: formated_list.append(f"{city} (🟠 Interessant)")
-                    elif conv >= 15: formated_list.append(f"{city} (🟡 Moderat)")
-                    else: formated_list.append(city)
-                return sorted(formated_list, key=lambda c: (0 if "🔴" in c else 1 if "🟠" in c else 2 if "🟡" in c else 3, c))
-
-            # Selector de Terra
             with col_terra:
-                opcions_terra = [PLACEHOLDER_TERRA] + formatar_llista(POBLACIONS_TERRA, convergencies)
-                idx_terra = 0
+                opcions = [PLACEHOLDER_TERRA] + formatar_llista_ciutats(POBLACIONS_TERRA, convergencies)
+                idx = 0
                 if st.session_state.get('poble_selector') in POBLACIONS_TERRA:
-                    try: idx_terra = next(i for i, opt in enumerate(opcions_terra) if opt.startswith(st.session_state.poble_selector))
-                    except (ValueError, StopIteration): idx_terra = 0
-                
-                st.selectbox("Població:", opcions_terra, key="selector_terra", index=idx_terra, on_change=handle_terra_selection)
-
-            # Selector de Mar
+                    try: idx = next(i for i, opt in enumerate(opcions) if opt.startswith(st.session_state.poble_selector))
+                    except (ValueError, StopIteration): idx = 0
+                st.selectbox("Població:", opcions, key="selector_terra", index=idx, on_change=handle_terra_selection)
             with col_mar:
-                opcions_mar = [PLACEHOLDER_MAR] + formatar_llista(PUNTS_MAR, convergencies)
-                idx_mar = 0
+                opcions = [PLACEHOLDER_MAR] + formatar_llista_ciutats(PUNTS_MAR, convergencies)
+                idx = 0
                 if st.session_state.get('poble_selector') in PUNTS_MAR:
-                    try: idx_mar = next(i for i, opt in enumerate(opcions_mar) if opt.startswith(st.session_state.poble_selector))
-                    except (ValueError, StopIteration): idx_mar = 0
-                
-                st.selectbox("Punt Marí:", opcions_mar, key="selector_mar", index=idx_mar, on_change=handle_mar_selection)
+                    try: idx = next(i for i, opt in enumerate(opcions) if opt.startswith(st.session_state.poble_selector))
+                    except (ValueError, StopIteration): idx = 0
+                st.selectbox("Punt Marí:", opcions, key="selector_mar", index=idx, on_change=handle_mar_selection)
 
-            # Selectors de temps i nivell (sense canvis)
             now_local = datetime.now(TIMEZONE_CAT)
-            with col_dia: st.selectbox("Dia:", ("Avui",) if is_guest else ("Avui", "Demà"), key="dia_selector", disabled=is_guest, index=0)
-            with col_hora: st.selectbox("Hora:", (f"{now_local.hour:02d}:00h",) if is_guest else [f"{h:02d}:00h" for h in range(24)], key="hora_selector", disabled=is_guest, index=0 if is_guest else now_local.hour)
+            with col_dia: st.selectbox("Dia:", ("Avui",) if is_guest else ("Avui", "Demà"), key="dia_selector", disabled=is_guest)
+            with col_hora: st.selectbox("Hora:", (f"{now_local.hour:02d}:00h",) if is_guest else [f"{h:02d}:00h" for h in range(24)], key="hora_selector", disabled=is_guest)
             with col_nivell:
                 if not is_guest:
                     st.selectbox("Nivell:", [1000, 950, 925, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
-                else:
-                    st.session_state.level_cat_main = 925
+                else: st.session_state.level_cat_main = 925
         
-        else: # Zona USA (no canvia)
+        else: # Zona USA
             col_ciutat, col_dia_usa, col_hora_usa, col_nivell_usa = st.columns(4)
-            # ... (la lògica per a USA es manté igual) ...
-                 
+            
+            # --- INICI DE LA CORRECCIÓ PER A TORNADO ALLEY ---
+            base_ciutats_usa = sorted(USA_CITIES.keys())
+            
+            def handle_usa_selection():
+                seleccio_formatejada = st.session_state.selectbox_usa_formatted
+                clau_original = next((key for key in base_ciutats_usa if seleccio_formatejada.startswith(key)), None)
+                if clau_original:
+                    st.session_state.poble_selector_usa = clau_original
+
+            with col_ciutat:
+                opcions_formatejades_usa = formatar_llista_ciutats(base_ciutats_usa, convergencies)
+                
+                poble_actual_net_usa = st.session_state.poble_selector_usa
+                try: 
+                    index_poble_usa = next(i for i, opt in enumerate(opcions_formatejades_usa) if opt.startswith(poble_actual_net_usa))
+                except (ValueError, StopIteration): 
+                    index_poble_usa = 0
+
+                st.selectbox("Ciutat:", opcions_formatejades_usa, 
+                             key="selectbox_usa_formatted", # Aquest és el nom del widget
+                             index=index_poble_usa, 
+                             on_change=handle_usa_selection) # <-- Afegim el callback
+            # --- FI DE LA CORRECCIÓ ---
+
+            now_local = datetime.now(TIMEZONE_USA)
+            with col_dia_usa: st.selectbox("Dia:", ("Avui", "Demà", "Demà passat"), key="dia_selector_usa")
+            with col_hora_usa: st.selectbox("Hora (CST):", [f"{h:02d}:00" for h in range(24)], key="hora_selector_usa")
+            with col_nivell_usa:
+                nivells_gfs = [925, 850, 700, 500, 300]
+                st.selectbox("Nivell (hPa):", options=nivells_gfs, key="level_usa_main", index=1)
+                
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
     
