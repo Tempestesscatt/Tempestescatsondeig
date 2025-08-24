@@ -255,10 +255,10 @@ def show_login_page():
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Final i Definitiva v6.0 ("La Indestructible").
-    Utilitza les funcions d'alt nivell de MetPy per als càlculs més delicats (MLCAPE, etc.),
-    garantint la màxima robustesa. Cada càlcul està aïllat per evitar qualsevol
-    tipus d'error en cascada.
+    Versió Definitiva, Completa i Indestructible v6.0.
+    Utilitza les funcions d'alt nivell de MetPy per als càlculs més delicats,
+    garantint la màxima robustesa. Cada càlcul està aïllat per evitar
+    qualsevol tipus d'error en cascada.
     """
     # --- 1. PREPARACIÓ I NETEJA DE DADES ---
     if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
@@ -274,7 +274,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
 
     # --- 2. CÀLCULS ROBUSTS I AÏLLATS ---
     with parcel_lock:
-        # Perfil de superfície (el més segur, per al dibuix i SBCAPE)
+        # Perfil de superfície (el més segur, per al dibuix i paràmetres bàsics)
         try:
             sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
         except Exception:
@@ -310,7 +310,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
         except: params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
 
-        # Altres paràmetres termo (utilitzem sfc_prof, que sabem que existeix)
+        # Altres paràmetres termo (utilitzem sfc_prof, que sabem que hauria d'existir)
         if sfc_prof is not None:
             try: params_calc['LI'] = float(mpcalc.lifted_index(p, T, sfc_prof).m)
             except: params_calc['LI'] = np.nan
@@ -359,6 +359,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         else:
             params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
         
+        # ... (la resta de càlculs, com STP, SCP, etc., es mantenen igual) ...
         try:
             eff_bottom, eff_top = mpcalc.effective_inflow_layer(p, T, Td)
             eff_bwd_u, eff_bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, bottom=eff_bottom, top=eff_top)
