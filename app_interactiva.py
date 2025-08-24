@@ -1167,33 +1167,31 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                  
                  
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
-    try:
-        mostrar_barra_carrega()
-        st.markdown("#### Mapes de Pronòstic (Model AROME)")
-        col_capa, col_zoom = st.columns(2)
-        with col_capa:
-            mapa_sel = st.selectbox("Selecciona la capa del mapa:", ["Anàlisi de Vent i Convergència", "Vent a 700hPa", "Vent a 300hPa"], key="map_cat")
-        with col_zoom: 
-            zoom_sel = st.selectbox("Nivell de Zoom:", options=list(MAP_ZOOM_LEVELS_CAT.keys()), key="zoom_cat")
-        selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
-        
-        if "Convergència" in mapa_sel:
+    st.markdown("#### Mapes de Pronòstic (Model AROME)")
+    col_capa, col_zoom = st.columns(2)
+    with col_capa:
+        mapa_sel = st.selectbox("Selecciona la capa del mapa:", ["Anàlisi de Vent i Convergència", "Vent a 700hPa", "Vent a 300hPa"], key="map_cat")
+    with col_zoom: 
+        zoom_sel = st.selectbox("Nivell de Zoom:", options=list(MAP_ZOOM_LEVELS_CAT.keys()), key="zoom_cat")
+    selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
+    
+    if "Convergència" in mapa_sel:
+        with st.spinner("Carregant mapa de convergència..."):
             map_data, error_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
-            if error_map: st.error(f"Error en carregar el mapa: {error_map}")
-            elif map_data:
-                fig = crear_mapa_forecast_combinat_cat(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str, selected_extent)
-                st.pyplot(fig, use_container_width=True); plt.close(fig)
-        else:
-            nivell = 700 if "700" in mapa_sel else 300
-            variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+        if error_map: st.error(f"Error en carregar el mapa: {error_map}")
+        elif map_data:
+            fig = crear_mapa_forecast_combinat_cat(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str, selected_extent)
+            st.pyplot(fig, use_container_width=True); plt.close(fig)
+    else:
+        nivell = 700 if "700" in mapa_sel else 300
+        variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+        with st.spinner("Carregant mapa de vents..."):
             map_data, error_map = carregar_dades_mapa_base_cat(variables, hourly_index_sel)
-            if error_map: st.error(f"Error: {error_map}")
-            elif map_data: 
-                fig = crear_mapa_vents_cat(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str, selected_extent)
-                st.pyplot(fig, use_container_width=True); plt.close(fig)
-    finally:
-        amagar_barra_carrega()
-
+        if error_map: st.error(f"Error: {error_map}")
+        elif map_data: 
+            fig = crear_mapa_vents_cat(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str, selected_extent)
+            st.pyplot(fig, use_container_width=True); plt.close(fig)
+            
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual):
     if data_tuple:
         sounding_data, params_calculats = data_tuple
@@ -1216,21 +1214,17 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
     
 
 def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel):
-    try:
-        mostrar_barra_carrega()
-        st.markdown("#### Mapes de Pronòstic (Model GFS)")
-        
-        with st.spinner(f"Carregant dades del mapa GFS a {nivell_sel}hPa..."):
-            map_data, error_map = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
-        
-        if error_map:
-            st.error(f"Error en carregar el mapa: {error_map}")
-        elif map_data:
-            fig = crear_mapa_forecast_combinat_usa(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str)
-            st.pyplot(fig, use_container_width=True)
-            plt.close(fig)
-    finally:
-        amagar_barra_carrega()
+    st.markdown("#### Mapes de Pronòstic (Model GFS)")
+    
+    with st.spinner(f"Carregant dades del mapa GFS a {nivell_sel}hPa..."):
+        map_data, error_map = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
+    
+    if error_map:
+        st.error(f"Error en carregar el mapa: {error_map}")
+    elif map_data:
+        fig = crear_mapa_forecast_combinat_usa(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str)
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
         
 def ui_pestanya_satelit_usa():
     st.markdown("#### Imatge de Satèl·lit GOES-East (Temps Real)")
@@ -1330,7 +1324,9 @@ def run_catalunya_app():
     else:
         st.info("ℹ️ L'anàlisi de vent i convergència està fixada a **925 hPa** en el mode convidat.")
 
-    map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
+    # REEMPLAZADO: Usar st.spinner
+    with st.spinner("Carregant dades del mapa..."):
+        map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
     
     ciutats_per_selector = CIUTATS_CATALUNYA
     info_msg = None
@@ -1367,12 +1363,9 @@ def run_catalunya_app():
     timestamp_str = f"{st.session_state.dia_selector} a les {st.session_state.hora_selector} (Hora Local)"
     lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
     
-    # AQUESTA ÉS LA PART PROBLEMÀTICA - LES CRIDES A mostrar_barra_carrega()
-    try:
-        mostrar_barra_carrega()
+    # REEMPLAZADO: Usar st.spinner
+    with st.spinner("Carregant dades del sondeig..."):
         data_tuple, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
-    finally:
-        amagar_barra_carrega()
         
     if error_msg: 
         st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
@@ -1383,7 +1376,6 @@ def run_catalunya_app():
         conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
         params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
     
-    # CORRECCIÓ: Passem hora_sel_str a ui_pestanya_vertical
     if is_guest:
         tab_mapes, tab_vertical, tab_estacions = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Estacions Meteorològiques"])
         with tab_mapes: ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
@@ -1412,12 +1404,9 @@ def run_valley_halley_app():
     timestamp_str = f"{dia_sel_str} a les {hora_sel_str} (Central Time)"
     lat_sel, lon_sel = USA_CITIES[poble_sel]['lat'], USA_CITIES[poble_sel]['lon']
     
-    # BARRA DE CÀRREGA PER AL SONDEIG
-    try:
-        mostrar_barra_carrega()
+    # REEMPLAZADO: Usar st.spinner en lugar de la barra de carga personalizada
+    with st.spinner("Carregant dades del sondeig..."):
         data_tuple, error_msg = carregar_dades_sondeig_usa(lat_sel, lon_sel, hourly_index_sel)
-    finally:
-        amagar_barra_carrega()
         
     if error_msg:
         st.error(f"No s'ha pogut carregar el sondeig per a {poble_sel}: {error_msg}")
@@ -1431,12 +1420,9 @@ def run_valley_halley_app():
         key="level_usa_main"
     )
 
-    # BARRA DE CÀRREGA PER AL MAPA
-    try:
-        mostrar_barra_carrega()
+    # REEMPLAZADO: Usar st.spinner en lugar de la barra de carga personalizada
+    with st.spinner("Carregant dades del mapa..."):
         map_data_conv, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
-    finally:
-        amagar_barra_carrega()
 
     params_calc = data_tuple[1] if data_tuple else {}
     if data_tuple and map_data_conv:
@@ -1446,7 +1432,6 @@ def run_valley_halley_app():
     tab_mapes, tab_vertical, tab_satelit = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"])
     
     with tab_mapes:
-        # La barra de càrrega es mostrarà dins de ui_pestanya_mapes_usa
         ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel)
     
     with tab_vertical:
