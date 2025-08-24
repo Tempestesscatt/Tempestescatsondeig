@@ -665,17 +665,14 @@ def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
         f'CONV_{nivell_conv}hPa': [-2, 2, 5, 10]
     }
     
-    # --- FUNCIÓ INTERNA MODIFICADA PER INCLOURE EL TOOLTIP ---
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
         if hasattr(value, '__len__') and not isinstance(value, str):
             value = value[0] if len(value) > 0 else np.nan
         color = get_color(value, THRESHOLDS.get(param_key, []), param_key, reverse_colors)
         val_str = f"{value:.{precision}f}" if not pd.isna(value) else "---"
         
-        # Creem l'element HTML per al tooltip només si hi ha text
         tooltip_html = ""
         if tooltip_text:
-            # L'atribut 'title' crea el pop-up. 'cursor: help' canvia el ratolí a un interrogant.
             tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>'
 
         st.markdown(f"""
@@ -688,9 +685,14 @@ def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
 
     st.markdown("##### Paràmetres del Sondeig")
     
-    emoji, descripcio = determinar_emoji_temps(params, nivell_conv, hora_actual)
+    # --- LÍNIES CORREGIDES ---
+    # 1. Crida a la nova funció amb el nom correcte
+    analisi_temps = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
+    # 2. Extracció dels valors del diccionari resultant
+    emoji = analisi_temps['emoji']
+    descripcio = analisi_temps['descripcio']
+    # --- FI DE LA CORRECCIÓ ---
 
-    # --- CRIDES A styled_metric MODIFICADES ---
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE', tooltip_text=TOOLTIPS.get('SBCAPE'))
     with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
@@ -741,7 +743,6 @@ def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
         styled_metric("SRH 0-3km", srh3_value, "m²/s²", 'SRH_0-3km', tooltip_text=TOOLTIPS.get('SRH_0-3km'))
     with cols[2]: 
         styled_metric("UPDRAFT", params.get('MAX_UPDRAFT', np.nan), "m/s", 'MAX_UPDRAFT', precision=1, tooltip_text=TOOLTIPS.get('MAX_UPDRAFT'))
-
 
 @st.cache_data(ttl=1800, show_spinner="Analitzant zones de convergència...")
 def calcular_convergencies_per_llista(map_data, llista_ciutats):
