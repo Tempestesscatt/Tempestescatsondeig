@@ -105,12 +105,10 @@ THRESHOLDS_GLOBALS = {
     'SBCIN': (-25, -75, -150), 'MUCIN': (-25, -75, -150),
     'MLCIN': (-25, -75, -150), 'LI': (-2, -5, -8), 
     'PWAT': (30, 40, 50), 
-    
-    # Llindars Clau per a la consistència visual
-    # Defineixen 4 nivells: < Llindar 1 (Gris), >= Llindar 1 (Groc), >= Llindar 2 (Taronja), >= Llindar 3 (Vermell)
-    'BWD_0-6km': (20, 30, 40), 
+    # Llindars clau per a la consistència
+    'BWD_0-6km': (20, 30, 40), # Groc > 20, Taronja > 30, Vermell > 40
     'BWD_0-1km': (15, 25, 35),
-    'SRH_0-1km': (100, 150, 250), 
+    'SRH_0-1km': (100, 200, 300), # Groc > 100, Taronja > 200, Vermell > 300
     'SRH_0-3km': (150, 250, 400)
 }
 def get_color_global(value, param_key, reverse_colors=False):
