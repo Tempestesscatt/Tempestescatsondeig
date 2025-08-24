@@ -558,7 +558,7 @@ def verificar_datos_entrada(p, T, Td, u, v, heights):
 
 def crear_skewt(p, T, Td, u, v, ml_prof, params_calc, titol):
     """
-    Versión mejorada del Skew-T con manejo robusto de errores
+    Versión mejorada del Skew-T con énfasis en el Nivel de Equilibrio (EL) y CAPE
     """
     try:
         fig = plt.figure(dpi=150, figsize=(7, 8))
@@ -567,126 +567,141 @@ def crear_skewt(p, T, Td, u, v, ml_prof, params_calc, titol):
         
         skew.ax.axvline(0, color='cyan', linestyle='--', linewidth=1.5, alpha=0.7)
 
-        # Dibujar adiabáticas solo si tenemos datos suficientes
-        if len(p) > 5:
-            try:
-                skew.plot_dry_adiabats(color='coral', linestyle='--', alpha=0.5)
-                skew.plot_moist_adiabats(color='cornflowerblue', linestyle='--', alpha=0.5)
-                skew.plot_mixing_lines(color='limegreen', linestyle='--', alpha=0.5)
-            except:
-                pass
+        # Dibujar adiabáticas
+        try:
+            skew.plot_dry_adiabats(color='coral', linestyle='--', alpha=0.5)
+            skew.plot_moist_adiabats(color='cornflowerblue', linestyle='--', alpha=0.5)
+            skew.plot_mixing_lines(color='limegreen', linestyle='--', alpha=0.5)
+        except:
+            pass
 
         # Dibujar perfil de parcela mixed layer si está disponible
+        cape_present = False
         if ml_prof is not None and len(ml_prof) == len(p):
             try:
-                skew.shade_cape(p, T, ml_prof, color='red', alpha=0.2)
-                skew.shade_cin(p, T, ml_prof, color='blue', alpha=0.2)
-                skew.plot(p, ml_prof, 'k', linewidth=3, label='Trajectòria Parcel·la (ML)', 
+                # Calcular CAPE y CIN
+                cape, cin = mpcalc.cape_cin(p, T, Td, ml_prof)
+                
+                if cape is not None and cape.m > 0:
+                    cape_present = True
+                    # Sombrear CAPE en verde y CIN en rojo
+                    skew.shade_cape(p, T, ml_prof, color='limegreen', alpha=0.3)
+                    skew.shade_cin(p, T, ml_prof, color='red', alpha=0.2)
+                
+                # Dibujar la trayectoria de la parcela
+                skew.plot(p, ml_prof, 'black', linewidth=3, label='Parcel·la (ML)', 
                           path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
-            except:
-                pass
+                
+            except Exception as e:
+                print(f"Error dibujando parcela: {e}")
 
-        # Dibujar perfiles de temperatura y punto de rocío
+        # Dibujar perfiles ambientales
         try:
             skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
             skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
         except:
             pass
 
-        # Dibujar barbas de viento si hay datos
+        # Dibujar barbas de viento
         try:
-            if len(u) > 1 and len(v) > 1:
+            if len(u) > 1 and len(v) > 1 and len(u) == len(p):
                 skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
         except:
             pass
 
         # Configurar límites del gráfico
         try:
-            skew.ax.set_ylim(max(p.m) + 100, 100)
-            skew.ax.set_xlim(min(T.m) - 10, max(T.m) + 10)
+            min_pressure = min(100, min(p.m) - 50)
+            max_pressure = max(1050, max(p.m) + 50)
+            skew.ax.set_ylim(max_pressure, min_pressure)
+            
+            min_temp = min(-40, min(T.m) - 5)
+            max_temp = max(40, max(T.m) + 5)
+            skew.ax.set_xlim(min_temp, max_temp)
         except:
-            skew.ax.set_ylim(1000, 100)
+            skew.ax.set_ylim(1050, 100)
             skew.ax.set_xlim(-40, 40)
 
         skew.ax.set_title(titol, weight='bold', fontsize=14, pad=15)
         skew.ax.set_xlabel("Temperatura (°C)")
         skew.ax.set_ylabel("Pressió (hPa)")
 
-        # Dibujar niveles característicos (LCL, LFC, EL)
-        levels_to_plot = {
-            'LCL_p': ('LCL', 'blue'),
-            'LFC_p': ('LFC', 'purple'), 
-            'EL_p': ('EL (Cim Tempesta)', 'red')
+        # DIBUJAR NIVELES CARACTERÍSTICOS CON ÉNFASIS EN EL EL
+        levels_info = {
+            'LCL_p': ('LCL', 'blue', 'Nivell de Condensació'),
+            'LFC_p': ('LFC', 'purple', 'Nivell de Convecció Lliure'),
+            'EL_p': ('EL', 'red', 'Nivell d\'Equilibri (Cim del núvol)')
         }
         
-        for key, (name, color) in levels_to_plot.items():
+        for key, (name, color, desc) in levels_info.items():
             p_val = params_calc.get(key)
             if p_val is not None and not np.isnan(p_val):
                 try:
-                    # Convertir a valor numérico si es una Quantity
+                    # Convertir a valor numérico
                     p_num = p_val.m if hasattr(p_val, 'm') else p_val
-                    if 100 <= p_num <= 1000:  # Validar que sea una presión razonable
-                        skew.ax.axhline(p_num, color=color, linestyle='--', linewidth=1.5)
-                        skew.ax.text(skew.ax.get_xlim()[1] - 2, p_num, f' {name}', 
+                    
+                    # Validar que sea una presión razonable
+                    if 100 <= p_num <= 1000:
+                        # Línea horizontal del nivel
+                        skew.ax.axhline(p_num, color=color, linestyle='-', linewidth=2, alpha=0.8)
+                        
+                        # Texto con descripción
+                        x_pos = skew.ax.get_xlim()[1] - 2
+                        skew.ax.text(x_pos, p_num, f' {name}', 
                                    color=color, ha='right', va='center', 
-                                   fontsize=10, weight='bold')
-                except:
+                                   fontsize=11, weight='bold', style='italic')
+                        
+                        # Para el EL, añadir información adicional
+                        if key == 'EL_p' and cape_present:
+                            cape_val = params_calc.get('SBCAPE', params_calc.get('MLCAPE', 0))
+                            if not np.isnan(cape_val) and cape_val > 0:
+                                skew.ax.text(x_pos, p_num - 20, f'CAPE: {cape_val:.0f} J/kg', 
+                                           color='darkgreen', ha='right', va='top', 
+                                           fontsize=9, weight='bold')
+                
+                except Exception as e:
+                    print(f"Error dibujando nivel {name}: {e}")
                     continue
 
-        # Añadir leyenda si hay elementos para mostrar
+        # Añadir información sobre la adiabática húmeda y el CAPE
+        if cape_present:
+            try:
+                cape_val = params_calc.get('SBCAPE', params_calc.get('MLCAPE', 0))
+                cin_val = params_calc.get('SBCIN', params_calc.get('MLCIN', 0))
+                
+                info_text = f"CAPE: {cape_val:.0f} J/kg\nCIN: {cin_val:.0f} J/kg"
+                skew.ax.text(0.02, 0.98, info_text, transform=skew.ax.transAxes,
+                           bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+                           verticalalignment='top', fontsize=10, weight='bold')
+            except:
+                pass
+
+        # Añadir leyenda
         try:
             handles, labels = skew.ax.get_legend_handles_labels()
             if handles:
-                skew.ax.legend()
+                skew.ax.legend(loc='upper left', framealpha=0.9)
         except:
             pass
 
         return fig
         
     except Exception as e:
-        # Fallback: crear un gráfico básico si todo falla
+        # Fallback para errores graves
         fig, ax = plt.subplots(figsize=(7, 8), dpi=150)
-        ax.text(0.5, 0.5, f"Error creant el Skew-T:\n{str(e)}", 
-                ha='center', va='center', transform=ax.transAxes)
-        ax.set_title("Error en el gráfico")
+        ax.set_facecolor('#f8f9fa')
+        ax.text(0.5, 0.5, "Error en la generació del Skew-T\n\n"
+                        "Possible causes:\n"
+                        "- Dades insuficients\n"
+                        "- Perfil atmosfèric invalid\n"
+                        "- Error en càlculs termodinàmics", 
+                ha='center', va='center', transform=ax.transAxes,
+                fontsize=12, color='red', linespacing=1.5)
+        ax.set_title("Error en el gráfic Skew-T", color='red', weight='bold')
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis('off')
         return fig
-
-def diagnosticar_potencial_tempesta(params):
-    """
-    Versió Definitiva i Lògica v2.0.
-    Retorna el text del diagnòstic I el seu color corresponent, garantint una
-    coherència visual del 100% a l'hodògraf.
-    """
-    bwd_6km = params.get('BWD_0-6km', 0) or 0
-    srh_1km = params.get('SRH_0-1km', 0) or 0
-    lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
-    cape = params.get('MLCAPE', params.get('SBCAPE', 0)) or 0
-
-    # Carreguem els llindars des de la nostra única font de la veritat
-    bwd_thresh = THRESHOLDS_GLOBALS['BWD_0-6km']
-    srh_thresh = THRESHOLDS_GLOBALS['SRH_0-1km']
-
-    # --- Diagnòstic del Tipus de Tempesta ---
-    tipus_tempesta = "Cèl·lula Simple"; color_tempesta = "#2ca02c" # Verd per defecte
-
-    if bwd_6km >= bwd_thresh[2] and cape > 1200:
-        tipus_tempesta = "Supercèl·lula"; color_tempesta = "#dc3545" # Vermell
-    elif bwd_6km >= bwd_thresh[1] and cape > 800:
-        tipus_tempesta = "Multicèl·lula Severa"; color_tempesta = "#fd7e14" # Taronja
-    elif bwd_6km >= bwd_thresh[0] and cape > 500:
-        tipus_tempesta = "Multicèl·lula"; color_tempesta = "#ffc107" # Groc
-
-    # --- Diagnòstic de la Base del Núvol ---
-    base_nuvol = "Plana i Alta"; color_base = "#2ca02c" # Verd per defecte
-
-    if srh_1km >= srh_thresh[2] and lcl_hgt < 1200:
-        base_nuvol = "Tornàdica (Wall Cloud)"; color_base = "#dc3545" # Vermell
-    elif srh_1km >= srh_thresh[1] and lcl_hgt < 1500:
-        base_nuvol = "Rotatòria Forta"; color_base = "#fd7e14" # Taronja
-    elif srh_1km >= srh_thresh[0]:
-        base_nuvol = "Rotatòria (Inflow)"; color_base = "#ffc107" # Groc
-        
-    return tipus_tempesta, color_tempesta, base_nuvol, color_base
 
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
