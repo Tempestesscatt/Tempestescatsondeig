@@ -87,8 +87,10 @@ PRESS_LEVELS_GFS = sorted([1000, 975, 950, 925, 900, 850, 800, 750, 700, 600, 50
 
 # --- Constants Generals ---
 USERS_FILE = 'users.json'
-RATE_LIMIT_FILE = 'rate_limits.json'
 CHAT_FILE = 'chat_history.json'
+MAX_IA_REQUESTS = 5              
+TIME_WINDOW_SECONDS = 3 * 60 * 60 
+RATE_LIMIT_FILE = 'rate_limits.json'
 
 
 # --- Funcions auxiliars (Compartides) ---
@@ -1240,45 +1242,88 @@ def hide_streamlit_style():
         """
     st.markdown(hide_style, unsafe_allow_html=True)
 
+
+def format_time_left(total_seconds):
+    """Formateja un total de segons en un text llegible (hores i minuts)."""
+    if total_seconds <= 0:
+        return "ja pots tornar a preguntar"
+    
+    hours, remainder = divmod(int(total_seconds), 3600)
+    minutes, _ = divmod(remainder, 60)
+    
+    if hours > 0:
+        return f"d'aquí a {hours}h i {minutes}min"
+    else:
+        return f"d'aquí a {minutes} min"
+
 def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi):
     """
-    Crea la interfície d'usuari per a la pestanya de l'assistent d'IA.
-    Versió final que elimina el 'stream' per evitar el parpelleig del text.
+    Crea la interfície d'usuari per a la pestanya de l'assistent d'IA,
+    ara amb un sistema de límit de consultes per a usuaris registrats.
     """
     st.markdown("#### Assistent d'Anàlisi (IA Gemini)")
-    st.info("Fes una pregunta en llenguatge natural. L'assistent utilitzarà una pre-anàlisi automàtica per donar-te una resposta raonada i de confiança.")
+    
+    # Comprovem si és un usuari registrat
+    is_guest = st.session_state.get('guest_mode', False)
+    current_user = st.session_state.get('username')
+
+    # Mostrem un avís sobre el límit de consultes si no és convidat
+    if not is_guest:
+        st.info(f"ℹ️ Recorda que tens un límit de **{MAX_IA_REQUESTS} consultes cada 3 hores**.")
+    else:
+        st.info("ℹ️ Fes una pregunta en llenguatge natural sobre les dades del sondeig.")
 
     if "messages" not in st.session_state: st.session_state.messages = []
     for message in st.session_state.messages:
         with st.chat_message(message["role"]): st.markdown(message["content"])
 
     if prompt := st.chat_input("Fes una pregunta sobre el sondeig..."):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"): st.markdown(prompt)
+        # --- INICI DE LA LÒGICA DE LÍMIT DE CONSULTES ---
         
-        with st.chat_message("assistant"):
-            try:
-                # Afegim un spinner per indicar que l'IA està pensant
-                with st.spinner("El teu amic expert està analitzant les dades..."):
-                    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                    model = genai.GenerativeModel('gemini-1.5-flash')
-                    
-                    prompt_complet = generar_prompt_per_ia(params_calc, prompt, poble_sel, pre_analisi)
-                    
-                    # --- CANVI CLAU ---
-                    # 1. Eliminem 'stream=True'. Ara esperem la resposta completa.
-                    response = model.generate_content(prompt_complet)
-                    
-                    # 2. Accedim al text directament amb 'response.text' i el mostrem de cop amb st.markdown.
-                    resposta_completa = response.text
-                    st.markdown(resposta_completa)
-                    # --- FI DEL CANVI ---
+        limit_excedit = False
+        if not is_guest and current_user:
+            now_ts = time.time()
+            rate_limits = load_json_file(RATE_LIMIT_FILE)
+            user_timestamps = rate_limits.get(current_user, [])
+            
+            # 1. Filtrem les consultes que ja són més velles de 3 hores
+            recent_timestamps = [ts for ts in user_timestamps if now_ts - ts < TIME_WINDOW_SECONDS]
+            
+            # 2. Comprovem si s'ha superat el límit
+            if len(recent_timestamps) >= MAX_IA_REQUESTS:
+                limit_excedit = True
+                # Calculem quant de temps falta per a la propera consulta
+                oldest_ts_in_window = recent_timestamps[0]
+                time_to_wait = (oldest_ts_in_window + TIME_WINDOW_SECONDS) - now_ts
+                temps_restant_str = format_time_left(time_to_wait)
+                
+                st.error(f"Has superat el límit de {MAX_IA_REQUESTS} consultes. Podràs tornar a preguntar {temps_restant_str}.")
+            else:
+                # 3. Si no s'ha superat, registrem la nova consulta
+                recent_timestamps.append(now_ts)
+                rate_limits[current_user] = recent_timestamps
+                save_json_file(rate_limits, RATE_LIMIT_FILE)
 
-                # Guardem la resposta a l'historial
-                st.session_state.messages.append({"role": "assistant", "content": resposta_completa})
+        # --- FI DE LA LÒGICA DE LÍMIT DE CONSULTES ---
 
-            except Exception as e:
-                st.error(f"Hi ha hagut un error en contactar amb l'assistent d'IA: {e}")
+        if not limit_excedit:
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"): st.markdown(prompt)
+            
+            with st.chat_message("assistant"):
+                try:
+                    with st.spinner("El teu amic expert està analitzant les dades..."):
+                        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        prompt_complet = generar_prompt_per_ia(params_calc, prompt, poble_sel, pre_analisi)
+                        
+                        response = model.generate_content(prompt_complet)
+                        resposta_completa = response.text
+                        st.markdown(resposta_completa)
+
+                    st.session_state.messages.append({"role": "assistant", "content": resposta_completa})
+                except Exception as e:
+                    st.error(f"Hi ha hagut un error en contactar amb l'assistent d'IA: {e}")
                 
 
 def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi):
