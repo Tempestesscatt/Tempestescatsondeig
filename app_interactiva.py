@@ -1013,40 +1013,47 @@ def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str
 
 def mostrar_carga_avanzada(mensaje, funcion_a_ejecutar, *args, **kwargs):
     """
-    Versión optimizada con tiempos ajustados
+    Versión optimizada con tiempos ajustados según la zona
     """
+    # Determinar si es Catalunya o USA basado en la función o argumentos
+    es_catalunya = "cat" in funcion_a_ejecutar.__name__ or any("cat" in str(arg).lower() for arg in args)
+    
     # Crear contenedores para la barra y el texto
     progress_bar = st.progress(0)
     status_text = st.empty()
     
     try:
-        # Animación más rápida (0% a 80%)
-        for i in range(81):
-            progress_bar.progress(i)
-            dots = "." * ((i // 15) % 4)  # Más rápido
-            emoji = "🔄" if i % 15 < 8 else "⏳"
+        # Animación ajustada según la zona
+        tiempo_total = 9 if es_catalunya else 6
+        pasos_animacion = 80
+        tiempo_por_paso = tiempo_total / pasos_animacion
+        
+        for i in range(pasos_animacion + 1):
+            progress_bar.progress(i / pasos_animacion)
+            dots = "." * ((i // 20) % 4)
+            emoji = "🔄" if i % 20 < 10 else "⏳"
             status_text.text(f"{emoji} {mensaje}{dots}")
-            time.sleep(0.015)  # Más rápido
+            time.sleep(tiempo_por_paso)
             
-        # Ejecutar la función real (80% a 95%)
-        progress_bar.progress(80)
+        # Ejecutar la función real
+        progress_bar.progress(0.95)
         status_text.text(f"🚀 Executant anàlisi...")
-        time.sleep(0.08)
+        time.sleep(0.5)
         
         resultat = funcion_a_ejecutar(*args, **kwargs)
         
         # Completar al 100% y mostrar éxito
-        progress_bar.progress(100)
+        progress_bar.progress(1.0)
         status_text.text(f"✅ {mensaje}... Completat!")
-        time.sleep(0.15)
+        time.sleep(0.3)
         
         return resultat
         
     except Exception as e:
         # Mostrar error si ocurre
-        progress_bar.progress(100)
+        progress_bar.progress(1.0)
         status_text.text(f"❌ Error en el procés")
-        time.sleep(0.2)
+        time.sleep(0.5)
         raise e
         
     finally:
