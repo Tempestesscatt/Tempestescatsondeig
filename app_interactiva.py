@@ -100,16 +100,16 @@ TIME_WINDOW_SECONDS = 3 * 60 * 60
 RATE_LIMIT_FILE = 'rate_limits.json'
 
 THRESHOLDS_GLOBALS = {
-    'SBCAPE': (100, 500, 1500, 2500), 'MUCAPE': (100, 500, 1500, 2500), 
-    'MLCAPE': (50, 250, 1000, 2000), 'CAPE_0-3km': (25, 75, 150, 250), 
-    'SBCIN': (0, -25, -75, -150), 'MUCIN': (0, -25, -75, -150),
-    'MLCIN': (0, -25, -75, -150), 'LI': (0, -2, -5, -8), 
-    'PWAT': (20, 30, 40, 50), 
-    # Llindars ajustats i més realistes per a BWD i SRH
-    'BWD_0-6km': (15, 25, 35, 45), 
-    'BWD_0-1km': (10, 15, 25, 35), 
-    'SRH_0-1km': (50, 100, 200, 300),
-    'SRH_0-3km': (100, 150, 250, 400)
+    'SBCAPE': (500, 1500, 2500), 'MUCAPE': (500, 1500, 2500), 
+    'MLCAPE': (250, 1000, 2000), 'CAPE_0-3km': (75, 150, 250), 
+    'SBCIN': (-25, -75, -150), 'MUCIN': (-25, -75, -150),
+    'MLCIN': (-25, -75, -150), 'LI': (-2, -5, -8), 
+    'PWAT': (30, 40, 50), 
+    # Llindars clau per a la consistència
+    'BWD_0-6km': (20, 30, 40), # Groc > 20, Taronja > 30, Vermell > 40
+    'BWD_0-1km': (15, 25, 35),
+    'SRH_0-1km': (100, 200, 300), # Groc > 100, Taronja > 200, Vermell > 300
+    'SRH_0-3km': (150, 250, 400)
 }
 
 def get_color_global(value, param_key, reverse_colors=False):
