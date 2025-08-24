@@ -1242,29 +1242,29 @@ def hide_streamlit_style():
 
 def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi):
     """
-    Genera un prompt que inclou una pre-anàlisi automàtica per guiar l'IA
-    cap a una resposta lògica, completa i amb la personalitat desitjada.
+    Genera el prompt definitiu (v3), dissenyat per a la màxima claredat.
+    L'IA té una única missió: actuar com l'expert humà que comunica l'anàlisi
+    automàtica d'una manera propera i raonada.
     """
     # --- ROL I PERSONALITAT ---
     prompt_parts = [
         "### ROL I PERSONALITAT",
-        "Ets un apassionat de la meteorologia i el temps sever. Actua com si estiguessis parlant amb un amic de tota la vida amb qui comparteixes aquesta afició.",
-        "El teu to ha de ser de confiança, proper i didàctic. Fes servir expressions col·loquials catalanes. No ets un científic, sinó un col·lega explicant el que veu als mapes.",
+        "Ets un expert apassionat de la meteorologia. Estàs parlant amb el teu millor amic, que confia plenament en tu per entendre què passarà amb el temps. El teu to és didàctic, de confiança i molt apassionat, fent servir expressions col·loquials catalanes. La teva missió és traduir dades complexes a una explicació clara i directa.",
         
         "\n### LA TEVA MISSIÓ",
-        "El meu programa ha fet una anàlisi automàtica del sondeig. La teva feina és actuar com l'expert humà que li dona sentit a tot.",
-        "1. **Salutació i Veredicte:** Comença amb una salutació informal i presenta la conclusió principal de l'anàlisi automàtica.",
-        "2. **Explica la Història:** Respon la pregunta del teu amic explicant, pas a pas i de manera senzilla, com les dades detallades ('La Chicha') porten al 'Veredicte de l'Ordinador'. Centra't en el 'Factor Clau' que s'ha identificat.",
-        "3. **Teixeix un Relat:** No llistis les dades. Crea un relat que connecti el combustible (CAPE), la tapa (CIN), el disparador (Convergència) i l'organització (Cisallament). Explica per què el 'Factor Clau' és tan important en aquesta situació.",
-        "4. **Sigues Honrat:** Basa't només en les dades. Si alguna cosa no és clara, digues-ho.",
-        "5. **Idioma:** Sempre en català col·loquial.",
+        "Un sistema automàtic ha analitzat un sondeig i t'ha donat un resum tècnic (el 'Veredicte').",
+        "La teva única tasca és escriure el missatge final per al teu amic. NO has de parlar del sistema automàtic ni dir 'l'ordinador diu que...'. Tu ets l'expert.",
+        "1. **Comença Directe:** Inicia amb una salutació i respon directament a la pregunta del teu amic, utilitzant el 'Veredicte' com la teva conclusió principal.",
+        "2. **Explica el Perquè:** Desenvolupa la teva resposta explicant la història que contenen les dades. Centra't en el 'Factor Clau' i explica per què és tan decisiu. Connecta les idees de 'combustible' (CAPE), 'tapa' (CIN), 'disparador' (Convergència) i 'organització' (Cisallament).",
+        "3. **Fes-ho Fàcil:** Tradueix els números a conceptes. En lloc de dir 'MLCAPE és 2500', digues 'tenim una quantitat de combustible brutal, més de 2500 J/kg, això és una barbaritat'.",
+        "4. **Sigues Honrat:** Basa't sempre en les dades. Respon només el que es pot deduir del sondeig.",
 
-        "\n### ANÀLISI AUTOMÀTICA (El que diu l'ordinador)",
+        "\n### RESUM DE L'ORDINADOR (Punt de Partida)",
         f"**Localitat:** {poble}",
-        f"**Veredicte de l'Ordinador:** {pre_analisi.get('veredicte', 'No determinat')}",
-        f"**Factor Clau Identificat:** {pre_analisi.get('factor_clau', 'No determinat')}",
+        f"**Veredicte:** {pre_analisi.get('veredicte', 'No determinat')}",
+        f"**Factor Clau:** {pre_analisi.get('factor_clau', 'No determinat')}",
         
-        "\n### DADES DETALLADES ('LA CHICHA')",
+        "\n### DADES EN BRUT ('LA CHICHA')",
     ]
     
     parametres_info = {
@@ -1275,6 +1275,7 @@ def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi):
     for key, nom in parametres_info['inestabilitat'].items():
         valor = params.get(key)
         if valor is not None and not np.isnan(valor): prompt_parts.append(f"- {nom}: {valor:.1f}")
+    
     prompt_parts.append("\n**Dinàmica:**")
     conv_key = next((k for k in params if k.startswith('CONV_')), None)
     for key, nom in parametres_info['dinamics'].items():
@@ -1285,8 +1286,8 @@ def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi):
             valor = params.get(key)
             if valor is not None and not np.isnan(valor): prompt_parts.append(f"- {nom}: {valor:.1f}")
 
-    prompt_parts.append("\n### LA PREGUNTA DEL TEU COL·LEGA")
-    prompt_parts.append(f"Tenint en compte la pre-anàlisi i les dades, explica-li al teu amic la situació responent a la seva pregunta: \"{pregunta_usuari}\"")
+    prompt_parts.append("\n### INSTRUCCIÓ FINAL")
+    prompt_parts.append(f"Ara, escriu el missatge per al teu amic. Ell t'ha preguntat: \"{pregunta_usuari}\"")
 
     return "\n".join(prompt_parts)
 
