@@ -1483,7 +1483,6 @@ def determinar_emoji_temps(params, nivell_conv):
             return "🌧️", "Nimboestratus - Ruixats/Pluja Feble"
     
     # --- 3. DIAGNÒSTIC PER A NÚVOLS BAIXOS I BOIRA ---
-    # ... (la resta del codi es manté igual)
     # Boira (FOG) - Condicions d'alta humitat i estabilitat
     if lcl_hgt < 100 and pwat > 20 and cape < 50 and cin > -25:
         if pwat > 28:
@@ -1502,7 +1501,71 @@ def determinar_emoji_temps(params, nivell_conv):
         return "☁️", "Estratocúmulus - Cel Ennuvolat amb Estructures"
 
     # --- 4. DIAGNÒSTIC CONVECTIU ---
-    # ... (la resta del codi es manté igual)
+    # Verificació de potencial convectiu significatiu
+    if (cape > 200 and li < 0) or mlcape > 250:
+        
+        # Condicions prohibitives per a convecció
+        if lfc_hgt > 3500:
+            return "🚫", "Inestabilitat Profunda - LFC Massa Alt"
+        if cin < -150:
+            return "🚫", "Inhibició Forta (CIN elevat)"
+        
+        # Supercèl·lules (organització severa)
+        if (cape > 1500 and bwd_6km > 25 and srh_1km > 150 and 
+            lcl_hgt < 1500 and lfc_hgt < 2500):
+            if srh_1km > 250 and bwd_6km > 35:
+                return "🌪️", "Supercèl·lula - Alt Potencial Sever"
+            else:
+                return "🌪️", "Supercèl·lula - Potencial Sever"
+        
+        # Línies de tempesta / Multicèl·lules
+        if (cape > 1000 and bwd_6km > 20 and conv > 5 and 
+            lcl_hgt < 1800 and lfc_hgt < 3000):
+            return "⛈️", "Multicèl·lules / Línia de Tempesta"
+        
+        # Tempestes aïllades
+        gap_lcl_lfc = lfc_hgt - lcl_hgt
+        iniciacio_facil = (gap_lcl_lfc < 1000 and cin > -50)
+        disparador_actiu = (conv > 4) or (conv > 2 and iniciacio_facil)
+        
+        if disparador_actiu:
+            if cape > 600:
+                return "⚡", "Tempesta Aïllada (Cumulonimbus)"
+            elif cape > 300:
+                return "☁️", "Cúmulus Congestus - Desenvolupament"
+        
+        # Convecció capada però amb potencial
+        return "🌤️", "Inestabilitat Capada - Possibles Desenvolupaments"
+    
+    # --- 5. DIAGNÒSTIC DE NÚVOLS MITJANS I ALTS ---
+    # Altocúmulus / Altostratus
+    if 2000 <= lcl_hgt < 5000:
+        if pwat > 25:
+            return "🌥️", "Altostratus - Ennuvolament Mitjà"
+        else:
+            return "🌥️", "Altocúmulus - Núvols Mitjans"
+    
+    # Cirrus / Cirrostratus
+    if lcl_hgt >= 5000:
+        if pwat > 20:
+            return "🌥️", "Cirrostratus - Velat Alt"
+        else:
+            return "☀️", "Cirrus - Filaments Alts"
+    
+    # --- 6. CONVECCIÓ DÈBIL O AILLADA ---
+    if 50 < cape <= 200:
+        if conv > 3:
+            return "🌤️", "Cúmulus Humilis - Convecció Dèbil"
+    
+    # --- 7. CONDICIONS ESTABLES / BON TEMPS ---
+    if cape < 50 and lcl_hgt > 1000:
+        if pwat < 20:
+            return "☀️", "Cel Serè - Anticiclònic"
+        else:
+            return "🌤️", "Cel Poc Ennuvolat - Estable"
+    
+    # --- 8. CAS PER DEFECTE - Assegurar que sempre es retorna alguna cosa ---
+    return "❓", "Patró No Classificat"
 
 
 
