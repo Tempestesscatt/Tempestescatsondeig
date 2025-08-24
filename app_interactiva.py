@@ -297,7 +297,7 @@ def calcular_mlcape_robusta(p, T, Td):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Antifràgil v4.0 - CORREGIDA
+    Versió Definitiva i Antifràgil v4.1 - COMPLETA I CORREGIDA
     """
     # --- 1. PREPARACIÓ I NETEJA DE DADES ---
     if len(p_profile) < 4: 
@@ -357,16 +357,33 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except:
             params_calc['FREEZING_LVL_HGT'] = np.nan
         
+        # DCAPE - Energia Potencial Convectiva Descendent (CORREGIT)
         try:
             dcape_val = mpcalc.dcape(p, T, Td)
-            params_calc['DCAPE'] = float(dcape_val[0].m) if dcape_val[0] else np.nan
-        except:
+            # Assegurem-nos que obtenim el valor numèric correctament
+            if hasattr(dcape_val, '__len__') and len(dcape_val) > 0:
+                params_calc['DCAPE'] = float(dcape_val[0].m) if hasattr(dcape_val[0], 'm') else float(dcape_val[0])
+            else:
+                params_calc['DCAPE'] = float(dcape_val.m) if hasattr(dcape_val, 'm') else float(dcape_val)
+        except Exception as e:
             params_calc['DCAPE'] = np.nan
         
+        # Lapse Rate 0-3km (CORREGIT)
         try:
-            lr = mpcalc.lapse_rate(p, T, height=heights, depth=3000 * units.meter)
-            params_calc['LR_0-3km'] = float(lr.to('delta_degC/km').m)
-        except:
+            # Assegurem-nos que tenim dades d'altura suficients
+            if len(heights_agl) > 1 and heights_agl.m[-1] >= 3000:
+                lr = mpcalc.lapse_rate(p, T, height=heights, depth=3000 * units.meter)
+                params_calc['LR_0-3km'] = float(lr.to('degC/km').m)
+            else:
+                # Càlcul manual si no tenim prou dades
+                idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
+                if idx_3km > 0:
+                    delta_temp = T[0].m - T[idx_3km].m
+                    delta_height = heights_agl.m[idx_3km] / 1000  # a km
+                    params_calc['LR_0-3km'] = delta_temp / delta_height if delta_height > 0 else np.nan
+                else:
+                    params_calc['LR_0-3km'] = np.nan
+        except Exception as e:
             params_calc['LR_0-3km'] = np.nan
 
         # CAPE/CIN amb el perfil principal (que sempre existeix)
@@ -481,27 +498,45 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except:
             params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
 
-        # Índexs compostos
+        # --- ÍNDEXS COMPOSTOS (STP i SCP) - VERSIÓ CORREGIDA I ROBUSTA ---
         try:
+            # Assegurem valors per defecte vàlids
+            mlcape_val = params_calc.get('MLCAPE', 0) or 0
+            esrh_val = params_calc.get('ESRH', 0) or 0
+            ebwd_val = params_calc.get('EBWD', 0) or 0
+            lcl_hgt_val = params_calc.get('LCL_Hgt', 1500) or 1500
+            mlcin_val = params_calc.get('MLCIN', 0) or 0
+            
+            # STP - Significant Tornado Parameter
             stp_val = mpcalc.significant_tornado(
-                sbcape=params_calc.get('MLCAPE', 0) * units('J/kg'),
-                effective_srh=params_calc.get('ESRH', 0) * units('m**2/s**2'),
-                effective_bulk_shear=params_calc.get('EBWD', 0) * units('kt'),
-                lcl_height=params_calc.get('LCL_Hgt', 9999) * units('m'),
-                cin=params_calc.get('MLCIN', 0) * units('J/kg')
-            )[0]
-            params_calc['STP'] = float(stp_val.m) if hasattr(stp_val, 'm') else float(stp_val)
-        except:
-            params_calc['STP'] = np.nan
-
-        try:
+                sbcape=mlcape_val * units('J/kg'),
+                effective_srh=esrh_val * units('m**2/s**2'),
+                effective_bulk_shear=ebwd_val * units('kt'),
+                lcl_height=lcl_hgt_val * units('m'),
+                cin=mlcin_val * units('J/kg')
+            )
+            # Extracció robusta del valor
+            if hasattr(stp_val, '__len__') and len(stp_val) > 0:
+                stp_num = stp_val[0]
+                params_calc['STP'] = float(stp_num.m) if hasattr(stp_num, 'm') else float(stp_num)
+            else:
+                params_calc['STP'] = float(stp_val.m) if hasattr(stp_val, 'm') else float(stp_val)
+            
+            # SCP - Supercell Composite Parameter  
             scp_val = mpcalc.supercell_composite(
-                mucape=params_calc.get('MUCAPE', 0) * units('J/kg'),
-                effective_srh=params_calc.get('ESRH', 0) * units('m**2/s**2'),
-                effective_bulk_shear=params_calc.get('EBWD', 0) * units('kt')
-            )[0]
-            params_calc['SCP'] = float(scp_val.m) if hasattr(scp_val, 'm') else float(scp_val)
-        except:
+                mucape=params_calc.get('MUCAPE', mlcape_val) * units('J/kg'),
+                effective_srh=esrh_val * units('m**2/s**2'),
+                effective_bulk_shear=ebwd_val * units('kt')
+            )
+            # Extracció robusta del valor
+            if hasattr(scp_val, '__len__') and len(scp_val) > 0:
+                scp_num = scp_val[0]
+                params_calc['SCP'] = float(scp_num.m) if hasattr(scp_num, 'm') else float(scp_num)
+            else:
+                params_calc['SCP'] = float(scp_val.m) if hasattr(scp_val, 'm') else float(scp_val)
+            
+        except Exception as e:
+            params_calc['STP'] = np.nan
             params_calc['SCP'] = np.nan
 
         return ((p, T, Td, u, v, heights, main_prof), params_calc), None
