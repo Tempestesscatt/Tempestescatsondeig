@@ -2241,9 +2241,9 @@ def main():
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Meteorològic Expert v18.0 - LÒGICA DEFINITIVA DE CASTELLANUS
-    Implementa la regla de l'usuari: CIN > 100 J/kg, LFC > 2500m i CAPE moderat
-    per a una detecció precisa de la convecció elevada.
+    Sistema de Diagnòstic Meteorològic Expert v19.0 - REFINAMENT AMB HUMITAT
+    Afegeix la condició de l'usuari d'una humitat relativa mínima del 50% en
+    capes mitjanes per a la detecció de Castellanus.
     """
     # --- 0. PREPARACIÓ ---
     es_de_nit = False
@@ -2287,13 +2287,12 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
 
     # --- 3. DIAGNÒSTIC JERÀRQUIC AVANÇAT ---
 
-    # --- NOU BLOC PRIORITARI AMB LA TEVA REGLA EXACTA ---
-    # Es comprova primer si es compleixen les condicions de Castellanus.
-    # Utilitzem MUCAPE ja que és el més rellevant per a convecció elevada.
-    if cin < -100 and lfc_hgt > 2500 and 200 < mucape < 1000 and rh_mitjana > 60:
+    # --- NOU BLOC PRIORITARI AMB LA REGLA D'HUMITAT ---
+    rh_mitjana_val = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0
+    if cin < -100 and lfc_hgt > 2500 and 200 < mucape < 1000 and rh_mitjana_val >= 50:
         return {'emoji': "🌥️", 'descripcio': "Castellanus (Convecció Elevada)",
                 'veredicte': "Potencial per a Altocumulus Castellanus. L'energia existeix en alçada, però una forta inhibició i un LFC molt alt impedeixen la formació de tempestes des de la superfície.",
-                'factor_clau': "Combinació de CIN alt (>100 J/kg), LFC alt (>2500m) i MUCAPE moderat."}
+                'factor_clau': "Combinació de CIN alt (>100 J/kg), LFC alt (>2500m), MUCAPE moderat i humitat suficient (>50%) en capes mitjanes."}
     # --- FI DEL NOU BLOC ---
 
     # Clàusula d'excepció per forçament extrem
