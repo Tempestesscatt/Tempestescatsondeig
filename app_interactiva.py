@@ -688,6 +688,57 @@ def calcular_puntuacio_tempesta(sounding_data, params, nivell_conv):
 
     return {'score': final_score, 'color': color}
 
+def analitzar_amenaces_especifiques(params):
+    """
+    Analitza paràmetres visibles per determinar el potencial de calamarsa,
+    esclafits i activitat elèctrica, retornant un text i un color per a la UI.
+    Versió 2.0 - Independent de MLCAPE i DCAPE.
+    """
+    resultats = {
+        'calamarsa': {'text': 'Nul·la', 'color': '#808080'},
+        'esclafits': {'text': 'Nul·la', 'color': '#808080'},
+        'llamps': {'text': 'Nul·la', 'color': '#808080'}
+    }
+
+    # 1. Anàlisi de Calamarsa Gran (>2cm) - (Sense canvis, ja depèn de paràmetres visibles)
+    updraft = params.get('MAX_UPDRAFT', 0) or 0
+    isozero = params.get('FREEZING_LVL_HGT', 5000) or 5000
+    if updraft > 55 or (updraft > 45 and isozero < 3500):
+        resultats['calamarsa'] = {'text': 'Molt Alta', 'color': '#dc3545'}
+    elif updraft > 40 or (updraft > 30 and isozero < 3800):
+        resultats['calamarsa'] = {'text': 'Alta', 'color': '#fd7e14'}
+    elif updraft > 25:
+        resultats['calamarsa'] = {'text': 'Moderada', 'color': '#ffc107'}
+    elif updraft > 15:
+        resultats['calamarsa'] = {'text': 'Baixa', 'color': '#2ca02c'}
+
+    # 2. Anàlisi d'Esclafits (Ventades fortes) - *** LÒGICA NOVA ***
+    # Basat en el Gradient Tèrmic a nivells baixos (LR 0-3km) i la humitat (PWAT).
+    # Un ambient sec i amb refredament ràpid afavoreix els esclafits.
+    lr_0_3km = params.get('LR_0-3km', 0) or 0
+    pwat = params.get('PWAT', 100) or 100
+    if lr_0_3km > 8.0 and pwat < 35:
+        resultats['esclafits'] = {'text': 'Alta', 'color': '#fd7e14'}
+    elif lr_0_3km > 7.0 and pwat < 40:
+        resultats['esclafits'] = {'text': 'Moderada', 'color': '#ffc107'}
+    elif lr_0_3km > 6.5:
+        resultats['esclafits'] = {'text': 'Baixa', 'color': '#2ca02c'}
+
+    # 3. Anàlisi d'Activitat Elèctrica (Llamps) - *** LÒGICA NOVA ***
+    # Basat en la inestabilitat (LI) i la profunditat de la tempesta (EL_Hgt).
+    li = params.get('LI', 5) or 5
+    el_hgt = params.get('EL_Hgt', 0) or 0
+    if li < -7 or (li < -5 and el_hgt > 12000):
+        resultats['llamps'] = {'text': 'Extrema', 'color': '#dc3545'}
+    elif li < -4 or (li < -2 and el_hgt > 10000):
+        resultats['llamps'] = {'text': 'Alta', 'color': '#fd7e14'}
+    elif li < -1:
+        resultats['llamps'] = {'text': 'Moderada', 'color': '#ffc107'}
+    elif params.get('MUCAPE', 0) > 150: # Si hi ha una mínima inestabilitat
+        resultats['llamps'] = {'text': 'Baixa', 'color': '#2ca02c'}
+        
+    return resultats
+
 
 def analitzar_component_maritima(sounding_data):
     """
@@ -753,12 +804,10 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual)
                 colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
                 color = colors[np.searchsorted(thresholds, value)]
             elif param_key == 'T_500hPa':
-                # Valors més freds (més negatius) són més perillosos (color més càlid)
-                if value <= -22: color = "#b300ff" # Lila (Extrem)
-                elif value <= -18: color = "#dc3545" # Vermell (Molt Alt)
-                elif value <= -14: color = "#fd7e14" # Taronja (Alt)
-                elif value <= -8: color = "#ffc107"  # Groc (Moderat)
-                else: color = "#2ca02c"             # Verd (Baix)
+                thresholds = [-8, -14, -18, -22] # Llindars per T a 500hPa
+                colors = ["#2ca02c", "#ffc107", "#fd7e14", "#dc3545", "#b300ff"] # Verd -> Groc -> Taronja -> Vermell -> Lila
+                # Com que valors més baixos són pitjors, invertim la cerca
+                color = colors[len(thresholds) - np.searchsorted(thresholds, value, side='right')]
             else:
                 color = get_color_global(value, param_key, reverse_colors)
 
@@ -846,7 +895,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual)
         styled_threat("Índex de Potencial", score_text, puntuacio_resultat['color'], 'PUNTUACIO_TEMPESTA')
     with cols[2]:
         styled_threat("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], 'AMENACA_LLAMPS')
-        
 
 @st.cache_data(ttl=1800, show_spinner="Analitzant zones de convergència...")
 def calcular_convergencies_per_llista(map_data, llista_ciutats):
@@ -2313,4 +2361,3 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     return {'emoji': "☀️", 'descripcio': "Cel Serè", 'veredicte': "Temps estable i sense nuvolositat.", 'factor_clau': "Atmosfera seca."}
 if __name__ == "__main__":
     main()
-
