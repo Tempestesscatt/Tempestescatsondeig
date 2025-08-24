@@ -534,64 +534,78 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     intervals = np.array([0, 1, 3, 6, 9, 12]) * units.km; colors_hodo = ['red', 'blue', 'green', 'purple', 'gold']
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
     ax_hodo.set_xlabel('U-Component (nusos)'); ax_hodo.set_ylabel('V-Component (nusos)')
-    
-    # --- PANELL DE PARÀMETRES (VERSIÓ FINAL AMB TOT) ---
-    ax_params.axis('off')
-    y = 0.98 # Ajustem l'inici per a més espai
 
-    # --- Secció 1: Moviment de la Tempesta ---
-    ax_params.text(0, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
+    # --- PANELL DE PARÀMETRES (ESTRUCTURA ORIGINAL AMB DIAGNÒSTIC INTEGRAT) ---
+    ax_params.axis('off')
+    def degrees_to_cardinal_ca(d):
+        dirs = ["Nord", "Nord-nord-est", "Nord-est", "Est-nord-est", "Est", "Est-sud-est", "Sud-est", "Sud-sud-est", "Sud", "Sud-sud-oest", "Sud-oest", "Oest-sud-oest", "Oest", "Oest-nord-oest", "Nord-oest", "Nord-nord-oest"]
+        return dirs[int(round(d / 22.5)) % 16]
+    def get_color(value, thresholds):
+        if pd.isna(value): return "grey"
+        colors = ["grey", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
+        thresholds = sorted(thresholds)
+        for i, threshold in enumerate(thresholds):
+            if value < threshold: return colors[i]
+        return colors[-1]
+
+    THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
+    y = 0.95
+    
+    # Secció 1: Moviment (com la volies)
     motion_data = {
         'M. Dret': params_calc.get('RM'), 
         'M. Esquerre': params_calc.get('LM'), 
         'Es mourà cap a': params_calc.get('Mean_Wind')
     }
-    
-    # ... (Codi de càlcul i color del "split" sense canvis)
-    def degrees_to_cardinal_ca(d):
-        dirs = ["Nord", "Nord-nord-est", "Nord-est", "Est-nord-est", "Est", "Est-sud-est", "Sud-est", "Sud-sud-est", "Sud", "Sud-sud-oest", "Sud-oest", "Oest-sud-oest", "Oest", "Oest-nord-oest", "Nord-oest", "Nord-nord-oest"]
-        return dirs[int(round(d / 22.5)) % 16]
-    def get_split_color(angle_diff):
-        if pd.isna(angle_diff) or angle_diff < 30: return 'dimgrey'
-        if angle_diff < 60: return '#ffc107'
-        if angle_diff < 90: return '#fd7e14'
-        return '#dc3545'
-    dir_rm, dir_lm = np.nan, np.nan
-    rm_vec = motion_data['M. Dret']; lm_vec = motion_data['M. Esquerre']
-    if rm_vec and not pd.isna(rm_vec[0]): dir_rm = mpcalc.wind_direction(rm_vec[0] * units('m/s'), rm_vec[1] * units('m/s'), convention='to').m
-    if lm_vec and not pd.isna(lm_vec[0]): dir_lm = mpcalc.wind_direction(lm_vec[0] * units('m/s'), lm_vec[1] * units('m/s'), convention='to').m
-    angle_difference = np.nan
-    if not np.isnan(dir_rm) and not np.isnan(dir_lm): angle_difference = 180 - abs(abs(dir_rm - dir_lm) - 180)
-    split_color = get_split_color(angle_difference)
-    
+    ax_params.text(0, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
     for display_name, vec in motion_data.items():
         if vec and not pd.isna(vec[0]):
             u_motion = vec[0] * units('m/s'); v_motion = vec[1] * units('m/s')
             speed = mpcalc.wind_speed(u_motion, v_motion).to('km/h').m
             direction = mpcalc.wind_direction(u_motion, v_motion, convention='to').to('deg').m
             cardinal = degrees_to_cardinal_ca(direction)
-            text_color = 'white' if display_name == 'Es mourà cap a' else split_color
-            ax_params.text(0, y, f"{display_name}:", ha='left', va='center', color=text_color, fontsize=10)
-            ax_params.text(0.95, y, f"{cardinal} / {speed:.0f} km/h", ha='right', va='center', color=text_color, fontsize=10)
+            ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
+            ax_params.text(1, y, f"{cardinal} / {speed:.0f} km/h", ha='right', va='center')
         else:
-            ax_params.text(0, y, f"{display_name}:", ha='left', va='center', color='dimgrey', fontsize=10)
-            ax_params.text(0.95, y, "---", ha='right', va='center', color='dimgrey', fontsize=10)
-        y-=0.08
-    
-    y-=0.05 # Espai extra entre seccions
+            ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
+            ax_params.text(1, y, "---", ha='right', va='center')
+        y-=0.1
 
-    # --- Secció 2: Diagnòstic del Potencial ---
+    # Obtenim el diagnòstic per a les seccions següents
     tipus_tempesta, color_tempesta, base_nuvol, color_base = diagnosticar_potencial_tempesta(params_calc)
-    
-    ax_params.text(0, y, "Potencial d'Organització:", ha='left', weight='bold', fontsize=11); y-=0.08
-    ax_params.text(1, y, tipus_tempesta, ha='right', va='center', fontsize=11, weight='bold', color=color_tempesta)
-    y -= 0.12
 
-    ax_params.text(0, y, "Morfologia Base:", ha='left', weight='bold', fontsize=11); y-=0.08
-    ax_params.text(1, y, base_nuvol, ha='right', va='center', fontsize=11, weight='bold', color=color_base)
-    
-    return fig
+    # Secció 2: Cisallament (amb diagnòstic)
+    y-=0.05
+    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
+    for key, label in [('BWD_0-1km', '0-1 km'), ('BWD_0-6km', '0-6 km')]:
+        val = params_calc.get(key, np.nan)
+        color = get_color(val, THRESHOLDS['BWD'])
+        ax_params.text(0, y, f"{label}:", ha='left', va='center')
+        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
+        y-=0.07
+    # Línia de diagnòstic en lloc de "Efectiu"
+    ax_params.text(0, y, "Tipus:", ha='left', va='center')
+    ax_params.text(1, y, tipus_tempesta, ha='right', va='center', weight='bold', color=color_tempesta)
+    y-=0.07
+
+    # Secció 3: Helicitat (amb diagnòstic)
+    y-=0.05
+    ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.1
+    for key, label in [('SRH_0-1km', '0-1 km'), ('SRH_0-3km', '0-3 km')]:
+        val = params_calc.get(key, np.nan)
+        color = get_color(val, THRESHOLDS['SRH'])
+        ax_params.text(0, y, f"{label}:", ha='left', va='center')
+        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
+        y-=0.07
+    # Línia de diagnòstic en lloc de "Efectiva"
+    ax_params.text(0, y, "Base:", ha='left', va='center')
+    ax_params.text(1, y, base_nuvol, ha='right', va='center', weight='bold', color=color_base)
+    y-=0.07
         
+    return fig
+
+
+
 
 def ui_caixa_parametres_sondeig(params, nivell_conv):
     def get_color(value, thresholds, param_key, reverse_colors=False):
