@@ -1529,7 +1529,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             with col_nivell:
                 if not is_guest:
                     # --- LLISTA AMPLIADA PER A CATALUNYA ---
-                    nivells = [1000, 975, 950, 925, 900, 850, 800, 700]
+                    nivells = [1000, 975, 950, 925, 900, 850, 800, 700, 500, 300]
                     st.selectbox("Nivell:", nivells, key="level_cat_main", index=3, format_func=lambda x: f"{x} hPa") # 925hPa és ara l'índex 3
                 else: st.session_state.level_cat_main = 925
         
@@ -1555,7 +1555,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             with col_hora_usa: st.selectbox("Hora (CST):", [f"{h:02d}:00" for h in range(24)], key="hora_selector_usa")
             with col_nivell_usa:
                 # --- LLISTA AMPLIADA PER A TORNADO ALLEY ---
-                nivells_gfs = [975, 950, 925, 900, 850, 700, 500, 300]
+                nivells_gfs = [1000,975, 950, 925, 900, 850, 700, 500, 300]
                 st.selectbox("Nivell (hPa):", options=nivells_gfs, key="level_usa_main", index=4) # 850hPa és ara l'índex 4
                 
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
