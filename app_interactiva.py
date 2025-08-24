@@ -1239,90 +1239,85 @@ def hide_streamlit_style():
         """
     st.markdown(hide_style, unsafe_allow_html=True)
 
-def generar_prompt_per_ia(params, pregunta_usuari, poble):
+def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi):
     """
-    Crea un prompt detallat i estructurat per a l'assistent d'IA,
-    combinant el rol, les dades del sondeig i la pregunta de l'usuari.
+    Genera un prompt que inclou una pre-anàlisi automàtica per guiar l'IA
+    cap a una resposta lògica, completa i amb la personalitat desitjada.
     """
-    # Iniciem la construcció del prompt amb el rol i les instruccions
+    # --- ROL I PERSONALITAT ---
     prompt_parts = [
-        "### ROL I INSTRUCCIONS",
-        "Ets un meteoròleg expert en temps sever, especialitzat en la interpretació de sondejos atmosfèrics.",
-        "Analitza les següents dades de sondeig per a la localitat indicada i respon la pregunta de l'usuari.",
-        "La teva resposta ha de ser tècnica però clara, concisa i basada ÚNICAMENT en les dades proporcionades.",
-        "No inventis informació. Si una dada no hi és, indica que no està disponible.",
-        "Respon sempre en català.",
-        "\n### DADES DEL SONDEIG",
+        "### ROL I PERSONALITAT",
+        "Ets un apassionat de la meteorologia i el temps sever. Actua com si estiguessis parlant amb un amic de tota la vida amb qui comparteixes aquesta afició.",
+        "El teu to ha de ser de confiança, proper i didàctic. Fes servir expressions col·loquials catalanes. No ets un científic, sinó un col·lega explicant el que veu als mapes.",
+        
+        "\n### LA TEVA MISSIÓ",
+        "El meu programa ha fet una anàlisi automàtica del sondeig. La teva feina és actuar com l'expert humà que li dona sentit a tot.",
+        "1. **Salutació i Veredicte:** Comença amb una salutació informal i presenta la conclusió principal de l'anàlisi automàtica.",
+        "2. **Explica la Història:** Respon la pregunta del teu amic explicant, pas a pas i de manera senzilla, com les dades detallades ('La Chicha') porten al 'Veredicte de l'Ordinador'. Centra't en el 'Factor Clau' que s'ha identificat.",
+        "3. **Teixeix un Relat:** No llistis les dades. Crea un relat que connecti el combustible (CAPE), la tapa (CIN), el disparador (Convergència) i l'organització (Cisallament). Explica per què el 'Factor Clau' és tan important en aquesta situació.",
+        "4. **Sigues Honrat:** Basa't només en les dades. Si alguna cosa no és clara, digues-ho.",
+        "5. **Idioma:** Sempre en català col·loquial.",
+
+        "\n### ANÀLISI AUTOMÀTICA (El que diu l'ordinador)",
         f"**Localitat:** {poble}",
+        f"**Veredicte de l'Ordinador:** {pre_analisi.get('veredicte', 'No determinat')}",
+        f"**Factor Clau Identificat:** {pre_analisi.get('factor_clau', 'No determinat')}",
+        
+        "\n### DADES DETALLADES ('LA CHICHA')",
     ]
-
-    # Diccionari per a noms més clars i unitats
-    noms_parametres = {
-        'SBCAPE': ('SBCAPE', 'J/kg'), 'MUCAPE': ('MUCAPE', 'J/kg'), 'MLCAPE': ('MLCAPE', 'J/kg'),
-        'SBCIN': ('SBCIN', 'J/kg'), 'MUCIN': ('MUCIN', 'J/kg'), 'MLCIN': ('MLCIN', 'J/kg'),
-        'LI': ('Lifted Index', '°C'), 'PWAT': ('Aigua Precipitable', 'mm'),
-        'LCL_Hgt': ('Base del Núvol (LCL)', 'm'), 'LFC_Hgt': ('Nivell de Conv. Lliure (LFC)', 'm'),
-        'BWD_0-6km': ('Cisallament 0-6km', 'nusos'), 'BWD_0-1km': ('Cisallament 0-1km', 'nusos'),
-        'SRH_0-1km': ('Helicitat 0-1km', 'm²/s²'), 'SRH_0-3km': ('Helicitat 0-3km', 'm²/s²'),
-        'MAX_UPDRAFT': ('Corrent Ascendent Màx.', 'm/s')
+    
+    parametres_info = {
+        'inestabilitat': {'MLCAPE': 'MLCAPE', 'MUCAPE': 'MUCAPE', 'MLCIN': 'MLCIN', 'LI': 'LI', 'MAX_UPDRAFT': 'Corrent Ascendent', 'LCL_Hgt': 'Base Núvol', 'LFC_Hgt': 'Nivell Explosió'},
+        'dinamics': {'BWD_0-6km': 'Cisallament 0-6km', 'BWD_0-1km': 'Cisallament 0-1km', 'SRH_0-1km': 'Helicitat 0-1km', 'SRH_0-3km': 'Helicitat 0-3km', 'CONV': 'Convergència'}
     }
-
-    # Afegim cada paràmetre al prompt de forma estructurada
-    for key, (nom, unitat) in noms_parametres.items():
+    prompt_parts.append("\n**Combustible:**")
+    for key, nom in parametres_info['inestabilitat'].items():
         valor = params.get(key)
-        if valor is not None and not np.isnan(valor):
-            prompt_parts.append(f"- **{nom}:** {valor:.1f} {unitat}")
+        if valor is not None and not np.isnan(valor): prompt_parts.append(f"- {nom}: {valor:.1f}")
+    prompt_parts.append("\n**Dinàmica:**")
+    conv_key = next((k for k in params if k.startswith('CONV_')), None)
+    for key, nom in parametres_info['dinamics'].items():
+        if key == 'CONV' and conv_key:
+            valor = params.get(conv_key)
+            if valor is not None and not np.isnan(valor): prompt_parts.append(f"- {nom}: {valor:.1f}")
         else:
-            prompt_parts.append(f"- **{nom}:** No disponible")
+            valor = params.get(key)
+            if valor is not None and not np.isnan(valor): prompt_parts.append(f"- {nom}: {valor:.1f}")
 
-    # Afegim la pregunta de l'usuari al final
-    prompt_parts.append("\n### PREGUNTA DE L'USUARI")
-    prompt_parts.append(pregunta_usuari)
+    prompt_parts.append("\n### LA PREGUNTA DEL TEU COL·LEGA")
+    prompt_parts.append(f"Tenint en compte la pre-anàlisi i les dades, explica-li al teu amic la situació responent a la seva pregunta: \"{pregunta_usuari}\"")
 
     return "\n".join(prompt_parts)
 
-def ui_pestanya_assistent_ia(params_calc, poble_sel):
+def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi):
     """
     Crea la interfície d'usuari per a la pestanya de l'assistent d'IA.
+    Ara rep una pre-anàlisi per guiar l'IA.
     """
     st.markdown("#### Assistent d'Anàlisi (IA Gemini)")
-    st.info("Fes una pregunta en llenguatge natural sobre les dades del sondeig. Per exemple: *'Quin és el potencial de calamarsa?'* o *'Hi ha risc de tornados segons aquestes dades?'*")
+    st.info("Fes una pregunta en llenguatge natural. L'assistent utilitzarà una pre-anàlisi automàtica per donar-te una resposta raonada i de confiança.")
 
-    # Inicialització de l'historial del xat
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-    # Mostrar l'historial
+    if "messages" not in st.session_state: st.session_state.messages = []
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+        with st.chat_message(message["role"]): st.markdown(message["content"])
 
-    # Captura de la pregunta de l'usuari
     if prompt := st.chat_input("Fes una pregunta sobre el sondeig..."):
-        # Afegir i mostrar el missatge de l'usuari
         st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        # Generar i mostrar la resposta de l'IA
+        with st.chat_message("user"): st.markdown(prompt)
         with st.chat_message("assistant"):
             try:
-                # Configurem el model de Gemini
                 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                 model = genai.GenerativeModel('gemini-1.5-flash')
                 
-                # Creem el prompt complet i el mostrem en un expander (per depuració)
-                prompt_complet = generar_prompt_per_ia(params_calc, prompt, poble_sel)
-                with st.expander("Veure el prompt enviat a la IA"):
+                # Passem la pre-anàlisi al generador de prompts
+                prompt_complet = generar_prompt_per_ia(params_calc, prompt, poble_sel, pre_analisi)
+                
+                with st.expander("Veure el prompt enviat a la IA (amb la pre-anàlisi)"):
                     st.text(prompt_complet)
                 
-                # Cridem a la IA i mostrem la resposta amb efecte "stream"
                 response = model.generate_content(prompt_complet, stream=True)
                 resposta_completa = st.write_stream(response)
-                
-                # Guardem la resposta completa a l'historial
                 st.session_state.messages.append({"role": "assistant", "content": resposta_completa})
-            
             except Exception as e:
                 st.error(f"Hi ha hagut un error en contactar amb l'assistent d'IA: {e}")
 
@@ -1835,13 +1830,12 @@ def main():
     # --- FI DEL CANVI ---
 
 
-def determinar_emoji_temps(params, nivell_conv, hora_actual=None):
+def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Meteorològic Expert v8.0
-    Implementa un sistema de "Potencial de Disparador" que dona prioritat a la
-    intensitat de la convergència per a un diagnòstic de convecció superior.
+    Sistema de Diagnòstic Meteorològic Expert v9.0
+    Retorna un diccionari estructurat amb l'anàlisi completa per a l'assistent d'IA.
     """
-    # --- 0. PREPARACIÓ ---
+    # Preparació inicial
     es_de_nit = False
     if hora_actual:
         try:
@@ -1850,7 +1844,7 @@ def determinar_emoji_temps(params, nivell_conv, hora_actual=None):
         except (ValueError, AttributeError):
             es_de_nit = False
 
-    # --- 1. EXTRACCIÓ DE PARÀMETRES ---
+    # Extracció de paràmetres
     mlcape = params.get('MLCAPE', 0) or 0
     mucape = params.get('MUCAPE', 0) or 0
     cin = params.get('MLCIN', params.get('SBCIN', 0)) or 0
@@ -1860,84 +1854,63 @@ def determinar_emoji_temps(params, nivell_conv, hora_actual=None):
     lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
     lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
     rh_capes = params.get('RH_CAPES', {'baixa': 0, 'mitjana': 0, 'alta': 0})
-    
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
 
-    # --- 2. AVALUACIÓ DEL POTENCIAL DE DISPARADOR ---
+    # Lògica de disparador
     hi_ha_inestabilitat_latent = (mucape > 150 or li < -1)
     trigger_potential = 'Nul'
-
     if hi_ha_inestabilitat_latent:
         FACTOR_CONV = 5.0
         cin_efectiu = abs(min(0, cin))
         forçament_dinamic = (conv * FACTOR_CONV) if conv > 1 else 0
         forçament_net = forçament_dinamic - cin_efectiu
+        if conv >= 30 and forçament_net > -75: trigger_potential = 'Fort'
+        elif conv >= 15 and forçament_net > -40: trigger_potential = 'Moderat'
+        elif conv >= 5 and forçament_net > -20: trigger_potential = 'Feble'
+        elif cin_efectiu < 15: trigger_potential = 'Feble'
 
-        # Classifiquem la força del disparador basant-nos en la convergència
-        # Un disparador FORT pot superar un CIN significatiu.
-        if conv >= 30:
-            if forçament_net > -75: trigger_potential = 'Fort'
-        elif conv >= 15:
-            if forçament_net > -40: trigger_potential = 'Moderat'
-        elif conv >= 5:
-            if forçament_net > -20: trigger_potential = 'Feble'
-        
-        # Si no hi ha convergència, la convecció només es dispara si no hi ha CIN
-        elif cin_efectiu < 15:
-            trigger_potential = 'Feble'
-
-    # --- 3. DIAGNÒSTIC JERÀRQUIC BASAT EN EL POTENCIAL DE DISPARADOR ---
-
-    # PRIORITAT 1: Tempestes Severes (requereixen disparador i dinàmica)
+    # --- NOU SISTEMA DE RETORN ESTRUCTURAT ---
+    
+    # Prioritat 1: Tempestes Severes
     if trigger_potential in ['Fort', 'Moderat']:
         cape_real = max(mlcape, mucape)
         if cape_real > 1200 and bwd_6km > 25:
             if bwd_6km >= 35 and srh_1km > 125:
-                if lcl_hgt < 1200 and srh_1km > 200: return "🌪️", "Supercèl·lula (Potencial Tornàdic)"
-                return "🌪️", "Supercèl·lula (Calamarsa Severa)"
-            return "⛈️", "Tempestes Organitzades"
+                desc = "Supercèl·lula (Calamarsa Severa)"
+                if lcl_hgt < 1200 and srh_1km > 200: desc = "Supercèl·lula (Potencial Tornàdic)"
+                return {'emoji': "🌪️", 'descripcio': desc, 'veredicte': "Potencial de tempestes severes organitzades (Supercèl·lules).", 'factor_clau': "Combinació de gran inestabilitat, fort cisallament i helicitat significativa."}
+            return {'emoji': "⛈️", 'descripcio': "Tempestes Organitzades", 'veredicte': "Potencial de sistemes multicel·lulars o línies de tempesta.", 'factor_clau': "Inestabilitat considerable i cisallament moderat-alt que afavoreix l'organització."}
 
-    # PRIORITAT 2: Tempestes Comunes Aïllades
-    if trigger_potential in ['Fort', 'Moderat', 'Feble']:
-        cape_real = max(mlcape, mucape)
-        if cape_real > 800 and trigger_potential != 'Nul':
-             return "🌩️", "Tempesta Aïllada"
+    # Prioritat 2: Tempestes Comunes
+    if trigger_potential != 'Nul' and max(mlcape, mucape) > 800:
+        return {'emoji': "🌩️", 'descripcio': "Tempesta Aïllada", 'veredicte': "Potencial de tempestes aïllades, possiblement fortes.", 'factor_clau': "Inestabilitat suficient i un disparador efectiu, però sense prou organització per a sistemes severs."}
 
-    # PRIORITAT 3: Núvols Convectius Intermedis
+    # Prioritat 3: Núvols Convectius
     if trigger_potential != 'Nul':
         if mucape > 250 and mlcape < 150 and lcl_hgt > 1800 and rh_capes.get('mitjana', 0) > 60 and lfc_hgt < 3500:
-            if es_de_nit: return "🌙☁️", "Nit Inestable (Castellanus)"
-            return "🌥️", "Inestabilitat (Altocumulus Castellanus)"
-        if 400 < mlcape <= 1000 and cin > -50 and lfc_hgt < 2500:
-            if es_de_nit: return "🌙☁️", "Nit amb Desenvolupament Vertical"
-            return "☁️", "Núvols de Gran Desenvolupament (Congestus)"
+            return {'emoji': "🌥️", 'descripcio': "Inestabilitat (Castellanus)", 'veredicte': "Inestabilitat a nivells mitjans, però la convecció no pot arrencar des de la superfície.", 'factor_clau': "Inestabilitat elevada (MUCAPE) però amb CAPE de superfície (MLCAPE) gairebé nul."}
+        if 400 < mlcape <= 800 and cin > -50 and lfc_hgt < 2500:
+            return {'emoji': "☁️", 'descripcio': "Desenvolupament Vertical (Congestus)", 'veredicte': "Formació de núvols de gran creixement vertical que probablement no arribaran a ser tempestes.", 'factor_clau': "Inestabilitat moderada i un LFC baix que permet el creixement, però sense prou 'punch' final."}
         if 50 < mlcape <= 400 and cin > -25:
-            if es_de_nit: return "🌙", "Nit amb Poca Nuvolositat"
-            return "🌤️", "Núvols de Bon Temps (Humilis)"
+            return {'emoji': "🌤️", 'descripcio': "Núvols de Bon Temps (Humilis)", 'veredicte': "Formació de petits cúmuls de bon temps.", 'factor_clau': "Molt poca inestabilitat, només suficient per a petits núvols."}
 
-    # --- 4. PRIORITAT 4: NÚVOLS ESTABLES (si no hi ha cap tipus de convecció) ---
+    # Prioritat 4: Núvols Estables
     rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
     rh_mitjana = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0
     rh_alta = rh_capes.get('alta', 0) if pd.notna(rh_capes.get('alta')) else 0
 
-    if rh_baixa > 85 and rh_mitjana > 80: return "🌧️", "Pluja/Plugim (Nimboestratus)"
-    if lcl_hgt < 150 and rh_baixa > 95: return "🌫️", "Boira o Boirina"
-    if rh_baixa > 75:
-        if es_de_nit: return "☁️", "Nit Coberta (Estratus)"
-        if lcl_hgt < 800: return "☁️", "Cel Cobert (Estratus)"
-        return "🌥️", "Núvols Baixos (Estratocúmulus)"
-    if rh_mitjana > 70:
-        if es_de_nit: return "🌙☁️", "Nit amb Núvols Mitjans"
-        return "🌥️", "Núvols Mitjans (Altocúmulus)"
-    if rh_alta > 60:
-        if es_de_nit: return "🌙", "Nit amb Vels Alts (Cirrus)"
-        return "🌤️", "Núvols Alts (Cirrus)"
-
-    # --- PRIORITAT 5: CEL SERÈ ---
-    if es_de_nit:
-        return "🌙", "Nit Serena"
-    return "☀️", "Cel Serè"
+    if rh_baixa > 85 and rh_mitjana > 80: return {'emoji': "🌧️", 'descripcio': "Pluja/Plugim (Nimboestratus)", 'veredicte': "Temps estable amb precipitació contínua.", 'factor_clau': "Capa d'humitat molt profunda i saturada en gairebé tota la troposfera."}
+    if lcl_hgt < 150 and rh_baixa > 95: return {'emoji': "🌫️", 'descripcio': "Boira o Boirina", 'veredicte': "Visibilitat reduïda per boira.", 'factor_clau': "Saturació d'humitat a la superfície."}
+    if rh_baixa > 75: 
+        desc = "Cel Cobert (Estratus/Estratocúmulus)"
+        if lcl_hgt < 800: desc = "Cel Cobert (Estratus)"
+        return {'emoji': "☁️", 'descripcio': desc, 'veredicte': "Cel tapat amb núvols baixos.", 'factor_clau': "Capa d'humitat concentrada a nivells baixos."}
+    if rh_mitjana > 70: return {'emoji': "🌥️", 'descripcio': "Núvols Mitjans (Altocúmulus)", 'veredicte': "Cel variable amb núvols a nivells mitjans.", 'factor_clau': "Capa d'humitat concentrada a nivells mitjans, amb base seca."}
+    if rh_alta > 60: return {'emoji': "🌤️", 'descripcio': "Núvols Alts (Cirrus)", 'veredicte': "Cel poc ennuvolat amb presència de núvols alts.", 'factor_clau': "Capa d'humitat només a nivells molt alts de l'atmosfera."}
+    
+    # Prioritat 5: Cel Serè
+    return {'emoji': "☀️", 'descripcio': "Cel Serè", 'veredicte': "Temps estable i sense nuvolositat significativa.", 'factor_clau': "Atmosfera seca en totes les capes."}
 
 if __name__ == "__main__":
     main()
