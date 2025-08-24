@@ -299,7 +299,7 @@ def calcular_mlcape_robusta(p, T, Td):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Antifràgil v4.1 - COMPLETA I CORREGIDA
+    Versió Definitiva amb Probabilitats Pràctiques
     """
     # --- 1. PREPARACIÓ I NETEJA DE DADES ---
     if len(p_profile) < 4: 
@@ -327,27 +327,23 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         params_calc = {}
         heights_agl = heights - heights[0]
 
-        # --- 2. PERFILS DE PARCEL·LA (AMB SISTEMA DE FALLBACK) ---
+        # --- 2. PERFILS DE PARCEL·LA ---
         with parcel_lock:
-            # Sempre intentem calcular el perfil superficial primer
             try:
                 sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
             except Exception as e:
                 return None, f"Error calculant perfil superficial: {str(e)}"
             
-            # Intentem calcular el perfil de capa barrejada
             try:
                 _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
             except Exception:
-                # SI FALLA, UTILITZEM EL PERFIL SUPERFICIAL COM A FALLBACK
                 ml_prof = sfc_prof
             
-            # El perfil principal serà el que estigui disponible
             main_prof = ml_prof if ml_prof is not None else sfc_prof
 
-        # --- 3. CÀLCULS INDIVIDUALS I ROBUSTOS ---
+        # --- 3. CÀLCULS BÀSICS ---
         
-        # Paràmetres bàsics (sense dependències)
+        # Paràmetres bàsics
         try:
             params_calc['PWAT'] = float(mpcalc.precipitable_water(p, Td).to('mm').m)
         except:
@@ -358,37 +354,8 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             params_calc['FREEZING_LVL_HGT'] = float(fl_h[0].to('m').m) if len(fl_h) > 0 else np.nan
         except:
             params_calc['FREEZING_LVL_HGT'] = np.nan
-        
-        # DCAPE - Energia Potencial Convectiva Descendent (CORREGIT)
-        try:
-            dcape_val = mpcalc.dcape(p, T, Td)
-            # Assegurem-nos que obtenim el valor numèric correctament
-            if hasattr(dcape_val, '__len__') and len(dcape_val) > 0:
-                params_calc['DCAPE'] = float(dcape_val[0].m) if hasattr(dcape_val[0], 'm') else float(dcape_val[0])
-            else:
-                params_calc['DCAPE'] = float(dcape_val.m) if hasattr(dcape_val, 'm') else float(dcape_val)
-        except Exception as e:
-            params_calc['DCAPE'] = np.nan
-        
-        # Lapse Rate 0-3km (CORREGIT)
-        try:
-            # Assegurem-nos que tenim dades d'altura suficients
-            if len(heights_agl) > 1 and heights_agl.m[-1] >= 3000:
-                lr = mpcalc.lapse_rate(p, T, height=heights, depth=3000 * units.meter)
-                params_calc['LR_0-3km'] = float(lr.to('degC/km').m)
-            else:
-                # Càlcul manual si no tenim prou dades
-                idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
-                if idx_3km > 0:
-                    delta_temp = T[0].m - T[idx_3km].m
-                    delta_height = heights_agl.m[idx_3km] / 1000  # a km
-                    params_calc['LR_0-3km'] = delta_temp / delta_height if delta_height > 0 else np.nan
-                else:
-                    params_calc['LR_0-3km'] = np.nan
-        except Exception as e:
-            params_calc['LR_0-3km'] = np.nan
 
-        # CAPE/CIN amb el perfil principal (que sempre existeix)
+        # CAPE/CIN
         try:
             cape, cin = mpcalc.cape_cin(p, T, Td, main_prof)
             params_calc['SBCAPE'] = float(cape.m) if cape else 0.0
@@ -397,27 +364,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except:
             params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
 
-        # Intentar calcular MLCAPE/MUCAPE separadament
-        try:
-            if ml_prof is not None and ml_prof is not sfc_prof:
-                mlcape, mlcin = mpcalc.cape_cin(p, T, Td, ml_prof)
-                params_calc['MLCAPE'] = float(mlcape.m) if mlcape else 0.0
-                params_calc['MLCIN'] = float(mlcin.m) if mlcin else 0.0
-            else:
-                # Si són el mateix, dupliquem els valors
-                params_calc['MLCAPE'] = params_calc['SBCAPE']
-                params_calc['MLCIN'] = params_calc['SBCIN']
-        except:
-            params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
-
-        try:
-            mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td)
-            params_calc['MUCAPE'] = float(mucape.m) if mucape else 0.0
-            params_calc['MUCIN'] = float(mucin.m) if mucin else 0.0
-        except:
-            params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
-
-        # LCL (sempre hauria de funcionar)
+        # LCL
         try:
             lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0])
             params_calc['LCL_p'] = float(lcl_p.m)
@@ -425,7 +372,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except:
             params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
 
-        # LFC i EL (amb el perfil principal)
+        # LFC i EL
         try:
             lfc_p, _ = mpcalc.lfc(p, T, Td, main_prof)
             if lfc_p:
@@ -449,16 +396,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except:
             params_calc['LI'] = np.nan
 
-        # CAPE 0-3km
-        try:
-            idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
-            if idx_3km < len(p):
-                cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], main_prof[:idx_3km+1])
-                params_calc['CAPE_0-3km'] = float(cape_0_3.m) if cape_0_3 else 0.0
-        except:
-            params_calc['CAPE_0-3km'] = np.nan
-
-        # Paràmetres de vent
+        # Vent i cisallament
         try:
             for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
                 bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter)
@@ -466,80 +404,92 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except:
             params_calc.update({'BWD_0-1km': np.nan, 'BWD_0-6km': np.nan})
 
-        # Moviment de tempesta
+        # Helicitat
         try:
             rm, lm, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
-            params_calc['RM'] = (float(rm[0].m), float(rm[1].m))
-            params_calc['LM'] = (float(lm[0].m), float(lm[1].m))
-        except:
-            params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan)})
-
-        # Helicitat
-        if params_calc.get('RM') and not np.isnan(params_calc['RM'][0]):
-            try:
-                u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
+            if rm and not np.isnan(rm[0].m):
+                u_storm, v_storm = rm[0] * units('m/s'), rm[1] * units('m/s')
                 for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
                     srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.meter, 
                                                        storm_u=u_storm, storm_v=v_storm)[0]
                     params_calc[f'SRH_{name}'] = float(srh.m)
-            except:
-                params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-
-        # Capa efectiva
-        try:
-            eff_bottom, eff_top = mpcalc.effective_inflow_layer(p, T, Td)
-            if eff_bottom and eff_top:
-                eff_bwd_u, eff_bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, bottom=eff_bottom, top=eff_top)
-                params_calc['EBWD'] = float(mpcalc.wind_speed(eff_bwd_u, eff_bwd_v).to('kt').m)
-                
-                if params_calc.get('RM') and not np.isnan(params_calc['RM'][0]):
-                    u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
-                    esrh, _, _ = mpcalc.storm_relative_helicity(heights, u, v, bottom=eff_bottom, top=eff_top, 
-                                                              storm_u=u_storm, storm_v=v_storm)
-                    params_calc['ESRH'] = float(esrh.m)
         except:
-            params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
+            params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
 
-        # --- ÍNDEXS COMPOSTOS (STP i SCP) - VERSIÓ CORREGIDA I ROBUSTA ---
+        # --- PROBABILITATS PRÀCTIQUES ---
+        
+        # 1. PROBABILITAT DE GRANIZO (%)
         try:
-            # Assegurem valors per defecte vàlids
-            mlcape_val = params_calc.get('MLCAPE', 0) or 0
-            esrh_val = params_calc.get('ESRH', 0) or 0
-            ebwd_val = params_calc.get('EBWD', 0) or 0
-            lcl_hgt_val = params_calc.get('LCL_Hgt', 1500) or 1500
-            mlcin_val = params_calc.get('MLCIN', 0) or 0
+            cape_val = params_calc.get('SBCAPE', 0) or 0
+            freezing_hgt = params_calc.get('FREEZING_LVL_HGT', 3000) or 3000
             
-            # STP - Significant Tornado Parameter
-            stp_val = mpcalc.significant_tornado(
-                sbcape=mlcape_val * units('J/kg'),
-                effective_srh=esrh_val * units('m**2/s**2'),
-                effective_bulk_shear=ebwd_val * units('kt'),
-                lcl_height=lcl_hgt_val * units('m'),
-                cin=mlcin_val * units('J/kg')
-            )
-            # Extracció robusta del valor
-            if hasattr(stp_val, '__len__') and len(stp_val) > 0:
-                stp_num = stp_val[0]
-                params_calc['STP'] = float(stp_num.m) if hasattr(stp_num, 'm') else float(stp_num)
+            if cape_val > 1000 and freezing_hgt < 2500:
+                # Alta probabilitat: CAPE alt i freezing level baix
+                prob_granizo = min(80, (cape_val / 3000) * 70 + (2500 - freezing_hgt) / 10)
+            elif cape_val > 500:
+                # Probabilitat moderada
+                prob_granizo = min(50, (cape_val / 2000) * 40)
             else:
-                params_calc['STP'] = float(stp_val.m) if hasattr(stp_val, 'm') else float(stp_val)
+                prob_granizo = 0
+                
+            params_calc['PROB_GRANIZO'] = round(prob_granizo)
+        except:
+            params_calc['PROB_GRANIZO'] = np.nan
+
+        # 2. PROBABILITAT DE LLAMPS (%)
+        try:
+            pwat_val = params_calc.get('PWAT', 0) or 0
+            lcl_hgt = params_calc.get('LCL_Hgt', 1500) or 1500
             
-            # SCP - Supercell Composite Parameter  
-            scp_val = mpcalc.supercell_composite(
-                mucape=params_calc.get('MUCAPE', mlcape_val) * units('J/kg'),
-                effective_srh=esrh_val * units('m**2/s**2'),
-                effective_bulk_shear=ebwd_val * units('kt')
-            )
-            # Extracció robusta del valor
-            if hasattr(scp_val, '__len__') and len(scp_val) > 0:
-                scp_num = scp_val[0]
-                params_calc['SCP'] = float(scp_num.m) if hasattr(scp_num, 'm') else float(scp_num)
+            # Base: 30% per a valors normals, incrementa amb humitat i inestabilitat
+            prob_llamps = 30
+            if pwat_val > 35: prob_llamps += 25
+            if pwat_val > 45: prob_llamps += 20
+            if cape_val > 1000: prob_llamps += 20
+            if lcl_hgt < 1000: prob_llamps += 15
+            
+            params_calc['PROB_LLAMPS'] = min(95, round(prob_llamps))
+        except:
+            params_calc['PROB_LLAMPS'] = np.nan
+
+        # 3. PROBABILITAT DE ESCLAFIT/DOWNBURST (%)
+        try:
+            dcape_val = mpcalc.dcape(p, T, Td)
+            dcape_num = float(dcape_val[0].m) if hasattr(dcape_val[0], 'm') else float(dcape_val[0])
+            
+            if dcape_num > 1000:
+                prob_esclafit = min(90, (dcape_num / 2000) * 80)
+            elif dcape_num > 500:
+                prob_esclafit = min(60, (dcape_num / 1000) * 50)
             else:
-                params_calc['SCP'] = float(scp_val.m) if hasattr(scp_val, 'm') else float(scp_val)
+                prob_esclafit = 0
+                
+            params_calc['PROB_ESCLAFIT'] = round(prob_esclafit)
+        except:
+            params_calc['PROB_ESCLAFIT'] = np.nan
+
+        # 4. RISK DE SUPERCELLULA (Index 0-10)
+        try:
+            cape_val = params_calc.get('SBCAPE', 0) or 0
+            srh_1km = params_calc.get('SRH_0-1km', 0) or 0
+            bwd_6km = params_calc.get('BWD_0-6km', 0) or 0
             
-        except Exception as e:
-            params_calc['STP'] = np.nan
-            params_calc['SCP'] = np.nan
+            risk_supercella = 0
+            if cape_val > 1500: risk_supercella += 4
+            elif cape_val > 1000: risk_supercella += 3
+            elif cape_val > 500: risk_supercella += 2
+            
+            if srh_1km > 150: risk_supercella += 3
+            elif srh_1km > 100: risk_supercella += 2
+            elif srh_1km > 50: risk_supercella += 1
+            
+            if bwd_6km > 30: risk_supercella += 3
+            elif bwd_6km > 20: risk_supercella += 2
+            elif bwd_6km > 15: risk_supercella += 1
+            
+            params_calc['RISK_SUPERCELL'] = min(10, risk_supercella)
+        except:
+            params_calc['RISK_SUPERCELL'] = np.nan
 
         return ((p, T, Td, u, v, heights, main_prof), params_calc), None
 
