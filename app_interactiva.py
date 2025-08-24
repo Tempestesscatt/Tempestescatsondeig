@@ -2290,7 +2290,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     # --- NOU BLOC PRIORITARI AMB LA TEVA REGLA EXACTA ---
     # Es comprova primer si es compleixen les condicions de Castellanus.
     # Utilitzem MUCAPE ja que és el més rellevant per a convecció elevada.
-    if cin < -100 and lfc_hgt > 2500 and 200 < mucape < 1000:
+    if cin < -100 and lfc_hgt > 2500 and 200 < mucape < 1000 and rh_mitjana > 60:
         return {'emoji': "🌥️", 'descripcio': "Castellanus (Convecció Elevada)",
                 'veredicte': "Potencial per a Altocumulus Castellanus. L'energia existeix en alçada, però una forta inhibició i un LFC molt alt impedeixen la formació de tempestes des de la superfície.",
                 'factor_clau': "Combinació de CIN alt (>100 J/kg), LFC alt (>2500m) i MUCAPE moderat."}
