@@ -907,6 +907,39 @@ def carregar_dades_mapa_cat(nivell, hourly_index):
         return map_data_raw, None
     except Exception as e:
         return None, f"Error en processar dades del mapa: {e}"
+
+def afegir_etiquetes_ciutats(ax, map_extent):
+    """
+    Afegeix etiquetes amb els noms de les ciutats a un eix de mapa (ax),
+    però només si el nivell de zoom és prou alt (l'àrea visible és petita).
+    """
+    # Calculem l'àrea de la vista actual del mapa
+    lon_range = map_extent[1] - map_extent[0]
+    lat_range = map_extent[3] - map_extent[2]
+    map_area = lon_range * lat_range
+
+    # --- LLINDAR DE ZOOM ---
+    # Definim una àrea màxima. Si la vista actual és més petita que aquest llindar,
+    # considerem que hi ha prou zoom per mostrar les etiquetes.
+    # Aquest valor s'ha ajustat manualment per a Catalunya.
+    ZOOM_AREA_THRESHOLD = 2.0 
+
+    if map_area < ZOOM_AREA_THRESHOLD:
+        # Iterem sobre les ciutats del diccionari
+        for ciutat, coords in CIUTATS_CATALUNYA.items():
+            lon, lat = coords['lon'], coords['lat']
+            
+            # Comprovem si la ciutat està dins dels límits del mapa actual
+            if map_extent[0] < lon < map_extent[1] and map_extent[2] < lat < map_extent[3]:
+                # Dibuixem el text de l'etiqueta
+                ax.text(lon + 0.02, lat, ciutat, 
+                        fontsize=8, 
+                        color='black',
+                        transform=ccrs.PlateCarree(), 
+                        zorder=20, # Assegurem que estigui per sobre de les dades
+                        # Afegeix un contorn blanc al text per a una millor llegibilitat
+                        path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')])
+                
         
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base_cat(variables, hourly_index):
