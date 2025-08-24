@@ -2289,7 +2289,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
 
     # --- NOU BLOC DE DIAGNÒSTIC PRIORITARI PER A CONVECCIÓ ELEVADA I CONTINGUDA ---
     rh_mitjana_val = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0
-    if cin < -75 and mucape > 300 and mlcape < 100 and rh_mitjana_val > 65:
+    if cin >= -75 and mucape >= 300 and mlcape < 100 and rh_mitjana_val > 55:
         return {'emoji': "🌥️", 'descripcio': "Convecció Continguda (Castellanus)",
                 'veredicte': "Potencial per a Altocumulus Castellanus. L'energia està present en alçada, però una forta inversió propera a la superfície impedeix la formació de tempestes.",
                 'factor_clau': "CIN molt alt actuant com a 'tapa', amb humitat i MUCAPE significatius just per sobre d'aquesta."}
