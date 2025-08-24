@@ -535,53 +535,62 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
     ax_hodo.set_xlabel('U-Component (nusos)'); ax_hodo.set_ylabel('V-Component (nusos)')
     
-    # --- PANELL DE PARÀMETRES (VERSIÓ AMB DIAGNÒSTIC AVANÇAT) ---
+    # --- PANELL DE PARÀMETRES (VERSIÓ FINAL AMB TOT) ---
     ax_params.axis('off')
-    y = 0.95
-    
-    # Moviment (sense canvis, però podem simplificar el codi)
-    ax_params.text(0, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.12
-    # ... (El codi de moviment es queda igual)
+    y = 0.98 # Ajustem l'inici per a més espai
 
-    # --- NOU: Seccions de Diagnòstic ---
+    # --- Secció 1: Moviment de la Tempesta ---
+    ax_params.text(0, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
+    motion_data = {
+        'M. Dret': params_calc.get('RM'), 
+        'M. Esquerre': params_calc.get('LM'), 
+        'Es mourà cap a': params_calc.get('Mean_Wind')
+    }
     
-    # Obtenim el diagnòstic cridant a la nostra nova funció
+    # ... (Codi de càlcul i color del "split" sense canvis)
+    def degrees_to_cardinal_ca(d):
+        dirs = ["Nord", "Nord-nord-est", "Nord-est", "Est-nord-est", "Est", "Est-sud-est", "Sud-est", "Sud-sud-est", "Sud", "Sud-sud-oest", "Sud-oest", "Oest-sud-oest", "Oest", "Oest-nord-oest", "Nord-oest", "Nord-nord-oest"]
+        return dirs[int(round(d / 22.5)) % 16]
+    def get_split_color(angle_diff):
+        if pd.isna(angle_diff) or angle_diff < 30: return 'dimgrey'
+        if angle_diff < 60: return '#ffc107'
+        if angle_diff < 90: return '#fd7e14'
+        return '#dc3545'
+    dir_rm, dir_lm = np.nan, np.nan
+    rm_vec = motion_data['M. Dret']; lm_vec = motion_data['M. Esquerre']
+    if rm_vec and not pd.isna(rm_vec[0]): dir_rm = mpcalc.wind_direction(rm_vec[0] * units('m/s'), rm_vec[1] * units('m/s'), convention='to').m
+    if lm_vec and not pd.isna(lm_vec[0]): dir_lm = mpcalc.wind_direction(lm_vec[0] * units('m/s'), lm_vec[1] * units('m/s'), convention='to').m
+    angle_difference = np.nan
+    if not np.isnan(dir_rm) and not np.isnan(dir_lm): angle_difference = 180 - abs(abs(dir_rm - dir_lm) - 180)
+    split_color = get_split_color(angle_difference)
+    
+    for display_name, vec in motion_data.items():
+        if vec and not pd.isna(vec[0]):
+            u_motion = vec[0] * units('m/s'); v_motion = vec[1] * units('m/s')
+            speed = mpcalc.wind_speed(u_motion, v_motion).to('km/h').m
+            direction = mpcalc.wind_direction(u_motion, v_motion, convention='to').to('deg').m
+            cardinal = degrees_to_cardinal_ca(direction)
+            text_color = 'white' if display_name == 'Es mourà cap a' else split_color
+            ax_params.text(0, y, f"{display_name}:", ha='left', va='center', color=text_color, fontsize=10)
+            ax_params.text(0.95, y, f"{cardinal} / {speed:.0f} km/h", ha='right', va='center', color=text_color, fontsize=10)
+        else:
+            ax_params.text(0, y, f"{display_name}:", ha='left', va='center', color='dimgrey', fontsize=10)
+            ax_params.text(0.95, y, "---", ha='right', va='center', color='dimgrey', fontsize=10)
+        y-=0.08
+    
+    y-=0.05 # Espai extra entre seccions
+
+    # --- Secció 2: Diagnòstic del Potencial ---
     tipus_tempesta, color_tempesta, base_nuvol, color_base = diagnosticar_potencial_tempesta(params_calc)
     
-    # Secció de Tipus de Tempesta
-    y -= 0.1
-    ax_params.text(0, y, "Potencial d'Organització", ha='left', weight='bold', fontsize=11); y-=0.12
-    ax_params.text(0.5, y, tipus_tempesta, ha='center', va='center', fontsize=12, weight='bold', color=color_tempesta,
-                   bbox=dict(facecolor='black', alpha=0.3, edgecolor='none', pad=2))
-    y -= 0.15
+    ax_params.text(0, y, "Potencial d'Organització:", ha='left', weight='bold', fontsize=11); y-=0.08
+    ax_params.text(1, y, tipus_tempesta, ha='right', va='center', fontsize=11, weight='bold', color=color_tempesta)
+    y -= 0.12
 
-    # Secció de Morfologia de la Base
-    ax_params.text(0, y, "Morfologia Base Núvol", ha='left', weight='bold', fontsize=11); y-=0.12
-    ax_params.text(0.5, y, base_nuvol, ha='center', va='center', fontsize=12, weight='bold', color=color_base,
-                   bbox=dict(facecolor='black', alpha=0.3, edgecolor='none', pad=2))
-    y -= 0.15
-
-    # Secció de Paràmetres Clau (com a referència)
-    y -= 0.05
-    ax_params.text(0, y, "Paràmetres Clau", ha='left', weight='bold', fontsize=10, color='grey'); y-=0.08
+    ax_params.text(0, y, "Morfologia Base:", ha='left', weight='bold', fontsize=11); y-=0.08
+    ax_params.text(1, y, base_nuvol, ha='right', va='center', fontsize=11, weight='bold', color=color_base)
     
-    lcl_val = params_calc.get('LCL_Hgt', np.nan)
-    srh_val = params_calc.get('SRH_0-1km', np.nan)
-    bwd_val = params_calc.get('BWD_0-6km', np.nan)
-
-    ax_params.text(0, y, "LCL:", ha='left', va='center', fontsize=9, color='grey')
-    ax_params.text(1, y, f"{lcl_val:.0f} m" if not pd.isna(lcl_val) else "---", ha='right', va='center', fontsize=9, color='grey')
-    y -= 0.07
-    
-    ax_params.text(0, y, "SRH (0-1km):", ha='left', va='center', fontsize=9, color='grey')
-    ax_params.text(1, y, f"{srh_val:.0f} m²/s²" if not pd.isna(srh_val) else "---", ha='right', va='center', fontsize=9, color='grey')
-    y -= 0.07
-
-    ax_params.text(0, y, "BWD (0-6km):", ha='left', va='center', fontsize=9, color='grey')
-    ax_params.text(1, y, f"{bwd_val:.0f} nusos" if not pd.isna(bwd_val) else "---", ha='right', va='center', fontsize=9, color='grey')
-
     return fig
-
         
 
 def ui_caixa_parametres_sondeig(params, nivell_conv):
