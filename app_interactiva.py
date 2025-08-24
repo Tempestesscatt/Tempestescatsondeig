@@ -561,8 +561,8 @@ def verificar_datos_entrada(p, T, Td, u, v, heights):
 
 def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     """
-    Versió original que dibuixa la trajectòria de la parcel·la que se li passa
-    directament (normalment, la de superfície).
+    Versió corregida que alinea correctament les etiquetes de nivell (LCL, LFC, EL)
+    a la dreta del gràfic.
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
@@ -595,11 +595,12 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
         if p_lvl is not None and not np.isnan(p_lvl):
             p_val = p_lvl.m if hasattr(p_lvl, 'm') else p_lvl
             skew.ax.axhline(p_val, color='blue', linestyle='--', linewidth=1.5)
-            skew.ax.text(skew.ax.get_xlim()[1] - 2, p_val, f' {name}', color='blue', ha='right', va='center', fontsize=10, weight='bold')
+            # --- LÍNIA CORREGIDA ---
+            # Canviem la posició X i l'alineació horitzontal (ha='right')
+            skew.ax.text(skew.ax.get_xlim()[1], p_val + 5, f' {name}', color='blue', ha='right', va='center', fontsize=10, weight='bold')
 
     skew.ax.legend()
     return fig
-
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
     gs = fig.add_gridspec(nrows=2, ncols=2, height_ratios=[1.5, 6], width_ratios=[1.5, 1], hspace=0.4, wspace=0.3)
