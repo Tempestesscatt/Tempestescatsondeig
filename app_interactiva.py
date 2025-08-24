@@ -910,21 +910,17 @@ def carregar_dades_mapa_cat(nivell, hourly_index):
 
 def afegir_etiquetes_ciutats(ax, map_extent):
     """
-    Afegeix etiquetes amb els noms de les ciutats a un eix de mapa (ax),
-    però només si el nivell de zoom és prou alt (l'àrea visible és petita).
+    Versió corregida i robusta. Afegeix etiquetes amb els noms de les ciutats
+    si la vista del mapa actual NO és la vista completa de Catalunya.
     """
-    # Calculem l'àrea de la vista actual del mapa
-    lon_range = map_extent[1] - map_extent[0]
-    lat_range = map_extent[3] - map_extent[2]
-    map_area = lon_range * lat_range
+    # --- LÒGICA DE ZOOM CORREGIDA I SIMPLIFICADA ---
+    # Comprovem si l'extensió del mapa actual és diferent de l'extensió per defecte
+    # (la de Catalunya completa). Si ho és, significa que l'usuari ha fet zoom.
+    
+    # Perquè la comparació funcioni, convertim les llistes a tuples
+    is_zoomed_in = (tuple(map_extent) != tuple(MAP_EXTENT_CAT))
 
-    # --- LLINDAR DE ZOOM ---
-    # Definim una àrea màxima. Si la vista actual és més petita que aquest llindar,
-    # considerem que hi ha prou zoom per mostrar les etiquetes.
-    # Aquest valor s'ha ajustat manualment per a Catalunya.
-    ZOOM_AREA_THRESHOLD = 2.0 
-
-    if map_area < ZOOM_AREA_THRESHOLD:
+    if is_zoomed_in:
         # Iterem sobre les ciutats del diccionari
         for ciutat, coords in CIUTATS_CATALUNYA.items():
             lon, lat = coords['lon'], coords['lat']
@@ -936,8 +932,7 @@ def afegir_etiquetes_ciutats(ax, map_extent):
                         fontsize=8, 
                         color='black',
                         transform=ccrs.PlateCarree(), 
-                        zorder=20, # Assegurem que estigui per sobre de les dades
-                        # Afegeix un contorn blanc al text per a una millor llegibilitat
+                        zorder=20,
                         path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')])
                 
         
