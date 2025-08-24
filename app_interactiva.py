@@ -561,8 +561,8 @@ def verificar_datos_entrada(p, T, Td, u, v, heights):
 
 def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     """
-    Versió corregida que alinea correctament les etiquetes de nivell (LCL, LFC, EL)
-    a la dreta del gràfic.
+    Versió final i neta. Dibuixa les línies de nivell per a LCL, LFC i EL,
+    però SENSE el text de les etiquetes per a una visualització més clara.
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
@@ -588,19 +588,19 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     skew.ax.set_title(titol, weight='bold', fontsize=14, pad=15)
     skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
 
-    # Dibuix dels nivells LCL, LFC i EL
-    levels_to_plot = {'LCL_p': 'LCL', 'LFC_p': 'LFC', 'EL_p': 'EL (Cim Tempesta)'}
-    for key, name in levels_to_plot.items():
+    # --- LÒGICA SIMPLIFICADA ---
+    # Ara només dibuixem les línies horitzontals, sense el text.
+    levels_to_plot = ['LCL_p', 'LFC_p', 'EL_p']
+    for key in levels_to_plot:
         p_lvl = params_calc.get(key)
         if p_lvl is not None and not np.isnan(p_lvl):
             p_val = p_lvl.m if hasattr(p_lvl, 'm') else p_lvl
             skew.ax.axhline(p_val, color='blue', linestyle='--', linewidth=1.5)
-            # --- LÍNIA CORREGIDA ---
-            # Canviem la posició X i l'alineació horitzontal (ha='right')
-            skew.ax.text(skew.ax.get_xlim()[1], p_val + 5, f' {name}', color='blue', ha='right', va='center', fontsize=10, weight='bold')
+    # --- FI DE LA MODIFICACIÓ ---
 
     skew.ax.legend()
     return fig
+    g
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
     gs = fig.add_gridspec(nrows=2, ncols=2, height_ratios=[1.5, 6], width_ratios=[1.5, 1], hspace=0.4, wspace=0.3)
