@@ -1375,9 +1375,7 @@ def run_valley_halley_app():
     nivell_sel = st.selectbox(
         "Nivell d'anàlisi per a Mapes i Convergència:", 
         options=nivells_disponibles_gfs, 
-        # --- LÍNIA MODIFICADA ---
         format_func=lambda x: f"{x} hPa (⭐ Recomanat)" if x == 925 else f"{x} hPa",
-        # --- FI DE LA MODIFICACIÓ ---
         key="level_usa_main"
     )
 
@@ -1388,11 +1386,12 @@ def run_valley_halley_app():
         conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
         params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
 
+    # --- CORRECCIÓ: Passem hora_sel_str a ui_pestanya_vertical ---
     tab_mapes, tab_vertical, tab_satelit = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"])
     with tab_mapes:
         ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel)
     with tab_vertical:
-        ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
+        ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str)
     with tab_satelit:
         ui_pestanya_satelit_usa()
         
