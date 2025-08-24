@@ -1013,76 +1013,45 @@ def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str
 
 def mostrar_carga_avanzada(mensaje, funcion_a_ejecutar, *args, **kwargs):
     """
-    Versión simplificada pero que muestra progreso real
+    Versión alternativa más simple
     """
+    # Para operaciones rápidas (navegación, etc.)
+    if any(palabra in mensaje.lower() for palabra in ["sortir", "tancar", "canviar", "entrar"]):
+        with st.spinner(f"⏳ {mensaje}..."):
+            time.sleep(1.5)
+        return None
+    
+    # Para operaciones lentas (mapas)
     progress_bar = st.progress(0)
     status_text = st.empty()
     
     try:
-        # Determinar tiempo estimado
-        es_catalunya = "cat" in funcion_a_ejecutar.__name__ or any("cat" in str(arg).lower() for arg in args)
-        tiempo_estimado = 9 if es_catalunya else 6
-        incremento = 1.0 / (tiempo_estimado * 4)  # Actualizar 4 veces por segundo
+        es_catalunya = "cat" in funcion_a_ejecutar.__name__ 
+        total_steps = 18 if es_catalunya else 12  # 9 segundos vs 6 segundos
         
-        progreso_actual = 0
-        emojis = ["🔄", "⏳", "📡", "🌪️", "📊"]
-        emoji_index = 0
-        
-        # Ejecutar la función y actualizar progreso simultáneamente
-        result_container = [None]
-        exception_container = [None]
-        
-        def ejecutar_y_actualizar():
-            try:
-                # Ejecutar la función principal
-                result_container[0] = funcion_a_ejecutar(*args, **kwargs)
-            except Exception as e:
-                exception_container[0] = e
-        
-        # Iniciar la ejecución
-        import threading
-        thread = threading.Thread(target=ejecutar_y_actualizar)
-        thread.start()
-        
-        # Actualizar barra de progreso mientras se ejecuta
-        start_time = time.time()
-        while thread.is_alive():
-            if progreso_actual < 0.95:  # No llegar al 100% hasta que termine
-                tiempo_transcurrido = time.time() - start_time
-                progreso_actual = min(tiempo_transcurrido / tiempo_estimado, 0.95)
-                progress_bar.progress(progreso_actual)
-            
-            # Animación de texto
-            dots = "." * (int(time.time() - start_time) % 4)
-            emoji = emojis[emoji_index % len(emojis)]
-            emoji_index += 1
-            
+        for i in range(total_steps + 1):
+            progress_bar.progress(i / total_steps)
+            dots = "." * (i % 4)
+            emoji = "🔄" if i % 2 == 0 else "⏳"
             status_text.text(f"{emoji} {mensaje}{dots}")
-            time.sleep(0.25)
+            time.sleep(0.5)  # 0.5 segundos por paso
+            
+        # Ejecutar la función REAL
+        result = funcion_a_ejecutar(*args, **kwargs)
         
-        # Completar
         progress_bar.progress(1.0)
-        status_text.text(f"✅ {mensaje}... Completat!")
+        status_text.text(f"✅ Completat!")
         time.sleep(0.3)
         
-        # Verificar errores
-        if exception_container[0]:
-            raise exception_container[0]
-            
-        return result_container[0]
+        return result
         
     except Exception as e:
-        progress_bar.progress(1.0)
-        status_text.text(f"❌ Error: {str(e)}")
-        time.sleep(1.0)
+        status_text.text(f"❌ Error")
+        time.sleep(0.5)
         raise e
-        
     finally:
-        try:
-            progress_bar.empty()
-            status_text.empty()
-        except:
-            pass
+        progress_bar.empty()
+        status_text.empty()
             
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig_usa(lat, lon, hourly_index):
