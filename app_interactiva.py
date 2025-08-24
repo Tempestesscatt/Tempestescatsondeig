@@ -506,8 +506,8 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     
     # --- DICCIONARI D'ETIQUETES MODIFICAT ---
     motion_data = {
-        'Moviment Dret': params_calc.get('RM'), 
-        'Moviment Esquerra': params_calc.get('LM'), 
+        'M. Dret': params_calc.get('RM'), 
+        'M. Esquerre': params_calc.get('LM'), 
         'Es mourà cap a': params_calc.get('Mean_Wind')
     }
     
