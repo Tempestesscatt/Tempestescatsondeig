@@ -1733,18 +1733,12 @@ def ui_zone_selection():
                 st.rerun()
 def main():
     inject_custom_css()
-    # Crida la funció per amagar els estils just a l'inici
     hide_streamlit_style()
     
-    # NUEVO: Inyectar CSS personalizado
-    inject_custom_css()
-    
-    # NUEVO: Pre-cache de datos iniciales (en segundo plano)
     if 'precache_completat' not in st.session_state:
         st.session_state.precache_completat = False
         
     if not st.session_state.precache_completat:
-        # Ejecutar pre-cache en segundo plano sin bloquear
         try:
             precache_datos_iniciales()
             st.session_state.precache_completat = True
@@ -1755,10 +1749,22 @@ def main():
     if 'guest_mode' not in st.session_state: st.session_state['guest_mode'] = False
     if 'zone_selected' not in st.session_state: st.session_state['zone_selected'] = None
 
-    if not st.session_state['logged_in']: show_login_page()
-    elif not st.session_state['zone_selected']: ui_zone_selection()
-    elif st.session_state['zone_selected'] == 'catalunya': run_catalunya_app()
-    elif st.session_state['zone_selected'] == 'valley_halley': run_valley_halley_app()
+    if not st.session_state['logged_in']:
+        show_login_page()
+    elif not st.session_state['zone_selected']:
+        ui_zone_selection()
+    
+    # --- INICI DEL CANVI ---
+    # Ara, envolv_involucrem cada crida a una funció principal amb un spinner.
+    # Aquest spinner actuarà com una pantalla de càrrega que amaga la interfície anterior.
+    elif st.session_state['zone_selected'] == 'catalunya':
+        with st.spinner("Preparant l'entorn d'anàlisi de Catalunya..."):
+            run_catalunya_app()
+            
+    elif st.session_state['zone_selected'] == 'valley_halley':
+        with st.spinner("Preparant l'entorn d'anàlisi de Tornado Alley..."):
+            run_valley_halley_app()
+    # --- FI DEL CANVI ---
 
 
 def determinar_emoji_temps(params, nivell_conv, hora_actual=None):
