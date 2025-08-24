@@ -1280,9 +1280,7 @@ def run_catalunya_app():
         nivell_sel = st.selectbox(
             "Nivell d'anàlisi per a Mapes i Convergència:", 
             options=nivells_disponibles, 
-            # --- LÍNIA MODIFICADA ---
             format_func=lambda x: f"{x} hPa (⭐ Recomanat)" if x == 925 else f"{x} hPa",
-            # --- FI DE LA MODIFICACIÓ ---
             key="level_cat_main",
             index=index_default
         )
@@ -1302,10 +1300,12 @@ def run_catalunya_app():
         ciutats_formatejades = []
         for ciutat in sorted(CIUTATS_CATALUNYA.keys()):
             conv = convergencies.get(ciutat, 0)
-            if conv > 15:
+            if conv >= 40:
                 ciutats_formatejades.append(f"{ciutat} (⚡ Molt Recomanat)")
-            elif conv > 5:
-                ciutats_formatejades.append(f"{ciutat} (Recomanat)")
+            # --- LÍNIA MODIFICADA ---
+            elif conv >= 15:
+                ciutats_formatejades.append(f"{ciutat} (Potencial d'Interès)")
+            # --- FI DE LA MODIFICACIÓ ---
             else:
                 ciutats_formatejades.append(ciutat)
         ciutats_per_selector = ciutats_formatejades
@@ -1344,7 +1344,6 @@ def run_catalunya_app():
         with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
         with tab_ia: ui_pestanya_assistent_ia(params_calc, poble_sel)
         with tab_estacions: ui_pestanya_estacions_meteorologiques()
-
 def run_valley_halley_app():
     ui_capcalera_selectors(None, zona_activa="tornado_alley")
     
