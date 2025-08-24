@@ -423,34 +423,53 @@ def verificar_datos_entrada(p, T, Td, u, v, heights):
     
     print("=============================")
 
-def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
+def crear_skewt(p, T, Td, u, v, params_calc, titol):
+    """
+    Versió millorada que dibuixa el perfil de la parcel·la de la capa barrejada (Mixed-Layer),
+    fent que l'ombrejat del CAPE sigui coherent amb el valor de MLCAPE.
+    """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
     skew.ax.grid(True, linestyle='-', alpha=0.5)
     
-    # Podem mantenir la línia de referència de 0°C, ja que és útil
     skew.ax.axvline(0, color='cyan', linestyle='--', linewidth=1.5, alpha=0.7)
 
     skew.plot_dry_adiabats(color='coral', linestyle='--', alpha=0.5)
     skew.plot_moist_adiabats(color='cornflowerblue', linestyle='--', alpha=0.5)
     skew.plot_mixing_lines(color='limegreen', linestyle='--', alpha=0.5)
     
-    if prof is not None:
-        skew.shade_cape(p, T, prof, color='red', alpha=0.2)
-        skew.shade_cin(p, T, prof, color='blue', alpha=0.2)
+    # --- CANVI CLAU ---
+    # En lloc de dibuixar sempre el perfil de superfície, ara calculem i dibuixem
+    # el perfil de la capa barrejada (Mixed-Layer), que és molt més representatiu.
+    try:
+        # Calculem el perfil de la parcel·la per a la capa barrejada de 100hPa
+        ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)[3]
         
+        # Ombregem les àrees de CAPE i CIN basant-nos en aquest nou perfil
+        skew.shade_cape(p, T, ml_prof, color='red', alpha=0.2)
+        skew.shade_cin(p, T, ml_prof, color='blue', alpha=0.2)
+        
+        # Dibuixem la trajectòria de la parcel·la
+        skew.plot(p, ml_prof, 'k', linewidth=3, label='Trajectòria Parcel·la (ML)', 
+                  path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+    except Exception:
+        # Si el càlcul del perfil de capa barrejada falla, tornem a l'antic (de superfície)
+        # per evitar que l'aplicació es trenqui.
+        sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
+        skew.shade_cape(p, T, sfc_prof, color='red', alpha=0.2)
+        skew.shade_cin(p, T, sfc_prof, color='blue', alpha=0.2)
+        skew.plot(p, sfc_prof, 'k', linewidth=3, label='Trajectòria Parcel·la (SFC)',
+                  path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+    # --- FI DEL CANVI ---
+
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
     skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
-    
-    if prof is not None:
-        skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
         
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
     skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40)
     skew.ax.set_title(titol, weight='bold', fontsize=14, pad=15)
     skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
 
-    # Dibuixar LCL i LFC
     levels_to_plot = {'LCL_p': 'LCL', 'LFC_p': 'LFC'}
     for key, name in levels_to_plot.items():
         p_lvl = params_calc.get(key)
@@ -459,11 +478,8 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
             skew.ax.axhline(p_val, color='blue', linestyle='--', linewidth=1.5)
             skew.ax.text(skew.ax.get_xlim()[1] - 2, p_val, f' {name}', color='blue', ha='right', va='center', fontsize=10, weight='bold')
 
-    # ***** LÍNIES DE CODI PER DIBUIXAR LA LÍNIA HORITZONTAL ELIMINADES D'AQUÍ *****
-
     skew.ax.legend()
     return fig
-
 
 # AQUESTA ÉS LA LÒGICA CORREGIDA I MÉS ROBUSTA
 def diagnosticar_potencial_tempesta(params):
