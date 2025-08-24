@@ -462,6 +462,7 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     return fig
 
 
+# AQUESTA ÉS LA LÒGICA CORREGIDA I MÉS ROBUSTA
 def diagnosticar_potencial_tempesta(params):
     """
     Analitza els paràmetres de cisallament i helicitat per oferir un diagnòstic
@@ -471,19 +472,20 @@ def diagnosticar_potencial_tempesta(params):
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     srh_1km = params.get('SRH_0-1km', 0) or 0
     lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
-    cape = params.get('SBCAPE', 0) or 0
+    cape = params.get('MLCAPE', params.get('SBCAPE', 0)) or 0 # Prioritzem MLCAPE si existeix
     
     # --- Diagnòstic del Tipus de Tempesta (basat en Cisallament) ---
     tipus_tempesta = "---"
     color_tempesta = "grey"
     
-    if bwd_6km > 20 and cape > 1000: # Llindar alt per a supercèl·lules
+    # Llindars meteorològicament més estàndard
+    if bwd_6km >= 35 and cape > 1000: # Llindar alt per a supercèl·lules clàssiques
         tipus_tempesta = "Supercèl·lula"
         color_tempesta = "#dc3545" # Vermell
-    elif bwd_6km > 15 and cape > 500: # Llindar per a organització multicel·lular
+    elif bwd_6km >= 20 and cape > 500: # Llindar per a bona organització multicel·lular
         tipus_tempesta = "Multicèl·lula"
         color_tempesta = "#fd7e14" # Taronja
-    elif bwd_6km > 8: # Cisallament suficient per a certa organització
+    elif bwd_6km >= 10: # Cisallament suficient per a certa organització
         tipus_tempesta = "Cèl·lula Simple Organitzada"
         color_tempesta = "#ffc107" # Groc
     else: # Poc cisallament, tempestes de massa d'aire
@@ -494,10 +496,10 @@ def diagnosticar_potencial_tempesta(params):
     base_nuvol = "---"
     color_base = "grey"
 
-    if srh_1km > 250 and lcl_hgt < 1000: # Condicions òptimes per a tornados
+    if srh_1km > 200 and lcl_hgt < 1200: # Condicions òptimes per a tornados
         base_nuvol = "Tornàdica (Wall Cloud)"
         color_base = "#dc3545" # Vermell
-    elif srh_1km > 100 and lcl_hgt < 1200: # Rotació significativa, bases baixes
+    elif srh_1km > 100 and lcl_hgt < 1500: # Rotació significativa, bases baixes
         base_nuvol = "Rotatòria (Inflow)"
         color_base = "#fd7e14" # Taronja
     elif lcl_hgt < 800: # Bases molt baixes però sense rotació
