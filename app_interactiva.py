@@ -942,7 +942,7 @@ def analitzar_potencial_per_llista(map_data, llista_ciutats):
             # --- LÒGICA DE DECISIÓ AMB EL NOU LLINDAR DE CAPE ---
             potencial = "Nul"
             # PRIMER FILTRE: El CAPE ha de ser superior a 1000 J/kg per considerar qualsevol potencial.
-            if valor_cape > 500:
+            if valor_cape > 1000:
                 # Si hi ha prou combustible, llavors avaluem el disparador (convergència).
                 if valor_conv > 35:
                     potencial = "Molt Alt"
@@ -960,7 +960,6 @@ def analitzar_potencial_per_llista(map_data, llista_ciutats):
         return {}
         
     return resultats
-    
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base_cat(variables, hourly_index):
