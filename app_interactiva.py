@@ -502,13 +502,14 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
     y = 0.95
     
+    # EL DICCIONARI TORNA A SER CORRECTE
     motion_data = {
         'M. Dret': params_calc.get('RM'), 
         'M. Esquerre': params_calc.get('LM'), 
         'Es mourà cap a': params_calc.get('Mean_Wind')
     }
     
-    ax_params.text(0, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.12 # Més espai
+    ax_params.text(0, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.12
 
     dir_rm, dir_lm = np.nan, np.nan
     rm_vec = motion_data['M. Dret']; lm_vec = motion_data['M. Esquerre']
@@ -532,7 +533,6 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             
             text_color = 'white' if display_name == 'Es mourà cap a' else split_color
 
-            # CORREGIT: Ajust de l'alineació per evitar superposició
             ax_params.text(0, y, f"{display_name}:", ha='left', va='center', color=text_color)
             ax_params.text(0.95, y, f"{cardinal} / {speed:.0f} km/h", ha='right', va='center', color=text_color)
         else:
@@ -540,7 +540,6 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             ax_params.text(0.95, y, "---", ha='right', va='center', color='dimgrey')
         y-=0.1
 
-    # La resta de la funció es queda igual
     y-=0.05
     def get_color(value, thresholds):
         if pd.isna(value): return "grey"
@@ -568,7 +567,6 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         y-=0.08
         
     return fig
-
         
 
 def ui_caixa_parametres_sondeig(params, nivell_conv):
