@@ -1472,20 +1472,19 @@ def determinar_emoji_temps(params, nivell_conv):
     conv = params.get(conv_key, 0) or 0
 
     # --- 2. FACTOR D'ESFORÇ NECESSARI (basat en el CIN i MLCIN) ---
-    # Utilitzem el MÀXIM entre SBCIN i MLCIN (el més restrictiu)
     cin_total = min(cin, mlcin)
     
-    esforç_necessari = 1.0
+    esforç_necessari = 1
     nivell_cin = "Dèbil"
     
     if cin_total < -100:
-        esforç_necessari = 4.0
+        esforç_necessari = 4
         nivell_cin = "Molt Fort"
     elif cin_total < -75:
-        esforç_necessari = 3.0
+        esforç_necessari = 3
         nivell_cin = "Fort"
     elif cin_total < -50:
-        esforç_necessari = 2.0
+        esforç_necessari = 2
         nivell_cin = "Moderat"
     elif cin_total < -25:
         esforç_necessari = 1.5
@@ -1495,13 +1494,13 @@ def determinar_emoji_temps(params, nivell_conv):
 
     # --- 3. VERIFICACIÓ D'INHIBICIÓ MASSIVA (ALTA PRIORITAT) ---
     if cin_total < -150:
-        return "🚫", f"Inhibició Extremadament Forta (CIN: {cin_total} J/kg) - Cap tempesta possible"
+        return "🚫", f"Inhibició Extremadament Forta (CIN: {int(cin_total)} J/kg) - Cap tempesta possible"
     
     if cin_total < -100:
-        return "🚫", f"Inhibició Molt Forta (CIN: {cin_total} J/kg) - Gairebé impossible"
+        return "🚫", f"Inhibició Molt Forta (CIN: {int(cin_total)} J/kg) - Gairebé impossible"
     
     if cin_total < -75 and conv_efectiva < 30:
-        return "🚫", f"Inhibició Forta (CIN: {cin_total} J/kg) - Convergència insuficient"
+        return "🚫", f"Inhibició Forta (CIN: {int(cin_total)} J/kg) - Convergència insuficient"
 
     # --- 4. DIAGNÒSTIC ESPECÍFIC PER A NIMBOSTRATUS ---
     if (pwat > 35 and cape < 200 and mlcape < 250 and li > 2 and
@@ -1535,9 +1534,9 @@ def determinar_emoji_temps(params, nivell_conv):
         conv_efectiva > conv_necessaria_castellanus and bwd_6km > 15):
         
         if cape > 300 and conv_efectiva > (4 * esforç_necessari):
-            return "🌥️", f"Altocúmulus Castellanus - Inestabilitat Mitjana (Conv. necessària: {conv_necessaria_castellanus:.1f})"
+            return "🌥️", "Altocúmulus Castellanus - Inestabilitat Mitjana"
         else:
-            return "🌥️", f"Altocúmulus Castellanus - Incipient (Conv. necessària: {conv_necessaria_castellanus:.1f})"
+            return "🌥️", "Altocúmulus Castellanus - Incipient"
     
     # --- 7. DIAGNÒSTIC DE NÚVOLS MITJANS I ALTS ---
     if 2000 <= lcl_hgt < 5000:
@@ -1565,16 +1564,16 @@ def determinar_emoji_temps(params, nivell_conv):
             conv_efectiva > conv_necessaria_supercella):
             
             if srh_1km > 250 and bwd_6km > 35:
-                return "🌪️", f"Supercèl·lula - Alt Potencial Sever (Conv. necessària: {conv_necessaria_supercella:.1f})"
+                return "🌪️", "Supercèl·lula - Alt Potencial Sever"
             else:
-                return "🌪️", f"Supercèl·lula - Potencial Sever (Conv. necessària: {conv_necessaria_supercella:.1f})"
+                return "🌪️", "Supercèl·lula - Potencial Sever"
         
         # Multicèl·lules
         conv_necessaria_multicella = 8 * esforç_necessari
         if (cape > 1000 and bwd_6km > 20 and 
             conv_efectiva > conv_necessaria_multicella and 
             lcl_hgt < 1800 and lfc_hgt < 3000):
-            return "⛈️", f"Multicèl·lules / Línia de Tempesta (Conv. necessària: {conv_necessaria_multicella:.1f})"
+            return "⛈️", "Multicèl·lules / Línia de Tempesta"
         
         # Tempestes aïllades
         gap_lcl_lfc = lfc_hgt - lcl_hgt
@@ -1586,17 +1585,17 @@ def determinar_emoji_temps(params, nivell_conv):
         
         if conv_efectiva > conv_necessaria_ailada:
             if cape > 600:
-                return "⚡", f"Tempesta Aïllada (Conv. necessària: {conv_necessaria_ailada:.1f})"
+                return "⚡", "Tempesta Aïllada"
             elif cape > 300:
-                return "☁️", f"Cúmulus Congestus (Conv. necessària: {conv_necessaria_ailada:.1f})"
+                return "☁️", "Cúmulus Congestus"
         
-        return "🌤️", f"Inestabilitat Capada - Forçament Insuficient (Necessiten: {conv_necessaria_ailada:.1f}, Tens: {conv_efectiva:.1f})"
+        return "🌤️", "Inestabilitat Capada - Forçament Insuficient"
     
     # --- 9. CONVECCIÓ DÈBIL O AILLADA ---
     conv_necessaria_humilis = 3 * esforç_necessari
     if 50 < cape <= 200:
         if conv_efectiva > conv_necessaria_humilis:
-            return "🌤️", f"Cúmulus Humilis - Convecció Dèbil (Conv. necessària: {conv_necessaria_humilis:.1f})"
+            return "🌤️", "Cúmulus Humilis - Convecció Dèbil"
     
     # --- 10. CONDICIONS ESTABLES / BON TEMPS ---
     if cape < 50 and lcl_hgt > 1000:
@@ -1606,7 +1605,7 @@ def determinar_emoji_temps(params, nivell_conv):
             return "🌤️", "Cel Poc Ennuvolat - Estable"
     
     # --- 11. CAS PER DEFECTE ---
-    return "❓", f"Patró No Classificat (CIN: {cin_total} J/kg, Conv: {conv_efectiva:.1f})"
+    return "❓", "Patró No Classificat"
 
 
 
