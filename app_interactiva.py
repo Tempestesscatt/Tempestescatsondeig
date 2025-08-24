@@ -255,9 +255,9 @@ def show_login_page():
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Indestructible v5.0.
-    Utilitza les funcions d'alt nivell de MetPy per als càlculs més delicats (MLCAPE),
-    garantint la màxima robustesa i evitant fallades en cadena.
+    Versió Definitiva, Completa i Indestructible v5.1.
+    Garanteix que una fallada en un càlcul (ex: moviment de tempesta) no afecti
+    la resta de paràmetres, solucionant el problema dels '---' en cascada.
     """
     # --- 1. PREPARACIÓ I NETEJA DE DADES ---
     if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
@@ -273,14 +273,19 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
 
     # --- 2. CÀLCULS ROBUSTS I AÏLLATS ---
     with parcel_lock:
-        # Per al dibuix i alguns càlculs, necessitem un perfil de parcel·la.
-        # El de superfície és el més segur de calcular.
+        # Perfils de parcel·la (el de superfície és el nostre fallback)
         try:
             sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
         except Exception:
             return None, "Error crític: El perfil de superfície és incalculable."
+        try:
+            _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
+        except Exception:
+            ml_prof = None 
 
-        # Paràmetres que no depenen de gairebé res
+        main_prof = ml_prof if ml_prof is not None else sfc_prof
+
+        # Càlculs independents
         try: 
             rh = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
             params_calc['RH_CAPES'] = {'baixa': np.mean(rh[(p.m <= 1000) & (p.m > 850)]), 'mitjana': np.mean(rh[(p.m <= 850) & (p.m > 500)]), 'alta': np.mean(rh[(p.m <= 500) & (p.m > 250)])}
@@ -296,60 +301,56 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         try: params_calc['LR_0-3km'] = float(mpcalc.lapse_rate(p, T, height=heights_agl, depth=3000 * units('m')).to('delta_degC/km').m)
         except: params_calc['LR_0-3km'] = np.nan
         
-        # Paràmetres de Superfície (SBCAPE)
+        # Paràmetres de CAPE
         try:
             sbcape, sbcin = mpcalc.cape_cin(p, T, Td, sfc_prof)
             params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m)
             params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if sbcape.m > 0 else 0.0
         except: params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
-        
-        # --- LÒGICA CORREGIDA PER A MLCAPE ---
-        # Utilitzem la funció directa i robusta de MetPy
         try:
             mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, T, Td, depth=100 * units.hPa)
-            params_calc['MLCAPE'] = float(mlcape.m)
-            params_calc['MLCIN'] = float(mlcin.m)
-        except: 
-            params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
-        # --- FI DE LA CORRECCIÓ ---
-
-        # Altres paràmetres termodinàmics, utilitzant sfc_prof com a fallback segur
-        try: params_calc['LI'] = float(mpcalc.lifted_index(p, T, sfc_prof).m)
-        except: params_calc['LI'] = np.nan
-        try:
-            lfc_p, _ = mpcalc.lfc(p, T, Td, sfc_prof); params_calc['LFC_p'] = float(lfc_p.m)
-            params_calc['LFC_Hgt'] = float(np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1]))
-        except: params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
-        try:
-            el_p, _ = mpcalc.el(p, T, Td, sfc_prof); params_calc['EL_p'] = float(el_p.m)
-            params_calc['EL_Hgt'] = float(np.interp(el_p.m, p.m[::-1], heights_agl.m[::-1]))
-        except: params_calc.update({'EL_p': np.nan, 'EL_Hgt': np.nan})
-        try:
-            idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
-            cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], sfc_prof[:idx_3km+1])
-            params_calc['CAPE_0-3km'] = float(cape_0_3.m)
-        except: params_calc['CAPE_0-3km'] = np.nan
-        
+            params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
+        except: params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
         try:
             mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td); params_calc['MUCAPE'] = float(mucape.m)
             params_calc['MUCIN'] = float(mucin.m)
         except: params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
+        
+        # Altres paràmetres termo, basats en el perfil més fiable disponible
+        try: params_calc['LI'] = float(mpcalc.lifted_index(p, T, main_prof).m)
+        except: params_calc['LI'] = np.nan
+        try:
+            lfc_p, _ = mpcalc.lfc(p, T, Td, main_prof); params_calc['LFC_p'] = float(lfc_p.m)
+            params_calc['LFC_Hgt'] = float(np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1]))
+        except: params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
+        try:
+            el_p, _ = mpcalc.el(p, T, Td, main_prof); params_calc['EL_p'] = float(el_p.m)
+            params_calc['EL_Hgt'] = float(np.interp(el_p.m, p.m[::-1], heights_agl.m[::-1]))
+        except: params_calc.update({'EL_p': np.nan, 'EL_Hgt': np.nan})
+        try:
+            idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
+            cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], main_prof[:idx_3km+1])
+            params_calc['CAPE_0-3km'] = float(cape_0_3.m)
+        except: params_calc['CAPE_0-3km'] = np.nan
         try:
             lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); params_calc['LCL_p'] = float(lcl_p.m)
             params_calc['LCL_Hgt'] = float(np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1]))
         except: params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
         
-        # Paràmetres Cinemàtics
+        # Paràmetres Cinemàtics (Vent i Cisallament)
         try:
             for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
                 bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter)
                 params_calc[f'BWD_{name}'] = float(mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m)
         except: params_calc.update({'BWD_0-1km': np.nan, 'BWD_0-6km': np.nan})
+        
+        # Moviment de tempesta (pot fallar)
         try:
             rm, lm, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
             params_calc['RM'] = (float(rm[0].m), float(rm[1].m)); params_calc['LM'] = (float(lm[0].m), float(lm[1].m))
         except: params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan)})
         
+        # Helicitat (DEPÈN del moviment de tempesta)
         if params_calc.get('RM') and not np.isnan(params_calc['RM'][0]):
             u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
             try:
@@ -357,16 +358,17 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                     srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.meter, storm_u=u_storm, storm_v=v_storm)[0]
                     params_calc[f'SRH_{name}'] = float(srh.m)
             except: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-        else:
+        else: # Si el moviment ha fallat, la helicitat no es pot calcular
             params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
         
+        # Capa Efectiva i paràmetres dependents (els més delicats)
         try:
             eff_bottom, eff_top = mpcalc.effective_inflow_layer(p, T, Td)
             eff_bwd_u, eff_bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, bottom=eff_bottom, top=eff_top)
             params_calc['EBWD'] = float(mpcalc.wind_speed(eff_bwd_u, eff_bwd_v).to('kt').m)
             if params_calc.get('RM') and not np.isnan(params_calc['RM'][0]):
-                u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
-                esrh, _, _ = mpcalc.storm_relative_helicity(heights, u, v, bottom=eff_bottom, top=eff_top, storm_u=u_storm, storm_v=v_storm)
+                u_storm_eff, v_storm_eff = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
+                esrh, _, _ = mpcalc.storm_relative_helicity(heights, u, v, bottom=eff_bottom, top=eff_top, storm_u=u_storm_eff, storm_v=v_storm_eff)
                 params_calc['ESRH'] = float(esrh.m)
             else: params_calc['ESRH'] = np.nan
         except: params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
@@ -380,6 +382,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             params_calc['SCP'] = float(scp_val)
         except: params_calc['SCP'] = np.nan
 
+    # Retornem el perfil de superfície (sfc_prof) per al dibuix, que és el més segur
     return ((p, T, Td, u, v, heights, sfc_prof), params_calc), None
 
 
