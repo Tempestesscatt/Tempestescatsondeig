@@ -116,25 +116,38 @@ THRESHOLDS_GLOBALS = {
 
 def get_color_global(value, param_key, reverse_colors=False):
     """
-    Funció única i centralitzada per obtenir el color d'un paràmetre
-    basant-se en els llindars globals.
+    Versió Definitiva i a Prova de Bales.
+    Utilitza una lògica de "bins" per garantir una assignació de colors
+    100% correcta i consistent a tota l'aplicació.
     """
     if pd.isna(value): return "#808080" # Gris per a NaN
 
     thresholds = THRESHOLDS_GLOBALS.get(param_key, [])
-    if not thresholds: return "#FFFFFF" # Blanc si no hi ha llindar definit
+    if not thresholds or len(thresholds) != 3: return "#FFFFFF" # Blanc si no hi ha llindar definit
 
-    colors = ["#808080", "#28a745", "#ffc107", "#fd7e14", "#dc3545"] # Gris, Verd, Groc, Taronja, Vermell
+    # Definim els nostres 4 colors estàndard
+    colors = ["#2ca02c", "#ffc107", "#fd7e14", "#dc3545"] # Verd, Groc, Taronja, Vermell
     
+    # Per a paràmetres com el CIN, on valors més negatius són pitjors
     if reverse_colors:
-        thresholds = sorted(thresholds, reverse=True)
-        colors = list(reversed(colors))
+        if value < thresholds[2]: return colors[3] # Vermell
+        if value < thresholds[1]: return colors[2] # Taronja
+        if value < thresholds[0]: return colors[1] # Groc
+        return colors[0] # Verd (que aquí seria el color per a valors "segurs")
+    
+    # --- LÒGICA DE BINS (A PROVA D'ERRORS) ---
+    # Nivell 3 (Sever): Valor >= llindar més alt
+    if value >= thresholds[2]:
+        return colors[3] # Vermell
+    # Nivell 2 (Alt): Valor entre el segon i el tercer llindar
+    elif value >= thresholds[1]:
+        return colors[2] # Taronja
+    # Nivell 1 (Moderat): Valor entre el primer i el segon llindar
+    elif value >= thresholds[0]:
+        return colors[1] # Groc
+    # Nivell 0 (Baix): Valor per sota del primer llindar
     else:
-        thresholds = sorted(thresholds)
-        
-    for i, threshold in enumerate(thresholds):
-        if value < threshold: return colors[i]
-    return colors[-1]
+        return colors[0] # Verd
 # --- Funcions auxiliars (Compartides) ---
 def get_hashed_password(password): return hashlib.sha256(password.encode()).hexdigest()
 def load_json_file(filename):
