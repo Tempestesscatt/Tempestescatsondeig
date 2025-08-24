@@ -538,7 +538,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     # --- PANELL DE PARÀMETRES (AJUSTOS FINALS D'ALINEACIÓ) ---
     ax_params.axis('off')
     def degrees_to_cardinal_ca(d):
-        dirs = ["Nord", "Nord-nord-est", "Nord-est", "Est-nord-est", "Est", "Est-sud-est", "Sud-est", "Sud-sud-est", "Sud", "Sud-sud-oest", "Sud-oest", "Oest-sud-oest", "Oest", "Oest-nord-oest", "Nord-oest", "Nord-nord-oest"]
+        dirs = ["N", "NNE", "Nord-est", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"]
         return dirs[int(round(d / 22.5)) % 16]
     def get_color(value, thresholds):
         if pd.isna(value): return "grey"
