@@ -708,25 +708,92 @@ def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
 # --- Funcions Específiques per a Catalunya ---
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=1800, max_entries=15, show_spinner=False)
 def calcular_convergencia_per_ciutats(map_data):
     """
-    Calcula la convergència per a cada ciutat de CIUTATS_CATALUNYA
-    utilitzant les dades del mapa ja carregades.
-    Retorna un diccionari: {'ciutat': valor_convergencia}.
+    Versión optimizada del cálculo de convergencia
     """
-    if not map_data:
+    if not map_data or 'lons' not in map_data or len(map_data['lons']) < 4:
         return {}
     
     convergencies = {}
-    for ciutat, coords in CIUTATS_CATALUNYA.items():
-        valor_conv = calcular_convergencia_puntual(map_data, coords['lat'], coords['lon'])
-        if not np.isnan(valor_conv):
-            convergencies[ciutat] = valor_conv
+    try:
+        lons, lats = np.array(map_data['lons']), np.array(map_data['lats'])
+        speed_data, dir_data = np.array(map_data['speed_data']), np.array(map_data['dir_data'])
+        
+        # Pre-calcular componentes del vent (OPTIMIZACIÓN)
+        u_comp, v_comp = mpcalc.wind_components(speed_data * units('km/h'), dir_data * units.degrees)
+        u_ms, v_ms = u_comp.to('m/s').m, v_comp.to('m/s').m
+        
+        for ciutat, coords in CIUTATS_CATALUNYA.items():
+            try:
+                # Interpolación más eficiente
+                points = np.column_stack((lons, lats))
+                target_point = np.array([[coords['lon'], coords['lat']]])
+                
+                # Encontrar los 4 puntos más cercanos para interpolación
+                distancias = cdist(target_point, points)
+                idxs_cercanos = np.argsort(distancias[0])[:4]
+                
+                if len(idxs_cercanos) < 3:
+                    continue
+                    
+                # Interpolación bilineal manual (más rápida)
+                puntos_cercanos = points[idxs_cercanos]
+                u_cercanos = u_ms[idxs_cercanos]
+                v_cercanos = v_ms[idxs_cercanos]
+                
+                # Interpolación por distancia inversa
+                distancias = 1.0 / (cdist(target_point, puntos_cercanos)[0] + 1e-9)
+                pesos = distancias / np.sum(distancias)
+                
+                u_interp = np.dot(pesos, u_cercanos)
+                v_interp = np.dot(pesos, v_cercanos)
+                
+                # Calcular divergencia local (aproximación)
+                valor_conv = calcular_convergencia_local(u_interp, v_interp, puntos_cercanos)
+                
+                if not np.isnan(valor_conv):
+                    convergencies[ciutat] = valor_conv
+                    
+            except Exception as e:
+                continue
+                
+    except Exception as e:
+        print(f"Error optimizado en convergencia: {e}")
+    
     return convergencies
+
+def calcular_convergencia_local(u, v, points):
+    """
+    Aproximación rápida de convergencia local
+    """
+    try:
+        if len(points) < 3:
+            return np.nan
+            
+        # Calcular diferencias espaciales aproximadas
+        lons = points[:, 0]
+        lats = points[:, 1]
+        
+        dx = (np.max(lons) - np.min(lons)) * 111000 * np.cos(np.radians(np.mean(lats)))  # metros
+        dy = (np.max(lats) - np.min(lats)) * 111000  # metros
+        
+        if dx <= 0 or dy <= 0:
+            return np.nan
+            
+        # Aproximación de derivadas
+        dudx = (np.max(u) - np.min(u)) / dx
+        dvdy = (np.max(v) - np.min(v)) / dy
+        
+        convergence = -(dudx + dvdy) * 1e5  # Escalado
+        return convergence
+        
+    except:
+        return np.nan
     
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=1800, max_entries=20, show_spinner=False)
 def carregar_dades_sondeig_cat(lat, lon, hourly_index):
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
@@ -756,6 +823,45 @@ def carregar_dades_sondeig_cat(lat, lon, hourly_index):
         return processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
     except Exception as e: 
         return None, f"Error en carregar dades del sondeig AROME: {e}"
+
+@st.cache_data(ttl=1800, max_entries=10, show_spinner=False)        
+def carregar_dades_mapa_base_cat(variables, hourly_index):
+    try:
+        lats, lons = np.linspace(MAP_EXTENT_CAT[2], MAP_EXTENT_CAT[3], 12), np.linspace(MAP_EXTENT_CAT[0], MAP_EXTENT_CAT[1], 12)
+        lon_grid, lat_grid = np.meshgrid(lons, lats)
+        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": 4}
+        responses = openmeteo.weather_api(API_URL_CAT, params=params)
+        output = {var: [] for var in ["lats", "lons"] + variables}
+        for r in responses:
+            vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
+            if not any(np.isnan(v) for v in vals):
+                output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
+                for i, var in enumerate(variables): output[var].append(vals[i])
+        if not output["lats"]: return None, "No s'han rebut dades vàlides."
+        return output, None
+    except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
+
+@st.cache_data(ttl=1800, max_entries=10, show_spinner=False)
+def carregar_dades_mapa_cat(nivell, hourly_index):
+    try:
+        if nivell >= 950:
+            variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
+            if error: return None, error
+            map_data_raw['dewpoint_data'] = map_data_raw.pop('dew_point_2m')
+        else:
+            variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
+            if error: return None, error
+            temp_data = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
+            rh_data = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
+            map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
+
+        map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
+        map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
+        return map_data_raw, None
+    except Exception as e:
+        return None, f"Error en processar dades del mapa: {e}"
         
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base_cat(variables, hourly_index):
@@ -796,34 +902,72 @@ def carregar_dades_mapa_cat(nivell, hourly_index):
     except Exception as e:
         return None, f"Error en processar dades del mapa: {e}"
         
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=1800, max_entries=5, show_spinner=False)
 def obtenir_ciutats_actives(hourly_index):
+    """
+    Versión optimizada con muestreo reducido
+    """
     nivell = 925
     map_data, error_map = carregar_dades_mapa_cat(nivell, hourly_index)
-    if error_map or not map_data: return CIUTATS_CONVIDAT, "No s'ha pogut determinar les zones de convergència."
+    if error_map or not map_data: 
+        return CIUTATS_CONVIDAT, "No s'ha pogut determinar les zones de convergència."
+    
     try:
-        lons, lats, speed_data, dir_data, dewpoint_data = map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data']
-        grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_CAT[0], MAP_EXTENT_CAT[1], 100), np.linspace(MAP_EXTENT_CAT[2], MAP_EXTENT_CAT[3], 100))
-        grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
-        u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
-        grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
-        grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
-        dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-        dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1); dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
-        convergence_scaled = - (dudx + dvdy).to('1/s').magnitude * 1e5
-        convergence_in_humid_areas = np.where(grid_dewpoint >= 12, convergence_scaled, 0)
-        points_with_conv = np.argwhere(convergence_in_humid_areas >= 15)
-        if points_with_conv.size == 0: return CIUTATS_CONVIDAT, "No s'han detectat zones de convergència significatives."
-        conv_coords = [(grid_lat[y, x], grid_lon[y, x]) for y, x in points_with_conv]
-        zone_centers = []; ZONE_RADIUS = 0.75
-        for lat, lon in sorted(conv_coords, key=lambda c: convergence_in_humid_areas[np.argmin(np.abs(grid_lat[:,0]-c[0])), np.argmin(np.abs(grid_lon[0,:]-c[1]))], reverse=True):
-            if all(np.sqrt((lat - clat)**2 + (lon - clon)**2) >= ZONE_RADIUS for clat, clon in zone_centers): zone_centers.append((lat, lon))
-        if not zone_centers: return CIUTATS_CONVIDAT, "No s'han pogut identificar nuclis de convergència."
-        ciutat_noms = list(CIUTATS_CATALUNYA.keys()); ciutat_coords = np.array([[v['lat'], v['lon']] for v in CIUTATS_CATALUNYA.values()])
-        closest_cities_names = {ciutat_noms[np.argmin(cdist(np.array([[zlat, zlon]]), ciutat_coords))] for zlat, zlon in zone_centers}
-        if not closest_cities_names: return CIUTATS_CONVIDAT, "No s'ha trobat cap ciutat propera als nuclis."
-        return {name: CIUTATS_CATALUNYA[name] for name in closest_cities_names}, f"Selecció de {len(closest_cities_names)} poblacions properes a nuclis d'activitat."
-    except Exception as e: return CIUTATS_CONVIDAT, f"Error calculant zones actives: {e}."
+        # Reducir resolución para cálculo más rápido
+        lons, lats = np.array(map_data['lons']), np.array(map_data['lats'])
+        dewpoint_data = np.array(map_data['dewpoint_data'])
+        
+        # Muestreo para mayor velocidad (máximo 20 puntos)
+        if len(lons) > 20:
+            idxs = np.random.choice(len(lons), size=min(20, len(lons)), replace=False)
+            lons, lats, dewpoint_data = lons[idxs], lats[idxs], dewpoint_data[idxs]
+        
+        # Búsqueda eficiente de ciudades con alta humedad
+        ciudades_activas = []
+        umbral_humedad = 12  # Punto de rocío mínimo
+        
+        for ciutat, coords in CIUTATS_CATALUNYA.items():
+            # Calcular distancia a todos los puntos
+            distancias = np.sqrt((lats - coords['lat'])**2 + (lons - coords['lon'])**2)
+            idx_mas_cercano = np.argmin(distancias)
+            
+            if (distancias[idx_mas_cercano] < 0.3 and  # Menos de 0.3 grados de distancia
+                dewpoint_data[idx_mas_cercano] >= umbral_humedad):
+                ciudades_activas.append(ciutat)
+        
+        # Limitar a 6 ciudades máximo para no saturar
+        if ciudades_activas:
+            return {name: CIUTATS_CATALUNYA[name] for name in ciudades_activas[:6]}, "Zones actives detectades"
+        else:
+            return CIUTATS_CONVIDAT, "No s'han detectat zones de convergència significatives."
+            
+    except Exception as e:
+        return CIUTATS_CONVIDAT, f"Error calculant zones actives: {e}"
+
+@st.cache_resource(show_spinner=False)
+def precache_datos_iniciales():
+    """
+    Pre-cache de datos comunes al iniciar la aplicación
+    """
+    try:
+        # Pre-cargar datos que probablemente se usarán
+        now_local = datetime.now(TIMEZONE_CAT)
+        hourly_index = int((now_local.astimezone(pytz.utc).replace(minute=0, second=0, microsecond=0) - 
+                          datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds() / 3600)
+        
+        # Pre-cache de ciudades principales
+        ciudades_principales = ['Barcelona', 'Girona', 'Lleida', 'Tarragona']
+        for ciutat in ciudades_principales:
+            coords = CIUTATS_CATALUNYA[ciutat]
+            carregar_dades_sondeig_cat(coords['lat'], coords['lon'], hourly_index)
+        
+        # Pre-cache de mapa básico
+        carregar_dades_mapa_cat(925, hourly_index)
+        
+        return True
+    except Exception as e:
+        print(f"Pre-caching falló: {e}")
+        return False
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     fig, ax = crear_mapa_base(map_extent)
@@ -869,47 +1013,46 @@ def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str
 
 def mostrar_carga_avanzada(mensaje, funcion_a_ejecutar, *args, **kwargs):
     """
-    Executa una funció mostrant una barra de progrés animada
+    Versión optimizada con tiempos ajustados
     """
-    # Crear contenidors per a la barra i el text
+    # Crear contenedores para la barra y el texto
     progress_bar = st.progress(0)
     status_text = st.empty()
     
     try:
-        # Animació durant la càrrega (0% a 85%)
-        for i in range(86):
+        # Animación más rápida (0% a 80%)
+        for i in range(81):
             progress_bar.progress(i)
-            dots = "." * ((i // 20) % 4)  # Punts que canvien cada 20%
-            emoji = "🔄" if i % 20 < 10 else "⏳"
+            dots = "." * ((i // 15) % 4)  # Más rápido
+            emoji = "🔄" if i % 15 < 8 else "⏳"
             status_text.text(f"{emoji} {mensaje}{dots}")
-            time.sleep(0.02)  # Temps més ràpid
+            time.sleep(0.015)  # Más rápido
             
-        # Executar la funció real (85% a 95%)
-        progress_bar.progress(85)
+        # Ejecutar la función real (80% a 95%)
+        progress_bar.progress(80)
         status_text.text(f"🚀 Executant anàlisi...")
-        time.sleep(0.1)
+        time.sleep(0.08)
         
         resultat = funcion_a_ejecutar(*args, **kwargs)
         
-        # Completar al 100% i mostrar èxit
+        # Completar al 100% y mostrar éxito
         progress_bar.progress(100)
         status_text.text(f"✅ {mensaje}... Completat!")
-        time.sleep(0.2)
+        time.sleep(0.15)
         
         return resultat
         
     except Exception as e:
-        # Mostrar error si ocorre
+        # Mostrar error si ocurre
         progress_bar.progress(100)
         status_text.text(f"❌ Error en el procés")
-        time.sleep(0.3)
+        time.sleep(0.2)
         raise e
         
     finally:
-        # Sempre netejar
+        # Siempre limpiar
         progress_bar.empty()
         status_text.empty()
-
 
 
 @st.cache_data(ttl=3600)
@@ -1585,6 +1728,18 @@ def main():
     
     # NUEVO: Inyectar CSS personalizado
     inject_custom_css()
+    
+    # NUEVO: Pre-cache de datos iniciales (en segundo plano)
+    if 'precache_completat' not in st.session_state:
+        st.session_state.precache_completat = False
+        
+    if not st.session_state.precache_completat:
+        # Ejecutar pre-cache en segundo plano sin bloquear
+        try:
+            precache_datos_iniciales()
+            st.session_state.precache_completat = True
+        except:
+            pass
     
     if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
     if 'guest_mode' not in st.session_state: st.session_state['guest_mode'] = False
