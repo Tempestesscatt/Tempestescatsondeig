@@ -1283,7 +1283,7 @@ def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi):
 
 def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi):
     """
-    Genera el prompt definitiu (v5), optimitzat per a la brevetat i la rellevància.
+    Genera el prompt definitiu (v5.1), optimitzat per a la brevetat i la rellevància.
     Força l'IA a ser concisa i a centrar-se en el contrast meteorològic clau.
     """
     # --- ROL I PERSONALITAT ---
@@ -1327,9 +1327,11 @@ def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi):
             if valor is not None and not np.isnan(valor): prompt_parts.append(f"- {nom}: {valor:.1f}")
 
     prompt_parts.append("\n### INSTRUCCIÓ FINAL")
-    prompt_parts.append(f"Ara, escriu la teva anàlisi breu i directa. La pregunta del teu amic és: \"{prega_usuari}\"")
+    # --- LÍNIA CORREGIDA ---
+    prompt_parts.append(f"Ara, escriu la teva anàlisi breu i directa. La pregunta del teu amic és: \"{pregunta_usuari}\"")
 
     return "\n".join(prompt_parts)
+    
 def hide_streamlit_style():
     """Injecta CSS per amagar el peu de pàgina i el menú de Streamlit."""
     hide_style = """
