@@ -739,7 +739,7 @@ def carregar_dades_sondeig_cat(lat, lon, hourly_index):
         return processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
     except Exception as e: 
         return None, f"Error en carregar dades del sondeig AROME: {e}"
-
+        
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base_cat(variables, hourly_index):
     try:
@@ -1493,7 +1493,13 @@ def run_catalunya_app():
     timestamp_str = f"{st.session_state.dia_selector} a les {st.session_state.hora_selector} (Hora Local)"
     lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
     
-    data_tuple, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+    # AQUESTA ÉS LA PART PROBLEMÀTICA - LES CRIDES A mostrar_barra_carrega()
+    try:
+        mostrar_barra_carrega()
+        data_tuple, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+    finally:
+        amagar_barra_carrega()
+        
     if error_msg: 
         st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         return
@@ -1503,7 +1509,7 @@ def run_catalunya_app():
         conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
         params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
     
-    # --- CORRECCIÓ: Passem hora_sel_str a ui_pestanya_vertical ---
+    # CORRECCIÓ: Passem hora_sel_str a ui_pestanya_vertical
     if is_guest:
         tab_mapes, tab_vertical, tab_estacions = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Estacions Meteorològiques"])
         with tab_mapes: ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
