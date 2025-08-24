@@ -79,7 +79,7 @@ CIUTATS_CONVIDAT = {
 }
 MAP_EXTENT_CAT = [0, 3.5, 40.4, 43]
 PRESS_LEVELS_AROME = sorted([1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
-MAP_ZOOM_LEVELS_CAT = {'Catalunya (Complet)': MAP_EXTENT_CAT, 'Nord-est (Girona)': [1.8, 3.4, 41.7, 42.6], 'Sud (Tarragona i Ebre)': [0.2, 1.8, 40.5, 41.4], 'Ponent i Pirineu (Lleida)': [0.4, 1.9, 41.4, 42.6], 'Àrea Metropolitana (BCN)': [1.7, 2.7, 41.2, 41.8]}
+MAP_ZOOM_LEVELS_CAT = {'Catalunya (Complet)': MAP_EXTENT_CAT, 'Nord-est (Girona)': [1.8, 3.4, 41.7, 42.6], 'Sud (Tarragona i Ebre)': [0.2, 1.8, 40.5, 41.4], 'Ponent i Pirineu (Lleida)': [0.4, 1.9, 41.4, 42.6],'Maresme': [2.3, 2.8, 41.5, 41.7], 'Àrea Metropolitana (BCN)': [1.7, 2.7, 41.2, 41.8]}
 
 # --- Constants per Tornado Alley ---
 API_URL_USA = "https://api.open-meteo.com/v1/forecast"
