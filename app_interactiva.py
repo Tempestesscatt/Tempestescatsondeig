@@ -824,11 +824,14 @@ def calcular_convergencies_per_llista(map_data, llista_ciutats):
     return convergencies
     
 
-@st.cache_data(ttl=3600)
+
+        
+@st.cache_data(ttl=1800, max_entries=10, show_spinner=False)
 def carregar_dades_mapa_base_cat(variables, hourly_index):
     """
-    Versió millorada que inclou un pas de neteja per a dades invàlides (NaN)
-    i retorna un missatge d'error més específic si no es troba cap dada vàlida.
+    Versió Definitiva i Consolidada.
+    Elimina duplicats i inclou un pas de neteja robust per a dades invàlides (NaN),
+    retornant un missatge d'error específic si no es troba cap dada vàlida.
     """
     try:
         lats, lons = np.linspace(MAP_EXTENT_CAT[2], MAP_EXTENT_CAT[3], 12), np.linspace(MAP_EXTENT_CAT[0], MAP_EXTENT_CAT[1], 12)
@@ -839,20 +842,24 @@ def carregar_dades_mapa_base_cat(variables, hourly_index):
         output = {var: [] for var in ["lats", "lons"] + variables}
         
         for r in responses:
-            # Utilitzem un bloc try-except per si l'índex està fora de rang
             try:
+                # Obtenim els valors per a l'hora sol·licitada
                 vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
             except IndexError:
-                continue # Si l'hora no existeix, simplement saltem aquest punt
+                # Si l'índex de l'hora està fora de rang per a aquest punt, el saltem
+                continue
 
+            # Comprovem si ALGUN dels valors és NaN. Si és així, descartem el punt completament.
             if np.isnan(vals).any():
                 continue
             
+            # Si totes les dades són vàlides, les afegim a la sortida
             output["lats"].append(r.Latitude())
             output["lons"].append(r.Longitude())
             for i, var in enumerate(variables): 
                 output[var].append(vals[i])
 
+        # Si després de processar totes les respostes no tenim cap punt vàlid, retornem un error
         if not output["lats"]: 
             return None, "Dades caducades o no disponibles per a l'hora i nivell seleccionats."
             
@@ -860,34 +867,25 @@ def carregar_dades_mapa_base_cat(variables, hourly_index):
         
     except Exception as e: 
         return None, f"Error en carregar dades del mapa: {e}"
-        
-        
-@st.cache_data(ttl=1800, max_entries=10, show_spinner=False)        
-def carregar_dades_mapa_base_cat(variables, hourly_index):
-    try:
-        lats, lons = np.linspace(MAP_EXTENT_CAT[2], MAP_EXTENT_CAT[3], 12), np.linspace(MAP_EXTENT_CAT[0], MAP_EXTENT_CAT[1], 12)
-        lon_grid, lat_grid = np.meshgrid(lons, lats)
-        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": 4}
-        responses = openmeteo.weather_api(API_URL_CAT, params=params)
-        output = {var: [] for var in ["lats", "lons"] + variables}
-        for r in responses:
-            vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
-            if not any(np.isnan(v) for v in vals):
-                output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
-                for i, var in enumerate(variables): output[var].append(vals[i])
-        if not output["lats"]: return None, "No s'han rebut dades vàlides."
-        return output, None
-    except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
+
 
 @st.cache_data(ttl=1800, max_entries=10, show_spinner=False)
 def carregar_dades_mapa_cat(nivell, hourly_index):
+    """
+    Versió Definitiva i Consolidada.
+    Orquestra la càrrega de dades del mapa per a Catalunya, gestionant diferents
+    variables segons el nivell de pressió sol·licitat.
+    """
     try:
         if nivell >= 950:
+            # Per a nivells propers a la superfície, demanem el punt de rosada a 2m
             variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
             map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
             if error: return None, error
+            # Renombrem la clau per a consistència
             map_data_raw['dewpoint_data'] = map_data_raw.pop('dew_point_2m')
         else:
+            # Per a nivells superiors, calculem el punt de rosada a partir de T i HR
             variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
             map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
             if error: return None, error
@@ -895,32 +893,32 @@ def carregar_dades_mapa_cat(nivell, hourly_index):
             rh_data = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
             map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
 
+        # Renombrem les claus de vent per a un ús genèric
         map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
         map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
         return map_data_raw, None
     except Exception as e:
         return None, f"Error en processar dades del mapa: {e}"
+        
 
 def afegir_etiquetes_ciutats(ax, map_extent):
     """
-    Versió corregida i robusta. Afegeix etiquetes amb els noms de les ciutats
-    si la vista del mapa actual NO és la vista completa de Catalunya.
+    Versió Definitiva i Consolidada.
+    Afegeix etiquetes amb els noms de les ciutats si la vista del mapa actual
+    NO és la vista completa de Catalunya, indicant que l'usuari ha fet zoom.
     """
-    # --- LÒGICA DE ZOOM CORREGIDA I SIMPLIFICADA ---
     # Comprovem si l'extensió del mapa actual és diferent de l'extensió per defecte
-    # (la de Catalunya completa). Si ho és, significa que l'usuari ha fet zoom.
-    
-    # Perquè la comparació funcioni, convertim les llistes a tuples
+    # (la de Catalunya completa). Per a una comparació segura, convertim les llistes a tuples.
     is_zoomed_in = (tuple(map_extent) != tuple(MAP_EXTENT_CAT))
 
     if is_zoomed_in:
-        # Iterem sobre les ciutats del diccionari
+        # Iterem sobre totes les ciutats disponibles
         for ciutat, coords in CIUTATS_CATALUNYA.items():
             lon, lat = coords['lon'], coords['lat']
             
-            # Comprovem si la ciutat està dins dels límits del mapa actual
+            # Comprovem si la coordenada de la ciutat està dins dels límits del mapa actual
             if map_extent[0] < lon < map_extent[1] and map_extent[2] < lat < map_extent[3]:
-                # Dibuixem el text de l'etiqueta
+                # Si hi és, dibuixem el text de l'etiqueta
                 ax.text(lon + 0.02, lat, ciutat, 
                         fontsize=8, 
                         color='black',
@@ -1035,32 +1033,68 @@ def precache_datos_iniciales():
         print(f"Pre-caching falló: {e}")
         return False
 
-def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
-    fig, ax = crear_mapa_base(map_extent)
-    grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 400), np.linspace(map_extent[2], map_extent[3], 400))
-    grid_speed, grid_dewpoint = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
+def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
+    """
+    Versió Corregida. Afegeix una comprovació per assegurar que hi ha prou
+    dades (mínim 4 punts) per a realitzar una interpolació cúbica de manera segura.
+    """
+    # 1. Crear el mapa base amb la projecció correcta per als EUA
+    fig, ax = crear_mapa_base(MAP_EXTENT_USA, projection=ccrs.LambertConformal(central_longitude=-95, central_latitude=35))
+    
+    # --- COMPROVACIÓ ADDICIONAL ---
+    # Si tenim menys de 4 punts de dades, la interpolació 'cubic' fallarà.
+    # En aquest cas, mostrem un avís i retornem el mapa base buit.
+    if len(lons) < 4:
+        st.warning("No hi ha prou dades per generar un mapa interpolat. Intenta-ho amb una altra hora.")
+        ax.set_title(f"Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+        return fig
+
+    # 2. Crear una graella fina i interpolar les dades del model
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_USA[0], MAP_EXTENT_USA[1], 200), np.linspace(MAP_EXTENT_USA[2], MAP_EXTENT_USA[3], 200))
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic')
+    grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
-    grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+
+    # 3. Dibuixar la velocitat del vent amb pcolormesh
     colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
-    speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]; 
-    custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
-    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
+    speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]
+    custom_cmap = ListedColormap(colors_wind)
+    norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    mesh = ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
     cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6,arrowsize=0.3, density= 4.1, zorder=4, transform=ccrs.PlateCarree())
-    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-    dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1); dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
-    convergence_scaled = -(dudx + dvdy).to('1/s').magnitude * 1e5
-    DEWPOINT_THRESHOLD = 14 if nivell >= 950 else 12 if nivell >= 925 else 7
-    convergence_in_humid_areas = np.where(grid_dewpoint >= DEWPOINT_THRESHOLD, convergence_scaled, 0)
-    fill_levels = [15, 25, 40, 150]; fill_colors = ['#ffc107', '#ff9800', '#f44336']; line_levels = [15, 25, 40]; line_colors = ['#e65100', '#bf360c', '#b71c1c']
-    line_styles = ['--', '--', '-']; line_widths = [1, 1.2, 1.5]
-    ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=fill_colors, alpha=0.4, zorder=5, transform=ccrs.PlateCarree())
-    contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors=line_colors, linestyles=line_styles, linewidths=line_widths, zorder=6, transform=ccrs.PlateCarree())
-    labels = ax.clabel(contours, inline=True, fontsize=6, fmt='%1.0f')
-    for label in labels: label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.6))
-    ax.set_title(f"Vent i Nuclis de convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
 
+    # 4. Dibuixar les línies de corrent del vent (streamplot)
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=4.5, arrowsize=0.5, zorder=4, transform=ccrs.PlateCarree())
+    
+    # 5. Calcular i dibuixar la convergència
+    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+    dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1)
+    dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
+    convergence_scaled = -(dudx + dvdy).to('1/s').magnitude * 1e5
+    
+    DEWPOINT_THRESHOLD_USA = 16 
+    convergence_in_humid_areas = np.where(grid_dewpoint >= DEWPOINT_THRESHOLD_USA, convergence_scaled, 0)
+    
+    fill_levels = [5, 10, 15, 25]; fill_colors = ['#ffc107', '#ff9800', '#f44336']
+    line_levels = [5, 10, 15]; line_colors = ['#e65100', '#bf360c', '#b71c1c']
+    
+    ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=fill_colors, alpha=0.5, zorder=5, transform=ccrs.PlateCarree())
+    contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors=line_colors, linestyles='--', linewidths=1.2, zorder=6, transform=ccrs.PlateCarree())
+    labels = ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
+    for label in labels:
+        label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.7))
+    
+    # Afegir ciutats per a referència
+    for city, coords in USA_CITIES.items():
+        ax.plot(coords['lon'], coords['lat'], 'o', color='red', markersize=1, markeredgecolor='black', transform=ccrs.PlateCarree(), zorder=10)
+        ax.text(coords['lon'] + 0.2, coords['lat'] + 0.2, city, fontsize=7, transform=ccrs.PlateCarree(), zorder=10,
+                path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+
+    ax.set_title(f"Vent i Nuclis de convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    return fig
 def crear_mapa_convergencia_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
     Crea un mapa optimitzat que mostra ÚNICAMENT els nuclis de convergència
