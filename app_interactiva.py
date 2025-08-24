@@ -1713,14 +1713,9 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
 
     with st.container(border=True):
         def formatar_llista_ciutats(ciutats_dict, conv_data):
-            """
-            Nova versió que afegeix un emoji de color segons la força de la
-            convergència, utilitzant la mateixa escala que la caixa de paràmetres.
-            """
             if not conv_data:
                 return sorted(list(ciutats_dict.keys()))
 
-            # Llista per guardar tuples (text_formatat, valor_conv) per poder ordenar correctament
             ciutats_amb_conv = []
             ciutats_sense_conv = []
 
@@ -1729,34 +1724,29 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 
                 if conv is not None and pd.notna(conv):
                     emoji = ""
-                    # Aquesta és la mateixa escala de colors/llindars que a la caixa de paràmetres
-                    if conv >= 40:   emoji = "🔴"  # Vermell
-                    elif conv >= 30: emoji = "🟠"  # Taronja
-                    elif conv >= 15: emoji = "🟡"  # Groc
+                    if conv >= 40:   emoji = "🔴"
+                    elif conv >= 30: emoji = "🟠"
+                    elif conv >= 15: emoji = "🟡"
                     
                     if emoji:
-                        # Si té emoji, mostrem el valor
                         text_formatat = f"{city} ({emoji} {conv:.0f})"
                     else:
-                        # Si la convergència és baixa, només mostrem el nom
                         text_formatat = city
                     ciutats_amb_conv.append((text_formatat, conv))
                 else:
                     ciutats_sense_conv.append(city)
             
-            # Ordenem les ciutats amb dades de convergència de major a menor
             ciutats_ordenades = sorted(ciutats_amb_conv, key=lambda item: item[1], reverse=True)
-            
-            # Extraiem només el text ja ordenat
             llista_final = [item[0] for item in ciutats_ordenades]
-            
-            # Afegim al final les ciutats que no tenien dades
             return llista_final + ciutats_sense_conv
 
         if zona_activa == 'catalunya':
             col_terra, col_mar, col_dia, col_hora, col_nivell = st.columns(5)
             PLACEHOLDER_TERRA = "--- Selecciona Població ---"
             PLACEHOLDER_MAR = "--- Selecciona Punt Marí ---"
+            
+            # Aquest és el text que apareixerà a l'interrogant
+            tooltip_text = "Mostra els punts amb major convergència ('disparador' de tempestes).\n\nLlegenda:\n- 🟡 (>15): Moderada\n- 🟠 (>30): Alta\n- 🔴 (>40): Molt Alta\n\nEl valor és la força de la convergència (x10⁻⁵ s⁻¹)."
 
             def handle_selection_change():
                 terra_sel = st.session_state.selector_terra
@@ -1785,7 +1775,8 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                         idx = next(i for i, opt in enumerate(opcions) if opt.startswith(poble_actual))
                     except (ValueError, StopIteration):
                         idx = 0
-                st.selectbox("Població:", opcions, key="selector_terra", index=idx, on_change=handle_selection_change)
+                # *** LÍNIA CLAU MODIFICADA ***
+                st.selectbox("Població:", opcions, key="selector_terra", index=idx, on_change=handle_selection_change, help=tooltip_text)
 
             with col_mar:
                 opcions = [PLACEHOLDER_MAR] + formatar_llista_ciutats(PUNTS_MAR, convergencies)
@@ -1796,7 +1787,8 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                         idx = next(i for i, opt in enumerate(opcions) if opt.startswith(poble_actual))
                     except (ValueError, StopIteration):
                         idx = 0
-                st.selectbox("Punt Marí:", opcions, key="selector_mar", index=idx, on_change=handle_selection_change)
+                # *** LÍNIA CLAU MODIFICADA ***
+                st.selectbox("Punt Marí:", opcions, key="selector_mar", index=idx, on_change=handle_selection_change, help=tooltip_text)
 
             now_local = datetime.now(TIMEZONE_CAT)
             with col_dia: st.selectbox("Dia:", ("Avui",) if is_guest else ("Avui", "Demà"), key="dia_selector", disabled=is_guest)
