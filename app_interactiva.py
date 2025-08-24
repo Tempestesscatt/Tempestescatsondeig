@@ -1754,23 +1754,19 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual):
     if data_tuple:
         sounding_data, params_calculats = data_tuple
-        # La variable 'prof' encara es desempaqueta, però ja no es fa servir a la crida de sota
-        p, T, Td, u, v, heights, prof = sounding_data
+        p, T, Td, u, v, heights, ml_prof = sounding_data
         
         col1, col2 = st.columns(2, gap="large")
         with col1:
             # --- LÍNIA CORREGIDA ---
-            # Hem eliminat la variable 'prof' de la crida, ja que la funció
-            # ara la calcula internament. Passem de 8 a 7 arguments.
-            fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}")
+            # Hem tornat a afegir l'argument 'titol' que faltava a la crida de la funció.
+            fig_skewt = crear_skewt(p, T, Td, u, v, ml_prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
             # --- FI DE LA CORRECCIÓ ---
             
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             
             with st.container(border=True):
-                # La crida a la funció d'anàlisi es fa aquí dins ara
-                analisi_temps = analitzar_potencial_meteorologic(params_calculats, nivell_conv, hora_actual)
                 ui_caixa_parametres_sondeig(params_calculats, nivell_conv, hora_actual)
 
         with col2:
