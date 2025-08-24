@@ -1521,7 +1521,7 @@ def ui_peu_de_pagina():
 # --- Lògica Principal de l'Aplicació ---
 
 def run_catalunya_app():
-    # --- PART A: Configuració comuna i dades per a la capçalera ---
+    # ... (tota la part A i B de la funció es manté igual) ...
     is_guest = st.session_state.get('guest_mode', False)
     now_local = datetime.now(TIMEZONE_CAT)
     hora_sel_str = f"{now_local.hour:02d}:00h" if is_guest else st.session_state.get('hora_selector', f"{now_local.hour:02d}:00h")
@@ -1557,10 +1557,8 @@ def run_catalunya_app():
         ciutats_per_selector, info_msg = obtenir_ciutats_actives(hourly_index_sel)
         info_msg = "Anàlisi limitada a les zones de més interès."
 
-    # --- PART B: Dibuixar la interfície (capçalera i navegació) ---
     ui_capcalera_selectors(ciutats_per_selector, info_msg, zona_activa="catalunya", convergencies=convergencies)
     
-    # Defineix les opcions del menú
     if is_guest:
         menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical", "Estacions Meteorològiques"]
         menu_icons = ["map", "graph-up-arrow", "broadcast"]
@@ -1568,38 +1566,38 @@ def run_catalunya_app():
         menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical", "💬 Assistent IA", "Estacions Meteorològiques"]
         menu_icons = ["map", "graph-up-arrow", "chat-quote-fill", "broadcast"]
 
-    # --- LÒGICA CLAU PER MANTENIR L'ESTAT DE LA PESTANYA ---
-    # 1. Si no hem guardat mai una pestanya activa, la inicialitzem a la primera opció.
     if 'active_tab_cat' not in st.session_state:
         st.session_state.active_tab_cat = menu_options[0]
 
-    # 2. Busquem l'índex de l'última pestanya activa guardada. Aquest serà el nostre default_index.
     try:
         default_idx = menu_options.index(st.session_state.active_tab_cat)
     except ValueError:
-        default_idx = 0 # Si per alguna raó l'estat és invàlid, tornem a la primera.
+        default_idx = 0
 
-    # 3. Dibuixem el menú. El seu valor de retorn serà la pestanya actualment seleccionada.
     selected_tab = option_menu(
         menu_title=None, options=menu_options, icons=menu_icons,
         menu_icon="cast", default_index=default_idx, orientation="horizontal", key="catalunya_nav"
     )
-    
-    # 4. Actualitzem el nostre estat amb la selecció actual. Així, a la propera execució, el recordarem.
     st.session_state.active_tab_cat = selected_tab
 
     poble_sel = st.session_state.poble_selector
     lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
     timestamp_str = f"{st.session_state.dia_selector} a les {st.session_state.hora_selector} (Hora Local)"
 
-    # --- PART C: Càrrega condicional basada en `selected_tab` ---
+    # --- PART C: Càrrega condicional i renderitzat ---
     if selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
         
     elif selected_tab in ["Anàlisi Vertical", "💬 Assistent IA"]:
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
-            data_tuple, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+            (data_tuple, final_index), error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
         
+        if not error_msg and final_index != hourly_index_sel:
+            now_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            adjusted_utc = now_utc + timedelta(hours=final_index)
+            adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
+            st.warning(f"**Avís:** No hi havia dades disponibles per a les {hora_sel_str} (possiblement per actualització del model). Es mostren les dades de l'hora més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+
         if error_msg:
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
@@ -1614,7 +1612,6 @@ def run_catalunya_app():
                 
     elif selected_tab == "Estacions Meteorològiques":
         ui_pestanya_estacions_meteorologiques()
-
 
 def run_valley_halley_app():
     # --- PART A: Configuració comuna i dades per a la capçalera ---
