@@ -312,9 +312,7 @@ def calcular_li_manual(p, T, prof):
         return np.nan
 
 
-import numpy as np
-import metpy.calc as mpcalc
-from metpy.units import units
+
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
