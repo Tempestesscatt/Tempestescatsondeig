@@ -759,6 +759,7 @@ def carregar_dades_mapa_base_cat(variables, hourly_index):
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_cat(nivell, hourly_index):
     try:
+        # Revertim a la versió original, sense demanar 'cape'.
         if nivell >= 950:
             variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
             map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
@@ -771,11 +772,12 @@ def carregar_dades_mapa_cat(nivell, hourly_index):
             temp_data = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
             rh_data = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
             map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
+
         map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
         map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
         return map_data_raw, None
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
-
+        
 @st.cache_data(ttl=3600)
 def obtenir_ciutats_actives(hourly_index):
     nivell = 925
@@ -1300,15 +1302,18 @@ def run_catalunya_app():
         ciutats_formatejades = []
         for ciutat in sorted(CIUTATS_CATALUNYA.keys()):
             conv = convergencies.get(ciutat, 0)
+            
+            # --- BLOC MODIFICAT: Eliminem la comprovació de CAPE ---
             if conv >= 40:
                 ciutats_formatejades.append(f"{ciutat} (⚡ Molt Recomanat)")
-            # --- LÍNIA MODIFICADA ---
             elif conv >= 15:
                 ciutats_formatejades.append(f"{ciutat} (Potencial d'Interès)")
-            # --- FI DE LA MODIFICACIÓ ---
             else:
                 ciutats_formatejades.append(ciutat)
-        ciutats_per_selector = ciutats_formatejades
+        
+        # --- NOVA LÍNIA: Reordenem la llista per prioritat de recomanació ---
+        ciutats_per_selector = sorted(ciutats_formatejades, key=lambda c: (0 if "⚡" in c else 1 if "Potencial" in c else 2, c))
+
     
     ui_capcalera_selectors(ciutats_per_selector, info_msg, zona_activa="catalunya")
     
@@ -1344,6 +1349,7 @@ def run_catalunya_app():
         with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
         with tab_ia: ui_pestanya_assistent_ia(params_calc, poble_sel)
         with tab_estacions: ui_pestanya_estacions_meteorologiques()
+        
 def run_valley_halley_app():
     ui_capcalera_selectors(None, zona_activa="tornado_alley")
     
