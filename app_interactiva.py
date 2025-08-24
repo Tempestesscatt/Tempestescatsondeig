@@ -1704,7 +1704,19 @@ def run_catalunya_app():
     ui_capcalera_selectors(ciutats_per_selector, info_msg, zona_activa="catalunya", convergencies=pre_convergencies)
 
     # --- PAS 2: LLEGIR L'ESTAT FINAL I CARREGAR DADES ---
-    poble_sel = st.session_state.poble_selector
+    
+    # --- INICI DE LA CORRECCIÓ ---
+    # 1. Llegim el nom complet del selector, que pot incloure avisos.
+    poble_sel_formatat = st.session_state.poble_selector
+    
+    # 2. Neteja intel·ligent: Si el nom conté un avís (🔴, 🟠, 🟡), l'eliminem.
+    # Si no, mantenim el nom complet (això preserva "(Mar)").
+    if any(simbol in poble_sel_formatat for simbol in ["🔴", "🟠", "🟡"]):
+        poble_sel = poble_sel_formatat.split(' (')[0]
+    else:
+        poble_sel = poble_sel_formatat
+    # --- FI DE LA CORRECCIÓ ---
+
     dia_sel_str = st.session_state.dia_selector
     hora_sel_str = st.session_state.hora_selector
     nivell_sel = 925 if is_guest else st.session_state.level_cat_main
@@ -1761,7 +1773,6 @@ def run_catalunya_app():
 
     elif selected_tab == "Estacions Meteorològiques":
         ui_pestanya_estacions_meteorologiques()
-
 def run_valley_halley_app():
     # --- PAS 1: RECOLLIR TOTS ELS INPUTS DE L'USUARI ---
     
