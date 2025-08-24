@@ -111,6 +111,23 @@ def load_and_clean_chat_history():
 def count_unread_messages(history):
     last_seen = st.session_state.get('last_seen_timestamp', 0); current_user = st.session_state.get('username')
     return sum(1 for msg in history if msg['timestamp'] > last_seen and msg['username'] != current_user)
+    
+def inject_custom_css():
+    st.markdown("""
+    <style>
+    /* Mejora la visualización de las barras de progreso */
+    .stProgress > div > div > div {
+        background: linear-gradient(90deg, #FF6B6B, #4ECDC4);
+    }
+    
+    /* Animación suave para los textos de carga */
+    .loading-text {
+        font-weight: 500;
+        color: #4ECDC4;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
 def format_time_left(time_delta):
     total_seconds = int(time_delta.total_seconds()); hours, remainder = divmod(total_seconds, 3600); minutes, _ = divmod(remainder, 60)
     return f"{hours}h {minutes}min" if hours > 0 else f"{minutes} min"
@@ -850,6 +867,51 @@ def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str
 
 # --- Funcions Específiques per a Tornado Alley ---
 
+def mostrar_carga_avanzada(mensaje, funcion_a_ejecutar, *args, **kwargs):
+    """
+    Executa una funció mostrant una barra de progrés animada
+    """
+    # Crear contenidors per a la barra i el text
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    try:
+        # Animació durant la càrrega (0% a 85%)
+        for i in range(86):
+            progress_bar.progress(i)
+            dots = "." * ((i // 20) % 4)  # Punts que canvien cada 20%
+            emoji = "🔄" if i % 20 < 10 else "⏳"
+            status_text.text(f"{emoji} {mensaje}{dots}")
+            time.sleep(0.02)  # Temps més ràpid
+            
+        # Executar la funció real (85% a 95%)
+        progress_bar.progress(85)
+        status_text.text(f"🚀 Executant anàlisi...")
+        time.sleep(0.1)
+        
+        resultat = funcion_a_ejecutar(*args, **kwargs)
+        
+        # Completar al 100% i mostrar èxit
+        progress_bar.progress(100)
+        status_text.text(f"✅ {mensaje}... Completat!")
+        time.sleep(0.2)
+        
+        return resultat
+        
+    except Exception as e:
+        # Mostrar error si ocorre
+        progress_bar.progress(100)
+        status_text.text(f"❌ Error en el procés")
+        time.sleep(0.3)
+        raise e
+        
+    finally:
+        # Sempre netejar
+        progress_bar.empty()
+        status_text.empty()
+
+
+
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig_usa(lat, lon, hourly_index):
     try:
@@ -1176,28 +1238,46 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
     col_capa, col_zoom = st.columns(2)
+    
     with col_capa:
         mapa_sel = st.selectbox("Selecciona la capa del mapa:", ["Anàlisi de Vent i Convergència", "Vent a 700hPa", "Vent a 300hPa"], key="map_cat")
+    
     with col_zoom: 
         zoom_sel = st.selectbox("Nivell de Zoom:", options=list(MAP_ZOOM_LEVELS_CAT.keys()), key="zoom_cat")
+    
     selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
     
     if "Convergència" in mapa_sel:
-        with st.spinner("Carregant mapa de convergència..."):
-            map_data, error_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
-        if error_map: st.error(f"Error en carregar el mapa: {error_map}")
+        # CARGA CON BARRA AVANZADA
+        map_data, error_map = mostrar_carga_avanzada(
+            "Generant mapa de convergència",
+            carregar_dades_mapa_cat,
+            nivell_sel, hourly_index_sel
+        )
+        
+        if error_map: 
+            st.error(f"Error en carregar el mapa: {error_map}")
         elif map_data:
             fig = crear_mapa_forecast_combinat_cat(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str, selected_extent)
-            st.pyplot(fig, use_container_width=True); plt.close(fig)
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
     else:
         nivell = 700 if "700" in mapa_sel else 300
         variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-        with st.spinner("Carregant mapa de vents..."):
-            map_data, error_map = carregar_dades_mapa_base_cat(variables, hourly_index_sel)
-        if error_map: st.error(f"Error: {error_map}")
+        
+        # CARGA CON BARRA AVANZADA
+        map_data, error_map = mostrar_carga_avanzada(
+            "Processant camps de vent",
+            carregar_dades_mapa_base_cat,
+            variables, hourly_index_sel
+        )
+        
+        if error_map: 
+            st.error(f"Error: {error_map}")
         elif map_data: 
             fig = crear_mapa_vents_cat(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str, selected_extent)
-            st.pyplot(fig, use_container_width=True); plt.close(fig)
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
             
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual):
     if data_tuple:
@@ -1331,9 +1411,12 @@ def run_catalunya_app():
     else:
         st.info("ℹ️ L'anàlisi de vent i convergència està fixada a **925 hPa** en el mode convidat.")
 
-    # REEMPLAZADO: Usar st.spinner
-    with st.spinner("Carregant dades del mapa..."):
-        map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
+    # CARGA DE MAPA CON BARRA AVANZADA
+    map_data_conv, _ = mostrar_carga_avanzada(
+        "Carregant dades de convergència",
+        carregar_dades_mapa_cat,
+        nivell_sel, hourly_index_sel
+    )
     
     ciutats_per_selector = CIUTATS_CATALUNYA
     info_msg = None
@@ -1370,9 +1453,12 @@ def run_catalunya_app():
     timestamp_str = f"{st.session_state.dia_selector} a les {st.session_state.hora_selector} (Hora Local)"
     lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
     
-    # REEMPLAZADO: Usar st.spinner
-    with st.spinner("Carregant dades del sondeig..."):
-        data_tuple, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+    # CARGA DE SONDEO CON BARRA AVANZADA
+    data_tuple, error_msg = mostrar_carga_avanzada(
+        "Analitzant perfil atmosfèric",
+        carregar_dades_sondeig_cat,
+        lat_sel, lon_sel, hourly_index_sel
+    )
         
     if error_msg: 
         st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
@@ -1411,9 +1497,12 @@ def run_valley_halley_app():
     timestamp_str = f"{dia_sel_str} a les {hora_sel_str} (Central Time)"
     lat_sel, lon_sel = USA_CITIES[poble_sel]['lat'], USA_CITIES[poble_sel]['lon']
     
-    # REEMPLAZADO: Usar st.spinner en lugar de la barra de carga personalizada
-    with st.spinner("Carregant dades del sondeig..."):
-        data_tuple, error_msg = carregar_dades_sondeig_usa(lat_sel, lon_sel, hourly_index_sel)
+    # CARGA CON BARRA AVANZADA
+    data_tuple, error_msg = mostrar_carga_avanzada(
+        "Carregant sondeig atmosfèric",
+        carregar_dades_sondeig_usa,
+        lat_sel, lon_sel, hourly_index_sel
+    )
         
     if error_msg:
         st.error(f"No s'ha pogut carregar el sondeig per a {poble_sel}: {error_msg}")
@@ -1427,9 +1516,12 @@ def run_valley_halley_app():
         key="level_usa_main"
     )
 
-    # REEMPLAZADO: Usar st.spinner en lugar de la barra de carga personalizada
-    with st.spinner("Carregant dades del mapa..."):
-        map_data_conv, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
+    # CARGA CON BARRA AVANZADA
+    map_data_conv, _ = mostrar_carga_avanzada(
+        "Processant dades del mapa",
+        carregar_dades_mapa_usa,
+        nivell_sel, hourly_index_sel
+    )
 
     params_calc = data_tuple[1] if data_tuple else {}
     if data_tuple and map_data_conv:
@@ -1490,6 +1582,9 @@ def ui_zone_selection():
 def main():
     # Crida la funció per amagar els estils just a l'inici
     hide_streamlit_style()
+    
+    # NUEVO: Inyectar CSS personalizado
+    inject_custom_css()
     
     if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
     if 'guest_mode' not in st.session_state: st.session_state['guest_mode'] = False
