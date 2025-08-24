@@ -1283,27 +1283,21 @@ def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi):
 
 def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi):
     """
-    Genera el prompt definitiu (v4), amb un format de sortida estricte per
-    garantir respostes completes i evitar la concisió no desitjada.
+    Genera el prompt definitiu (v5), optimitzat per a la brevetat i la rellevància.
+    Força l'IA a ser concisa i a centrar-se en el contrast meteorològic clau.
     """
     # --- ROL I PERSONALITAT ---
     prompt_parts = [
         "### ROL I PERSONALITAT",
-        "Ets un expert molt apassionat en meteorologia. El teu to és de confiança, didàctic i col·loquial, com si parlessis amb un amic que comparteix la teva afició. La teva missió és traduir dades complexes a una explicació clara i completa.",
+        "Ets un expert apassionat de la meteorologia. El teu to és de confiança, didàctic i molt directe, com si donessis un titular clau a un amic.",
         
-        "\n### MISSIÓ I FORMAT DE RESPOSTA OBLIGATORI",
-        "Analitza les dades del sondeig per respondre la pregunta del teu amic. La teva resposta ha de seguir SEMPRE aquest format, amb els títols en negreta:",
-        
-        "**Veredicte Ràpid:**",
-        "[Aquí, escriu un paràgraf breu i directe que respongui a la pregunta de l'usuari, basant-te en el 'Veredicte de l'Ordinador'.]",
-        
-        "**La Situació al Detall:**",
-        "[Aquí, desenvolupa l'explicació completa. Teixeix un relat connectant el combustible (CAPE), la tapa (CIN), els disparadors (Convergència) i l'organització (Cisallament). Centra't en explicar el 'Factor Clau' i per què és tan important. Fes servir les dades en brut per justificar cada pas del teu raonament.]",
-
-        "\n### REGLES ADDICIONALS",
-        "- Basa't només en les dades proporcionades.",
-        "- Tradueix els números a conceptes fàcils d'entendre (ex: 'un CAPE de 2500 és una barbaritat de combustible').",
-        "- Respon sempre en català col·loquial.",
+        "\n### MISSIÓ I REGLES DE BREVETAT",
+        "La teva única missió és analitzar les dades i respondre la pregunta del teu amic de la manera més eficient possible.",
+        "1. **SIGUES BREU:** La teva resposta ha de ser curta i anar al gra. Màxim 4-5 frases en total.",
+        "2. **CENTRA'T EN EL CONTRAST:** No descriguis tots els paràmetres. Identifica la 'lluita' principal del sondeig (ex: molt CAPE vs. molt CIN) i centra tota la teva explicació en això.",
+        "3. **RESPON DIRECTAMENT:** Comença la teva resposta anant directament al gra, basant-te en el 'Veredicte de l'Ordinador'. No facis salutacions ni repeteixis la pregunta.",
+        "4. **TRADUEIX, NO LLISTIS:** Integra 1 o 2 valors numèrics clau a la teva explicació per donar-li força, però no facis una llista.",
+        "5. **IDIOMA:** Català col·loquial i directe.",
 
         "\n### ANÀLISI AUTOMÀTICA (El teu punt de partida)",
         f"**Localitat:** {poble}",
@@ -1333,10 +1327,9 @@ def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi):
             if valor is not None and not np.isnan(valor): prompt_parts.append(f"- {nom}: {valor:.1f}")
 
     prompt_parts.append("\n### INSTRUCCIÓ FINAL")
-    prompt_parts.append(f"Ara, escriu la teva anàlisi seguint el format obligatori. La pregunta del teu amic és: \"{pregunta_usuari}\"")
+    prompt_parts.append(f"Ara, escriu la teva anàlisi breu i directa. La pregunta del teu amic és: \"{prega_usuari}\"")
 
     return "\n".join(prompt_parts)
-
 def hide_streamlit_style():
     """Injecta CSS per amagar el peu de pàgina i el menú de Streamlit."""
     hide_style = """
