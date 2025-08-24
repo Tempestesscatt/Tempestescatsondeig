@@ -1470,29 +1470,36 @@ def determinar_emoji_temps(params, nivell_conv):
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
 
-    # --- 2. Lògica de Diagnòstic Avançada ---
-
-    # == A. DIAGNÒSTIC DE BOIRA I NÚVOLS BAIXOS (ESTRATS) ==
-    # Condicions per a boira (fog) i estratos baixos
-    if lcl_hgt < 300 and pwat > 20:
-        # Boira amb inversió tèrmica (alta humitat i baix LCL)
-        if cape < 50 and cin > -25:
-            if pwat > 28:
-                return "🌫️", "Boira Densa (Visibilitat < 200m)"
-            else:
-                return "🌫️", "Boira Moderada / Boira"
-        
-        # Estrats baixos (St) sense precipitació
-        if cape < 100 and cin > -50:
-            return "☁️", "Estrats Baixos (St) - Cel Ennuvolat"
+    # --- 2. DIAGNÒSTIC ESPECÍFIC PER A NÚVOLS BAIXOS I BOIRA ---
     
-    # == B. DIAGNÒSTIC DE NIMBOSTRATUS (PLUJA ESTRATIFORME) ==
-    # Nimbostratus - pluja estratiforme sense activitat convectiva
+    # A. BOIRA (FOG) - Condicions d'alta humitat i estabilitat
+    if lcl_hgt < 100 and pwat > 20 and cape < 50 and cin > -25:
+        if pwat > 28:
+            return "🌫️", "Boira Densa (Visibilitat < 200m)"
+        else:
+            return "🌫️", "Boira Moderada / Boira"
+    
+    # B. ESTRATUS (St) - Núvols baixos sense precipitació significativa
+    if (lcl_hgt < 500 and pwat > 15 and pwat < 30 and 
+        cape < 100 and cin > -50 and bwd_6km < 10):
+        return "☁️", "Estratus (St) - Cel Ennuvolat Baix"
+    
+    # C. NIMBOESTRATUS (Ns) - Núvols de precipitació estratiforme
+    # Alta humitat (PWAT) amb estabilitat (baix CAPE) i baix cisallament
     if (pwat > 35 and cape < 150 and cin > -50 and 
         lcl_hgt < 1500 and bwd_6km < 15):
-        return "🌧️", "Nimbostratus - Pluja Estratiforme"
+        # Diferenciem entre Ns amb pluja feble o moderada
+        if pwat > 45:
+            return "🌧️", "Nimboestratus - Pluja Moderada/Contínua"
+        else:
+            return "🌧️", "Nimboestratus - Ruixats/Pluja Feble"
     
-    # == C. DIAGNÒSTIC CONVECTIU ==
+    # D. ESTRATOCÚMULUS (Sc) - Núvols baixos amb algun desenvolupament
+    if (lcl_hgt < 1000 and 50 < cape <= 200 and 
+        pwat > 20 and pwat < 35 and conv < 3):
+        return "☁️", "Estratocúmulus - Cel Ennuvolat amb Estructures"
+
+    # --- 3. DIAGNÒSTIC CONVECTIU ---
     # Verificació de potencial convectiu significatiu
     if (cape > 200 and li < 0) or mlcape > 250:
         
@@ -1529,7 +1536,7 @@ def determinar_emoji_temps(params, nivell_conv):
         # C.5: Convecció capada però amb potencial
         return "🌤️", "Inestabilitat Capada - Possibles Desenvolupaments"
     
-    # == D. DIAGNÒSTIC DE NÚVOLS MITJANS I ALTS ==
+    # --- 4. DIAGNÒSTIC DE NÚVOLS MITJANS I ALTS ---
     # Altocúmulus / Altostratus
     if 2000 <= lcl_hgt < 5000:
         if pwat > 25:
@@ -1544,12 +1551,12 @@ def determinar_emoji_temps(params, nivell_conv):
         else:
             return "☀️", "Cirrus - Filaments Alts"
     
-    # == E. CONVECCIÓ DÈBIL O AILLADA ==
+    # --- 5. CONVECCIÓ DÈBIL O AILLADA ---
     if 50 < cape <= 200:
         if conv > 3:
             return "🌤️", "Cúmulus Humilis - Convecció Dèbil"
     
-    # == F. CONDICIONS ESTABLES / BON TEMPS ==
+    # --- 6. CONDICIONS ESTABLES / BON TEMPS ---
     if cape < 50 and lcl_hgt > 1000:
         if pwat < 20:
             return "☀️", "Cel Serè - Anticiclònic"
