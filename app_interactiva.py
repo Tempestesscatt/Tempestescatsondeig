@@ -535,7 +535,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
     ax_hodo.set_xlabel('U-Component (nusos)'); ax_hodo.set_ylabel('V-Component (nusos)')
 
-    # --- PANELL DE PARÀMETRES (ESTRUCTURA ORIGINAL AMB DIAGNÒSTIC INTEGRAT) ---
+    # --- PANELL DE PARÀMETRES (AJUSTOS FINALS D'ALINEACIÓ) ---
     ax_params.axis('off')
     def degrees_to_cardinal_ca(d):
         dirs = ["Nord", "Nord-nord-est", "Nord-est", "Est-nord-est", "Est", "Est-sud-est", "Sud-est", "Sud-sud-est", "Sud", "Sud-sud-oest", "Sud-oest", "Oest-sud-oest", "Oest", "Oest-nord-oest", "Nord-oest", "Nord-nord-oest"]
@@ -551,7 +551,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
     y = 0.95
     
-    # Secció 1: Moviment (com la volies)
+    # Secció 1: Moviment
     motion_data = {
         'M. Dret': params_calc.get('RM'), 
         'M. Esquerre': params_calc.get('LM'), 
@@ -564,6 +564,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             speed = mpcalc.wind_speed(u_motion, v_motion).to('km/h').m
             direction = mpcalc.wind_direction(u_motion, v_motion, convention='to').to('deg').m
             cardinal = degrees_to_cardinal_ca(direction)
+            # CORREGIT: L'etiqueta (esquerra) i el valor (dreta)
             ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
             ax_params.text(1, y, f"{cardinal} / {speed:.0f} km/h", ha='right', va='center')
         else:
@@ -571,10 +572,9 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             ax_params.text(1, y, "---", ha='right', va='center')
         y-=0.1
 
-    # Obtenim el diagnòstic per a les seccions següents
     tipus_tempesta, color_tempesta, base_nuvol, color_base = diagnosticar_potencial_tempesta(params_calc)
 
-    # Secció 2: Cisallament (amb diagnòstic)
+    # Secció 2: Cisallament
     y-=0.05
     ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
     for key, label in [('BWD_0-1km', '0-1 km'), ('BWD_0-6km', '0-6 km')]:
@@ -583,12 +583,12 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         ax_params.text(0, y, f"{label}:", ha='left', va='center')
         ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
         y-=0.07
-    # Línia de diagnòstic en lloc de "Efectiu"
+    # CORREGIT: Posició fixa i clara per al diagnòstic
     ax_params.text(0, y, "Tipus:", ha='left', va='center')
     ax_params.text(1, y, tipus_tempesta, ha='right', va='center', weight='bold', color=color_tempesta)
     y-=0.07
 
-    # Secció 3: Helicitat (amb diagnòstic)
+    # Secció 3: Helicitat
     y-=0.05
     ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.1
     for key, label in [('SRH_0-1km', '0-1 km'), ('SRH_0-3km', '0-3 km')]:
@@ -597,14 +597,12 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         ax_params.text(0, y, f"{label}:", ha='left', va='center')
         ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
         y-=0.07
-    # Línia de diagnòstic en lloc de "Efectiva"
+    # CORREGIT: Posició fixa i clara per al diagnòstic
     ax_params.text(0, y, "Base:", ha='left', va='center')
     ax_params.text(1, y, base_nuvol, ha='right', va='center', weight='bold', color=color_base)
     y-=0.07
         
     return fig
-
-
 
 
 def ui_caixa_parametres_sondeig(params, nivell_conv):
