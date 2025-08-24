@@ -1406,18 +1406,16 @@ def format_time_left(total_seconds):
     else:
         return f"d'aquí a {minutes} min"
 
-def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi):
+def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi, interpretacions_ia):
     """
-    Crea la interfície d'usuari per a la pestanya de l'assistent d'IA,
-    ara amb un sistema de límit de consultes per a usuaris registrats.
+    Crea la interfície d'usuari per a la pestanya de l'assistent d'IA.
+    Ara rep una pre-anàlisi i les interpretacions qualitatives per guiar l'IA.
     """
     st.markdown("#### Assistent d'Anàlisi (IA Gemini)")
     
-    # Comprovem si és un usuari registrat
     is_guest = st.session_state.get('guest_mode', False)
     current_user = st.session_state.get('username')
 
-    # Mostrem un avís sobre el límit de consultes si no és convidat
     if not is_guest:
         st.info(f"ℹ️ Recorda que tens un límit de **{MAX_IA_REQUESTS} consultes cada 3 hores**.")
     else:
@@ -1428,33 +1426,23 @@ def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi):
         with st.chat_message(message["role"]): st.markdown(message["content"])
 
     if prompt := st.chat_input("Fes una pregunta sobre el sondeig..."):
-        # --- INICI DE LA LÒGICA DE LÍMIT DE CONSULTES ---
-        
         limit_excedit = False
         if not is_guest and current_user:
             now_ts = time.time()
             rate_limits = load_json_file(RATE_LIMIT_FILE)
             user_timestamps = rate_limits.get(current_user, [])
-            
-            # 1. Filtrem les consultes que ja són més velles de 3 hores
             recent_timestamps = [ts for ts in user_timestamps if now_ts - ts < TIME_WINDOW_SECONDS]
             
-            # 2. Comprovem si s'ha superat el límit
             if len(recent_timestamps) >= MAX_IA_REQUESTS:
                 limit_excedit = True
-                # Calculem quant de temps falta per a la propera consulta
                 oldest_ts_in_window = recent_timestamps[0]
                 time_to_wait = (oldest_ts_in_window + TIME_WINDOW_SECONDS) - now_ts
                 temps_restant_str = format_time_left(time_to_wait)
-                
                 st.error(f"Has superat el límit de {MAX_IA_REQUESTS} consultes. Podràs tornar a preguntar {temps_restant_str}.")
             else:
-                # 3. Si no s'ha superat, registrem la nova consulta
                 recent_timestamps.append(now_ts)
                 rate_limits[current_user] = recent_timestamps
                 save_json_file(rate_limits, RATE_LIMIT_FILE)
-
-        # --- FI DE LA LÒGICA DE LÍMIT DE CONSULTES ---
 
         if not limit_excedit:
             st.session_state.messages.append({"role": "user", "content": prompt})
@@ -1465,7 +1453,8 @@ def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi):
                     with st.spinner("El teu amic expert està analitzant les dades..."):
                         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                         model = genai.GenerativeModel('gemini-1.5-flash')
-                        prompt_complet = generar_prompt_per_ia(params_calc, prompt, poble_sel, pre_analisi)
+                        
+                        prompt_complet = generar_prompt_per_ia(params_calc, prompt, poble_sel, pre_analisi, interpretacions_ia)
                         
                         response = model.generate_content(prompt_complet)
                         resposta_completa = response.text
@@ -1474,67 +1463,81 @@ def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi):
                     st.session_state.messages.append({"role": "assistant", "content": resposta_completa})
                 except Exception as e:
                     st.error(f"Hi ha hagut un error en contactar amb l'assistent d'IA: {e}")
+
+def interpretar_parametres(params, nivell_conv):
+    """
+    Tradueix els paràmetres numèrics clau a categories qualitatives
+    per facilitar la interpretació de l'IA.
+    """
+    interpretacions = {}
+
+    # Interpretació del CIN
+    cin = params.get('MLCIN', 0) or 0
+    if cin > -25: interpretacions['Inhibició (CIN)'] = 'Gairebé Inexistent'
+    elif cin > -75: interpretacions['Inhibició (CIN)'] = 'Febla, fàcil de trencar'
+    elif cin > -150: interpretacions['Inhibició (CIN)'] = 'Moderada, cal un bon disparador'
+    else: interpretacions['Inhibició (CIN)'] = 'Molt Forta (Tapa de formigó)'
+
+    # Interpretació de la Convergència (Disparador Principal)
+    conv_key = f'CONV_{nivell_conv}hPa'
+    conv = params.get(conv_key, 0) or 0
+    if conv < 5: interpretacions['Disparador (Convergència)'] = 'Molt Febla o Inexistent'
+    elif conv < 15: interpretacions['Disparador (Convergència)'] = 'Present'
+    elif conv < 30: interpretacions['Disparador (Convergència)'] = 'Moderadament Forta'
+    else: interpretacions['Disparador (Convergència)'] = 'Molt Forta i Decisiva'
+    
+    # Interpretació del CAPE (Combustible)
+    mlcape = params.get('MLCAPE', 0) or 0
+    if mlcape < 300: interpretacions['Combustible (MLCAPE)'] = 'Molt Baix'
+    elif mlcape < 1000: interpretacions['Combustible (MLCAPE)'] = 'Moderat'
+    elif mlcape < 2500: interpretacions['Combustible (MLCAPE)'] = 'Alt'
+    else: interpretacions['Combustible (MLCAPE)'] = 'Extremadament Alt'
+
+    # Interpretació del Cisallament (Organització)
+    bwd_6km = params.get('BWD_0-6km', 0) or 0
+    if bwd_6km < 20: interpretacions['Organització (Cisallament)'] = 'Febla (Tempestes desorganitzades)'
+    elif bwd_6km < 35: interpretacions['Organització (Cisallament)'] = 'Moderada (Potencial per a multicèl·lules)'
+    else: interpretacions['Organització (Cisallament)'] = 'Alta (Potencial per a supercèl·lules)'
+
+    return interpretacions
                 
 
-def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi):
+def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpretacions):
     """
-    Genera el prompt definitiu (v6.0), que força un procés de raonament
-    lògic i jeràrquic, prioritzant l'anàlisi del disparador (convergència)
-    abans d'avaluar la inhibició (CIN).
+    Genera el prompt definitiu (v6.0), que inclou una interpretació qualitativa
+    dels paràmetres per a un raonament de l'IA de màxima qualitat.
     """
     # --- ROL I PERSONALITAT ---
     prompt_parts = [
         "### ROL I PERSONALITAT",
         "Ets un expert apassionat de la meteorologia. El teu to és de confiança, didàctic i molt directe, com si donessis un titular clau a un amic.",
         
-        "\n### LA TEVA MISSIÓ",
-        "La teva única missió és explicar de manera senzilla i correcta la 'lluita' entre els 'disparadors' atmosfèrics i la 'tapa' d'inhibició per respondre la pregunta del teu amic. La teva anàlisi ha de girar al voltant de la pregunta clau: **El disparador (Convergència) és prou fort per a trencar la 'tapa' (CIN)?**",
-
-        "\n### EL TEU PROCÉS DE RAONAMENT (OBLIGATORI)",
-        "Has de seguir aquests passos en el teu raonament:",
-        "1. **Analitza Primer el Disparador:** Mira primer la **Convergència**. Si és un valor positiu i alt (ex: > 15), és la protagonista absoluta. Aquest és el mecanisme que força l'aire a pujar.",
-        "2. **Analitza la Resistència:** Després, mira el **MLCIN**. Aquesta és la 'tapa' o la resistència. Un valor molt negatiu (ex: -100) és una tapa molt forta, mentre que un valor proper a zero (ex: -10) és una tapa feble.",
-        "3. **Emet el Veredicte:** Finalment, **compara'ls**. Explica clarament si creus que la força del disparador serà suficient per 'trencar' la tapa i alliberar el combustible (MLCAPE). Basa la teva resposta final en aquesta conclusió.",
-
-        "\n### REGLA DE BREVETAT",
-        "Mantingues la resposta directa i sense anar-te'n per les branques. Un parell de paràgrafs com a màxim.",
-
-        "\n### ANÀLISI AUTOMÀTICA (El teu punt de partida)",
-        f"**Localitat:** {poble}",
-        f"**Veredicte de l'Ordinador:** {pre_analisi.get('veredicte', 'No determinat')}",
-        f"**Factor Clau Identificat:** {pre_analisi.get('factor_clau', 'No determinat')}",
+        "\n### MISSIÓ",
+        "Un sistema automàtic ha analitzat un sondeig i t'ha donat un 'Veredicte' i una interpretació qualitativa dels paràmetres clau. La teva única missió és utilitzar aquesta informació per construir una explicació coherent i senzilla per al teu amic.",
         
-        "\n### DADES EN BRUT ('LA CHICHA')",
+        "\n### REGLES DE LA RESPOSTA",
+        "1. **Comença Directe:** Respon directament a la pregunta del teu amic, basant-te en el 'Veredicte'.",
+        "2. **Construeix el Raonament:** Utilitza les 'Interpretacions Clau' per explicar el perquè del veredicte. Centra't primer en el 'Disparador (Convergència)' i després en la 'Inhibició (CIN)'. Aquesta és la lluita principal.",
+        "3. **Sigues Breu i Contundent:** La teva resposta ha de ser curta i anar al gra. Màxim 4-5 frases.",
+
+        "\n### ANÀLISI AUTOMÀTICA",
+        f"**Localitat:** {poble}",
+        f"**Veredicte Final:** {pre_analisi.get('veredicte', 'No determinat')}",
+        
+        "\n### INTERPRETACIONS CLAU (El que has d'utilitzar per explicar)",
     ]
-    
-    # Paràmetres amb etiquetes descriptives per guiar l'IA
-    parametres_info = {
-        'inestabilitat': {'MLCAPE': 'MLCAPE (El combustible)', 'MLCIN': "MLCIN (La 'tapa' que frena)", 'LI': 'Lifted Index'},
-        'dinamics': {'CONV': "Convergència (El 'disparador' que inicia)", 'BWD_0-6km': 'Cisallament (L\'organitzador)'}
-    }
-    
-    prompt_parts.append("\n**Factors Clau:**")
-    # Afegim primer els paràmetres de la 'lluita' principal
+    # Afegim les interpretacions al prompt
+    for key, value in interpretacions.items():
+        prompt_parts.append(f"- **{key}:** {value}")
+
+    # Afegim un parell de valors numèrics importants per si l'IA els vol esmentar
+    prompt_parts.append("\n### DADES NUMÈRIQUES DE REFERÈNCIA")
+    if 'MLCAPE' in params and pd.notna(params['MLCAPE']): prompt_parts.append(f"- MLCAPE exacte: {params['MLCAPE']:.0f} J/kg")
     conv_key = next((k for k in params if k.startswith('CONV_')), None)
-    if conv_key:
-        valor = params.get(conv_key)
-        if valor is not None and not np.isnan(valor): 
-            prompt_parts.append(f"- {parametres_info['dinamics']['CONV']}: {valor:.1f}")
+    if conv_key and conv_key in params and pd.notna(params[conv_key]): prompt_parts.append(f"- Convergència exacta: {params[conv_key]:.1f}")
     
-    valor_mlcin = params.get('MLCIN')
-    if valor_mlcin is not None and not np.isnan(valor_mlcin):
-        prompt_parts.append(f"- {parametres_info['inestabilitat']['MLCIN']}: {valor_mlcin:.1f}")
-
-    valor_mlcape = params.get('MLCAPE')
-    if valor_mlcape is not None and not np.isnan(valor_mlcape):
-        prompt_parts.append(f"- {parametres_info['inestabilitat']['MLCAPE']}: {valor_mlcape:.1f}")
-
-    valor_bwd = params.get('BWD_0-6km')
-    if valor_bwd is not None and not np.isnan(valor_bwd):
-        prompt_parts.append(f"- {parametres_info['dinamics']['BWD_0-6km']}: {valor_bwd:.1f}")
-
     prompt_parts.append("\n### INSTRUCCIÓ FINAL")
-    prompt_parts.append(f"Ara, construeix la teva anàlisi seguint el procés de raonament obligatori. La pregunta del teu amic és: \"{pregunta_usuari}\"")
+    prompt_parts.append(f"Ara, escriu la teva anàlisi breu i directa. La pregunta del teu amic és: \"{pregunta_usuari}\"")
 
     return "\n".join(prompt_parts)
     
@@ -1850,18 +1853,15 @@ def ui_peu_de_pagina():
 # --- Lògica Principal de l'Aplicació ---
 
 def run_catalunya_app():
-    # --- PAS 0: INICIALITZACIÓ DE L'ESTAT (Solució a l'AttributeError) ---
-    is_guest = st.session_state.get('guest_mode', False)
-    if 'poble_selector' not in st.session_state:
-        st.session_state.poble_selector = "Barcelona"
-    if 'dia_selector' not in st.session_state:
-        st.session_state.dia_selector = "Avui"
-    if 'hora_selector' not in st.session_state:
-        st.session_state.hora_selector = f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h"
-    if 'level_cat_main' not in st.session_state:
-        st.session_state.level_cat_main = 925
-
     # --- PAS 1: RECOLLIR TOTS ELS INPUTS DE L'USUARI ---
+    is_guest = st.session_state.get('guest_mode', False)
+    
+    # Inicialització robusta de l'estat
+    if 'poble_selector' not in st.session_state: st.session_state.poble_selector = "Barcelona"
+    if 'dia_selector' not in st.session_state: st.session_state.dia_selector = "Avui"
+    if 'hora_selector' not in st.session_state: st.session_state.hora_selector = f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h"
+    if 'level_cat_main' not in st.session_state: st.session_state.level_cat_main = 925
+
     pre_hora_sel = st.session_state.hora_selector
     pre_dia_sel = st.session_state.dia_selector
     pre_target_date = datetime.now(TIMEZONE_CAT).date() + timedelta(days=1) if pre_dia_sel == "Demà" else datetime.now(TIMEZONE_CAT).date()
@@ -1872,15 +1872,14 @@ def run_catalunya_app():
     pre_map_data, _ = carregar_dades_mapa_cat(st.session_state.level_cat_main, pre_hourly_index)
     pre_convergencies = calcular_convergencies_per_llista(pre_map_data, CIUTATS_CATALUNYA) if pre_map_data else {}
     
-    ciutats_per_selector = CIUTATS_CATALUNYA
-    info_msg = None
-    if is_guest:
-        ciutats_per_selector, info_msg = obtenir_ciutats_actives(pre_hourly_index)
-    
-    ui_capcalera_selectors(ciutats_per_selector, info_msg, zona_activa="catalunya", convergencies=pre_convergencies)
+    ui_capcalera_selectors(None, None, zona_activa="catalunya", convergencies=pre_convergencies)
 
-    # ... (la resta de la funció es manté exactament igual) ...
+    # --- PAS 2: LLEGIR L'ESTAT FINAL I CARREGAR DADES ---
     poble_sel = st.session_state.poble_selector
+    if not poble_sel or "---" in poble_sel:
+        st.info("Selecciona una població o un punt marítim per començar l'anàlisi.")
+        return
+
     dia_sel_str = st.session_state.dia_selector
     hora_sel_str = st.session_state.hora_selector
     nivell_sel = 925 if is_guest else st.session_state.level_cat_main
@@ -1892,6 +1891,7 @@ def run_catalunya_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     timestamp_str = f"{dia_sel_str} a les {hora_sel_str} (Hora Local)"
 
+    # --- PAS 3: DIBUIXAR EL MENÚ I MOSTRAR RESULTATS ---
     if is_guest:
         menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical", "Estacions Meteorològiques"]
         menu_icons = ["map", "graph-up-arrow", "broadcast"]
@@ -1924,7 +1924,7 @@ def run_catalunya_app():
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
             params_calc = data_tuple[1] if data_tuple else {}
-            if poble_sel in pre_convergencies: params_calc[f'CONV_{nivell_sel}hPa'] = pre_convergencies[poble_sel]
+            if poble_sel in pre_convergencies: params_calc[f'CONV_{nivell_sel}hPa'] = pre_convergencies.get(poble_sel)
             
             analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
             
@@ -1932,7 +1932,8 @@ def run_catalunya_app():
                 ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str)
             
             elif selected_tab == "💬 Assistent IA":
-                ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps)
+                interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
+                ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia)
 
     elif selected_tab == "Estacions Meteorològiques":
         ui_pestanya_estacions_meteorologiques()
