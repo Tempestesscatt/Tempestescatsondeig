@@ -1746,7 +1746,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             PLACEHOLDER_MAR = "--- Selecciona Punt Marí ---"
             
             # Aquest és el text que apareixerà a l'interrogant
-            tooltip_text = "Mostra els punts amb major convergència ('disparador' de tempestes).\n\nLlegenda:\n- 🟡 (>15): Moderada\n- 🟠 (>30): Alta\n- 🔴 (>40): Molt Alta\n\nEl valor és la força de la convergència (x10⁻⁵ s⁻¹)."
+            tooltip_text = "Mostra els punts amb major convergència ('disparador' de tempestes).\n\nLlegenda:\n- 🟡 (>15): Moderada\n- 🟠 (>30): Alta\n- 🔴 (>40): Molt Alta\n\nEl valor és la força de la convergència."
 
             def handle_selection_change():
                 terra_sel = st.session_state.selector_terra
