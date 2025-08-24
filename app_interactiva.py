@@ -314,146 +314,35 @@ def calcular_li_manual(p, T, prof):
 
 
 
-def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
-    """
-    Versió Definitiva, Completa i Anti-Fràgil.
-    Calcula un conjunt exhaustiu de paràmetres de temps sever. Cada càlcul
-    està aïllat en el seu propi bloc try-except per a màxima robustesa.
-    Garanteix l'ús consistent del perfil de capa barrejada (ml_prof).
-    """
-    # --- 1. PREPARACIÓ I NETEJA DE DADES ---
-    if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
-    p = np.array(p_profile) * units.hPa; T = np.array(T_profile) * units.degC
-    Td = np.array(Td_profile) * units.degC; u = np.array(u_profile) * units('m/s')
-    v = np.array(v_profile) * units('m/s'); heights = np.array(h_profile) * units.meter
-    valid_indices = ~np.isnan(p.m) & ~np.isnan(T.m) & ~np.isnan(Td.m) & ~np.isnan(u.m) & ~np.isnan(v.m)
-    p, T, Td, u, v, heights = p[valid_indices], T[valid_indices], Td[valid_indices], u[valid_indices], v[valid_indices], heights[valid_indices]
-    if len(p) < 3: return None, "No hi ha prou dades vàlides."
-    sort_idx = np.argsort(p.m)[::-1]
-    p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
-    params_calc = {}; heights_agl = heights - heights[0]
-
-    # --- 2. CÀLCULS BÀSICS I PERFIL DE PARCEL·LA ---
-    with parcel_lock:
-        try:
-            # Calculem el perfil de la capa barrejada (ml_prof), que serà la nostra base
-            _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
-        except Exception:
-            # Si aquest càlcul crític falla, no podem continuar de manera fiable.
-            return None, "Error crític calculant el perfil de la capa barrejada."
-
-        rh = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
-        params_calc['RH_CAPES'] = {
-            'baixa': np.mean(rh[(p.m <= 1000) & (p.m > 850)]),
-            'mitjana': np.mean(rh[(p.m <= 850) & (p.m > 500)]),
-            'alta': np.mean(rh[(p.m <= 500) & (p.m > 250)])
-        }
-        try:
-            _, fl_h = mpcalc.freezing_level(p, T, heights)
-            params_calc['FREEZING_LVL_HGT'] = float(fl_h[0].to('m').m)
-        except: params_calc['FREEZING_LVL_HGT'] = np.nan
-
-        # --- 3. CÀLCULS DE PARÀMETRES (CADA UN AÏLLAT) ---
+def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual):
+    if data_tuple:
+        sounding_data, params_calculats = data_tuple
+        p, T, Td, u, v, heights, ml_prof = sounding_data
         
-        # Paràmetres de Superfície (SBCAPE, etc.)
-        try:
-            sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
-            sbcape, sbcin = mpcalc.cape_cin(p, T, Td, sfc_prof)
-            params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m)
-            params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if sbcape.m > 0 else 0.0
-        except: params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
-        
-        # Paràmetres de la Parcel·la més Inestable (MUCAPE)
-        try:
-            mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td, depth=300 * units.hPa)
-            params_calc['MUCAPE'] = float(mucape.m); params_calc['MUCIN'] = float(mucin.m)
-        except: params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
-        
-        # Paràmetres de la Capa Barrejada (MLCAPE), utilitzant ml_prof
-        try:
-            mlcape, mlcin = mpcalc.cape_cin(p, T, Td, ml_prof)
-            params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
-        except: params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
-        
-        # Altres paràmetres termodinàmics, tots basats en ml_prof
-        try: params_calc['LI'] = float(mpcalc.lifted_index(p, T, ml_prof).m)
-        except: params_calc['LI'] = np.nan
-        try:
-            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0])
-            params_calc['LCL_p'] = float(lcl_p.m); params_calc['LCL_Hgt'] = float(np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1]))
-        except: params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
-        try:
-            lfc_p, _ = mpcalc.lfc(p, T, Td, ml_prof)
-            params_calc['LFC_p'] = float(lfc_p.m); params_calc['LFC_Hgt'] = float(np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1]))
-        except: params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
-        try:
-            el_p, _ = mpcalc.el(p, T, Td, ml_prof)
-            params_calc['EL_p'] = float(el_p.m); params_calc['EL_Hgt'] = float(np.interp(el_p.m, p.m[::-1], heights_agl.m[::-1]))
-        except: params_calc.update({'EL_p': np.nan, 'EL_Hgt': np.nan})
-        try:
-            pwat = mpcalc.precipitable_water(p, Td)
-            params_calc['PWAT'] = float(pwat.to('mm').m)
-        except: params_calc['PWAT'] = np.nan
-        try:
-            idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
-            cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], ml_prof[:idx_3km+1])
-            params_calc['CAPE_0-3km'] = float(cape_0_3.m)
-        except: params_calc['CAPE_0-3km'] = np.nan
+        col1, col2 = st.columns(2, gap="large")
+        with col1:
+            # --- LÍNIA CORREGIDA ---
+            # Hem tornat a afegir l'argument 'titol' que faltava a la crida de la funció.
+            fig_skewt = crear_skewt(p, T, Td, u, v, ml_prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
+            # --- FI DE LA CORRECCIÓ ---
+            
+            st.pyplot(fig_skewt, use_container_width=True)
+            plt.close(fig_skewt)
+            
+            with st.container(border=True):
+                ui_caixa_parametres_sondeig(params_calculats, nivell_conv, hora_actual)
 
-        # Paràmetres Cinemàtics
-        try:
-            rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
-            params_calc['RM'] = (float(rm[0].m), float(rm[1].m)); params_calc['LM'] = (float(lm[0].m), float(lm[1].m))
-        except: params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan)})
-        try:
-            for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
-                bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter)
-                params_calc[f'BWD_{name}'] = float(mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m)
-        except: params_calc.update({'BWD_0-1km': np.nan, 'BWD_0-6km': np.nan})
-        
-        # Paràmetres d'Helicitat (depenen del moviment de la tempesta)
-        if 'RM' in params_calc and not np.isnan(params_calc['RM'][0]):
-            u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
-            try:
-                for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
-                    srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.meter, storm_u=u_storm, storm_v=v_storm)[0]
-                    params_calc[f'SRH_{name}'] = float(srh.m)
-            except: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-        else: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-
-        # Paràmetres de la Capa Efectiva (poden fallar fàcilment)
-        try:
-            eff_bottom, eff_top = mpcalc.effective_inflow_layer(p, T, Td)
-            eff_bwd_u, eff_bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, bottom=eff_bottom, top=eff_top)
-            params_calc['EBWD'] = float(mpcalc.wind_speed(eff_bwd_u, eff_bwd_v).to('kt').m)
-            if 'RM' in params_calc and not np.isnan(params_calc['RM'][0]):
-                u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
-                esrh, _, _ = mpcalc.storm_relative_helicity(heights, u, v, bottom=eff_bottom, top=eff_top, storm_u=u_storm, storm_v=v_storm)
-                params_calc['ESRH'] = float(esrh.m)
-            else: params_calc['ESRH'] = np.nan
-        except: params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
-
-        # Paràmetres Compostos (depenen dels càlculs anteriors)
-        try:
-            stp_val = mpcalc.significant_tornado(sbcape=params_calc.get('MLCAPE', 0) * units('J/kg'), effective_srh=params_calc.get('ESRH', 0) * units('m**2/s**2'), effective_bulk_shear=params_calc.get('EBWD', 0) * units('kt'), lcl_height=params_calc.get('LCL_Hgt', 9999) * units('m'), cin=params_calc.get('MLCIN', 0) * units('J/kg'))[0]
-            params_calc['STP'] = float(stp_val)
-        except: params_calc['STP'] = np.nan
-        try:
-            scp_val = mpcalc.supercell_composite(mucape=params_calc.get('MUCAPE', 0) * units('J/kg'), effective_srh=params_calc.get('ESRH', 0) * units('m**2/s**2'), effective_bulk_shear=params_calc.get('EBWD', 0) * units('kt'))[0]
-            params_calc['SCP'] = float(scp_val)
-        except: params_calc['SCP'] = np.nan
-        
-        # Paràmetres Addicionals
-        try:
-            dcape_val = mpcalc.dcape(p, T, Td)[0]
-            params_calc['DCAPE'] = float(dcape_val.m)
-        except: params_calc['DCAPE'] = np.nan
-        try:
-            params_calc['LR_0-3km'] = float(mpcalc.lapse_rate(p, T, height=heights_agl, depth=3000 * units('m')).to('delta_degC/km').m)
-        except: params_calc['LR_0-3km'] = np.nan
-
-    # Retornem les dades processades i el perfil de capa barrejada per al gràfic
-    return ((p, T, Td, u, v, heights, ml_prof), params_calc), None
+        with col2:
+            fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
+            st.pyplot(fig_hodo, use_container_width=True)
+            plt.close(fig_hodo)
+            
+            st.markdown("##### Radar de Precipitació en Temps Real")
+            radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},8&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
+            html_code = f"""<div style="position: relative; width: 100%; height: 410px; border-radius: 10px; overflow: hidden;"><iframe src="{radar_url}" width="100%" height="410" frameborder="0" style="border:0;"></iframe><div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div></div>"""
+            st.components.v1.html(html_code, height=410)
+    else:
+        st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 
 
 
