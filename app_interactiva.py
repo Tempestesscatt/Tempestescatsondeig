@@ -1863,240 +1863,100 @@ def main():
 
 def determinar_emoji_temps(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Meteorològic Expert.
-    Analitza on es troba la humitat per determinar el tipus de núvol estable.
-    Inclou lògica per a emojis de nit i dia.
+    Sistema de Diagnòstic Meteorològic Expert v2.0
+    Implementa un balanç entre inhibició (CIN) i forçament (Convergència)
+    per a un diagnòstic de convecció més precís.
     """
     # --- 0. DETERMINAR SI ÉS DE NIT O DE DIA ---
     es_de_nit = False
-    if hora_actual is not None:
+    if hora_actual:
         try:
-            # Convertir l'hora string a número (ex: "21:00" → 21)
             hora = int(hora_actual.split(':')[0])
-            es_de_nit = (hora >= 21 or hora <= 6)  # De 21:00 a 6:00 és nit
+            es_de_nit = (hora >= 21 or hora <= 6)
         except (ValueError, AttributeError):
-            # Si hi ha error en el parsing, assumim dia
             es_de_nit = False
-    
-    # --- 1. EXTREURE PARÀMETRES ---
-    cape = params.get('SBCAPE', 0) or 0
+
+    # --- 1. EXTREURE PARÀMETRES CLAU ---
+    cape = params.get('MLCAPE', params.get('SBCAPE', 0)) or 0
+    cin = params.get('MLCIN', params.get('SBCIN', 0)) or 0
     li = params.get('LI', 5) or 5
-    cin = params.get('SBCIN', 0) or 0
-    mlcin = params.get('MLCIN', 0) or 0
     pwat = params.get('PWAT', 0) or 0
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     srh_1km = params.get('SRH_0-1km', 0) or 0
     lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
-    lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
-    mlcape = params.get('MLCAPE', 0) or 0
+    max_updraft = params.get('MAX_UPDRAFT', 0) or 0
     
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
 
-    # --- 2. DETECCIÓ DE BON TEMPS ESTABLE ---
-    if (cape <= 50 and li >= 3 and abs(cin) <= 25 and 
-        mlcape <= 50 and lcl_hgt > 800):
-        
-        # --- EMOJIS DE NIT ---
-        if es_de_nit:
-            if pwat < 15:
-                return "🌙", "Nit Serena - Estrelles"
-            elif pwat < 25:
-                if lcl_hgt > 3000:
-                    return "🌙", "Nit Amb Núvols Alts"
-                elif lcl_hgt > 1500:
-                    return "🌙☁️", "Nit Amb Núvols Mitjans"
-                else:
-                    return "🌙", "Nit Poc Ennuvolada"
-            else:
-                if lcl_hgt > 2000:
-                    return "🌙☁️", "Nit Ennuvolada - Núvols Alts"
-                elif lcl_hgt > 800:
-                    return "🌙☁️", "Nit Ennuvolada - Núvols Baixos"
-                else:
-                    return "☁️", "Nit Totalment Ennuvolada"
-        
-        # --- EMOJIS DE DIA ---
-        else:
-            if pwat < 15:
-                return "☀️", "Cel Serè - Sol"
-            elif pwat < 25:
-                if lcl_hgt > 3000:
-                    return "🌤️", "Cirrus - Núvols Alts"
-                elif lcl_hgt > 1500:
-                    return "🌤️", "Altocúmulus - Núvols Mitjans"
-                else:
-                    return "🌤️", "Cel Poc Ennuvolat"
-            else:
-                if lcl_hgt > 2000:
-                    return "🌥️", "Altostratus - Velat Mitjà"
-                elif lcl_hgt > 800:
-                    return "🌥️", "Estratocúmulus - Núvols Baixos"
-                else:
-                    return "☁️", "Estratus - Cel Ennuvolat"
+    # --- 2. LÒGICA DE BALANÇ: FORÇAMENT vs. INHIBICIÓ ---
+    # Factor de conversió: un valor heurístic que tradueix la convergència
+    # a una "força d'elevació" comparable al CIN en J/kg.
+    FACTOR_CONV = 5.0
     
-    # --- 3. VERIFICACIÓ D'INHIBICIÓ → CEL ESTABLE ---
-    cin_total = min(cin, mlcin)
+    cin_efectiu = abs(min(0, cin)) # Només considerem CIN negatiu (inhibició real)
+    forçament_dinamic = (conv * FACTOR_CONV) if conv > 0 else 0
     
-    if cin_total < -100:
-        if es_de_nit:
-            return "🌙", "Nit Clara - Estabilitat Alta"
-        else:
-            return "☀️", "Cel Serè - Alta Estabilitat"
-    
-    if cin_total < -75:
-        if es_de_nit:
-            return "🌙☁️", "Nit Estable - Núvols Mitjans"
-        else:
-            return "🌥️", "Altocúmulus - Estabilitat"
-    
-    if cin_total < -50:
-        if es_de_nit:
-            return "🌙☁️", "Nit Estable - Núvols Baixos"
-        else:
-            return "🌤️", "Estratocúmulus - Limitació"
+    forçament_net = forçament_dinamic - cin_efectiu
 
-    # --- 4. NIMBOSTRATUS ---
-    if (pwat > 35 and cape < 200 and mlcape < 250 and li > 2 and
-        abs(cin_total) < 50):
-        if es_de_nit:
-            return "🌧️", "Nit de Pluja - Nimboestratos"
-        else:
-            if pwat > 50:
-                return "🌧️", "Nimboestratus - Pluja Intensa"
-            elif pwat > 40:
-                return "🌧️", "Nimboestratus - Pluja Moderada"
-            else:
-                return "🌧️", "Nimboestratus - Ruixats"
-    
-    # --- 5. BOIRA I ESTRATUS ---
-    if lcl_hgt < 100 and pwat > 20 and cape < 50 and cin_total > -25:
-        if es_de_nit:
-            return "🌫️", "Nit Amb Boira"
-        else:
-            if pwat > 28:
-                return "🌫️", "Boira Densa"
-            else:
-                return "🌫️", "Boira Moderada"
-    
-    if (lcl_hgt < 500 and pwat > 15 and pwat < 35 and 
-        cape < 100 and cin_total > -50 and bwd_6km < 15):
-        if es_de_nit:
-            return "☁️", "Nit Ennuvolada - Estratus"
-        else:
-            return "☁️", "Estratus - Cel Ennuvolat"
-    
-    if (lcl_hgt < 1000 and 50 < cape <= 200 and 
-        pwat > 20 and pwat < 35 and conv < 3):
-        if es_de_nit:
-            return "🌙☁️", "Nit Amb Estratocúmulus"
-        else:
-            return "☁️", "Estratocúmulus"
-
-    # --- 6. ALTCÚMULUS CASTELLANUS ---
-    esforç_necessari = 1
-    if cin_total < -25:
-        esforç_necessari = 1.5
-    conv_efectiva = conv * esforç_necessari
-    
-    if (2000 <= lcl_hgt < 5000 and pwat > 25 and 
-        100 <= cape <= 500 and li < 2 and li > -3 and
-        conv_efectiva > 2 and bwd_6km > 15):
+    # --- 3. DIAGNÒSTIC DE TEMPESTES (Prioritat màxima) ---
+    # Condició: Hi ha prou combustible (CAPE) I el disparador és més fort que la tapa.
+    if cape > 250 and forçament_net > -10: # Un forçament lleugerament negatiu encara pot ser superat
         
+        # 3.1 Supercèl·lules (potencial tornàdic i calamarsa severa)
+        if bwd_6km > 20 and srh_1km > 125 and cape > 1200:
+            if lcl_hgt < 1200 and srh_1km > 200:
+                return "🌪️", "Supercèl·lula (Alt Risc Tornàdic)"
+            return "🌪️", "Supercèl·lula"
+
+        # 3.2 Multicèl·lules Organitzades / Línies de Tempesta
+        if bwd_6km > 15 and cape > 800:
+            if max_updraft > 35:
+                return "⛈️", "Multicèl·lula (Risc de Calamarsa)"
+            return "⛈️", "Multicèl·lula Organitzada"
+
+        # 3.3 Tempestes de Cèl·lula Simple (Pols)
+        if max_updraft > 25:
+            return "🌩️", "Tempesta (Possible Calamarsa)"
+        return "🌩️", "Tempesta Aïllada"
+
+    # --- 4. DIAGNÒSTIC DE CONVECCIÓ CAPADA ---
+    # Condició: Hi ha combustible, PERÒ el disparador és més feble que la tapa.
+    if cape > 400 and forçament_net < -25:
         if es_de_nit:
-            return "🌙☁️", "Nit Amb Castellanus"
-        else:
-            if cape > 300 and conv_efectiva > 4:
-                return "🌥️", "Altocúmulus Castellanus - Inestabilitat"
-            else:
-                return "🌥️", "Altocúmulus Castellanus - Incipient"
+            return "🌙", "Nit Estable (Convecció Capada)"
+        return "🌤️", "Convecció Capada"
+
+    # --- 5. DIAGNÒSTIC DE TEMPS ESTABLE (sense convecció) ---
+    # Si arribem aquí, no hi haurà tempestes significatives.
     
-    # --- 7. NÚVOLS MITJANS I ALTS ---
-    if 2000 <= lcl_hgt < 5000:
-        if es_de_nit:
-            if pwat > 25:
-                return "🌙☁️", "Nit Amb Altostratus"
-            else:
-                return "🌙", "Nit Amb Núvols Alts"
-        else:
-            if pwat > 25:
-                return "🌥️", "Altostratus"
-            else:
-                return "🌥️", "Altocúmulus"
+    # Boira
+    if lcl_hgt < 150 and pwat > 18 and cape < 50:
+        return "🌫️", "Boira o Boirina"
     
-    if lcl_hgt >= 5000:
-        if es_de_nit:
-            if pwat > 20:
-                return "🌙", "Nit Amb Cirrostratus"
-            else:
-                return "🌙", "Nit Amb Cirrus"
-        else:
-            if pwat > 20:
-                return "🌥️", "Cirrostratus"
-            else:
-                return "☀️", "Cirrus"
+    # Pluja Estratiforme (Nimboestratus)
+    if pwat > 30 and cape < 200 and li > 1:
+        return "🌧️", "Pluja Dèbil (Nimboestratus)"
 
-    # --- 8. CONVECCIÓ ---
-    if (cape > 200 and li < 0) or mlcape > 250:
+    # Cel Ennuvolat (Estratus / Estratocúmulus)
+    if lcl_hgt < 1000 and pwat > 20:
+        if es_de_nit: return "☁️", "Nit Ennuvolada"
+        return "☁️", "Cel Cobert (Núvols Baixos)"
         
-        if lfc_hgt > 3500:
-            if es_de_nit:
-                return "🌙", "Nit Estable - Inversió"
-            else:
-                return "🌤️", "Cel Estable - Inversió Forta"
-        
-        # ... [Resta de lògica convectiva igual] ...
-        
-        return "🌤️", "Cel Estable - Convecció Capada"
+    # Núvols Mitjans (Altocúmulus / Altostratus)
+    if 1000 <= lcl_hgt < 3000 and pwat > 15:
+        if es_de_nit: return "🌙☁️", "Nit amb Núvols Mitjans"
+        return "🌥️", "Cel Variable (Núvols Mitjans)"
 
-    # --- 9. CONVECCIÓ DÈBIL ---
-    if 50 < cape <= 200:
-        if conv > 2:
-            if es_de_nit:
-                return "🌙", "Nit Estable - Convecció Dèbil"
-            else:
-                return "🌤️", "Cúmulus Humilis"
+    # Núvols Alts (Cirrus)
+    if lcl_hgt >= 3000:
+        if es_de_nit: return "🌙", "Nit amb Núvols Alts"
+        return "🌤️", "Cel Poc Ennuvolat (Núvols Alts)"
 
-    # --- 10. DIFERENCIACIÓ DE BON TEMPS ---
-    if cape == 0 and cin == 0 and li > 4:
-        if es_de_nit:
-            if pwat < 20:
-                return "🌙", "Nit Clara - Estrelles"
-            else:
-                return "🌙", "Nit Ennuvolada"
-        else:
-            if pwat < 20:
-                return "☀️", "Cel Serè - Estabilitat Total"
-            else:
-                return "🌤️", "Cel Clar - Humitat Moderada"
-    
-    if cape < 30 and mlcape < 30 and li > 3:
-        if es_de_nit:
-            return "🌙", "Nit Tranquila - Estable"
-        else:
-            return "🌤️", "Bon Temps - Estable"
-
-    # --- 11. CAS PER DEFECTE INTEL·LIGENT ---
+    # --- 6. CAS PER DEFECTE (Bon temps) ---
     if es_de_nit:
-        if pwat < 15:
-            return "🌙", "Nit Serena"
-        elif pwat < 25:
-            return "🌙", "Nit Amb Núvols"
-        else:
-            return "🌙☁️", "Nit Ennuvolada"
-    else:
-        if pwat < 15:
-            return "☀️", "Cel Serè"
-        elif pwat < 25:
-            if lcl_hgt > 2000:
-                return "🌤️", "Núvols Alts"
-            else:
-                return "🌤️", "Cel Poc Ennuvolat"
-        else:
-            if lcl_hgt > 1500:
-                return "🌥️", "Núvols Mitjans"
-            else:
-                return "☁️", "Núvols Baixos"
+        return "🌙", "Nit Serena"
+    return "☀️", "Cel Serè"
 
 
 if __name__ == "__main__":
