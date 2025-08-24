@@ -314,35 +314,169 @@ def calcular_li_manual(p, T, prof):
 
 
 
-def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual):
-    if data_tuple:
-        sounding_data, params_calculats = data_tuple
-        p, T, Td, u, v, heights, ml_prof = sounding_data
+def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
+    """
+    Versión Completa con Manejo Robustecido de Errores
+    """
+    try:
+        # Validación básica
+        if len(p_profile) < 3:
+            return None, "Perfil demasiado corto"
         
-        col1, col2 = st.columns(2, gap="large")
-        with col1:
-            # --- LÍNIA CORREGIDA ---
-            # Hem tornat a afegir l'argument 'titol' que faltava a la crida de la funció.
-            fig_skewt = crear_skewt(p, T, Td, u, v, ml_prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
-            # --- FI DE LA CORRECCIÓ ---
+        # Conversión a unidades
+        p = np.array(p_profile) * units.hPa
+        T = np.array(T_profile) * units.degC
+        Td = np.array(Td_profile) * units.degC
+        u = np.array(u_profile) * units('m/s')
+        v = np.array(v_profile) * units('m/s')
+        heights = np.array(h_profile) * units.meter
+        
+        # Limpieza de datos
+        mask = ~(np.isnan(p.m) | np.isnan(T.m) | np.isnan(Td.m))
+        p = p[mask]
+        T = T[mask]
+        Td = Td[mask]
+        heights = heights[mask]
+        
+        if len(p) < 3:
+            return None, "Datos insuficientes después de limpieza"
+        
+        # Ordenar por presión
+        sort_idx = np.argsort(p.m)[::-1]
+        p = p[sort_idx]
+        T = T[sort_idx]
+        Td = Td[sort_idx]
+        heights = heights[sort_idx]
+        
+        params_calc = {}
+        heights_agl = heights - heights[0]
+        
+        # 1. CÁLCULOS BÁSICOS (siempre funcionan)
+        try:
+            params_calc['PWAT'] = float(mpcalc.precipitable_water(p, Td).to('mm').m)
+        except:
+            params_calc['PWAT'] = np.nan
+        
+        # 2. PERFILES DE PARCELA
+        sfc_prof, ml_prof = None, None
+        
+        try:
+            sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0])
+        except:
+            pass
             
-            st.pyplot(fig_skewt, use_container_width=True)
-            plt.close(fig_skewt)
+        try:
+            ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)[3]
+        except:
+            pass
+        
+        # 3. CAPE/CIN - SBCAPE (Superficial)
+        if sfc_prof is not None:
+            try:
+                sbcape, sbcin = mpcalc.cape_cin(p, T, Td, sfc_prof)
+                params_calc['SBCAPE'] = float(sbcape.m) if sbcape else 0.0
+                params_calc['SBCIN'] = float(sbcin.m) if sbcin else 0.0
+                params_calc['MAX_UPDRAFT'] = np.sqrt(2 * params_calc['SBCAPE']) if params_calc['SBCAPE'] > 0 else 0.0
+            except:
+                params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
+        
+        # 4. CAPE/CIN - MLCAPE (Mixed Layer)
+        if ml_prof is not None:
+            try:
+                mlcape, mlcin = mpcalc.cape_cin(p, T, Td, ml_prof)
+                params_calc['MLCAPE'] = float(mlcape.m) if mlcape else 0.0
+                params_calc['MLCIN'] = float(mlcin.m) if mlcin else 0.0
+            except:
+                params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
+        
+        # 5. MUCAPE (Most Unstable)
+        try:
+            mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td)
+            params_calc['MUCAPE'] = float(mucape.m) if mucape else 0.0
+            params_calc['MUCIN'] = float(mucin.m) if mucin else 0.0
+        except:
+            params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
+        
+        # 6. LCL
+        try:
+            lcl_p, lcl_t = mpcalc.lcl(p[0], T[0], Td[0])
+            params_calc['LCL_p'] = float(lcl_p.m)
+            params_calc['LCL_Hgt'] = float(np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1]))
+        except:
+            params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
+        
+        # 7. LFC y EL (solo si tenemos perfil de mixed layer)
+        if ml_prof is not None:
+            try:
+                lfc_p, lfc_t = mpcalc.lfc(p, T, Td, ml_prof)
+                if lfc_p:
+                    params_calc['LFC_p'] = float(lfc_p.m)
+                    params_calc['LFC_Hgt'] = float(np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1]))
+            except:
+                pass
+                
+            try:
+                el_p, el_t = mpcalc.el(p, T, Td, ml_prof)
+                if el_p:
+                    params_calc['EL_p'] = float(el_p.m)
+                    params_calc['EL_Hgt'] = float(np.interp(el_p.m, p.m[::-1], heights_agl.m[::-1]))
+            except:
+                pass
+        
+        # 8. Lifted Index
+        if ml_prof is not None:
+            try:
+                li = mpcalc.lifted_index(p, T, ml_prof)
+                params_calc['LI'] = float(li.m)
+            except:
+                params_calc['LI'] = np.nan
+        
+        # 9. VENTO Y CIZALLAMIENTO
+        try:
+            # Bulk shear 0-6km
+            shear_u, shear_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=6000 * units.meter)
+            params_calc['BWD_0-6km'] = float(mpcalc.wind_speed(shear_u, shear_v).to('kt').m)
+        except:
+            params_calc['BWD_0-6km'] = np.nan
             
-            with st.container(border=True):
-                ui_caixa_parametres_sondeig(params_calculats, nivell_conv, hora_actual)
-
-        with col2:
-            fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
-            st.pyplot(fig_hodo, use_container_width=True)
-            plt.close(fig_hodo)
+        try:
+            # Bulk shear 0-1km
+            shear_u, shear_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=1000 * units.meter)
+            params_calc['BWD_0-1km'] = float(mpcalc.wind_speed(shear_u, shear_v).to('kt').m)
+        except:
+            params_calc['BWD_0-1km'] = np.nan
+        
+        # 10. HELICIDAD (SRH)
+        try:
+            rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
+            u_storm, v_storm = rm[0] * units('m/s'), rm[1] * units('m/s')
             
-            st.markdown("##### Radar de Precipitació en Temps Real")
-            radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},8&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
-            html_code = f"""<div style="position: relative; width: 100%; height: 410px; border-radius: 10px; overflow: hidden;"><iframe src="{radar_url}" width="100%" height="410" frameborder="0" style="border:0;"></iframe><div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div></div>"""
-            st.components.v1.html(html_code, height=410)
-    else:
-        st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
+            srh_1km = mpcalc.storm_relative_helicity(heights, u, v, depth=1000 * units.meter, storm_u=u_storm, storm_v=v_storm)
+            params_calc['SRH_0-1km'] = float(srh_1km[0].m)
+            
+            srh_3km = mpcalc.storm_relative_helicity(heights, u, v, depth=3000 * units.meter, storm_u=u_storm, storm_v=v_storm)
+            params_calc['SRH_0-3km'] = float(srh_3km[0].m)
+        except:
+            params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
+        
+        # 11. CÁLCULOS AVANZADOS (DCAPE, LR, etc.)
+        try:
+            dcape_val = mpcalc.dcape(p, T, Td)
+            params_calc['DCAPE'] = float(dcape_val[0].m) if dcape_val[0] else np.nan
+        except:
+            params_calc['DCAPE'] = np.nan
+            
+        try:
+            lr = mpcalc.lapse_rate(p, T, height=heights, depth=3000 * units.meter)
+            params_calc['LR_0-3km'] = float(lr.to('degC/km').m)
+        except:
+            params_calc['LR_0-3km'] = np.nan
+        
+        return ((p, T, Td, u, v, heights, ml_prof), params_calc), None
+        
+    except Exception as e:
+        import traceback
+        return None, f"Error crítico: {str(e)}\n{traceback.format_exc()}"
 
 
 
