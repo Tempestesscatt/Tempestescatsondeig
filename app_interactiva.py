@@ -712,7 +712,6 @@ def calcular_convergencia_per_ciutats(map_data):
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig_cat(lat, lon, hourly_index):
     try:
-        mostrar_barra_carrega()
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS_AROME]
         params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_seamless", "forecast_days": 4}
@@ -740,8 +739,6 @@ def carregar_dades_sondeig_cat(lat, lon, hourly_index):
         return processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
     except Exception as e: 
         return None, f"Error en carregar dades del sondeig AROME: {e}"
-    finally:
-        amagar_barra_carrega()
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base_cat(variables, hourly_index):
@@ -763,7 +760,6 @@ def carregar_dades_mapa_base_cat(variables, hourly_index):
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_cat(nivell, hourly_index):
     try:
-        mostrar_barra_carrega()
         if nivell >= 950:
             variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
             map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
@@ -782,8 +778,6 @@ def carregar_dades_mapa_cat(nivell, hourly_index):
         return map_data_raw, None
     except Exception as e:
         return None, f"Error en processar dades del mapa: {e}"
-    finally:
-        amagar_barra_carrega()
         
 @st.cache_data(ttl=3600)
 def obtenir_ciutats_actives(hourly_index):
