@@ -639,8 +639,9 @@ def ui_caixa_parametres_sondeig(params, nivell_conv):
 
     st.markdown("##### Paràmetres del Sondeig")
     
-    # MODIFICAT: Passem 'nivell_conv' a la funció de diagnòstic.
-    emoji, descripcio = determinar_emoji_temps(params, nivell_conv)
+    # --- MODIFICACIÓ: Obtenir l'hora actual i passar-la a la funció ---
+    hora_actual = st.session_state.get('hora_selector', '12:00')
+    emoji, descripcio = determinar_emoji_temps(params, nivell_conv, hora_actual)
 
     # El reste de la funció es queda exactament igual...
     cols = st.columns(3)
