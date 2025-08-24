@@ -1459,8 +1459,13 @@ def determinar_emoji_temps(params, nivell_conv, hora_actual=None):
     # --- 0. DETERMINAR SI ÉS DE NIT O DE DIA ---
     es_de_nit = False
     if hora_actual is not None:
-        hora = int(hora_actual.split(':')[0])
-        es_de_nit = (hora >= 21 or hora <= 6)  # De 21:00 a 6:00 és nit
+        try:
+            # Convertir l'hora string a número (ex: "21:00" → 21)
+            hora = int(hora_actual.split(':')[0])
+            es_de_nit = (hora >= 21 or hora <= 6)  # De 21:00 a 6:00 és nit
+        except (ValueError, AttributeError):
+            # Si hi ha error en el parsing, assumim dia
+            es_de_nit = False
     
     # --- 1. EXTREURE PARÀMETRES ---
     cape = params.get('SBCAPE', 0) or 0
