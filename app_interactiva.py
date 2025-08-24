@@ -701,89 +701,50 @@ def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
 # --- Funcions Específiques per a Catalunya ---
 
 
-@st.cache_data(ttl=1800, max_entries=15, show_spinner=False)
-def calcular_convergencia_per_ciutats(map_data):
+@st.cache_data(ttl=1800, show_spinner="Analitzant zones de convergència...")
+def calcular_convergencies_per_llista(map_data, llista_ciutats):
     """
-    Versión optimizada del cálculo de convergencia
+    Calcula la convergència per a una llista de ciutats utilitzant un mètode robust
+    basat en la interpolació completa del camp de vent. El resultat es cacheja.
     """
     if not map_data or 'lons' not in map_data or len(map_data['lons']) < 4:
         return {}
-    
+
     convergencies = {}
     try:
-        lons, lats = np.array(map_data['lons']), np.array(map_data['lats'])
-        speed_data, dir_data = np.array(map_data['speed_data']), np.array(map_data['dir_data'])
-        
-        # Pre-calcular componentes del vent (OPTIMIZACIÓN)
-        u_comp, v_comp = mpcalc.wind_components(speed_data * units('km/h'), dir_data * units.degrees)
-        u_ms, v_ms = u_comp.to('m/s').m, v_comp.to('m/s').m
-        
-        for ciutat, coords in CIUTATS_CATALUNYA.items():
-            try:
-                # Interpolación más eficiente
-                points = np.column_stack((lons, lats))
-                target_point = np.array([[coords['lon'], coords['lat']]])
-                
-                # Encontrar los 4 puntos más cercanos para interpolación
-                distancias = cdist(target_point, points)
-                idxs_cercanos = np.argsort(distancias[0])[:4]
-                
-                if len(idxs_cercanos) < 3:
-                    continue
-                    
-                # Interpolación bilineal manual (más rápida)
-                puntos_cercanos = points[idxs_cercanos]
-                u_cercanos = u_ms[idxs_cercanos]
-                v_cercanos = v_ms[idxs_cercanos]
-                
-                # Interpolación por distancia inversa
-                distancias = 1.0 / (cdist(target_point, puntos_cercanos)[0] + 1e-9)
-                pesos = distancias / np.sum(distancias)
-                
-                u_interp = np.dot(pesos, u_cercanos)
-                v_interp = np.dot(pesos, v_cercanos)
-                
-                # Calcular divergencia local (aproximación)
-                valor_conv = calcular_convergencia_local(u_interp, v_interp, puntos_cercanos)
-                
-                if not np.isnan(valor_conv):
-                    convergencies[ciutat] = valor_conv
-                    
-            except Exception as e:
-                continue
-                
-    except Exception as e:
-        print(f"Error optimizado en convergencia: {e}")
-    
-    return convergencies
+        # Pre-calculem la graella i la interpolació només una vegada
+        lons, lats = map_data['lons'], map_data['lats']
+        speed_data, dir_data = map_data['speed_data'], map_data['dir_data']
 
-def calcular_convergencia_local(u, v, points):
-    """
-    Aproximación rápida de convergencia local
-    """
-    try:
-        if len(points) < 3:
-            return np.nan
+        grid_lon, grid_lat = np.meshgrid(
+            np.linspace(min(lons), max(lons), 100),
+            np.linspace(min(lats), max(lats), 100)
+        )
+        u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+        grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+        grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+        
+        # Ignorem avisos que puguin sortir durant el càlcul de la divergència
+        with np.errstate(invalid='ignore'):
+            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+            divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
+            convergence_scaled = -divergence.to('1/s').magnitude * 1e5
+
+        # Ara busquem el valor per a cada ciutat en la graella ja calculada
+        for nom_ciutat, coords in llista_ciutats.items():
+            lat_sel, lon_sel = coords['lat'], coords['lon']
+            dist_sq = (grid_lat - lat_sel)**2 + (grid_lon - lon_sel)**2
+            min_dist_idx = np.unravel_index(np.argmin(dist_sq, axis=None), dist_sq.shape)
+            valor_conv = convergence_scaled[min_dist_idx]
             
-        # Calcular diferencias espaciales aproximadas
-        lons = points[:, 0]
-        lats = points[:, 1]
+            if not np.isnan(valor_conv):
+                convergencies[nom_ciutat] = valor_conv
+    
+    except Exception:
+        # Si la interpolació global falla, retornem un diccionari buit.
+        return {}
         
-        dx = (np.max(lons) - np.min(lons)) * 111000 * np.cos(np.radians(np.mean(lats)))  # metros
-        dy = (np.max(lats) - np.min(lats)) * 111000  # metros
-        
-        if dx <= 0 or dy <= 0:
-            return np.nan
-            
-        # Aproximación de derivadas
-        dudx = (np.max(u) - np.min(u)) / dx
-        dvdy = (np.max(v) - np.min(v)) / dy
-        
-        convergence = -(dudx + dvdy) * 1e5  # Escalado
-        return convergence
-        
-    except:
-        return np.nan
+    return convergencies
     
 
 @st.cache_data(ttl=1800, max_entries=20, show_spinner=False)
@@ -1577,31 +1538,27 @@ def run_catalunya_app():
             options=nivells_disponibles, 
             format_func=lambda x: f"{x} hPa (⭐ Recomanat)" if x == 925 else f"{x} hPa",
             key="level_cat_main",
-            index=2 # 925hPa per defecte
+            index=2
         )
     else:
         st.info("ℹ️ L'anàlisi de vent i convergència està fixada a **925 hPa** en el mode convidat.")
 
-    map_data_conv, _ = mostrar_carga_avanzada(
-        "Analitzant potencial de convergència a Catalunya",
-        carregar_dades_mapa_cat,
-        nivell_sel, hourly_index_sel
-    )
+    # Obtenim primer les dades del mapa
+    map_data_conv, error_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
     
+    convergencies = {}
+    if not error_map and map_data_conv:
+        # Calculem les convergències amb la NOVA funció robusta
+        convergencies = calcular_convergencies_per_llista(map_data_conv, CIUTATS_CATALUNYA)
+
     ciutats_per_selector = CIUTATS_CATALUNYA
     info_msg = None
-    convergencies = {}
-
-    if map_data_conv:
-        convergencies = calcular_convergencia_per_ciutats(map_data_conv)
-
     if is_guest:
         ciutats_per_selector, info_msg = obtenir_ciutats_actives(hourly_index_sel)
         info_msg = "Anàlisi limitada a les zones de més interès."
 
     ui_capcalera_selectors(ciutats_per_selector, info_msg, zona_activa="catalunya", convergencies=convergencies)
     
-    # Ara llegim directament el nom NET, que ja està guardat correctament per la funció anterior.
     poble_sel = st.session_state.poble_selector
     
     timestamp_str = f"{st.session_state.dia_selector} a les {st.session_state.hora_selector} (Hora Local)"
@@ -1633,7 +1590,7 @@ def run_catalunya_app():
         with tab_ia: ui_pestanya_assistent_ia(params_calc, poble_sel)
         with tab_estacions: ui_pestanya_estacions_meteorologiques()
 
-        
+
 def run_valley_halley_app():
     now_local_usa = datetime.now(TIMEZONE_USA)
     dia_sel_str = st.session_state.get('dia_selector_usa', "Avui")
@@ -1645,21 +1602,16 @@ def run_valley_halley_app():
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
 
-    # Utilitzem un nivell per defecte (850hPa) per calcular les convergències
     NIVELL_ANALISI_INICIAL_USA = 850
-    map_data_conv_inicial, _ = carregar_dades_mapa_usa(NIVELL_ANALISI_INICIAL_USA, hourly_index_sel)
+    map_data_conv_inicial, error_map = carregar_dades_mapa_usa(NIVELL_ANALISI_INICIAL_USA, hourly_index_sel)
 
     convergencies_usa = {}
-    if map_data_conv_inicial:
-        for ciutat, coords in USA_CITIES.items():
-            valor_conv = calcular_convergencia_puntual(map_data_conv_inicial, coords['lat'], coords['lon'])
-            if not np.isnan(valor_conv):
-                convergencies_usa[ciutat] = valor_conv
+    if not error_map and map_data_conv_inicial:
+        # Utilitzem la NOVA funció robusta també aquí
+        convergencies_usa = calcular_convergencies_per_llista(map_data_conv_inicial, USA_CITIES)
     
-    # Mostrem la capçalera, que s'encarregarà de guardar el nom NET de la ciutat a l'estat.
     ui_capcalera_selectors(None, zona_activa="tornado_alley", convergencies=convergencies_usa)
     
-    # Llegim el nom NET de la ciutat seleccionada.
     poble_sel = st.session_state.poble_selector_usa
     
     nivells_disponibles_gfs = [925, 850, 700, 500, 300]
@@ -1684,10 +1636,8 @@ def run_valley_halley_app():
         st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         return
 
-    map_data_final = None
-    if nivell_sel == NIVELL_ANALISI_INICIAL_USA and map_data_conv_inicial:
-        map_data_final = map_data_conv_inicial
-    else:
+    map_data_final = map_data_conv_inicial if nivell_sel == NIVELL_ANALISI_INICIAL_USA else None
+    if not map_data_final:
         map_data_final, _ = mostrar_carga_avanzada(
             f"Processant mapa a {nivell_sel}hPa",
             carregar_dades_mapa_usa,
@@ -1696,8 +1646,11 @@ def run_valley_halley_app():
 
     params_calc = data_tuple[1] if data_tuple else {}
     if data_tuple and map_data_final:
-        conv_value = calcular_convergencia_puntual(map_data_final, lat_sel, lon_sel)
-        params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
+        # Com que la llista ja està calculada, simplement agafem el valor
+        if poble_sel in convergencies_usa and nivell_sel == NIVELL_ANALISI_INICIAL_USA:
+             params_calc[f'CONV_{nivell_sel}hPa'] = convergencies_usa[poble_sel]
+        else: # Si s'ha canviat de nivell, el calculem individualment
+            params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_final, lat_sel, lon_sel)
 
     tab_mapes, tab_vertical, tab_satelit = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"])
     
@@ -1714,7 +1667,6 @@ def run_valley_halley_app():
     
     with tab_satelit:
         ui_pestanya_satelit_usa()
-        
 
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
