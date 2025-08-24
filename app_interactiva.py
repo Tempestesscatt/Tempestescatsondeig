@@ -815,59 +815,41 @@ def calcular_convergencies_per_llista(map_data, llista_ciutats):
     return convergencies
     
 
-@st.cache_data(ttl=1800, max_entries=20, show_spinner=False)
-def carregar_dades_sondeig_cat(lat, lon, hourly_index):
+@st.cache_data(ttl=3600)
+def carregar_dades_mapa_base_cat(variables, hourly_index):
+    """
+    Versió millorada que inclou un pas de neteja per a dades invàlides (NaN)
+    i retorna un missatge d'error més específic si no es troba cap dada vàlida.
+    """
     try:
-        h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
-        h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS_AROME]
-        params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_seamless", "forecast_days": 4}
-        response = openmeteo.weather_api(API_URL_CAT, params=params)[0]
-        hourly = response.Hourly()
+        lats, lons = np.linspace(MAP_EXTENT_CAT[2], MAP_EXTENT_CAT[3], 12), np.linspace(MAP_EXTENT_CAT[0], MAP_EXTENT_CAT[1], 12)
+        lon_grid, lat_grid = np.meshgrid(lons, lats)
+        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": 4}
+        responses = openmeteo.weather_api(API_URL_CAT, params=params)
+        
+        output = {var: [] for var in ["lats", "lons"] + variables}
+        
+        for r in responses:
+            vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
+            
+            if np.isnan(vals).any():
+                continue
+            
+            output["lats"].append(r.Latitude())
+            output["lons"].append(r.Longitude())
+            for i, var in enumerate(variables): 
+                output[var].append(vals[i])
 
-        valid_index = None
-        max_hours_to_check = 3
-        total_hours = len(hourly.Variables(0).ValuesAsNumpy())
-
-        for offset in range(max_hours_to_check + 1):
-            indices_to_try = sorted(list(set([hourly_index + offset, hourly_index - offset])))
-            for h_idx in indices_to_try:
-                if 0 <= h_idx < total_hours:
-                    sfc_check = [hourly.Variables(i).ValuesAsNumpy()[h_idx] for i in range(len(h_base))]
-                    if not any(np.isnan(val) for val in sfc_check):
-                        valid_index = h_idx
-                        break
-            if valid_index is not None:
-                break
-        
-        if valid_index is None:
-            # RETORN SIMPLIFICAT
-            return None, hourly_index, "No s'han trobat dades vàlides properes a l'hora sol·licitada."
-        
-        sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[valid_index] for i, v in enumerate(h_base)}
-        
-        p_data = {}
-        var_count = len(h_base)
-        for i, var in enumerate(["T", "RH", "WS", "WD", "H"]):
-            p_data[var] = [hourly.Variables(var_count + i * len(PRESS_LEVELS_AROME) + j).ValuesAsNumpy()[valid_index] for j in range(len(PRESS_LEVELS_AROME))]
-        
-        sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
-        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
-        
-        for i, p_val in enumerate(PRESS_LEVELS_AROME):
-            if p_val < sfc_data["surface_pressure"] and all(not np.isnan(p_data[v][i]) for v in ["T", "RH", "WS", "WD", "H"]):
-                p_profile.append(p_val)
-                T_profile.append(p_data["T"][i])
-                Td_profile.append(mpcalc.dewpoint_from_relative_humidity(p_data["T"][i] * units.degC, p_data["RH"][i] * units.percent).m)
-                u, v = mpcalc.wind_components(p_data["WS"][i] * units('km/h'), p_data["WD"][i] * units.degrees)
-                u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m); h_profile.append(p_data["H"][i])
-        
-        processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
-        # RETORN SIMPLIFICAT
-        return processed_data, valid_index, error
+        # --- LÍNIA CLAU MODIFICADA ---
+        # Si, després de filtrar, la llista està buida, el més probable és que l'hora estigui caducada.
+        if not output["lats"]: 
+            return None, "Dades caducades o no disponibles per a l'hora i nivell seleccionats."
+        # --- FI DE LA MODIFICACIÓ ---
+            
+        return output, None
         
     except Exception as e: 
-        # RETORN SIMPLIFICAT
-        return None, hourly_index, f"Error en carregar dades del sondeig AROME: {e}"
+        return None, f"Error en carregar dades del mapa: {e}"
         
 @st.cache_data(ttl=1800, max_entries=10, show_spinner=False)        
 def carregar_dades_mapa_base_cat(variables, hourly_index):
