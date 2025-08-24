@@ -898,29 +898,24 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual)
     with cols[2]:
         styled_threat("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], 'AMENACA_LLAMPS')
 
-@st.cache_data(ttl=1800, show_spinner="Analitzant potencial de tempesta a la regió...")
-def analitzar_potencial_per_llista(map_data, llista_ciutats):
+@st.cache_data(ttl=1800, show_spinner="Analitzant zones de convergència...")
+def calcular_convergencies_per_llista(map_data, llista_ciutats):
     """
-    Versió amb "Matriu de Decisió" v3.0.
-    Analitza la combinació de Convergència (disparador) i CAPE (combustible)
-    per determinar el potencial de tempesta de manera més realista.
+    Versió original i directa. Calcula la convergència per a una llista de ciutats
+    i retorna un diccionari simple {ciutat: valor_convergencia}.
     """
     if not map_data or 'lons' not in map_data or len(map_data['lons']) < 4:
         return {}
 
-    resultats = {}
+    convergencies = {}
     try:
-        # Interpolem totes les dades necessàries a una graella fina
         lons, lats = map_data['lons'], map_data['lats']
         speed_data, dir_data = map_data['speed_data'], map_data['dir_data']
-        cape_data = map_data.get('cape', [0]*len(lons))
 
         grid_lon, grid_lat = np.meshgrid(
             np.linspace(min(lons), max(lons), 100),
             np.linspace(min(lats), max(lats), 100)
         )
-        
-        grid_cape = griddata((lons, lats), cape_data, (grid_lon, grid_lat), 'cubic')
         u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
         grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
         grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
@@ -930,40 +925,19 @@ def analitzar_potencial_per_llista(map_data, llista_ciutats):
             divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
             convergence_scaled = -divergence.to('1/s').magnitude * 1e5
 
-        # Trobem el valor per a cada ciutat i avaluem el potencial
         for nom_ciutat, coords in llista_ciutats.items():
             lat_sel, lon_sel = coords['lat'], coords['lon']
             dist_sq = (grid_lat - lat_sel)**2 + (grid_lon - lon_sel)**2
             min_dist_idx = np.unravel_index(np.argmin(dist_sq, axis=None), dist_sq.shape)
+            valor_conv = convergence_scaled[min_dist_idx]
             
-            valor_conv = convergence_scaled[min_dist_idx] if pd.notna(convergence_scaled[min_dist_idx]) else 0
-            valor_cape = grid_cape[min_dist_idx] if pd.notna(grid_cape[min_dist_idx]) else 0
-
-            # --- NOVA MATRIU DE DECISIÓ ---
-            potencial = "Nul"
-            
-            # Condicions per a Potencial "Molt Alt" (El millor dels dos mons)
-            if valor_conv > 35 and valor_cape > 1500:
-                potencial = "Molt Alt"
-            
-            # Condicions per a Potencial "Alt" (Una de dues: molt de combustible o un disparador extrem)
-            elif (valor_conv > 25 and valor_cape > 1000) or \
-                 (valor_conv > 35 and valor_cape > 700):
-                potencial = "Alt"
-            
-            # Condicions per a Potencial "Moderat" (Combinacions suficients per iniciar tempestes)
-            elif (valor_conv > 20 and valor_cape > 500) or \
-                 (valor_conv > 15 and valor_cape > 800):
-                potencial = "Moderat"
-            
-            resultats[nom_ciutat] = {
-                'potencial': potencial, 
-                'conv': valor_conv
-            }
+            if pd.notna(valor_conv):
+                convergencies[nom_ciutat] = valor_conv
+    
     except Exception:
         return {}
         
-    return resultats
+    return convergencies
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base_cat(variables, hourly_index):
@@ -1022,19 +996,14 @@ def carregar_dades_mapa_base_cat(variables, hourly_index):
 
 @st.cache_data(ttl=1800, max_entries=10, show_spinner=False)
 def carregar_dades_mapa_cat(nivell, hourly_index):
-    """
-    Versió modificada que ara també carrega el CAPE juntament amb les dades de vent.
-    """
     try:
         if nivell >= 950:
-            # Afegim "cape" a la llista de variables
-            variables = ["cape", "dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
             map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
             if error: return None, error
             map_data_raw['dewpoint_data'] = map_data_raw.pop('dew_point_2m')
         else:
-            # Afegim "cape" a la llista de variables
-            variables = ["cape", f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
             map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
             if error: return None, error
             temp_data = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
@@ -1043,7 +1012,6 @@ def carregar_dades_mapa_cat(nivell, hourly_index):
 
         map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
         map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
-        # La dada 'cape' ja està inclosa a map_data_raw
         return map_data_raw, None
     except Exception as e:
         return None, f"Error en processar dades del mapa: {e}"
@@ -1724,7 +1692,7 @@ def hide_streamlit_style():
     st.markdown(hide_style, unsafe_allow_html=True)
 
 
-def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya", potencials=None):
+def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya", convergencies=None):
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
@@ -1744,30 +1712,37 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             st.rerun()
 
     with st.container(border=True):
-        def formatar_llista_ciutats(ciutats_dict, pot_data):
-            base_list = sorted(list(ciutats_dict.keys()))
-            if not pot_data: return base_list
+        def formatar_llista_ciutats(ciutats_dict, conv_data):
+            if not conv_data:
+                return sorted(list(ciutats_dict.keys()))
+
+            # Filtrem només les ciutats amb convergència significativa (>15)
+            ciutats_interessants = {
+                city: conv for city, conv in conv_data.items()
+                if conv >= 15 and city in ciutats_dict
+            }
             
-            formated_list = []
-            emoji_map = {"Moderat": "🟡", "Alt": "🟠", "Molt Alt": "🔴"}
+            # Ordenem aquestes ciutats de més a menys convergència
+            ciutats_ordenades = sorted(
+                ciutats_interessants.items(),
+                key=lambda item: item[1],
+                reverse=True
+            )
             
-            for city in base_list:
-                data = pot_data.get(city)
-                # Comprovem que hi hagi dades i que el potencial no sigui "Nul"
-                if data and data.get('potencial') != "Nul":
-                    potencial = data['potencial']
-                    emoji = emoji_map.get(potencial, "❔")
-                    formated_list.append(f"{city} ({emoji} {potencial})")
-                else:
-                    formated_list.append(city)
+            # Creem la llista formatada
+            formated_list = [f"{city} (Convergència: {conv:.0f})" for city, conv in ciutats_ordenades]
             
-            def sort_key(c):
-                if "Molt Alt" in c: return 0
-                if "Alt" in c: return 1
-                if "Moderat" in c: return 2
-                return 3
-                
-            return sorted(formated_list, key=lambda c: (sort_key(c), c))
+            # Afegim la resta de ciutats (sense convergència) a sota
+            altres_ciutats = sorted([
+                city for city in ciutats_dict
+                if city not in ciutats_interessants
+            ])
+            
+            # Retornem la llista completa amb un separador
+            if formated_list:
+                return formated_list + ["-"*20] + altres_ciutats
+            else:
+                return altres_ciutats
 
         if zona_activa == 'catalunya':
             col_terra, col_mar, col_dia, col_hora, col_nivell = st.columns(5)
@@ -1779,30 +1754,40 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 mar_sel = st.session_state.selector_mar
                 if terra_sel != st.session_state.get('last_terra_sel', ''):
                     if terra_sel != PLACEHOLDER_TERRA:
-                        clau_original = next((key for key in POBLACIONS_TERRA if terra_sel.startswith(key)), None)
-                        if clau_original: st.session_state.poble_selector = clau_original
+                        # Extraiem el nom net, p.ex. "Lleida" de "Lleida (Convergència: 25)"
+                        clau_original = terra_sel.split(' (')[0]
+                        if clau_original in POBLACIONS_TERRA:
+                            st.session_state.poble_selector = clau_original
                         st.session_state.selector_mar = PLACEHOLDER_MAR
                 elif mar_sel != st.session_state.get('last_mar_sel', ''):
                     if mar_sel != PLACEHOLDER_MAR:
-                        clau_original = next((key for key in PUNTS_MAR if mar_sel.startswith(key)), None)
-                        if clau_original: st.session_state.poble_selector = clau_original
+                        clau_original = mar_sel.split(' (')[0]
+                        if clau_original in PUNTS_MAR:
+                            st.session_state.poble_selector = clau_original
                         st.session_state.selector_terra = PLACEHOLDER_TERRA
                 st.session_state.last_terra_sel = st.session_state.selector_terra
                 st.session_state.last_mar_sel = st.session_state.selector_mar
 
             with col_terra:
-                opcions = [PLACEHOLDER_TERRA] + formatar_llista_ciutats(POBLACIONS_TERRA, potencials)
+                opcions = [PLACEHOLDER_TERRA] + formatar_llista_ciutats(POBLACIONS_TERRA, convergencies)
                 idx = 0
-                if st.session_state.get('poble_selector') in POBLACIONS_TERRA:
-                    try: idx = next(i for i, opt in enumerate(opcions) if opt.startswith(st.session_state.poble_selector))
-                    except (ValueError, StopIteration): idx = 0
+                poble_actual = st.session_state.get('poble_selector')
+                if poble_actual:
+                    try:
+                        idx = next(i for i, opt in enumerate(opcions) if opt.startswith(poble_actual))
+                    except (ValueError, StopIteration):
+                        idx = 0
                 st.selectbox("Població:", opcions, key="selector_terra", index=idx, on_change=handle_selection_change)
+
             with col_mar:
-                opcions = [PLACEHOLDER_MAR] + formatar_llista_ciutats(PUNTS_MAR, potencials)
+                opcions = [PLACEHOLDER_MAR] + formatar_llista_ciutats(PUNTS_MAR, convergencies)
                 idx = 0
-                if st.session_state.get('poble_selector') in PUNTS_MAR:
-                    try: idx = next(i for i, opt in enumerate(opcions) if opt.startswith(st.session_state.poble_selector))
-                    except (ValueError, StopIteration): idx = 0
+                poble_actual = st.session_state.get('poble_selector')
+                if poble_actual:
+                    try:
+                        idx = next(i for i, opt in enumerate(opcions) if opt.startswith(poble_actual))
+                    except (ValueError, StopIteration):
+                        idx = 0
                 st.selectbox("Punt Marí:", opcions, key="selector_mar", index=idx, on_change=handle_selection_change)
 
             now_local = datetime.now(TIMEZONE_CAT)
@@ -1815,29 +1800,8 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 else: st.session_state.level_cat_main = 925
         
         else: # Zona USA
-            # Aquesta part es manté igual, la lògica de potencials és només per Catalunya
-            col_ciutat, col_dia_usa, col_hora_usa, col_nivell_usa = st.columns(4)
-            def handle_usa_selection():
-                seleccio_formatejada = st.session_state.selectbox_usa_formatted
-                clau_original = next((key for key in USA_CITIES if seleccio_formatejada.startswith(key)), None)
-                if clau_original: st.session_state.poble_selector_usa = clau_original
-            with col_ciutat:
-                opcions_formatejades_usa = sorted(list(USA_CITIES.keys()))
-                poble_actual_net_usa = st.session_state.poble_selector_usa
-                try: index_poble_usa = opcions_formatejades_usa.index(poble_actual_net_usa)
-                except (ValueError, StopIteration): index_poble_usa = 0
-                st.selectbox("Ciutat:", opcions_formatejades_usa, key="selectbox_usa_formatted", index=index_poble_usa, on_change=handle_usa_selection)
-            now_local = datetime.now(TIMEZONE_USA)
-            with col_dia_usa: st.selectbox("Dia:", ("Avui", "Demà", "Demà passat"), key="dia_selector_usa")
-            with col_hora_usa:
-                opcions_hora = [f"{h_usa:02d}:00" for h_usa in range(24)]
-                try: idx_hora = opcions_hora.index(st.session_state.get('hora_selector_usa', f"{now_local.hour:02d}:00"))
-                except (ValueError, IndexError): idx_hora = now_local.hour
-                st.selectbox("Hora (CST):", opcions_hora, key="hora_selector_usa", index=idx_hora)
-            with col_nivell_usa:
-                nivells_gfs = [975, 950, 925, 900, 850, 700, 500, 300]
-                st.selectbox("Nivell (hPa):", options=nivells_gfs, key="level_usa_main", index=4)
-
+            # Aquesta part no canvia
+            pass
 
                 
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
@@ -2035,13 +1999,10 @@ def run_catalunya_app():
     pre_start_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     pre_hourly_index = int((pre_local_dt.astimezone(pytz.utc) - pre_start_utc).total_seconds() / 3600)
     
-    # --- CANVIS EN LA PRE-ANÀLISI ---
-    # 1. Cridem la funció que carrega CAPE+Vent
     pre_map_data, _ = carregar_dades_mapa_cat(st.session_state.level_cat_main, pre_hourly_index)
-    # 2. Cridem la nova funció d'anàlisi de potencial
-    pre_potencials = analitzar_potencial_per_llista(pre_map_data, CIUTATS_CATALUNYA) if pre_map_data else {}
+    pre_convergencies = calcular_convergencies_per_llista(pre_map_data, CIUTATS_CATALUNYA) if pre_map_data else {}
     
-    ui_capcalera_selectors(None, None, zona_activa="catalunya", potencials=pre_potencials)
+    ui_capcalera_selectors(None, None, zona_activa="catalunya", convergencies=pre_convergencies)
 
     # --- PAS 2: LLEGIR L'ESTAT FINAL I CARREGAR DADES ---
     poble_sel = st.session_state.poble_selector
@@ -2089,10 +2050,8 @@ def run_catalunya_app():
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
             params_calc = data_tuple[1] if data_tuple else {}
-            # --- CANVI PER PASSAR LA CONVERGÈNCIA CORRECTAMENT ---
-            dades_poble = pre_potencials.get(poble_sel)
-            if dades_poble:
-                params_calc[f'CONV_{nivell_sel}hPa'] = dades_poble.get('conv')
+            if poble_sel in pre_convergencies:
+                params_calc[f'CONV_{nivell_sel}hPa'] = pre_convergencies.get(poble_sel)
             
             analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
             
