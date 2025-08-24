@@ -255,7 +255,7 @@ def show_login_page():
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva, Completa i Indestructible v6.0.
+    Versió Definitiva i Indestructible v6.0 ("La Bala de Plata").
     Utilitza les funcions d'alt nivell de MetPy per als càlculs més delicats,
     garantint la màxima robustesa. Cada càlcul està aïllat per evitar
     qualsevol tipus d'error en cascada.
@@ -359,7 +359,6 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         else:
             params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
         
-        # ... (la resta de càlculs, com STP, SCP, etc., es mantenen igual) ...
         try:
             eff_bottom, eff_top = mpcalc.effective_inflow_layer(p, T, Td)
             eff_bwd_u, eff_bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, bottom=eff_bottom, top=eff_top)
