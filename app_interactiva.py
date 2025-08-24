@@ -28,6 +28,7 @@ import base64
 import threading
 import pandas as pd
 import xml.etree.ElementTree as ET
+from streamlit_option_menu import option_menu
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever")
@@ -1543,12 +1544,10 @@ def run_catalunya_app():
     else:
         st.info("ℹ️ L'anàlisi de vent i convergència està fixada a **925 hPa** en el mode convidat.")
 
-    # Obtenim primer les dades del mapa
     map_data_conv, error_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
     
     convergencies = {}
     if not error_map and map_data_conv:
-        # Calculem les convergències amb la NOVA funció robusta
         convergencies = calcular_convergencies_per_llista(map_data_conv, CIUTATS_CATALUNYA)
 
     ciutats_per_selector = CIUTATS_CATALUNYA
@@ -1578,17 +1577,35 @@ def run_catalunya_app():
     if poble_sel in convergencies:
         params_calc[f'CONV_{nivell_sel}hPa'] = convergencies[poble_sel]
     
+    # --- IMPLEMENTACIÓ AMB OPTION_MENU ---
     if is_guest:
-        tab_mapes, tab_vertical, tab_estacions = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Estacions Meteorològiques"])
-        with tab_mapes: ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
-        with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str)
-        with tab_estacions: ui_pestanya_estacions_meteorologiques()
+        menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical", "Estacions Meteorològiques"]
+        menu_icons = ["map", "graph-up-arrow", "broadcast"]
     else:
-        tab_mapes, tab_vertical, tab_ia, tab_estacions = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "💬 Assistent IA", "Estacions Meteorològiques"])
-        with tab_mapes: ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
-        with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str)
-        with tab_ia: ui_pestanya_assistent_ia(params_calc, poble_sel)
-        with tab_estacions: ui_pestanya_estacions_meteorologiques()
+        menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical", "💬 Assistent IA", "Estacions Meteorològiques"]
+        menu_icons = ["map", "graph-up-arrow", "chat-quote-fill", "broadcast"]
+
+    selected_tab = option_menu(
+        menu_title=None,
+        options=menu_options,
+        icons=menu_icons,
+        menu_icon="cast",
+        default_index=0,
+        orientation="horizontal",
+        key="catalunya_nav"
+    )
+
+    if selected_tab == "Anàlisi de Mapes":
+        ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
+    
+    if selected_tab == "Anàlisi Vertical":
+        ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str)
+        
+    if selected_tab == "💬 Assistent IA" and not is_guest:
+        ui_pestanya_assistent_ia(params_calc, poble_sel)
+        
+    if selected_tab == "Estacions Meteorològiques":
+        ui_pestanya_estacions_meteorologiques()
 
 
 def run_valley_halley_app():
@@ -1607,7 +1624,6 @@ def run_valley_halley_app():
 
     convergencies_usa = {}
     if not error_map and map_data_conv_inicial:
-        # Utilitzem la NOVA funció robusta també aquí
         convergencies_usa = calcular_convergencies_per_llista(map_data_conv_inicial, USA_CITIES)
     
     ui_capcalera_selectors(None, zona_activa="tornado_alley", convergencies=convergencies_usa)
@@ -1646,15 +1662,23 @@ def run_valley_halley_app():
 
     params_calc = data_tuple[1] if data_tuple else {}
     if data_tuple and map_data_final:
-        # Com que la llista ja està calculada, simplement agafem el valor
         if poble_sel in convergencies_usa and nivell_sel == NIVELL_ANALISI_INICIAL_USA:
              params_calc[f'CONV_{nivell_sel}hPa'] = convergencies_usa[poble_sel]
-        else: # Si s'ha canviat de nivell, el calculem individualment
+        else:
             params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_final, lat_sel, lon_sel)
 
-    tab_mapes, tab_vertical, tab_satelit = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"])
-    
-    with tab_mapes:
+    # --- IMPLEMENTACIÓ AMB OPTION_MENU ---
+    selected_tab_usa = option_menu(
+        menu_title=None,
+        options=["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"],
+        icons=["map-fill", "graph-up-arrow", "globe-americas"],
+        menu_icon="cast",
+        default_index=0,
+        orientation="horizontal",
+        key="usa_nav"
+    )
+
+    if selected_tab_usa == "Anàlisi de Mapes":
         if map_data_final:
             fig = crear_mapa_forecast_combinat_usa(map_data_final['lons'], map_data_final['lats'], map_data_final['speed_data'], map_data_final['dir_data'], map_data_final['dewpoint_data'], nivell_sel, timestamp_str)
             st.pyplot(fig, use_container_width=True)
@@ -1662,10 +1686,10 @@ def run_valley_halley_app():
         else:
             st.warning(f"No s'han pogut carregar les dades del mapa per al nivell {nivell_sel}hPa.")
     
-    with tab_vertical:
+    if selected_tab_usa == "Anàlisi Vertical":
         ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str)
-    
-    with tab_satelit:
+        
+    if selected_tab_usa == "Satèl·lit (Temps Real)":
         ui_pestanya_satelit_usa()
 
 def ui_zone_selection():
