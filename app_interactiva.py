@@ -1925,13 +1925,22 @@ def run_catalunya_app():
         ui_pestanya_estacions_meteorologiques()
         
 def run_valley_halley_app():
-    # --- PAS 0: INICIALITZACIÓ DE L'ESTAT (Solució a l'AttributeError) ---
+    # --- PAS 0: INICIALITZACIÓ DE L'ESTAT (AMB L'HORA LOCALITZADA) ---
     if 'poble_selector_usa' not in st.session_state:
         st.session_state.poble_selector_usa = "Oklahoma City, OK"
     if 'dia_selector_usa' not in st.session_state:
         st.session_state.dia_selector_usa = "Avui"
+    
+    # --- INICI DE LA MILLORA D'USABILITAT ---
     if 'hora_selector_usa' not in st.session_state:
-        st.session_state.hora_selector_usa = f"{datetime.now(TIMEZONE_USA).hour:02d}:00"
+        # 1. Obtenim l'hora actual a la zona horària de l'usuari (Espanya)
+        now_spain = datetime.now(TIMEZONE_CAT)
+        # 2. La convertim a la zona horària de Tornado Alley (CST/CDT)
+        time_in_usa = now_spain.astimezone(TIMEZONE_USA)
+        # 3. Establim l'hora per defecte basant-nos en aquesta conversió
+        st.session_state.hora_selector_usa = f"{time_in_usa.hour:02d}:00"
+    # --- FI DE LA MILLORA ---
+        
     if 'level_usa_main' not in st.session_state:
         st.session_state.level_usa_main = 850
 
@@ -1951,7 +1960,7 @@ def run_valley_halley_app():
     
     ui_capcalera_selectors(None, zona_activa="tornado_alley", convergencies=pre_convergencies)
 
-    # ... (la resta de la funció es manté exactament igual) ...
+    # --- PAS 2: LLEGIR L'ESTAT FINAL I CARREGAR DADES ---
     poble_sel = st.session_state.poble_selector_usa
     dia_sel_str = st.session_state.dia_selector_usa
     hora_sel_str = st.session_state.hora_selector_usa
@@ -1965,6 +1974,7 @@ def run_valley_halley_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     timestamp_str = f"{dia_sel_str} a les {hora_sel_str} (Central Time)"
 
+    # --- PAS 3: DIBUIXAR EL MENÚ I MOSTRAR RESULTATS ---
     menu_options_usa = ["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"]
     menu_icons_usa = ["map-fill", "graph-up-arrow", "globe-americas"]
 
@@ -2013,6 +2023,7 @@ def run_valley_halley_app():
         
     elif selected_tab_usa == "Satèl·lit (Temps Real)":
         ui_pestanya_satelit_usa()
+        
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
