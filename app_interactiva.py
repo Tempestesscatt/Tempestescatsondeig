@@ -1461,12 +1461,25 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 if 'poble_selector' not in st.session_state or st.session_state.poble_selector not in base_ciutats:
                     st.session_state.poble_selector = base_ciutats[0]
                 
+                # --- LÒGICA DE L'ÍNDEX (Sense canvis, però important) ---
                 poble_actual_net = st.session_state.poble_selector
-                try: index_poble = [op.split(' (')[0] for op in opcions_formatejades].index(poble_actual_net)
-                except ValueError: index_poble = 0
+                try: 
+                    # Trobem l'índex de l'opció que comença amb el nom de la nostra ciutat
+                    index_poble = next(i for i, opt in enumerate(opcions_formatejades) if opt.startswith(poble_actual_net))
+                except (ValueError, StopIteration): 
+                    index_poble = 0
 
                 seleccio_formatejada = st.selectbox("Població:", opcions_formatejades, key="selectbox_cat_formatted", index=index_poble)
-                st.session_state.poble_selector = seleccio_formatejada.split(' (')[0]
+
+                # --- LÒGICA DE DESEMPAQUETAT A PROVA D'ERRORS ---
+                # Busquem quina de les claus originals (ex: "Litoral Barceloní (Mar)")
+                # està al principi de la selecció de l'usuari (ex: "Litoral Barceloní (Mar) (🔴 Potencial Alt)")
+                clau_original_trobada = next((key for key in base_ciutats if seleccio_formatejada.startswith(key)), None)
+                if clau_original_trobada:
+                    st.session_state.poble_selector = clau_original_trobada
+                else:
+                    st.session_state.poble_selector = seleccio_formatejada # Fallback per si de cas
+                # --- FI DE LA CORRECCIÓ ---
 
             now_local = datetime.now(TIMEZONE_CAT)
             with col2: st.selectbox("Dia:", ("Avui",) if is_guest else ("Avui", "Demà"), key="dia_selector", disabled=is_guest, index=0)
@@ -1476,9 +1489,9 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     nivells = [1000, 950, 925, 850, 800, 700]
                     st.selectbox("Nivell (hPa):", options=nivells, key="level_cat_main", index=2)
                 else:
-                    st.session_state.level_cat_main = 925 # Per al mode convidat
+                    st.session_state.level_cat_main = 925
         
-        else: # Zona USA
+        else: # Zona USA (La lògica aquí ja era correcta, però l'harmonitzem)
              with col1:
                 base_ciutats_usa = sorted(USA_CITIES.keys())
                 opcions_formatejades_usa = formatar_llista_ciutats(base_ciutats_usa, convergencies)
@@ -1487,11 +1500,15 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     st.session_state.poble_selector_usa = base_ciutats_usa[0]
 
                 poble_actual_net_usa = st.session_state.poble_selector_usa
-                try: index_poble_usa = [op.split(' (')[0] for op in opcions_formatejades_usa].index(poble_actual_net_usa)
-                except ValueError: index_poble_usa = 0
+                try: 
+                    index_poble_usa = next(i for i, opt in enumerate(opcions_formatejades_usa) if opt.startswith(poble_actual_net_usa))
+                except (ValueError, StopIteration): 
+                    index_poble_usa = 0
 
                 seleccio_formatejada_usa = st.selectbox("Ciutat:", opcions_formatejades_usa, key="selectbox_usa_formatted", index=index_poble_usa)
-                st.session_state.poble_selector_usa = seleccio_formatejada_usa.split(' (')[0]
+                
+                clau_original_trobada_usa = next((key for key in base_ciutats_usa if seleccio_formatejada_usa.startswith(key)), seleccio_formatejada_usa)
+                st.session_state.poble_selector_usa = clau_original_trobada_usa
 
              now_local = datetime.now(TIMEZONE_USA)
              with col2: st.selectbox("Dia:", ("Avui", "Demà", "Demà passat"), key="dia_selector_usa", index=0)
@@ -1705,16 +1722,9 @@ def run_catalunya_app():
 
     # --- PAS 2: LLEGIR L'ESTAT FINAL I CARREGAR DADES ---
     
-    # --- INICI DE LA CORRECCIÓ ---
-    # 1. Llegim el nom complet del selector, que pot incloure avisos.
-    poble_sel_formatat = st.session_state.poble_selector
-    
-    # 2. Neteja intel·ligent: Si el nom conté un avís (🔴, 🟠, 🟡), l'eliminem.
-    # Si no, mantenim el nom complet (això preserva "(Mar)").
-    if any(simbol in poble_sel_formatat for simbol in ["🔴", "🟠", "🟡"]):
-        poble_sel = poble_sel_formatat.split(' (')[0]
-    else:
-        poble_sel = poble_sel_formatat
+    # --- LÍNIA SIMPLIFICADA ---
+    # Ara simplement llegim el valor de l'estat, que ja és correcte i complet.
+    poble_sel = st.session_state.poble_selector
     # --- FI DE LA CORRECCIÓ ---
 
     dia_sel_str = st.session_state.dia_selector
@@ -1773,6 +1783,7 @@ def run_catalunya_app():
 
     elif selected_tab == "Estacions Meteorològiques":
         ui_pestanya_estacions_meteorologiques()
+        
 def run_valley_halley_app():
     # --- PAS 1: RECOLLIR TOTS ELS INPUTS DE L'USUARI ---
     
