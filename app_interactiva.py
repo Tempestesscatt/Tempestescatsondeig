@@ -1472,7 +1472,6 @@ def determinar_emoji_temps(params, nivell_conv):
     conv = params.get(conv_key, 0) or 0
 
     # --- 2. DETECCIÓ DE BON TEMPS ESTABLE (ALTA PRIORITAT) ---
-    # Condicions molt estables sense cap inestabilitat
     if (cape <= 50 and li >= 3 and abs(cin) <= 25 and 
         mlcape <= 50 and pwat < 35 and lcl_hgt > 800):
         
@@ -1483,36 +1482,36 @@ def determinar_emoji_temps(params, nivell_conv):
         else:
             return "🌤️", "Cel Variable - Estable"
     
-    # --- 3. FACTOR D'ESFORÇ NECESSARI ---
+    # --- 3. VERIFICACIÓ D'INHIBICIÓ (mostrem cel estable directament) ---
     cin_total = min(cin, mlcin)
     
-    esforç_necessari = 1
-    nivell_cin = "Dèbil"
+    # Inhibició molt forta → Cel estable
+    if cin_total < -100:
+        if pwat < 20:
+            return "☀️", "Cel Serè - Alta Estabilitat"
+        else:
+            return "🌤️", "Cel Estable - Núvols Alts"
     
+    # Inhibició forta → Cel estable
+    if cin_total < -75:
+        return "🌤️", "Cel Estable - Inestabilitat Capada"
+    
+    # Inhibició moderada → Potencial estable
+    if cin_total < -50:
+        return "🌤️", "Cel Estable - Limitació Convectiva"
+
+    # --- 4. FACTOR D'ESFORÇ NECESSARI (per a càlculs interns) ---
+    esforç_necessari = 1
     if cin_total < -100:
         esforç_necessari = 4
-        nivell_cin = "Molt Fort"
     elif cin_total < -75:
         esforç_necessari = 3
-        nivell_cin = "Fort"
     elif cin_total < -50:
         esforç_necessari = 2
-        nivell_cin = "Moderat"
     elif cin_total < -25:
         esforç_necessari = 1.5
-        nivell_cin = "Dèbil"
 
     conv_efectiva = conv * esforç_necessari
-
-    # --- 4. VERIFICACIÓ D'INHIBICIÓ MASSIVA ---
-    if cin_total < -150:
-        return "🚫", f"Inhibició Extremadament Forta (CIN: {int(cin_total)} J/kg)"
-    
-    if cin_total < -100:
-        return "🚫", f"Inhibició Molt Forta (CIN: {int(cin_total)} J/kg)"
-    
-    if cin_total < -75 and conv_efectiva < 30:
-        return "🚫", f"Inhibició Forta (CIN: {int(cin_total)} J/kg)"
 
     # --- 5. DIAGNÒSTIC ESPECÍFIC PER A NIMBOSTRATUS ---
     if (pwat > 35 and cape < 200 and mlcape < 250 and li > 2 and
@@ -1567,7 +1566,7 @@ def determinar_emoji_temps(params, nivell_conv):
     if (cape > 200 and li < 0) or mlcape > 250:
         
         if lfc_hgt > 3500:
-            return "🚫", "LFC Massa Alt"
+            return "🌤️", "Cel Estable - Inversió Forta"
         
         conv_necessaria_supercella = 10 * esforç_necessari
         if (cape > 1500 and bwd_6km > 25 and srh_1km > 150 and 
@@ -1592,15 +1591,14 @@ def determinar_emoji_temps(params, nivell_conv):
             elif cape > 300:
                 return "☁️", "Cúmulus Congestus"
         
-        return "🌤️", "Inestabilitat Capada"
+        return "🌤️", "Cel Estable - Convecció Capada"
 
     # --- 10. CONVECCIÓ DÈBIL ---
     if 50 < cape <= 200:
         if conv > 2:
             return "🌤️", "Cúmulus Humilis"
 
-    # --- 11. DIFERENCIACIÓ DE BON TEMPS MÉS SPECÍFICA ---
-    # Casos específics que podrien haver caigut entre les escletxes
+    # --- 11. DIFERENCIACIÓ DE BON TEMPS ---
     if cape == 0 and cin == 0 and li > 4:
         if pwat < 20:
             return "☀️", "Cel Serè - Estabilitat Total"
@@ -1610,15 +1608,13 @@ def determinar_emoji_temps(params, nivell_conv):
     if cape < 30 and mlcape < 30 and li > 3:
         return "🌤️", "Bon Temps - Estable"
 
-    # --- 12. CAS PER DEFECTE MÉS INTEL·LIGENT ---
-    # Si arribem aquí, fem una anàlisi més detallada
+    # --- 12. CAS PER DEFECTE ---
     if cape <= 100 and li >= 2:
         return "🌤️", "Temps Tranquil - Estable"
     elif pwat > 30:
         return "🌥️", "Cel Ennuvolat - Humitat Alta"
     else:
         return "❓", "Patró Atmosfèric Complex"
-
 
 
 if __name__ == "__main__":
