@@ -1349,14 +1349,14 @@ def main():
     elif not st.session_state['zone_selected']: ui_zone_selection()
     elif st.session_state['zone_selected'] == 'catalunya': run_catalunya_app()
     elif st.session_state['zone_selected'] == 'valley_halley': run_valley_halley_app()
-    
+
 def determinar_emoji_temps(params, nivell_conv):
     """
     Realitza un diagnòstic meteorològic avançat del perfil atmosfèric.
-    ARA ÉS DINÀMIC: Utilitza la convergència del nivell seleccionat per l'usuari
-    com a factor clau per a la iniciació de tempestes.
+    LÒGICA FINAL: La convergència és ara el factor CLAU per determinar si la
+    inestabilitat (CAPE) es pot alliberar i iniciar convecció.
     """
-    # --- 1. Extracció segura de tots els paràmetres necessaris ---
+    # --- 1. Extracció segura de tots els paràmetres ---
     cape = params.get('SBCAPE', 0) or 0
     li = params.get('LI', 3) or 3
     cin = params.get('SBCIN', 0) or 0
@@ -1366,32 +1366,45 @@ def determinar_emoji_temps(params, nivell_conv):
     lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
     lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
     
-    # NOU: Obtenim la convergència del nivell seleccionat de forma dinàmica.
+    # Obtenim la convergència del nivell seleccionat de forma dinàmica.
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
 
-    # --- 2. Lògica de Diagnòstic Jeràrquic (ARA AMB CONVERGÈNCIA) ---
+    # --- 2. Lògica de Diagnòstic Jeràrquic ---
+
+    # == Branca A: Potencial Convectiu (hi ha "combustible") ==
     if cape > 350 and li < 0:
+        
+        # A.1: Condicions d'alt potencial sever (Supercèl·lules / Multicèl·lules Organitzades).
+        # Aquestes depenen principalment del cisallament i poden crear el seu propi entorn.
         if cape > 1500 and bwd_6km > 20 and srh_1km > 100 and li < -4:
             return "🌪️", "Supercèl·lula (Potencial)"
         elif cape > 800 and bwd_6km > 18:
             return "⛈️", "Multicèl·lula (Cb Incus)"
 
-        # MODIFICAT: Una tempesta es pot disparar per poca inhibició O per forta convergència.
-        elif cape > 500 and (cin > -60 or conv > 5):
-            return "⚡", "Tempesta Aïllada (Cb Calvus)"
-            
-        # MODIFICAT: El desenvolupament es veu afavorit per la convergència.
-        elif cape > 200 and (cin > -75 or conv > 5) and lfc_hgt < 2500:
-             return "☁️", "Desenvolupament (Cu Congestus)"
+        # A.2: Avaluació del DISPARADOR per a tempestes menys organitzades.
+        # Definim un "disparador actiu" si hi ha convergència significativa.
+        # Una convergència feble només és vàlida si gairebé no hi ha inhibició (CIN).
+        disparador_actiu = (conv > 4) or (conv > 1.5 and cin > -30)
+
+        # Si tenim un disparador actiu, la inestabilitat s'allibera.
+        if disparador_actiu:
+            if cape > 500:
+                return "⚡", "Tempesta Aïllada (Cb Calvus)"
+            else: # cape > 350
+                return "☁️", "Desenvolupament (Cu Congestus)"
         
-        else: # cin < -75 i conv < 5
+        # A.3: Si hi ha inestabilitat però NO hi ha disparador (convergència), està capada.
+        # AQUESTA ÉS LA LÒGICA QUE CORREGEIX EL TEU EXEMPLE.
+        else:
             return "🌤️", "Inestabilitat Capada"
+
+    # == Branca B: Temps Estable (poc o cap "combustible") ==
     else:
-        # La lògica per a temps estable no canvia, ja que depèn menys de la convergència.
+        # La lògica per a temps estable no canvia.
         if lcl_hgt < 400 and pwat > 25:
             return "🌫️", "Núvols Baixos / Boira (St)"
-        elif pwat > 35:
+        elif pwat > 35 and conv > 2: # Plugims afavorits per convergència feble
             return "🌧️", "Ruixats / Plugims"
         elif lcl_hgt < 1300 and pwat > 15:
             return "⛅", "Bon Temps (Cu Humilis)"
@@ -1399,6 +1412,8 @@ def determinar_emoji_temps(params, nivell_conv):
             return "🌤️", "Núvols Alts (Ac / Ci)"
         else:
             return "☀️", "Cel Serè"
+    
+
 
 if __name__ == "__main__":
     main()
