@@ -1081,6 +1081,27 @@ def ui_pestanya_assistent_ia(params_calc, poble_sel):
             except Exception as e:
                 st.error(f"Hi ha hagut un error en contactar amb l'assistent d'IA: {e}")
 
+def hide_streamlit_style():
+    """Injecta CSS per amagar el peu de pàgina i el menú de Streamlit."""
+    hide_style = """
+        <style>
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+        
+        /* Neteja de l'estat visual quan canvia la selecció */
+        .stApp {
+            transition: all 0.3s ease;
+        }
+        .element-container:has(.stSelectbox) {
+            z-index: 1000;
+            position: relative;
+        }
+        </style>
+        """
+    st.markdown(hide_style, unsafe_allow_html=True)
+    
+
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya"):
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
@@ -1090,11 +1111,17 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
         if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username')}**!")
     with col_change:
         if st.button("Canviar Anàlisi", use_container_width=True):
+            # Netegem l'estat per evitar problemes visuals
+            if 'poble_selector' in st.session_state:
+                del st.session_state['poble_selector']
+            if 'poble_selector_usa' in st.session_state:
+                del st.session_state['poble_selector_usa']
             del st.session_state['zone_selected']
             st.rerun()
     with col_logout:
         if st.button("Sortir" if is_guest else "Tanca Sessió", use_container_width=True):
-            for key in list(st.session_state.keys()): del st.session_state[key]
+            for key in list(st.session_state.keys()): 
+                del st.session_state[key]
             st.rerun()
 
     with st.container(border=True):
@@ -1103,25 +1130,38 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             with col1:
                 if is_guest: st.info(f"ℹ️ **Mode Convidat:** {info_msg}")
 
-                # --- LÒGICA CORREGIDA ---
-                # Hem eliminat el 'sorted()' que reordenava la llista alfabèticament.
-                # Ara la llista 'opcions' respectarà l'ordre de prioritat que li passem.
-                opcions = list(ciutats_a_mostrar) if isinstance(ciutats_a_mostrar, list) else sorted(ciutats_a_mostrar.keys())
+                # Millorem la lògica de selecció de poble
+                opcions = list(ciutats_a_mostrar.keys()) if isinstance(ciutats_a_mostrar, dict) else ciutats_a_mostrar
                 
-                poble_actual_net = st.session_state.get('poble_selector', '').split(' (')[0]
+                # Obtenim el poble actual net (sense els parèntesis de recomanació)
+                poble_actual = st.session_state.get('poble_selector', '')
+                if ' (' in poble_actual:
+                    poble_actual = poble_actual.split(' (')[0]
                 
+                # Busquem l'índex correcte
                 index_poble = 0
                 for i, opcio in enumerate(opcions):
-                    if opcio.startswith(poble_actual_net):
+                    opcio_net = opcio.split(' (')[0] if ' (' in opcio else opcio
+                    if opcio_net == poble_actual:
                         index_poble = i
                         break
                 
-                st.selectbox("Població de referència:", opcions, key="poble_selector", index=index_poble)
-                # --- FI DE LA CORRECCIÓ ---
+                # Selecció amb key única per evitar conflictes
+                seleccio = st.selectbox(
+                    "Població de referència:", 
+                    opcions, 
+                    key="poble_selector_main",
+                    index=index_poble
+                )
+                
+                # Actualitzem el session_state
+                st.session_state.poble_selector = seleccio
 
             now_local = datetime.now(TIMEZONE_CAT)
-            with col2: st.selectbox("Dia del pronòstic:", ("Avui",) if is_guest else ("Avui", "Demà"), key="dia_selector", disabled=is_guest, index=0)
-            with col3: st.selectbox("Hora del pronòstic (Local):", (f"{now_local.hour:02d}:00h",) if is_guest else [f"{h:02d}:00h" for h in range(24)], key="hora_selector", disabled=is_guest, index=0 if is_guest else now_local.hour)
+            with col2: 
+                st.selectbox("Dia del pronòstic:", ("Avui",) if is_guest else ("Avui", "Demà"), key="dia_selector", disabled=is_guest, index=0)
+            with col3: 
+                st.selectbox("Hora del pronòstic (Local):", (f"{now_local.hour:02d}:00h",) if is_uest else [f"{h:02d}:00h" for h in range(24)], key="hora_selector", disabled=is_guest, index=0 if is_guest else now_local.hour)
         else: # Zona USA
              with col1:
                 st.selectbox("Ciutat de referència:", sorted(USA_CITIES.keys()), key="poble_selector_usa")
