@@ -297,8 +297,8 @@ def calcular_mlcape_robusta(p, T, Td):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Antifràgil v5.0.
-    Afegeix el càlcul de la Temperatura a 500 hPa (T_500hPa).
+    Versió Definitiva i Antifràgil v5.1.
+    Implementa un càlcul robust i segur per a la Temperatura a 500 hPa (T_500hPa).
     """
     # --- 1. PREPARACIÓ I NETEJA DE DADES ---
     if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
@@ -312,17 +312,13 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
     params_calc = {}; heights_agl = heights - heights[0]
 
-    # --- 2. CÀLCULS BASE I PERFILS DE PARCEL·LA (AMB PLA B) ---
+    # --- 2. CÀLCULS BASE I PERFILS DE PARCEL·LA ---
     with parcel_lock:
         sfc_prof, ml_prof = None, None
-        try:
-            sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
-        except Exception:
-            return None, "Error crític: No s'ha pogut calcular ni el perfil de superfície."
-        try:
-            _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
-        except Exception:
-            ml_prof = None
+        try: sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
+        except Exception: return None, "Error crític: No s'ha pogut calcular ni el perfil de superfície."
+        try: _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
+        except Exception: ml_prof = None
         main_prof = ml_prof if ml_prof is not None else sfc_prof
 
         # --- 3. CÀLCULS ROBUSTS I AÏLLATS ---
@@ -335,16 +331,19 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         try:
             _, fl_h = mpcalc.freezing_level(p, T, heights); params_calc['FREEZING_LVL_HGT'] = float(fl_h[0].to('m').m)
         except: params_calc['FREEZING_LVL_HGT'] = np.nan
-        try: params_calc['DCAPE'] = float(mpcalc.dcape(p, T, Td)[0].m)
-        except: params_calc['DCAPE'] = np.nan
-        try: params_calc['LR_0-3km'] = float(mpcalc.lapse_rate(p, T, height=heights_agl, depth=3000 * units('m')).to('delta_degC/km').m)
-        except: params_calc['LR_0-3km'] = np.nan
         
-        # *** NOU CÀLCUL AFEGIT: TEMPERATURA A 500 HPA ***
+        # *** CÀLCUL DE T_500HPA CORREGIT I ROBUST ***
         try:
-            p_numeric = p.m if hasattr(p, 'm') else p; T_numeric = T.m if hasattr(T, 'm') else T
-            params_calc['T_500hPa'] = float(np.interp(500, p_numeric[::-1], T_numeric[::-1]))
-        except: params_calc['T_500hPa'] = np.nan
+            p_numeric = p.m
+            T_numeric = T.m
+            # Comprovem que tenim un perfil suficient i que 500hPa està dins del rang
+            if len(p_numeric) >= 2 and p_numeric.min() <= 500 <= p_numeric.max():
+                # np.interp necessita que la coordenada X (pressió) sigui creixent, per això invertim amb [::-1]
+                params_calc['T_500hPa'] = float(np.interp(500, p_numeric[::-1], T_numeric[::-1]))
+            else:
+                params_calc['T_500hPa'] = np.nan
+        except:
+            params_calc['T_500hPa'] = np.nan
 
         if sfc_prof is not None:
             try:
@@ -689,57 +688,6 @@ def calcular_puntuacio_tempesta(sounding_data, params, nivell_conv):
 
     return {'score': final_score, 'color': color}
 
-def analitzar_amenaces_especifiques(params):
-    """
-    Analitza paràmetres visibles per determinar el potencial de calamarsa,
-    esclafits i activitat elèctrica, retornant un text i un color per a la UI.
-    Versió 2.0 - Independent de MLCAPE i DCAPE.
-    """
-    resultats = {
-        'calamarsa': {'text': 'Nul·la', 'color': '#808080'},
-        'esclafits': {'text': 'Nul·la', 'color': '#808080'},
-        'llamps': {'text': 'Nul·la', 'color': '#808080'}
-    }
-
-    # 1. Anàlisi de Calamarsa Gran (>2cm) - (Sense canvis, ja depèn de paràmetres visibles)
-    updraft = params.get('MAX_UPDRAFT', 0) or 0
-    isozero = params.get('FREEZING_LVL_HGT', 5000) or 5000
-    if updraft > 55 or (updraft > 45 and isozero < 3500):
-        resultats['calamarsa'] = {'text': 'Molt Alta', 'color': '#dc3545'}
-    elif updraft > 40 or (updraft > 30 and isozero < 3800):
-        resultats['calamarsa'] = {'text': 'Alta', 'color': '#fd7e14'}
-    elif updraft > 25:
-        resultats['calamarsa'] = {'text': 'Moderada', 'color': '#ffc107'}
-    elif updraft > 15:
-        resultats['calamarsa'] = {'text': 'Baixa', 'color': '#2ca02c'}
-
-    # 2. Anàlisi d'Esclafits (Ventades fortes) - *** LÒGICA NOVA ***
-    # Basat en el Gradient Tèrmic a nivells baixos (LR 0-3km) i la humitat (PWAT).
-    # Un ambient sec i amb refredament ràpid afavoreix els esclafits.
-    lr_0_3km = params.get('LR_0-3km', 0) or 0
-    pwat = params.get('PWAT', 100) or 100
-    if lr_0_3km > 8.0 and pwat < 35:
-        resultats['esclafits'] = {'text': 'Alta', 'color': '#fd7e14'}
-    elif lr_0_3km > 7.0 and pwat < 40:
-        resultats['esclafits'] = {'text': 'Moderada', 'color': '#ffc107'}
-    elif lr_0_3km > 6.5:
-        resultats['esclafits'] = {'text': 'Baixa', 'color': '#2ca02c'}
-
-    # 3. Anàlisi d'Activitat Elèctrica (Llamps) - *** LÒGICA NOVA ***
-    # Basat en la inestabilitat (LI) i la profunditat de la tempesta (EL_Hgt).
-    li = params.get('LI', 5) or 5
-    el_hgt = params.get('EL_Hgt', 0) or 0
-    if li < -7 or (li < -5 and el_hgt > 12000):
-        resultats['llamps'] = {'text': 'Extrema', 'color': '#dc3545'}
-    elif li < -4 or (li < -2 and el_hgt > 10000):
-        resultats['llamps'] = {'text': 'Alta', 'color': '#fd7e14'}
-    elif li < -1:
-        resultats['llamps'] = {'text': 'Moderada', 'color': '#ffc107'}
-    elif params.get('MUCAPE', 0) > 150: # Si hi ha una mínima inestabilitat
-        resultats['llamps'] = {'text': 'Baixa', 'color': '#2ca02c'}
-        
-    return resultats
-
 
 def analitzar_component_maritima(sounding_data):
     """
@@ -805,10 +753,12 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual)
                 colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
                 color = colors[np.searchsorted(thresholds, value)]
             elif param_key == 'T_500hPa':
-                thresholds = [-8, -14, -18, -22] # Llindars per T a 500hPa
-                colors = ["#2ca02c", "#ffc107", "#fd7e14", "#dc3545", "#b300ff"] # Verd -> Groc -> Taronja -> Vermell -> Lila
-                # Com que valors més baixos són pitjors, invertim la cerca
-                color = colors[len(thresholds) - np.searchsorted(thresholds, value, side='right')]
+                # Valors més freds (més negatius) són més perillosos (color més càlid)
+                if value <= -22: color = "#b300ff" # Lila (Extrem)
+                elif value <= -18: color = "#dc3545" # Vermell (Molt Alt)
+                elif value <= -14: color = "#fd7e14" # Taronja (Alt)
+                elif value <= -8: color = "#ffc107"  # Groc (Moderat)
+                else: color = "#2ca02c"             # Verd (Baix)
             else:
                 color = get_color_global(value, param_key, reverse_colors)
 
@@ -896,6 +846,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual)
         styled_threat("Índex de Potencial", score_text, puntuacio_resultat['color'], 'PUNTUACIO_TEMPESTA')
     with cols[2]:
         styled_threat("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], 'AMENACA_LLAMPS')
+        
 
 @st.cache_data(ttl=1800, show_spinner="Analitzant zones de convergència...")
 def calcular_convergencies_per_llista(map_data, llista_ciutats):
@@ -2362,3 +2313,4 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     return {'emoji': "☀️", 'descripcio': "Cel Serè", 'veredicte': "Temps estable i sense nuvolositat.", 'factor_clau': "Atmosfera seca."}
 if __name__ == "__main__":
     main()
+
