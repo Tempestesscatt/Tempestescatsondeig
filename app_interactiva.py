@@ -105,50 +105,57 @@ THRESHOLDS_GLOBALS = {
     'SBCIN': (-25, -75, -150), 'MUCIN': (-25, -75, -150),
     'MLCIN': (-25, -75, -150), 'LI': (-2, -5, -8), 
     'PWAT': (30, 40, 50), 
-    
-    # Llindars Clau per a la consistència visual
-    # Defineixen 4 nivells: < Llindar 1 (Gris), >= Llindar 1 (Groc), >= Llindar 2 (Taronja), >= Llindar 3 (Vermell)
     'BWD_0-6km': (20, 30, 40), 
     'BWD_0-1km': (15, 25, 35),
     'SRH_0-1km': (100, 150, 250), 
-    'SRH_0-3km': (150, 250, 400)
+    'SRH_0-3km': (150, 250, 400),
+    
+    # --- NOUS LLINDARS AFEGITS ---
+    # Per a LCL/LFC, els valors s'interpreten de manera inversa (més baix és pitjor)
+    'LCL_Hgt': (1000, 1500), # <1000m (Vermell), 1000-1500m (Verd), >1500m (Gris)
+    'LFC_Hgt': (1500, 2500), # <1500m (Vermell), 1500-2500m (Verd), >2500m (Gris)
+    
+    # Per a UPDRAFT, valors més alts són pitjors
+    'MAX_UPDRAFT': (25, 40, 55) # >25m/s (Groc), >40m/s (Taronja), >55m/s (Vermell)
 }
 
 def get_color_global(value, param_key, reverse_colors=False):
     """
-    Versió Definitiva i a Prova de Bales.
-    Utilitza una lògica de "bins" per garantir una assignació de colors
-    100% correcta i consistent a tota l'aplicació.
+    Versió Definitiva v2.0.
+    Inclou una lògica especial per a LCL i LFC, on els valors baixos són vermells.
     """
-    if pd.isna(value): return "#808080" # Gris per a NaN
+    if pd.isna(value): return "#808080"
 
     thresholds = THRESHOLDS_GLOBALS.get(param_key, [])
-    if not thresholds or len(thresholds) != 3: return "#FFFFFF" # Blanc si no hi ha llindar definit
+    if not thresholds: return "#FFFFFF"
 
-    # Definim els nostres 4 colors estàndard
+    # --- LÒGICA ESPECIAL PER A LCL i LFC ---
+    if param_key in ['LCL_Hgt', 'LFC_Hgt']:
+        # Aquests paràmetres només tenen 2 llindars per a 3 colors
+        if len(thresholds) != 2: return "#FFFFFF"
+        
+        if value < thresholds[0]: return "#dc3545"  # Vermell (Perillós)
+        if value < thresholds[1]: return "#2ca02c"  # Verd (Normal)
+        return "#808080"                         # Gris (Inhibidor)
+    # --- FI DE LA LÒGICA ESPECIAL ---
+    
+    # Lògica per a la resta de paràmetres (que tenen 3 llindars)
+    if len(thresholds) != 3: return "#FFFFFF"
+
     colors = ["#2ca02c", "#ffc107", "#fd7e14", "#dc3545"] # Verd, Groc, Taronja, Vermell
     
-    # Per a paràmetres com el CIN, on valors més negatius són pitjors
-    if reverse_colors:
-        if value < thresholds[2]: return colors[3] # Vermell
-        if value < thresholds[1]: return colors[2] # Taronja
-        if value < thresholds[0]: return colors[1] # Groc
-        return colors[0] # Verd (que aquí seria el color per a valors "segurs")
+    if reverse_colors: # Per a CIN i LI
+        if value < thresholds[2]: return colors[3]
+        if value < thresholds[1]: return colors[2]
+        if value < thresholds[0]: return colors[1]
+        return colors[0] # Aquí el verd és el color per a valors "segurs"
     
-    # --- LÒGICA DE BINS (A PROVA D'ERRORS) ---
-    # Nivell 3 (Sever): Valor >= llindar més alt
-    if value >= thresholds[2]:
-        return colors[3] # Vermell
-    # Nivell 2 (Alt): Valor entre el segon i el tercer llindar
-    elif value >= thresholds[1]:
-        return colors[2] # Taronja
-    # Nivell 1 (Moderat): Valor entre el primer i el segon llindar
-    elif value >= thresholds[0]:
-        return colors[1] # Groc
-    # Nivell 0 (Baix): Valor per sota del primer llindar
-    else:
-        return colors[0] # Verd
-# --- Funcions auxiliars (Compartides) ---
+    # Lògica normal per a CAPE, BWD, SRH, UPDRAFT, etc.
+    if value >= thresholds[2]: return colors[3]
+    elif value >= thresholds[1]: return colors[2]
+    elif value >= thresholds[0]: return colors[1]
+    else: return colors[0]
+        
 def get_hashed_password(password): return hashlib.sha256(password.encode()).hexdigest()
 def load_json_file(filename):
     if not os.path.exists(filename): return {} if 'users' in filename or 'rate' in filename else []
@@ -657,23 +664,23 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
 
 def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
     TOOLTIPS = {
-        'SBCAPE': "Energia Potencial Convectiva Disponible (CAPE) des de la Superfície...",
-        'MUCAPE': "El CAPE més alt possible a l'atmosfera (Most Unstable)...",
-        'MLCAPE': "El CAPE calculat a partir d'una capa barrejada (Mixed Layer)...",
-        'SBCIN': "Inhibició Convectiva (CIN) des de la Superfície...",
+        'SBCAPE': "Energia Potencial Convectiva Disponible (CAPE) des de la Superfície. És el 'combustible' per a les tempestes. Valors superiors a 1000 J/kg indiquen un alt potencial de temps sever.",
+        'MUCAPE': "El CAPE més alt possible a l'atmosfera (Most Unstable). Molt útil per detectar inestabilitat elevada que no comença a la superfície.",
+        'MLCAPE': "El CAPE calculat a partir d'una capa barrejada (Mixed Layer) de 100hPa. Sovint és el valor més representatiu del potencial real de tempesta durant el dia.",
+        'SBCIN': "Inhibició Convectiva (CIN) des de la Superfície. És la 'tapa' que impedeix que les tempestes es formin. Valors molt negatius (ex: -100) fan la convecció molt difícil.",
         'MUCIN': "La CIN associada al MUCAPE.",
-        'MLCIN': "La CIN associada al MLCAPE...",
-        'LI': "Índex d'Elevació (Lifted Index)...",
-        'PWAT': "Aigua Precipitable Total (Precipitable Water)...",
-        'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació (LCL)...",
-        'LFC_Hgt': "Alçada del Nivell de Convecció Lliure (LFC)...",
-        f'CONV_{nivell_conv}hPa': f"Convergència de vent a {nivell_conv}hPa...",
-        'BWD_0-6km': "Cisallament del Vent (Bulk Wind Shear) entre 0 i 6 km...",
-        'BWD_0-1km': "Cisallament del Vent entre 0 i 1 km...",
-        'CAPE_0-3km': "CAPE a la capa de 0 a 3 km...",
-        'SRH_0-1km': "Helicitat Relativa a la Tempesta (SRH) entre 0 i 1 km...",
-        'SRH_0-3km': "Helicitat Relativa a la Tempesta (SRH) entre 0 i 3 km...",
-        'MAX_UPDRAFT': "Estimació de la velocitat màxima del corrent ascendent..."
+        'MLCIN': "La CIN associada al MLCAPE. Valors petits (prop de 0) indiquen que la 'tapa' és feble i les tempestes es poden disparar fàcilment.",
+        'LI': "Índex d'Elevació (Lifted Index). Mesura l'estabilitat a 500hPa. Com més negatiu, més inestable és l'atmosfera. Valors de -4 o inferiors són significatius.",
+        'PWAT': "Aigua Precipitable Total (Precipitable Water). La quantitat total de vapor d'aigua a la columna atmosfèrica. Valors alts indiquen potencial de pluges molt abundants.",
+        'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació (LCL). És l'alçada on es forma la base del núvol. Bases baixes (<1000m) afavoreixen el temps sever i els tornados.",
+        'LFC_Hgt': "Alçada del Nivell de Convecció Lliure (LFC). L'alçada a partir de la qual una bombolla d'aire puja sola. Un LFC baix indica que les tempestes es formen més fàcilment.",
+        f'CONV_{nivell_conv}hPa': f"Convergència de vent a {nivell_conv}hPa. Indica zones on l'aire s'ajunta i es veu forçat a pujar, actuant com un disparador de tempestes. Valors positius i alts són favorables.",
+        'BWD_0-6km': "Cisallament del Vent (Bulk Wind Shear) entre 0 i 6 km. És la diferència de velocitat i direcció del vent en aquesta capa. Valors superiors a 20 nusos són clau per a l'organització de tempestes (multicèl·lules, supercèl·lules).",
+        'BWD_0-1km': "Cisallament del Vent entre 0 i 1 km. Important per a la rotació a nivells baixos. Valors alts afavoreixen el risc de tornados.",
+        'CAPE_0-3km': "CAPE a la capa de 0 a 3 km. Valors alts indiquen una forta acceleració inicial de les parcel·les d'aire, afavorint el desenvolupament de rotació.",
+        'SRH_0-1km': "Helicitat Relativa a la Tempesta (SRH) entre 0 i 1 km. Mesura el potencial de rotació a nivells baixos. Valors superiors a 150 m²/s² són molt significatius per a la formació de supercèl·lules i tornados.",
+        'SRH_0-3km': "Helicitat Relativa a la Tempesta (SRH) entre 0 i 3 km. Mesura el potencial de rotació de tota la tempesta (mesocicló). Valors superiors a 250 m²/s² són alts.",
+        'MAX_UPDRAFT': "Estimació de la velocitat màxima del corrent ascendent dins de la tempesta, calculada a partir del SBCAPE. Dóna una idea de la potència de la tempesta i el seu potencial per generar calamarsa grossa."
     }
     
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
@@ -704,16 +711,19 @@ def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
     with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE', tooltip_text=TOOLTIPS.get('SBCAPE'))
     with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
     with cols[2]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
+    
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
     with cols[2]: styled_metric("MLCIN", params.get('MLCIN', np.nan), "J/kg", 'MLCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MLCIN'))
+    
     cols = st.columns(3)
     with cols[0]: 
         li_value = params.get('LI', np.nan)
         if hasattr(li_value, '__len__') and not isinstance(li_value, str) and len(li_value) > 0: li_value = li_value[0]
         styled_metric("LI", li_value, "°C", 'LI', precision=1, reverse_colors=True, tooltip_text=TOOLTIPS.get('LI'))
-    with cols[1]: styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1, tooltip_text=TOOLTIPS.get('PWAT'))
+    with cols[1]: 
+        styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1, tooltip_text=TOOLTIPS.get('PWAT'))
     with cols[2]:
         st.markdown(f"""
         <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
@@ -721,6 +731,7 @@ def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
             <strong style="font-size: 1.8em; line-height: 1;">{emoji}</strong>
             <span style="font-size: 0.8em; color: #E0E0E0;">{descripcio}</span>
         </div>""", unsafe_allow_html=True)
+        
     cols = st.columns(3)
     with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
     with cols[1]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
@@ -728,10 +739,12 @@ def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
         param_key_conv = f'CONV_{nivell_conv}hPa'
         conv_value = params.get(param_key_conv, np.nan)
         styled_metric(f"Conv. {nivell_conv}hPa", conv_value, "10⁻⁵/s", param_key_conv, precision=1, tooltip_text=TOOLTIPS.get(param_key_conv))
+        
     cols = st.columns(3)
     with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km', tooltip_text=TOOLTIPS.get('BWD_0-6km'))
     with cols[1]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km', tooltip_text=TOOLTIPS.get('BWD_0-1km'))
     with cols[2]: styled_metric("CAPE 0-3km", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
+    
     cols = st.columns(3)
     with cols[0]: 
         srh1_value = params.get('SRH_0-1km', np.nan)
@@ -743,6 +756,7 @@ def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
         styled_metric("SRH 0-3km", srh3_value, "m²/s²", 'SRH_0-3km', tooltip_text=TOOLTIPS.get('SRH_0-3km'))
     with cols[2]: 
         styled_metric("UPDRAFT", params.get('MAX_UPDRAFT', np.nan), "m/s", 'MAX_UPDRAFT', precision=1, tooltip_text=TOOLTIPS.get('MAX_UPDRAFT'))
+        
         
 
 @st.cache_data(ttl=1800, show_spinner="Analitzant zones de convergència...")
