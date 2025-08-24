@@ -1103,14 +1103,13 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             with col1:
                 if is_guest: st.info(f"ℹ️ **Mode Convidat:** {info_msg}")
 
-                # --- LÒGICA MODIFICADA PER GESTIONAR NOMS AMB ETIQUETES ---
+                # --- LÒGICA CORREGIDA ---
+                # Hem eliminat el 'sorted()' que reordenava la llista alfabèticament.
+                # Ara la llista 'opcions' respectarà l'ordre de prioritat que li passem.
+                opcions = list(ciutats_a_mostrar) if isinstance(ciutats_a_mostrar, list) else sorted(ciutats_a_mostrar.keys())
+                
                 poble_actual_net = st.session_state.get('poble_selector', '').split(' (')[0]
                 
-                # `ciutats_a_mostrar` serà una llista de strings (formats) per a usuaris
-                # o un diccionari de ciutats per a convidats.
-                opcions = sorted(list(ciutats_a_mostrar)) if isinstance(ciutats_a_mostrar, list) else sorted(ciutats_a_mostrar.keys())
-
-                # Trobar l'índex del poble actual a la llista d'opcions
                 index_poble = 0
                 for i, opcio in enumerate(opcions):
                     if opcio.startswith(poble_actual_net):
@@ -1118,7 +1117,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                         break
                 
                 st.selectbox("Població de referència:", opcions, key="poble_selector", index=index_poble)
-                # --- FI DE LA MODIFICACIÓ ---
+                # --- FI DE LA CORRECCIÓ ---
 
             now_local = datetime.now(TIMEZONE_CAT)
             with col2: st.selectbox("Dia del pronòstic:", ("Avui",) if is_guest else ("Avui", "Demà"), key="dia_selector", disabled=is_guest, index=0)
@@ -1129,6 +1128,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
              now_local = datetime.now(TIMEZONE_USA)
              with col2: st.selectbox("Dia del pronòstic:", ("Avui", "Demà", "Demà passat"), key="dia_selector_usa", index=0)
              with col3: st.selectbox("Hora del pronòstic (Local - CST):", [f"{h:02d}:00" for h in range(24)], key="hora_selector_usa", index=now_local.hour)
+                 
                  
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
