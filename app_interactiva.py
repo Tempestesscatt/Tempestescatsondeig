@@ -487,18 +487,17 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
     ax_hodo.set_xlabel('U-Component (nusos)'); ax_hodo.set_ylabel('V-Component (nusos)')
     
-    # --- PANELL DE PARÀMETRES (VERSIÓ AMB LÒGICA DE COLORS INTEL·LIGENT) ---
+    # --- PANELL DE PARÀMETRES (VERSIÓ FINAL CORREGIDA) ---
     ax_params.axis('off')
     def degrees_to_cardinal_ca(d):
         dirs = ["Nord", "N-NE", "Nord-est", "E-NE", "Est", "E-SE", "Sud-est", "S-SE", "Sud", "S-SO", "Sud-oest", "O-SO", "Oest", "O-NO", "Nord-oest", "N-NO"]
         return dirs[int(round(d / 22.5)) % 16]
     
-    # NOU: Funció específica per al color del "split" de la tempesta
     def get_split_color(angle_diff):
-        if pd.isna(angle_diff) or angle_diff < 30: return 'white' # Poc significatiu
-        if angle_diff < 60: return '#ffc107' # Groc: Split moderat
-        if angle_diff < 90: return '#fd7e14' # Taronja: Split fort (alerta)
-        return '#dc3545' # Vermell: Split extrem (perill)
+        if pd.isna(angle_diff) or angle_diff < 30: return 'dimgrey'
+        if angle_diff < 60: return '#ffc107'
+        if angle_diff < 90: return '#fd7e14'
+        return '#dc3545'
 
     THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
     y = 0.95
@@ -509,9 +508,8 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         'Es mourà cap a': params_calc.get('Mean_Wind')
     }
     
-    ax_params.text(0, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
+    ax_params.text(0, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.12 # Més espai
 
-    # NOU: Lògica per calcular la diferència d'angle
     dir_rm, dir_lm = np.nan, np.nan
     rm_vec = motion_data['M. Dret']; lm_vec = motion_data['M. Esquerre']
     if rm_vec and not pd.isna(rm_vec[0]):
@@ -521,7 +519,6 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
 
     angle_difference = np.nan
     if not np.isnan(dir_rm) and not np.isnan(dir_lm):
-        # Fórmula per a la diferència angular més curta en un cercle de 360°
         angle_difference = 180 - abs(abs(dir_rm - dir_lm) - 180)
     
     split_color = get_split_color(angle_difference)
@@ -533,47 +530,44 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
             direction = mpcalc.wind_direction(u_motion, v_motion, convention='to').to('deg').m
             cardinal = degrees_to_cardinal_ca(direction)
             
-            # Determinem el color del text
-            text_color = 'white'
-            if display_name in ['M. Dret', 'M. Esquerre']:
-                text_color = split_color
+            text_color = 'white' if display_name == 'Es mourà cap a' else split_color
 
+            # CORREGIT: Ajust de l'alineació per evitar superposició
             ax_params.text(0, y, f"{display_name}:", ha='left', va='center', color=text_color)
-            ax_params.text(1, y, f"{cardinal} / {speed:.0f} km/h", ha='right', va='center', color=text_color)
+            ax_params.text(0.95, y, f"{cardinal} / {speed:.0f} km/h", ha='right', va='center', color=text_color)
         else:
-            ax_params.text(0, y, f"{display_name}:", ha='left', va='center')
-            ax_params.text(1, y, "---", ha='right', va='center')
+            ax_params.text(0, y, f"{display_name}:", ha='left', va='center', color='dimgrey')
+            ax_params.text(0.95, y, "---", ha='right', va='center', color='dimgrey')
         y-=0.1
 
     # La resta de la funció es queda igual
     y-=0.05
-    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
-    # ... (codi de cisallament i helicitat sense canvis)
-    def get_color(value, thresholds): # Funció de color genèrica per a la resta
+    def get_color(value, thresholds):
         if pd.isna(value): return "grey"
         colors = ["grey", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
+        thresholds = sorted(thresholds)
         for i, threshold in enumerate(thresholds):
             if value < threshold: return colors[i]
         return colors[-1]
-
+    
+    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
     for key, label in [('BWD_0-1km', '0-1 km'), ('BWD_0-6km', '0-6 km'), ('EBWD', 'Efectiu')]:
         val = params_calc.get(key, np.nan)
         color = get_color(val, THRESHOLDS['BWD'])
-        ax_params.text(0, y, f"{label}:", ha='left', va='center', weight='bold', color=color)
-        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
-        y-=0.07
+        ax_params.text(0, y, f"{label}:", ha='left', va='center')
+        ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
+        y-=0.08
 
     y-=0.05
     ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.1
     for key, label in [('SRH_0-1km', '0-1 km'), ('SRH_0-3km', '0-3 km'), ('ESRH', 'Efectiva')]:
         val = params_calc.get(key, np.nan)
         color = get_color(val, THRESHOLDS['SRH'])
-        ax_params.text(0, y, f"{label}:", ha='left', va='center', weight='bold', color=color)
-        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
-        y-=0.07
+        ax_params.text(0, y, f"{label}:", ha='left', va='center')
+        ax_params.text(0.95, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
+        y-=0.08
         
     return fig
-    
 
         
 
