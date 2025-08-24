@@ -1465,57 +1465,99 @@ def determinar_emoji_temps(params, nivell_conv):
     srh_1km = params.get('SRH_0-1km', 0) or 0
     lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
     lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
+    mlcape = params.get('MLCAPE', 0) or 0
     
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
 
     # --- 2. Lògica de Diagnòstic Avançada ---
 
-    # == Branca A: Atmosfera amb Potencial Convectiu (CAPE > 200 J/kg i LI < 0) ==
-    if cape > 200 and li < 0:
+    # == A. DIAGNÒSTIC DE BOIRA I NÚVOLS BAIXOS (ESTRATS) ==
+    # Condicions per a boira (fog) i estratos baixos
+    if lcl_hgt < 300 and pwat > 20:
+        # Boira amb inversió tèrmica (alta humitat i baix LCL)
+        if cape < 50 and cin > -25:
+            if pwat > 28:
+                return "🌫️", "Boira Densa (Visibilitat < 200m)"
+            else:
+                return "🌫️", "Boira Moderada / Boira"
         
-        # A.1: Avaluació de condicions PROHIBITIVES per a la convecció.
-        if lfc_hgt > 3500 or cin < -200:
-            return "🚫", "Inestabilitat Fortament Capada"
-
-        # A.2: Avaluació del potencial de TEMPS SEVER ORGANITZAT.
-        if cape > 1500 and bwd_6km > 20 and srh_1km > 100:
-            return "🌪️", "Potencial de Supercèl·lula"
-            
-        # --- LÍNIA MODIFICADA ---
-        # S'afegeix la condició 'and conv >= 40' per confirmar un forçament fort.
-        if cape > 800 and bwd_6km > 18 and conv >= 40:
-            return "⛈️", "Potencial de Multicèl·lules"
-        # --- FI DE LA MODIFICACIÓ ---
-
-        # A.3: Avaluació del DISPARADOR per a convecció menys organitzada.
+        # Estrats baixos (St) sense precipitació
+        if cape < 100 and cin > -50:
+            return "☁️", "Estrats Baixos (St) - Cel Ennuvolat"
+    
+    # == B. DIAGNÒSTIC DE NIMBOSTRATUS (PLUJA ESTRATIFORME) ==
+    # Nimbostratus - pluja estratiforme sense activitat convectiva
+    if (pwat > 35 and cape < 150 and cin > -50 and 
+        lcl_hgt < 1500 and bwd_6km < 15):
+        return "🌧️", "Nimbostratus - Pluja Estratiforme"
+    
+    # == C. DIAGNÒSTIC CONVECTIU ==
+    # Verificació de potencial convectiu significatiu
+    if (cape > 200 and li < 0) or mlcape > 250:
+        
+        # C.1: Condicions prohibitives per a convecció
+        if lfc_hgt > 3500:
+            return "🚫", "Inestabilitat Profunda - LFC Massa Alt"
+        if cin < -150:
+            return "🚫", "Inhibició Forta (CIN elevat)"
+        
+        # C.2: Supercèl·lules (organització severa)
+        if (cape > 1500 and bwd_6km > 25 and srh_1km > 150 and 
+            lcl_hgt < 1500 and lfc_hgt < 2500):
+            if srh_1km > 250 and bwd_6km > 35:
+                return "🌪️", "Supercèl·lula - Alt Potencial Sever"
+            else:
+                return "🌪️", "Supercèl·lula - Potencial Sever"
+        
+        # C.3: Línies de tempesta / Multicèl·lules
+        if (cape > 1000 and bwd_6km > 20 and conv > 5 and 
+            lcl_hgt < 1800 and lfc_hgt < 3000):
+            return "⛈️", "Multicèl·lules / Línia de Tempesta"
+        
+        # C.4: Tempestes aïllades
         gap_lcl_lfc = lfc_hgt - lcl_hgt
         iniciacio_facil = (gap_lcl_lfc < 1000 and cin > -50)
+        disparador_actiu = (conv > 4) or (conv > 2 and iniciacio_facil)
         
-        disparador_actiu = (conv > 4) or (conv > 1.5 and iniciacio_facil)
-
         if disparador_actiu:
-            if cape > 500:
-                return "⚡", "Tempesta Aïllada (Cb Calvus)"
-            else:
-                return "☁️", "Desenvolupament Vertical (Cu Congestus)"
+            if cape > 600:
+                return "⚡", "Tempesta Aïllada (Cumulonimbus)"
+            elif cape > 300:
+                return "☁️", "Cúmulus Congestus - Desenvolupament"
+        
+        # C.5: Convecció capada però amb potencial
+        return "🌤️", "Inestabilitat Capada - Possibles Desenvolupaments"
+    
+    # == D. DIAGNÒSTIC DE NÚVOLS MITJANS I ALTS ==
+    # Altocúmulus / Altostratus
+    if 2000 <= lcl_hgt < 5000:
+        if pwat > 25:
+            return "🌥️", "Altostratus - Ennuvolament Mitjà"
         else:
-            return "🌤️", "Inestabilitat Capada (latent)"
-
-    # == Branca B: Atmosfera Estable o amb Baix Potencial Convectiu ==
-    else:
-        if lcl_hgt < 400 and pwat > 25:
-            return "🌫️", "Boira o Estrats Baixos (St)"
-        if pwat > 35 and cape < 100:
-            return "🌧️", "Plugims / Ruixats (Nimbostratus)"
-        if lcl_hgt < 1500:
-            return "⛅", "Cúmuls de Bon Temps (Cu humilis)"
-        elif lcl_hgt < 4000:
-            return "🌥️", "Núvols Mitjans (Altocumulus)"
-        elif lcl_hgt < 8000:
-            return "☀️", "Núvols Alts i Prim (Cirrus)"
+            return "🌥️", "Altocúmulus - Núvols Mitjans"
+    
+    # Cirrus / Cirrostratus
+    if lcl_hgt >= 5000:
+        if pwat > 20:
+            return "🌥️", "Cirrostratus - Velat Alt"
         else:
-            return "☀️", "Cel Serè"
+            return "☀️", "Cirrus - Filaments Alts"
+    
+    # == E. CONVECCIÓ DÈBIL O AILLADA ==
+    if 50 < cape <= 200:
+        if conv > 3:
+            return "🌤️", "Cúmulus Humilis - Convecció Dèbil"
+    
+    # == F. CONDICIONS ESTABLES / BON TEMPS ==
+    if cape < 50 and lcl_hgt > 1000:
+        if pwat < 20:
+            return "☀️", "Cel Serè - Anticiclònic"
+        else:
+            return "🌤️", "Cel Poc Ennuvolat - Estable"
+    
+    # Cas per defecte - no classificat
+    return "❓", "Patró No Classificat"
 
 
 
