@@ -1449,7 +1449,8 @@ def main():
     elif st.session_state['zone_selected'] == 'catalunya': run_catalunya_app()
     elif st.session_state['zone_selected'] == 'valley_halley': run_valley_halley_app()
 
-def determinar_emoji_temps(params, nivell_conv):
+
+    def determinar_emoji_temps(params, nivell_conv):
     """
     Sistema de Diagnòstic Meteorològic Expert.
     Analitza la interacció complexa de paràmetres (termodinàmics i dinàmics)
@@ -1474,58 +1475,49 @@ def determinar_emoji_temps(params, nivell_conv):
     if cape > 200 and li < 0:
         
         # A.1: Avaluació de condicions PROHIBITIVES per a la convecció.
-        # Un LFC extremadament alt o un CIN massiu fan gairebé impossible la convecció.
         if lfc_hgt > 3500 or cin < -200:
             return "🚫", "Inestabilitat Fortament Capada"
 
         # A.2: Avaluació del potencial de TEMPS SEVER ORGANITZAT.
-        # Requereix una combinació d'alta energia i fort cisallament del vent.
         if cape > 1500 and bwd_6km > 20 and srh_1km > 100:
             return "🌪️", "Potencial de Supercèl·lula"
-        if cape > 800 and bwd_6km > 18:
+            
+        # --- LÍNIA MODIFICADA ---
+        # S'afegeix la condició 'and conv >= 40' per confirmar un forçament fort.
+        if cape > 800 and bwd_6km > 18 and conv >= 40:
             return "⛈️", "Potencial de Multicèl·lules"
+        # --- FI DE LA MODIFICACIÓ ---
 
         # A.3: Avaluació del DISPARADOR per a convecció menys organitzada.
-        # La facilitat d'iniciació depèn de la distància entre la base del núvol (LCL) i el punt d'enlairament (LFC).
         gap_lcl_lfc = lfc_hgt - lcl_hgt
         iniciacio_facil = (gap_lcl_lfc < 1000 and cin > -50)
         
-        # El disparador és actiu si hi ha un fort forçament (convergència) O si l'entorn és molt favorable (iniciació fàcil).
         disparador_actiu = (conv > 4) or (conv > 1.5 and iniciacio_facil)
 
         if disparador_actiu:
             if cape > 500:
                 return "⚡", "Tempesta Aïllada (Cb Calvus)"
-            else: # cape > 200
+            else:
                 return "☁️", "Desenvolupament Vertical (Cu Congestus)"
         else:
-            # Aquest és el clàssic "sondeig carregat" (loaded gun): molta energia però cap disparador.
             return "🌤️", "Inestabilitat Capada (latent)"
 
     # == Branca B: Atmosfera Estable o amb Baix Potencial Convectiu ==
     else:
-        # B.1: Cel cobert i baix amb potencial de plugim (temps de "sotoportico").
-        # Es caracteritza per un LCL molt baix, alta humitat (PWAT) i un perfil saturat.
         if lcl_hgt < 400 and pwat > 25:
             return "🌫️", "Boira o Estrats Baixos (St)"
         if pwat > 35 and cape < 100:
             return "🌧️", "Plugims / Ruixats (Nimbostratus)"
-
-        # B.2: Núvols de bon temps o poc desenvolupament.
-        # Depèn de l'altura de la base dels núvols (LCL).
         if lcl_hgt < 1500:
-            # Base baixa, són els cúmuls de bon temps.
             return "⛅", "Cúmuls de Bon Temps (Cu humilis)"
         elif lcl_hgt < 4000:
-            # Base mitjana, són núvols mitjans.
             return "🌥️", "Núvols Mitjans (Altocumulus)"
         elif lcl_hgt < 8000:
-            # Base alta, són núvols alts i prims.
             return "☀️", "Núvols Alts i Prim (Cirrus)"
         else:
-            # Atmosfera molt seca i estable.
             return "☀️", "Cel Serè"
-    
+
+
 
 
 if __name__ == "__main__":
