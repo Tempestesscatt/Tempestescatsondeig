@@ -297,8 +297,8 @@ def calcular_mlcape_robusta(p, T, Td):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Antifràgil v5.1.
-    Implementa un càlcul robust i segur per a la Temperatura a 500 hPa (T_500hPa).
+    Versió Definitiva i Antifràgil v5.2.
+    Afegeix el càlcul del Vent Mitjà (Mean Wind) per al flux director de la tempesta.
     """
     # --- 1. PREPARACIÓ I NETEJA DE DADES ---
     if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
@@ -332,13 +332,10 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             _, fl_h = mpcalc.freezing_level(p, T, heights); params_calc['FREEZING_LVL_HGT'] = float(fl_h[0].to('m').m)
         except: params_calc['FREEZING_LVL_HGT'] = np.nan
         
-        # *** CÀLCUL DE T_500HPA CORREGIT I ROBUST ***
         try:
             p_numeric = p.m
             T_numeric = T.m
-            # Comprovem que tenim un perfil suficient i que 500hPa està dins del rang
             if len(p_numeric) >= 2 and p_numeric.min() <= 500 <= p_numeric.max():
-                # np.interp necessita que la coordenada X (pressió) sigui creixent, per això invertim amb [::-1]
                 params_calc['T_500hPa'] = float(np.interp(500, p_numeric[::-1], T_numeric[::-1]))
             else:
                 params_calc['T_500hPa'] = np.nan
@@ -385,6 +382,15 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
                 bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter); params_calc[f'BWD_{name}'] = float(mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m)
         except: params_calc.update({'BWD_0-1km': np.nan, 'BWD_0-6km': np.nan})
+        
+        # *** NOU CÀLCUL AFEGIT: VENT MITJÀ DIRECTRIU ***
+        try:
+            # Calculem el vent mitjà a la capa 0-6 km, que actua com a flux director.
+            mean_u, mean_v = mpcalc.mean_wind(p, u, v, height=heights, depth=6000 * units.meter)
+            params_calc['Mean_Wind'] = (float(mean_u.m), float(mean_v.m))
+        except:
+            params_calc['Mean_Wind'] = (np.nan, np.nan)
+            
         try:
             rm, lm, _ = mpcalc.bunkers_storm_motion(p, u, v, heights); params_calc['RM'] = (float(rm[0].m), float(rm[1].m)); params_calc['LM'] = (float(lm[0].m), float(lm[1].m))
         except: params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan)})
@@ -397,7 +403,6 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             except: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
         
     return ((p, T, Td, u, v, heights, sfc_prof), params_calc), None
-
 
 def diagnosticar_potencial_tempesta(params):
     """
