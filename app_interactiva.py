@@ -1713,36 +1713,45 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
 
     with st.container(border=True):
         def formatar_llista_ciutats(ciutats_dict, conv_data):
+            """
+            Nova versió que afegeix un emoji de color segons la força de la
+            convergència, utilitzant la mateixa escala que la caixa de paràmetres.
+            """
             if not conv_data:
                 return sorted(list(ciutats_dict.keys()))
 
-            # Filtrem només les ciutats amb convergència significativa (>15)
-            ciutats_interessants = {
-                city: conv for city, conv in conv_data.items()
-                if conv >= 15 and city in ciutats_dict
-            }
+            # Llista per guardar tuples (text_formatat, valor_conv) per poder ordenar correctament
+            ciutats_amb_conv = []
+            ciutats_sense_conv = []
+
+            for city in sorted(ciutats_dict.keys()):
+                conv = conv_data.get(city)
+                
+                if conv is not None and pd.notna(conv):
+                    emoji = ""
+                    # Aquesta és la mateixa escala de colors/llindars que a la caixa de paràmetres
+                    if conv >= 40:   emoji = "🔴"  # Vermell
+                    elif conv >= 30: emoji = "🟠"  # Taronja
+                    elif conv >= 15: emoji = "🟡"  # Groc
+                    
+                    if emoji:
+                        # Si té emoji, mostrem el valor
+                        text_formatat = f"{city} ({emoji} {conv:.0f})"
+                    else:
+                        # Si la convergència és baixa, només mostrem el nom
+                        text_formatat = city
+                    ciutats_amb_conv.append((text_formatat, conv))
+                else:
+                    ciutats_sense_conv.append(city)
             
-            # Ordenem aquestes ciutats de més a menys convergència
-            ciutats_ordenades = sorted(
-                ciutats_interessants.items(),
-                key=lambda item: item[1],
-                reverse=True
-            )
+            # Ordenem les ciutats amb dades de convergència de major a menor
+            ciutats_ordenades = sorted(ciutats_amb_conv, key=lambda item: item[1], reverse=True)
             
-            # Creem la llista formatada
-            formated_list = [f"{city} (Convergència: {conv:.0f})" for city, conv in ciutats_ordenades]
+            # Extraiem només el text ja ordenat
+            llista_final = [item[0] for item in ciutats_ordenades]
             
-            # Afegim la resta de ciutats (sense convergència) a sota
-            altres_ciutats = sorted([
-                city for city in ciutats_dict
-                if city not in ciutats_interessants
-            ])
-            
-            # Retornem la llista completa amb un separador
-            if formated_list:
-                return formated_list + ["-"*20] + altres_ciutats
-            else:
-                return altres_ciutats
+            # Afegim al final les ciutats que no tenien dades
+            return llista_final + ciutats_sense_conv
 
         if zona_activa == 'catalunya':
             col_terra, col_mar, col_dia, col_hora, col_nivell = st.columns(5)
@@ -1754,7 +1763,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 mar_sel = st.session_state.selector_mar
                 if terra_sel != st.session_state.get('last_terra_sel', ''):
                     if terra_sel != PLACEHOLDER_TERRA:
-                        # Extraiem el nom net, p.ex. "Lleida" de "Lleida (Convergència: 25)"
                         clau_original = terra_sel.split(' (')[0]
                         if clau_original in POBLACIONS_TERRA:
                             st.session_state.poble_selector = clau_original
