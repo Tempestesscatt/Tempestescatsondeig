@@ -78,7 +78,7 @@ CIUTATS_CONVIDAT = {
     'Lleida': CIUTATS_CATALUNYA['Lleida'], 'Tarragona': CIUTATS_CATALUNYA['Tarragona']
 }
 MAP_EXTENT_CAT = [0, 3.5, 40.4, 43]
-PRESS_LEVELS_AROME = sorted([1000, 950, 925, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
+PRESS_LEVELS_AROME = sorted([1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 MAP_ZOOM_LEVELS_CAT = {'Catalunya (Complet)': MAP_EXTENT_CAT, 'Nord-est (Girona)': [1.8, 3.4, 41.7, 42.6], 'Sud (Tarragona i Ebre)': [0.2, 1.8, 40.5, 41.4], 'Ponent i Pirineu (Lleida)': [0.4, 1.9, 41.4, 42.6], 'Àrea Metropolitana (BCN)': [1.7, 2.7, 41.2, 41.8]}
 
 # --- Constants per Tornado Alley ---
@@ -1528,42 +1528,35 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             with col_hora: st.selectbox("Hora:", (f"{now_local.hour:02d}:00h",) if is_guest else [f"{h:02d}:00h" for h in range(24)], key="hora_selector", disabled=is_guest)
             with col_nivell:
                 if not is_guest:
-                    st.selectbox("Nivell:", [1000, 950, 925, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
+                    # --- LLISTA AMPLIADA PER A CATALUNYA ---
+                    nivells = [1000, 975, 950, 925, 900, 850, 800, 700]
+                    st.selectbox("Nivell:", nivells, key="level_cat_main", index=3, format_func=lambda x: f"{x} hPa") # 925hPa és ara l'índex 3
                 else: st.session_state.level_cat_main = 925
         
         else: # Zona USA
             col_ciutat, col_dia_usa, col_hora_usa, col_nivell_usa = st.columns(4)
             
-            # --- INICI DE LA CORRECCIÓ PER A TORNADO ALLEY ---
-            base_ciutats_usa = sorted(USA_CITIES.keys())
-            
             def handle_usa_selection():
                 seleccio_formatejada = st.session_state.selectbox_usa_formatted
-                clau_original = next((key for key in base_ciutats_usa if seleccio_formatejada.startswith(key)), None)
+                clau_original = next((key for key in sorted(USA_CITIES.keys()) if seleccio_formatejada.startswith(key)), None)
                 if clau_original:
                     st.session_state.poble_selector_usa = clau_original
 
             with col_ciutat:
-                opcions_formatejades_usa = formatar_llista_ciutats(base_ciutats_usa, convergencies)
-                
+                opcions_formatejades_usa = formatar_llista_ciutats(sorted(USA_CITIES.keys()), convergencies)
                 poble_actual_net_usa = st.session_state.poble_selector_usa
                 try: 
                     index_poble_usa = next(i for i, opt in enumerate(opcions_formatejades_usa) if opt.startswith(poble_actual_net_usa))
-                except (ValueError, StopIteration): 
-                    index_poble_usa = 0
-
-                st.selectbox("Ciutat:", opcions_formatejades_usa, 
-                             key="selectbox_usa_formatted", # Aquest és el nom del widget
-                             index=index_poble_usa, 
-                             on_change=handle_usa_selection) # <-- Afegim el callback
-            # --- FI DE LA CORRECCIÓ ---
+                except (ValueError, StopIteration): index_poble_usa = 0
+                st.selectbox("Ciutat:", opcions_formatejades_usa, key="selectbox_usa_formatted", index=index_poble_usa, on_change=handle_usa_selection)
 
             now_local = datetime.now(TIMEZONE_USA)
             with col_dia_usa: st.selectbox("Dia:", ("Avui", "Demà", "Demà passat"), key="dia_selector_usa")
             with col_hora_usa: st.selectbox("Hora (CST):", [f"{h:02d}:00" for h in range(24)], key="hora_selector_usa")
             with col_nivell_usa:
-                nivells_gfs = [925, 850, 700, 500, 300]
-                st.selectbox("Nivell (hPa):", options=nivells_gfs, key="level_usa_main", index=1)
+                # --- LLISTA AMPLIADA PER A TORNADO ALLEY ---
+                nivells_gfs = [975, 950, 925, 900, 850, 700, 500, 300]
+                st.selectbox("Nivell (hPa):", options=nivells_gfs, key="level_usa_main", index=4) # 850hPa és ara l'índex 4
                 
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
