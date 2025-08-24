@@ -1550,7 +1550,7 @@ def hide_streamlit_style():
         </style>
         """
     st.markdown(hide_style, unsafe_allow_html=True)
-    
+
 
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya", convergencies=None):
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
@@ -1634,38 +1634,39 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             
             def handle_usa_selection():
                 seleccio_formatejada = st.session_state.selectbox_usa_formatted
-                clau_original = next((key for key in sorted(USA_CITIES.keys()) if seleccio_formatejada.startswith(key)), None)
+                clau_original = next((key for key in USA_CITIES if seleccio_formatejada.startswith(key)), None)
                 if clau_original:
                     st.session_state.poble_selector_usa = clau_original
 
             with col_ciutat:
-                opcions_formatejades_usa = formatar_llista_ciutats(sorted(USA_CITIES.keys()), convergencies)
+                # --- LÍNIA CORREGIDA ---
+                # Passem el diccionari complet 'USA_CITIES', no només una llista de les seves claus.
+                opcions_formatejades_usa = formatar_llista_ciutats(USA_CITIES, convergencies)
+                
                 poble_actual_net_usa = st.session_state.poble_selector_usa
                 try: 
                     index_poble_usa = next(i for i, opt in enumerate(opcions_formatejades_usa) if opt.startswith(poble_actual_net_usa))
                 except (ValueError, StopIteration): index_poble_usa = 0
                 st.selectbox("Ciutat:", opcions_formatejades_usa, key="selectbox_usa_formatted", index=index_poble_usa, on_change=handle_usa_selection)
 
-            now_local_usa = datetime.now(TIMEZONE_USA)
+            now_local = datetime.now(TIMEZONE_USA)
             with col_dia_usa: st.selectbox("Dia:", ("Avui", "Demà", "Demà passat"), key="dia_selector_usa")
-            
             with col_hora_usa:
                 opcions_hora = []
                 for h_usa in range(24):
-                    time_usa = now_local_usa.replace(hour=h_usa, minute=0, second=0, microsecond=0)
+                    time_usa = now_local.replace(hour=h_usa, minute=0, second=0, microsecond=0)
                     time_spain = time_usa.astimezone(TIMEZONE_CAT)
                     opcions_hora.append(f"{time_usa.hour:02d}:00 (Local: {time_spain.hour:02d}:00h)")
-                
                 try:
                     idx_hora = opcions_hora.index(st.session_state.hora_selector_usa)
                 except (ValueError, IndexError):
                     idx_hora = 0
-
                 st.selectbox("Hora (CST):", opcions_hora, key="hora_selector_usa", index=idx_hora)
-
             with col_nivell_usa:
                 nivells_gfs = [975, 950, 925, 900, 850, 700, 500, 300]
                 st.selectbox("Nivell (hPa):", options=nivells_gfs, key="level_usa_main", index=4)
+
+
                 
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
