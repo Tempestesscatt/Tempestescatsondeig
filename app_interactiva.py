@@ -1164,7 +1164,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             with col2: 
                 st.selectbox("Dia del pronòstic:", ("Avui",) if is_guest else ("Avui", "Demà"), key="dia_selector", disabled=is_guest, index=0)
             with col3: 
-                st.selectbox("Hora del pronòstic (Local):", (f"{now_local.hour:02d}:00h",) if is_uest else [f"{h:02d}:00h" for h in range(24)], key="hora_selector", disabled=is_guest, index=0 if is_guest else now_local.hour)
+                st.selectbox("Hora del pronòstic (Local):", (f"{now_local.hour:02d}:00h",) if is_guest else [f"{h:02d}:00h" for h in range(24)], key="hora_selector", disabled=is_guest, index=0 if is_guest else now_local.hour)
         else: # Zona USA
              with col1:
                 st.selectbox("Ciutat de referència:", sorted(USA_CITIES.keys()), key="poble_selector_usa")
