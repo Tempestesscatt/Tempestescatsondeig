@@ -115,15 +115,8 @@ def count_unread_messages(history):
 def inject_custom_css():
     st.markdown("""
     <style>
-    /* Mejora la visualización de las barras de progreso */
-    .stProgress > div > div > div {
-        background: linear-gradient(90deg, #FF6B6B, #4ECDC4);
-    }
-    
-    /* Animación suave para los textos de carga */
-    .loading-text {
-        font-weight: 500;
-        color: #4ECDC4;
+    .stSpinner > div {
+        justify-content: center;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -1035,6 +1028,62 @@ def navegacion_rapida(mensaje):
     """Función específica para navegación rápida"""
     with st.spinner(f"⚡ {mensaje}..."):
         time.sleep(1.2)  # Aún más rápido
+
+def mostrar_spinner_mapa(mensaje, funcion_carga, *args, **kwargs):
+    """
+    Spinner que funciona con Streamlit usando threading
+    """
+    # Placeholders para el spinner y el mapa
+    spinner_placeholder = st.empty()
+    mapa_placeholder = st.empty()
+    result_container = [None]
+    error_container = [None]
+    
+    # Función para ejecutar en segundo plano
+    def cargar_mapa():
+        try:
+            result_container[0] = funcion_carga(*args, **kwargs)
+        except Exception as e:
+            error_container[0] = e
+    
+    # Iniciar la carga en segundo plano
+    thread = threading.Thread(target=cargar_mapa)
+    thread.start()
+    
+    # Mostrar spinner mientras se carga
+    start_time = time.time()
+    spinner_frames = ["🔄", "⏳", "📡", "🌪️"]
+    frame_index = 0
+    
+    while thread.is_alive():
+        # Actualizar spinner animado
+        frame_index = (frame_index + 1) % len(spinner_frames)
+        tiempo_transcurrido = time.time() - start_time
+        minutos = int(tiempo_transcurrido // 60)
+        segundos = int(tiempo_transcurrido % 60)
+        
+        spinner_placeholder.markdown(f"""
+        <div style="text-align: center; padding: 40px; background-color: #0E1117; border-radius: 10px; margin: 10px 0;">
+            <div style="font-size: 3em; margin-bottom: 20px;">{spinner_frames[frame_index]}</div>
+            <div style="color: white; font-weight: bold; font-size: 1.2em;">{mensaje}</div>
+            <div style="color: #888; margin-top: 10px;">Temps: {minutos}:{segundos:02d}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        time.sleep(0.5)  # Actualizar cada medio segundo
+    
+    # Cuando termine el hilo
+    thread.join()
+    
+    # Limpiar spinner
+    spinner_placeholder.empty()
+    
+    # Manejar resultados
+    if error_container[0]:
+        st.error(f"Error carregant el mapa: {error_container[0]}")
+        return None, str(error_container[0])
+    
+    return result_container[0], None
         
             
 @st.cache_data(ttl=3600)
@@ -1362,37 +1411,46 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                  
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
+    
     col_capa, col_zoom = st.columns(2)
-    
     with col_capa:
-        mapa_sel = st.selectbox("Selecciona la capa del mapa:", ["Anàlisi de Vent i Convergència", "Vent a 700hPa", "Vent a 300hPa"], key="map_cat")
-    
+        mapa_sel = st.selectbox("Selecciona la capa del mapa:", 
+                               ["Anàlisi de Vent i Convergència", "Vent a 700hPa", "Vent a 300hPa"], 
+                               key="map_cat")
     with col_zoom: 
-        zoom_sel = st.selectbox("Nivell de Zoom:", options=list(MAP_ZOOM_LEVELS_CAT.keys()), key="zoom_cat")
+        zoom_sel = st.selectbox("Nivell de Zoom:", 
+                               options=list(MAP_ZOOM_LEVELS_CAT.keys()), 
+                               key="zoom_cat")
     
     selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
     
     if "Convergència" in mapa_sel:
-        # CARGA CON BARRA AVANZADA
-        map_data, error_map = mostrar_carga_avanzada(
-            "Generant mapa de convergència",
-            carregar_dades_mapa_cat,
+        # USAR EL NUEVO SPINNER
+        map_data, error_map = mostrar_spinner_mapa(
+            "Generant mapa de convergència...", 
+            carregar_dades_mapa_cat, 
             nivell_sel, hourly_index_sel
         )
         
         if error_map: 
             st.error(f"Error en carregar el mapa: {error_map}")
         elif map_data:
-            fig = crear_mapa_forecast_combinat_cat(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str, selected_extent)
+            fig = crear_mapa_forecast_combinat_cat(
+                map_data['lons'], map_data['lats'], 
+                map_data['speed_data'], map_data['dir_data'], 
+                map_data['dewpoint_data'], nivell_sel, 
+                timestamp_str, selected_extent
+            )
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
+    
     else:
+        # Para otros mapas...
         nivell = 700 if "700" in mapa_sel else 300
         variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
         
-        # CARGA CON BARRA AVANZADA
-        map_data, error_map = mostrar_carga_avanzada(
-            "Processant camps de vent",
+        map_data, error_map = mostrar_spinner_mapa(
+            f"Carregant vent a {nivell}hPa...",
             carregar_dades_mapa_base_cat,
             variables, hourly_index_sel
         )
@@ -1400,7 +1458,11 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
         if error_map: 
             st.error(f"Error: {error_map}")
         elif map_data: 
-            fig = crear_mapa_vents_cat(map_data['lons'], map_data['lats'], map_data[variables[0]], map_data[variables[1]], nivell, timestamp_str, selected_extent)
+            fig = crear_mapa_vents_cat(
+                map_data['lons'], map_data['lats'], 
+                map_data[variables[0]], map_data[variables[1]], 
+                nivell, timestamp_str, selected_extent
+            )
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
             
@@ -1705,6 +1767,7 @@ def ui_zone_selection():
                 st.session_state['zone_selected'] = 'valley_halley'
                 st.rerun()
 def main():
+    inject_custom_css()
     # Crida la funció per amagar els estils just a l'inici
     hide_streamlit_style()
     
