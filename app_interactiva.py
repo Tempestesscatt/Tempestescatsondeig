@@ -1566,6 +1566,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 nivells_gfs = [975, 950, 925, 900, 850, 700, 500, 300]
                 st.selectbox("Nivell (hPa):", options=nivells_gfs, key="level_usa_main", index=4)
                 
+                
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
     
