@@ -252,6 +252,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     """
     Processa les dades de sondeig brutes per calcular un conjunt complet de paràmetres
     termodinàmics i cinemàtics, incloent paràmetres de capa efectiva.
+    ARA TAMBÉ CALCULA LA HUMITAT RELATIVA PER CAPES.
     """
     # --- 1. PREPARACIÓ I NETEJA DE DADES ---
     if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
@@ -265,10 +266,19 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
     params_calc = {}; prof = None; heights_agl = heights - heights[0]
 
-    # --- 2. CÀLCULS TERMODINÀMICS ---
+    # --- NOU: CÀLCUL D'HUMITAT RELATIVA PER CAPES ---
+    rh = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
+    rh_capes = {
+        'baixa': np.mean(rh[(p.m <= 1000) & (p.m > 850)]),
+        'mitjana': np.mean(rh[(p.m <= 850) & (p.m > 500)]),
+        'alta': np.mean(rh[(p.m <= 500) & (p.m > 250)])
+    }
+    params_calc['RH_CAPES'] = rh_capes
+
+    # --- 2. CÀLCULS TERMODINÀMICS (sense canvis) ---
     with parcel_lock:
         try: prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
-        except Exception as e: return None, f"Error crític en el perfil de la parcel·la: {e}"
+        except Exception: return None, "Error crític en el perfil de la parcel·la."
         try:
             sbcape, sbcin = mpcalc.cape_cin(p, T, Td, prof)
             params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m)
@@ -299,21 +309,17 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             params_calc['PWAT'] = float(pwat.to('mm').m)
         except: params_calc['PWAT'] = np.nan
         
-    # --- 3. CÀLCULS CINEMÀTICS ---
+    # --- 3. CÀLCULS CINEMÀTICS (sense canvis) ---
     try:
         rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
-        params_calc['RM'] = (float(rm[0].m), float(rm[1].m))
-        params_calc['LM'] = (float(lm[0].m), float(lm[1].m))
+        params_calc['RM'] = (float(rm[0].m), float(rm[1].m)); params_calc['LM'] = (float(lm[0].m), float(lm[1].m))
         params_calc['Mean_Wind'] = (float(mean_wind[0].m), float(mean_wind[1].m))
-    except Exception:
-        params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan), 'Mean_Wind': (np.nan, np.nan)})
-
+    except Exception: params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan), 'Mean_Wind': (np.nan, np.nan)})
     for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
         try:
             bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter)
             params_calc[f'BWD_{name}'] = float(mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m)
         except: params_calc[f'BWD_{name}'] = np.nan
-    
     if not np.isnan(params_calc.get('RM', (np.nan,))[0]):
         u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
         for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
@@ -321,9 +327,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                 srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.meter, storm_u=u_storm, storm_v=v_storm)[0]
                 params_calc[f'SRH_{name}'] = float(srh.m)
             except: params_calc[f'SRH_{name}'] = np.nan
-    else:
-        params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-
+    else: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
     try:
         eff_bottom, eff_top = mpcalc.effective_inflow_layer(p, T, Td, heights=heights_agl)
         ebwd_u, ebwd_v = mpcalc.bulk_shear(p, u, v, height=heights_agl, bottom=eff_bottom, top=eff_top)
@@ -332,11 +336,8 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             u_storm_eff, v_storm_eff = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
             esrh, _, _ = mpcalc.storm_relative_helicity(heights, u, v, bottom=eff_bottom, top=eff_top, storm_u=u_storm_eff, storm_v=v_storm_eff)
             params_calc['ESRH'] = float(esrh.m)
-        else:
-            params_calc['ESRH'] = np.nan
-    except Exception:
-        params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
-
+        else: params_calc['ESRH'] = np.nan
+    except Exception: params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
     try:
         idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
         cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], prof[:idx_3km+1])
@@ -1836,9 +1837,8 @@ def main():
 
 def determinar_emoji_temps(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Meteorològic Expert v2.0
-    Implementa un balanç entre inhibició (CIN) i forçament (Convergència)
-    per a un diagnòstic de convecció més precís.
+    Sistema de Diagnòstic Meteorològic Expert v4.0
+    Utilitza RH per capes per a un diagnòstic precís del temps estable.
     """
     # --- 0. DETERMINAR SI ÉS DE NIT O DE DIA ---
     es_de_nit = False
@@ -1849,88 +1849,74 @@ def determinar_emoji_temps(params, nivell_conv, hora_actual=None):
         except (ValueError, AttributeError):
             es_de_nit = False
 
-    # --- 1. EXTREURE PARÀMETRES CLAU ---
-    cape = params.get('MLCAPE', params.get('SBCAPE', 0)) or 0
-    cin = params.get('MLCIN', params.get('SBCIN', 0)) or 0
+    # --- 1. EXTREURE PARÀMETRES ---
+    mucape = params.get('MUCAPE', 0) or 0
     li = params.get('LI', 5) or 5
-    pwat = params.get('PWAT', 0) or 0
+    cin = params.get('MLCIN', params.get('SBCIN', 0)) or 0
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     srh_1km = params.get('SRH_0-1km', 0) or 0
     lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
-    max_updraft = params.get('MAX_UPDRAFT', 0) or 0
+    rh_capes = params.get('RH_CAPES', {'baixa': 0, 'mitjana': 0, 'alta': 0})
     
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
 
-    # --- 2. LÒGICA DE BALANÇ: FORÇAMENT vs. INHIBICIÓ ---
-    # Factor de conversió: un valor heurístic que tradueix la convergència
-    # a una "força d'elevació" comparable al CIN en J/kg.
-    FACTOR_CONV = 5.0
-    
-    cin_efectiu = abs(min(0, cin)) # Només considerem CIN negatiu (inhibició real)
-    forçament_dinamic = (conv * FACTOR_CONV) if conv > 0 else 0
-    
-    forçament_net = forçament_dinamic - cin_efectiu
+    # --- 2. DIAGNÒSTIC DE CONVECCIÓ (PRIORITAT MÀXIMA) ---
+    hi_ha_inestabilitat = (mucape > 300 or li < -2)
 
-    # --- 3. DIAGNÒSTIC DE TEMPESTES (Prioritat màxima) ---
-    # Condició: Hi ha prou combustible (CAPE) I el disparador és més fort que la tapa.
-    if cape > 250 and forçament_net > -10: # Un forçament lleugerament negatiu encara pot ser superat
+    if hi_ha_inestabilitat:
+        FACTOR_CONV = 5.0
+        cin_efectiu = abs(min(0, cin))
+        forçament_dinamic = (conv * FACTOR_CONV) if conv > 2 else 0
+        forçament_net = forçament_dinamic - cin_efectiu
+
+        if forçament_net < -50:
+            return "🌤️", "Convecció Capada"
         
-        # 3.1 Supercèl·lules (potencial tornàdic i calamarsa severa)
-        if bwd_6km > 20 and srh_1km > 125 and cape > 1200:
+        cape_real = max(params.get('MLCAPE', 0), mucape)
+
+        if bwd_6km >= 35 and srh_1km > 125 and cape_real > 1200:
             if lcl_hgt < 1200 and srh_1km > 200:
                 return "🌪️", "Supercèl·lula (Alt Risc Tornàdic)"
-            return "🌪️", "Supercèl·lula"
-
-        # 3.2 Multicèl·lules Organitzades / Línies de Tempesta
-        if bwd_6km > 15 and cape > 800:
-            if max_updraft > 35:
-                return "⛈️", "Multicèl·lula (Risc de Calamarsa)"
-            return "⛈️", "Multicèl·lula Organitzada"
-
-        # 3.3 Tempestes de Cèl·lula Simple (Pols)
-        if max_updraft > 25:
-            return "🌩️", "Tempesta (Possible Calamarsa)"
+            return "🌪️", "Supercèl·lula (Calamarsa Severa)"
+        if bwd_6km >= 20 and cape_real > 800:
+            return "⛈️", "Tempestes Organitzades"
         return "🌩️", "Tempesta Aïllada"
 
-    # --- 4. DIAGNÒSTIC DE CONVECCIÓ CAPADA ---
-    # Condició: Hi ha combustible, PERÒ el disparador és més feble que la tapa.
-    if cape > 400 and forçament_net < -25:
-        if es_de_nit:
-            return "🌙", "Nit Estable (Convecció Capada)"
-        return "🌤️", "Convecció Capada"
+    # --- 3. DIAGNÒSTIC DE TEMPS ESTABLE BASAT EN RH PER CAPES ---
+    # Si arribem aquí, no hi ha inestabilitat convectiva.
+    
+    rh_baixa = rh_capes.get('baixa', 0)
+    rh_mitjana = rh_capes.get('mitjana', 0)
+    rh_alta = rh_capes.get('alta', 0)
 
-    # --- 5. DIAGNÒSTIC DE TEMPS ESTABLE (sense convecció) ---
-    # Si arribem aquí, no hi haurà tempestes significatives.
-    
-    # Boira
-    if lcl_hgt < 150 and pwat > 18 and cape < 50:
-        return "🌫️", "Boira o Boirina"
-    
-    # Pluja Estratiforme (Nimboestratus)
-    if pwat > 30 and cape < 200 and li > 1:
+    # Condició de Nimbostratus / Pluja Estratiforme
+    if rh_baixa > 85 and rh_mitjana > 80:
         return "🌧️", "Pluja Dèbil (Nimboestratus)"
 
-    # Cel Ennuvolat (Estratus / Estratocúmulus)
-    if lcl_hgt < 1000 and pwat > 20:
+    # Condició de Boira
+    if lcl_hgt < 150 and rh_baixa > 95:
+        return "🌫️", "Boira o Boirina"
+
+    # Condició de Núvols Baixos (Estratus/Estratocúmulus)
+    if rh_baixa > 80:
         if es_de_nit: return "☁️", "Nit Ennuvolada"
         return "☁️", "Cel Cobert (Núvols Baixos)"
-        
-    # Núvols Mitjans (Altocúmulus / Altostratus)
-    if 1000 <= lcl_hgt < 3000 and pwat > 15:
+    
+    # Condició de Núvols Mitjans (Altocúmulus/Altostratus)
+    if rh_mitjana > 70:
         if es_de_nit: return "🌙☁️", "Nit amb Núvols Mitjans"
         return "🌥️", "Cel Variable (Núvols Mitjans)"
 
-    # Núvols Alts (Cirrus)
-    if lcl_hgt >= 3000:
+    # Condició de Núvols Alts (Cirrus)
+    if rh_alta > 60:
         if es_de_nit: return "🌙", "Nit amb Núvols Alts"
         return "🌤️", "Cel Poc Ennuvolat (Núvols Alts)"
 
-    # --- 6. CAS PER DEFECTE (Bon temps) ---
+    # --- 4. CAS PER DEFECTE (Bon temps) ---
     if es_de_nit:
         return "🌙", "Nit Serena"
     return "☀️", "Cel Serè"
-
 
 if __name__ == "__main__":
     main()
