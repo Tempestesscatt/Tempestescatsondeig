@@ -1728,36 +1728,37 @@ def ui_peu_de_pagina():
 # --- Lògica Principal de l'Aplicació ---
 
 def run_catalunya_app():
-    # --- PAS 1: Inicialització i pre-càrrega per als selectors ---
+    # --- PAS 0: INICIALITZACIÓ DE L'ESTAT (Solució a l'AttributeError) ---
     is_guest = st.session_state.get('guest_mode', False)
-    
-    # Inicialitzem el selector si no existeix
     if 'poble_selector' not in st.session_state:
         st.session_state.poble_selector = "Barcelona"
-        st.session_state.selector_terra = "Barcelona"
-        st.session_state.selector_mar = "--- Selecciona un Punt Marí ---"
-        
-    pre_hora_sel = st.session_state.get('hora_selector', f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h")
-    pre_dia_sel = st.session_state.get('dia_selector', "Avui")
+    if 'dia_selector' not in st.session_state:
+        st.session_state.dia_selector = "Avui"
+    if 'hora_selector' not in st.session_state:
+        st.session_state.hora_selector = f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h"
+    if 'level_cat_main' not in st.session_state:
+        st.session_state.level_cat_main = 925
+
+    # --- PAS 1: RECOLLIR TOTS ELS INPUTS DE L'USUARI ---
+    pre_hora_sel = st.session_state.hora_selector
+    pre_dia_sel = st.session_state.dia_selector
     pre_target_date = datetime.now(TIMEZONE_CAT).date() + timedelta(days=1) if pre_dia_sel == "Demà" else datetime.now(TIMEZONE_CAT).date()
     pre_local_dt = TIMEZONE_CAT.localize(datetime.combine(pre_target_date, datetime.min.time()).replace(hour=int(pre_hora_sel.split(':')[0])))
     pre_start_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     pre_hourly_index = int((pre_local_dt.astimezone(pytz.utc) - pre_start_utc).total_seconds() / 3600)
     
-    pre_map_data, _ = carregar_dades_mapa_cat(st.session_state.get('level_cat_main', 925), pre_hourly_index)
+    pre_map_data, _ = carregar_dades_mapa_cat(st.session_state.level_cat_main, pre_hourly_index)
     pre_convergencies = calcular_convergencies_per_llista(pre_map_data, CIUTATS_CATALUNYA) if pre_map_data else {}
     
-    # --- PAS 2: Dibuixar els controls ---
-    ui_capcalera_selectors(None, None, zona_activa="catalunya", convergencies=pre_convergencies)
-
-    # --- PAS 3: LLEGIR L'ESTAT FINAL I EXECUTAR LA LÒGICA ---
-    poble_sel = st.session_state.poble_selector
+    ciutats_per_selector = CIUTATS_CATALUNYA
+    info_msg = None
+    if is_guest:
+        ciutats_per_selector, info_msg = obtenir_ciutats_actives(pre_hourly_index)
     
-    # Si encara hi ha un placeholder seleccionat, no fem res
-    if "---" in poble_sel:
-        st.info("Selecciona una població o un punt marítim per començar l'anàlisi.")
-        return
+    ui_capcalera_selectors(ciutats_per_selector, info_msg, zona_activa="catalunya", convergencies=pre_convergencies)
 
+    # ... (la resta de la funció es manté exactament igual) ...
+    poble_sel = st.session_state.poble_selector
     dia_sel_str = st.session_state.dia_selector
     hora_sel_str = st.session_state.hora_selector
     nivell_sel = 925 if is_guest else st.session_state.level_cat_main
@@ -1769,8 +1770,6 @@ def run_catalunya_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     timestamp_str = f"{dia_sel_str} a les {hora_sel_str} (Hora Local)"
 
-    # --- PAS 4: DIBUIXAR EL MENÚ I MOSTRAR RESULTATS ---
-    # ... (la resta de la funció, amb el option_menu i la crida a les pestanyes, es manté exactament igual) ...
     if is_guest:
         menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical", "Estacions Meteorològiques"]
         menu_icons = ["map", "graph-up-arrow", "broadcast"]
@@ -1817,27 +1816,33 @@ def run_catalunya_app():
         ui_pestanya_estacions_meteorologiques()
         
 def run_valley_halley_app():
+    # --- PAS 0: INICIALITZACIÓ DE L'ESTAT (Solució a l'AttributeError) ---
+    if 'poble_selector_usa' not in st.session_state:
+        st.session_state.poble_selector_usa = "Oklahoma City, OK"
+    if 'dia_selector_usa' not in st.session_state:
+        st.session_state.dia_selector_usa = "Avui"
+    if 'hora_selector_usa' not in st.session_state:
+        st.session_state.hora_selector_usa = f"{datetime.now(TIMEZONE_USA).hour:02d}:00"
+    if 'level_usa_main' not in st.session_state:
+        st.session_state.level_usa_main = 850
+
     # --- PAS 1: RECOLLIR TOTS ELS INPUTS DE L'USUARI ---
-    
-    # Pre-càlcul de convergències per als selectors (utilitza l'estat actual)
     pre_now_usa = datetime.now(TIMEZONE_USA)
-    pre_dia_sel = st.session_state.get('dia_selector_usa', "Avui")
-    pre_hora_sel = st.session_state.get('hora_selector_usa', f"{pre_now_usa.hour:02d}:00")
+    pre_dia_sel = st.session_state.dia_selector_usa
+    pre_hora_sel = st.session_state.hora_selector_usa
     pre_day_offset = {"Avui": 0, "Demà": 1, "Demà passat": 2}[pre_dia_sel]
     pre_target_date = pre_now_usa.date() + timedelta(days=pre_day_offset)
     pre_local_dt = TIMEZONE_USA.localize(datetime.combine(pre_target_date, datetime.min.time()).replace(hour=int(pre_hora_sel.split(':')[0])))
     pre_start_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     pre_hourly_index = int((pre_local_dt.astimezone(pytz.utc) - pre_start_utc).total_seconds() / 3600)
 
-    # Per als selectors de convergència, sempre fem servir el nivell més rellevant (850hPa)
     NIVELL_ANALISI_CONV = 850
     pre_map_data, _ = carregar_dades_mapa_usa(NIVELL_ANALISI_CONV, pre_hourly_index)
     pre_convergencies = calcular_convergencies_per_llista(pre_map_data, USA_CITIES) if pre_map_data else {}
     
-    # Aquesta funció ara dibuixa TOTS els controls i actualitza st.session_state
     ui_capcalera_selectors(None, zona_activa="tornado_alley", convergencies=pre_convergencies)
 
-    # --- PAS 2: LLEGIR L'ESTAT FINAL I CARREGAR DADES ---
+    # ... (la resta de la funció es manté exactament igual) ...
     poble_sel = st.session_state.poble_selector_usa
     dia_sel_str = st.session_state.dia_selector_usa
     hora_sel_str = st.session_state.hora_selector_usa
@@ -1851,7 +1856,6 @@ def run_valley_halley_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     timestamp_str = f"{dia_sel_str} a les {hora_sel_str} (Central Time)"
 
-    # --- PAS 3: DIBUIXAR EL MENÚ I MOSTRAR RESULTATS ---
     menu_options_usa = ["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"]
     menu_icons_usa = ["map-fill", "graph-up-arrow", "globe-americas"]
 
@@ -1888,10 +1892,9 @@ def run_valley_halley_app():
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
             params_calc = data_tuple[1] if data_tuple else {}
-            # Utilitzem les convergències pre-calculades si el nivell coincideix
             if nivell_sel == NIVELL_ANALISI_CONV and poble_sel in pre_convergencies:
                 params_calc[f'CONV_{nivell_sel}hPa'] = pre_convergencies[poble_sel]
-            else: # Si no, les calculem per al nivell específic
+            else:
                 with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
                     map_data_nivell_sel, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
                     if map_data_nivell_sel:
@@ -1901,7 +1904,6 @@ def run_valley_halley_app():
         
     elif selected_tab_usa == "Satèl·lit (Temps Real)":
         ui_pestanya_satelit_usa()
-
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
