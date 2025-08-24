@@ -535,7 +535,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
     ax_hodo.set_xlabel('U-Component (nusos)'); ax_hodo.set_ylabel('V-Component (nusos)')
 
-    # --- PANELL DE PARÀMETRES (ESTRUCTURA FINAL I ROBUSTA) ---
+    # --- PANELL DE PARÀMETRES (AJUSTOS FINALS D'ALINEACIÓ) ---
     ax_params.axis('off')
     def degrees_to_cardinal_ca(d):
         dirs = ["Nord", "Nord-nord-est", "Nord-est", "Est-nord-est", "Est", "Est-sud-est", "Sud-est", "Sud-sud-est", "Sud", "Sud-sud-oest", "Sud-oest", "Oest-sud-oest", "Oest", "Oest-nord-oest", "Nord-oest", "Nord-nord-oest"]
@@ -550,59 +550,56 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
 
     THRESHOLDS = {'BWD': (10, 20, 30, 40), 'SRH': (100, 150, 250, 400)}
     y = 0.95
-    x_etiqueta = 0.0  # Posició X per a les etiquetes de l'esquerra
-    x_valor = 1.0     # Posició X per als valors de la dreta
-
+    
     # Secció 1: Moviment
     motion_data = {
         'M. Dret': params_calc.get('RM'), 
         'M. Esquerre': params_calc.get('LM'), 
         'Es mourà cap a': params_calc.get('Mean_Wind')
     }
-    ax_params.text(x_etiqueta, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
+    ax_params.text(0, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
     for display_name, vec in motion_data.items():
+        # CORRECCIÓ D'ALINEACIÓ: L'etiqueta esquerra es desplaça
+        ax_params.text(-0.05, y, f"{display_name}:", ha='left', va='center') # Desplaçat a l'esquerra
         if vec and not pd.isna(vec[0]):
             u_motion = vec[0] * units('m/s'); v_motion = vec[1] * units('m/s')
             speed = mpcalc.wind_speed(u_motion, v_motion).to('km/h').m
             direction = mpcalc.wind_direction(u_motion, v_motion, convention='to').to('deg').m
             cardinal = degrees_to_cardinal_ca(direction)
-            ax_params.text(x_etiqueta, y, f"{display_name}:", ha='left', va='center')
-            ax_params.text(x_valor, y, f"{cardinal} / {speed:.0f} km/h", ha='right', va='center')
+            ax_params.text(1, y, f"{cardinal} / {speed:.0f} km/h", ha='right', va='center')
         else:
-            ax_params.text(x_etiqueta, y, f"{display_name}:", ha='left', va='center')
-            ax_params.text(x_valor, y, "---", ha='right', va='center')
+            ax_params.text(1, y, "---", ha='right', va='center')
         y-=0.1
 
     tipus_tempesta, color_tempesta, base_nuvol, color_base = diagnosticar_potencial_tempesta(params_calc)
 
     # Secció 2: Cisallament
     y-=0.05
-    ax_params.text(x_etiqueta, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
+    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
     for key, label in [('BWD_0-1km', '0-1 km'), ('BWD_0-6km', '0-6 km')]:
         val = params_calc.get(key, np.nan)
         color = get_color(val, THRESHOLDS['BWD'])
-        ax_params.text(x_etiqueta, y, f"{label}:", ha='left', va='center')
-        ax_params.text(x_valor, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
+        ax_params.text(0, y, f"{label}:", ha='left', va='center')
+        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
         y-=0.08
-    # Diagnòstic en una nova línia
-    ax_params.text(x_etiqueta, y, "Tipus:", ha='left', va='center')
-    ax_params.text(x_valor, y, tipus_tempesta, ha='right', va='center', weight='bold', color=color_tempesta)
-    y-=0.08
+    # CORRECCIÓ D'ALINEACIÓ: El diagnòstic es posa sota l'etiqueta
+    ax_params.text(0, y, "Tipus:", ha='left', va='center', weight='bold')
+    ax_params.text(0.05, y - 0.08, tipus_tempesta, ha='left', va='center', weight='bold', color=color_tempesta)
+    y-=0.16 # Deixem més espai per al text de sota
 
     # Secció 3: Helicitat
     y-=0.05
-    ax_params.text(x_etiqueta, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.1
+    ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.1
     for key, label in [('SRH_0-1km', '0-1 km'), ('SRH_0-3km', '0-3 km')]:
         val = params_calc.get(key, np.nan)
         color = get_color(val, THRESHOLDS['SRH'])
-        ax_params.text(x_etiqueta, y, f"{label}:", ha='left', va='center')
-        ax_params.text(x_valor, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
+        ax_params.text(0, y, f"{label}:", ha='left', va='center')
+        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
         y-=0.08
-    # Diagnòstic en una nova línia
-    ax_params.text(x_etiqueta, y, "Base:", ha='left', va='center')
-    ax_params.text(x_valor, y, base_nuvol, ha='right', va='center', weight='bold', color=color_base)
-    y-=0.08
-        
+    # CORRECCIÓ D'ALINEACIÓ: El diagnòstic es posa sota l'etiqueta
+    ax_params.text(0, y, "Base:", ha='left', va='center', weight='bold')
+    ax_params.text(0.05, y - 0.08, base_nuvol, ha='left', va='center', weight='bold', color=color_base)
+    
     return fig
 
 def ui_caixa_parametres_sondeig(params, nivell_conv):
