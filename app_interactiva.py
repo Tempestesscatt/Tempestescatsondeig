@@ -1596,7 +1596,6 @@ def run_catalunya_app():
     # --- PAS 1: RECOLLIR TOTS ELS INPUTS DE L'USUARI ---
     is_guest = st.session_state.get('guest_mode', False)
     
-    # Pre-càlcul de convergències per als selectors (utilitza l'estat actual)
     pre_hora_sel = st.session_state.get('hora_selector', f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h")
     pre_dia_sel = st.session_state.get('dia_selector', "Avui")
     pre_target_date = datetime.now(TIMEZONE_CAT).date() + timedelta(days=1) if pre_dia_sel == "Demà" else datetime.now(TIMEZONE_CAT).date()
@@ -1612,7 +1611,6 @@ def run_catalunya_app():
     if is_guest:
         ciutats_per_selector, info_msg = obtenir_ciutats_actives(pre_hourly_index)
     
-    # Aquesta funció ara dibuixa TOTS els controls i actualitza st.session_state
     ui_capcalera_selectors(ciutats_per_selector, info_msg, zona_activa="catalunya", convergencies=pre_convergencies)
 
     # --- PAS 2: LLEGIR L'ESTAT FINAL I CARREGAR DADES ---
@@ -1663,10 +1661,19 @@ def run_catalunya_app():
             params_calc = data_tuple[1] if data_tuple else {}
             if poble_sel in pre_convergencies: params_calc[f'CONV_{nivell_sel}hPa'] = pre_convergencies[poble_sel]
             
+            # --- INICI DE LA CORRECCIÓ ---
+            # Calculem la pre-anàlisi aquí, ja que tant la pestanya vertical com la de l'IA la necessiten.
+            analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
+            
             if selected_tab == "Anàlisi Vertical":
+                # La pestanya vertical només necessita els paràmetres, no la pre-anàlisi completa.
                 ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str)
+            
             elif selected_tab == "💬 Assistent IA":
-                ui_pestanya_assistent_ia(params_calc, poble_sel)
+                # Aquí és on cridem a la funció de l'IA, passant-li l'argument que faltava.
+                ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps)
+            # --- FI DE LA CORRECCIÓ ---
+
     elif selected_tab == "Estacions Meteorològiques":
         ui_pestanya_estacions_meteorologiques()
 
