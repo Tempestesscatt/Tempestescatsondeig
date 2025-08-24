@@ -316,11 +316,10 @@ def calcular_li_manual(p, T, prof):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Corregida v3.0.
-    Retorna el perfil de superfície (sfc_prof) per al dibuix del Skew-T,
-    però utilitza el perfil de capa barrejada (ml_prof) per a la majoria
-    de càlculs de paràmetres, garantint precisió i consistència visual.
-    És "indestructible" gràcies als càlculs aïllats.
+    Versió Definitiva i Antifràgil v4.0.
+    Implementa un sistema de "Pla B". Si el càlcul del perfil de capa barrejada (ml_prof)
+    falla, l'algoritme continua i calcula tots els paràmetres possibles utilitzant
+    el perfil de superfície (sfc_prof), garantint que l'usuari sempre vegi un resultat.
     """
     # --- 1. PREPARACIÓ I NETEJA DE DADES ---
     if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
@@ -334,24 +333,28 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
     params_calc = {}; heights_agl = heights - heights[0]
 
-    # --- 2. CÀLCULS BASE I PERFILS DE PARCEL·LA ---
+    # --- 2. CÀLCULS BASE I PERFILS DE PARCEL·LA (AMB PLA B) ---
     with parcel_lock:
-        # Calculem els dos perfils de parcel·la que necessitarem
-        try:
-            _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
-        except Exception:
-            ml_prof = None # Si falla, ho gestionarem
+        sfc_prof, ml_prof = None, None # Inicialitzem a None
+        
+        # El perfil de superfície és el nostre Pla B segur
         try:
             sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
         except Exception:
-            sfc_prof = None # Si falla, ho gestionarem
+            # Si fins i tot aquest falla, el sondeig és realment inutilitzable
+            return None, "Error crític: No s'ha pogut calcular ni el perfil de superfície."
+            
+        # Intentem calcular el perfil de capa barrejada (Pla A)
+        try:
+            _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
+        except Exception:
+            ml_prof = None # Si falla, no passa res, seguirem amb el sfc_prof
 
-        # Si el perfil de capa barrejada (el més important) ha fallat, no podem continuar
-        if ml_prof is None:
-            return None, "Error crític calculant el perfil de la capa barrejada."
+        # El perfil de càlcul principal serà el ml_prof si existeix, si no, el sfc_prof
+        main_prof = ml_prof if ml_prof is not None else sfc_prof
 
         # --- 3. CÀLCULS ROBUSTS I AÏLLATS ---
-        # (La resta de la lògica indestructible que ja teníem)
+        # Aquests càlculs no depenen de la parcel·la
         try: params_calc['PWAT'] = float(mpcalc.precipitable_water(p, Td).to('mm').m)
         except: params_calc['PWAT'] = np.nan
         try:
@@ -363,33 +366,41 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         try: params_calc['LR_0-3km'] = float(mpcalc.lapse_rate(p, T, height=heights_agl, depth=3000 * units('m')).to('delta_degC/km').m)
         except: params_calc['LR_0-3km'] = np.nan
         
-        if sfc_prof is not None:
-            try:
-                sbcape, sbcin = mpcalc.cape_cin(p, T, Td, sfc_prof)
-                params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m)
-                params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if sbcape.m > 0 else 0.0
-            except: params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
-        
+        # Paràmetres de Superfície (SBCAPE)
         try:
-            mlcape, mlcin = mpcalc.cape_cin(p, T, Td, ml_prof)
-            params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
-        except: params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
-        try: params_calc['LI'] = float(mpcalc.lifted_index(p, T, ml_prof).m)
+            sbcape, sbcin = mpcalc.cape_cin(p, T, Td, sfc_prof)
+            params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m)
+            params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if sbcape.m > 0 else 0.0
+        except: params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
+        
+        # Paràmetres de Capa Barrejada (MLCAPE)
+        if ml_prof is not None:
+            try:
+                mlcape, mlcin = mpcalc.cape_cin(p, T, Td, ml_prof)
+                params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
+            except: params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
+        else: # Si ml_prof no existeix, MLCAPE no es pot calcular
+            params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
+
+        # Altres paràmetres termodinàmics, ara utilitzant 'main_prof'
+        try: params_calc['LI'] = float(mpcalc.lifted_index(p, T, main_prof).m)
         except: params_calc['LI'] = np.nan
         try:
-            lfc_p, _ = mpcalc.lfc(p, T, Td, ml_prof); params_calc['LFC_p'] = float(lfc_p.m)
+            lfc_p, _ = mpcalc.lfc(p, T, Td, main_prof); params_calc['LFC_p'] = float(lfc_p.m)
             params_calc['LFC_Hgt'] = float(np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1]))
         except: params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
         try:
-            el_p, _ = mpcalc.el(p, T, Td, ml_prof); params_calc['EL_p'] = float(el_p.m)
+            el_p, _ = mpcalc.el(p, T, Td, main_prof); params_calc['EL_p'] = float(el_p.m)
             params_calc['EL_Hgt'] = float(np.interp(el_p.m, p.m[::-1], heights_agl.m[::-1]))
         except: params_calc.update({'EL_p': np.nan, 'EL_Hgt': np.nan})
         try:
             idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
-            cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], ml_prof[:idx_3km+1])
+            cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], main_prof[:idx_3km+1])
             params_calc['CAPE_0-3km'] = float(cape_0_3.m)
         except: params_calc['CAPE_0-3km'] = np.nan
         
+        # ... (la resta de la funció amb cinemàtica, STP, SCP, etc., es manté igual,
+        # ja que la seva robustesa ja estava implementada) ...
         try:
             mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td); params_calc['MUCAPE'] = float(mucape.m)
             params_calc['MUCIN'] = float(mucin.m)
@@ -437,9 +448,8 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             params_calc['SCP'] = float(scp_val)
         except: params_calc['SCP'] = np.nan
 
-    # Retornem el perfil de superfície (sfc_prof) per al dibuix del Skew-T
+    # Retornem el perfil de superfície (sfc_prof) per al dibuix, que és el més robust
     return ((p, T, Td, u, v, heights, sfc_prof), params_calc), None
-
 
 
 
