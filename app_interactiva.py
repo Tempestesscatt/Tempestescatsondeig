@@ -337,23 +337,27 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     with parcel_lock:
         sfc_prof, ml_prof = None, None # Inicialitzem a None
         
-        # El perfil de superfície és el nostre Pla B segur
         try:
             sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
         except Exception:
-            # Si fins i tot aquest falla, el sondeig és realment inutilitzable
             return None, "Error crític: No s'ha pogut calcular ni el perfil de superfície."
             
-        # Intentem calcular el perfil de capa barrejada (Pla A)
         try:
             _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
         except Exception:
-            ml_prof = None # Si falla, no passa res, seguirem amb el sfc_prof
+            ml_prof = None 
 
-        # El perfil de càlcul principal serà el ml_prof si existeix, si no, el sfc_prof
         main_prof = ml_prof if ml_prof is not None else sfc_prof
 
         # --- 3. CÀLCULS ROBUSTS I AÏLLATS ---
+        try: 
+            rh = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
+            params_calc['RH_CAPES'] = {
+                'baixa': np.mean(rh[(p.m <= 1000) & (p.m > 850)]),
+                'mitjana': np.mean(rh[(p.m <= 850) & (p.m > 500)]),
+                'alta': np.mean(rh[(p.m <= 500) & (p.m > 250)])
+            }
+        except: params_calc['RH_CAPES'] = {'baixa': np.nan, 'mitjana': np.nan, 'alta': np.nan}
         try: params_calc['PWAT'] = float(mpcalc.precipitable_water(p, Td).to('mm').m)
         except: params_calc['PWAT'] = np.nan
         try:
@@ -412,7 +416,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                 params_calc[f'BWD_{name}'] = float(mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m)
         except: params_calc.update({'BWD_0-1km': np.nan, 'BWD_0-6km': np.nan})
         try:
-            rm, lm, _ = mpcalc.bunker_storm_motion(p, u, v, heights)
+            rm, lm, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
             params_calc['RM'] = (float(rm[0].m), float(rm[1].m)); params_calc['LM'] = (float(lm[0].m), float(lm[1].m))
         except: params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan)})
         
@@ -444,8 +448,40 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             params_calc['SCP'] = float(scp_val)
         except: params_calc['SCP'] = np.nan
 
-    # Retornem el perfil de superfície (sfc_prof) per al dibuix, que és el més robust
     return ((p, T, Td, u, v, heights, sfc_prof), params_calc), None
+
+
+def diagnosticar_potencial_tempesta(params):
+    """
+    Versió Definitiva i Lògica v2.0.
+    Retorna el text del diagnòstic I el seu color corresponent, garantint una
+    coherència visual del 100% a l'hodògraf.
+    """
+    bwd_6km = params.get('BWD_0-6km', 0) or 0
+    srh_1km = params.get('SRH_0-1km', 0) or 0
+    lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
+    cape = params.get('MLCAPE', params.get('SBCAPE', 0)) or 0
+
+    bwd_thresh = THRESHOLDS_GLOBALS['BWD_0-6km']
+    srh_thresh = THRESHOLDS_GLOBALS['SRH_0-1km']
+
+    tipus_tempesta = "Cèl·lula Simple"; color_tempesta = "#2ca02c"
+    if bwd_6km >= bwd_thresh[2] and cape > 1200:
+        tipus_tempesta = "Supercèl·lula"; color_tempesta = "#dc3545"
+    elif bwd_6km >= bwd_thresh[1] and cape > 800:
+        tipus_tempesta = "Multicèl·lula Severa"; color_tempesta = "#fd7e14"
+    elif bwd_6km >= bwd_thresh[0] and cape > 500:
+        tipus_tempesta = "Multicèl·lula"; color_tempesta = "#ffc107"
+
+    base_nuvol = "Plana i Alta"; color_base = "#2ca02c"
+    if srh_1km >= srh_thresh[2] and lcl_hgt < 1200:
+        base_nuvol = "Tornàdica (Wall Cloud)"; color_base = "#dc3545"
+    elif srh_1km >= srh_thresh[1] and lcl_hgt < 1500:
+        base_nuvol = "Rotatòria Forta"; color_base = "#fd7e14"
+    elif srh_1km >= srh_thresh[0]:
+        base_nuvol = "Rotatòria (Inflow)"; color_base = "#ffc107"
+        
+    return tipus_tempesta, color_tempesta, base_nuvol, color_base
 
 
     
@@ -813,8 +849,12 @@ def carregar_dades_mapa_base_cat(variables, hourly_index):
         output = {var: [] for var in ["lats", "lons"] + variables}
         
         for r in responses:
-            vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
-            
+            # Utilitzem un bloc try-except per si l'índex està fora de rang
+            try:
+                vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
+            except IndexError:
+                continue # Si l'hora no existeix, simplement saltem aquest punt
+
             if np.isnan(vals).any():
                 continue
             
@@ -823,16 +863,14 @@ def carregar_dades_mapa_base_cat(variables, hourly_index):
             for i, var in enumerate(variables): 
                 output[var].append(vals[i])
 
-        # --- LÍNIA CLAU MODIFICADA ---
-        # Si, després de filtrar, la llista està buida, el més probable és que l'hora estigui caducada.
         if not output["lats"]: 
             return None, "Dades caducades o no disponibles per a l'hora i nivell seleccionats."
-        # --- FI DE LA MODIFICACIÓ ---
             
         return output, None
         
     except Exception as e: 
         return None, f"Error en carregar dades del mapa: {e}"
+        
         
 @st.cache_data(ttl=1800, max_entries=10, show_spinner=False)        
 def carregar_dades_mapa_base_cat(variables, hourly_index):
