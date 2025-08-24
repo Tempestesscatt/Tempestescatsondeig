@@ -589,16 +589,7 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     # S'ha eliminat la 'g' final que causava un error de sintaxi.
     return fig
         
-    except Exception as e:
-        # Fallback per a errors greus
-        fig, ax = plt.subplots(figsize=(7, 8), dpi=150)
-        ax.set_facecolor('#f8f9fa')
-        ax.text(0.5, 0.5, "Error en la generació del Skew-T", 
-                ha='center', va='center', transform=ax.transAxes,
-                fontsize=12, color='red')
-        ax.set_title("Error en el gràfic", color='red', weight='bold')
-        ax.axis('off')
-        return fig
+
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
     gs = fig.add_gridspec(nrows=2, ncols=2, height_ratios=[1.5, 6], width_ratios=[1.5, 1], hspace=0.4, wspace=0.3)
