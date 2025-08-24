@@ -756,13 +756,32 @@ def carregar_dades_sondeig_cat(lat, lon, hourly_index):
         params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_seamless", "forecast_days": 4}
         response = openmeteo.weather_api(API_URL_CAT, params=params)[0]
         hourly = response.Hourly()
-        sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i, v in enumerate(h_base)}
-        if any(np.isnan(val) for val in sfc_data.values()): return None, "Dades de superfície invàlides."
+
+        valid_index = None
+        max_hours_to_check = 3
+        total_hours = len(hourly.Variables(0).ValuesAsNumpy())
+
+        for offset in range(max_hours_to_check + 1):
+            indices_to_try = sorted(list(set([hourly_index + offset, hourly_index - offset])))
+            for h_idx in indices_to_try:
+                if 0 <= h_idx < total_hours:
+                    sfc_check = [hourly.Variables(i).ValuesAsNumpy()[h_idx] for i in range(len(h_base))]
+                    if not any(np.isnan(val) for val in sfc_check):
+                        valid_index = h_idx
+                        break
+            if valid_index is not None:
+                break
+        
+        if valid_index is None:
+            # RETORN SIMPLIFICAT
+            return None, hourly_index, "No s'han trobat dades vàlides properes a l'hora sol·licitada."
+        
+        sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[valid_index] for i, v in enumerate(h_base)}
         
         p_data = {}
         var_count = len(h_base)
         for i, var in enumerate(["T", "RH", "WS", "WD", "H"]):
-            p_data[var] = [hourly.Variables(var_count + i * len(PRESS_LEVELS_AROME) + j).ValuesAsNumpy()[hourly_index] for j in range(len(PRESS_LEVELS_AROME))]
+            p_data[var] = [hourly.Variables(var_count + i * len(PRESS_LEVELS_AROME) + j).ValuesAsNumpy()[valid_index] for j in range(len(PRESS_LEVELS_AROME))]
         
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
         p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
@@ -775,10 +794,14 @@ def carregar_dades_sondeig_cat(lat, lon, hourly_index):
                 u, v = mpcalc.wind_components(p_data["WS"][i] * units('km/h'), p_data["WD"][i] * units.degrees)
                 u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m); h_profile.append(p_data["H"][i])
         
-        return processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
+        processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
+        # RETORN SIMPLIFICAT
+        return processed_data, valid_index, error
+        
     except Exception as e: 
-        return None, f"Error en carregar dades del sondeig AROME: {e}"
-
+        # RETORN SIMPLIFICAT
+        return None, hourly_index, f"Error en carregar dades del sondeig AROME: {e}"
+        
 @st.cache_data(ttl=1800, max_entries=10, show_spinner=False)        
 def carregar_dades_mapa_base_cat(variables, hourly_index):
     try:
@@ -1014,8 +1037,27 @@ def carregar_dades_sondeig_usa(lat, lon, hourly_index):
         params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "gfs_seamless", "forecast_days": 3}
         response = openmeteo.weather_api(API_URL_USA, params=params)[0]
         hourly = response.Hourly()
-        sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[hourly_index] for i, v in enumerate(h_base)}
-        if any(np.isnan(val) for val in sfc_data.values()): return None, "Dades de superfície invàlides."
+
+        valid_index = None
+        max_hours_to_check = 3
+        total_hours = len(hourly.Variables(0).ValuesAsNumpy())
+
+        for offset in range(max_hours_to_check + 1):
+            indices_to_try = sorted(list(set([hourly_index + offset, hourly_index - offset])))
+            for h_idx in indices_to_try:
+                if 0 <= h_idx < total_hours:
+                    sfc_check = [hourly.Variables(i).ValuesAsNumpy()[h_idx] for i in range(len(h_base))]
+                    if not any(np.isnan(val) for val in sfc_check):
+                        valid_index = h_idx
+                        break
+            if valid_index is not None:
+                break
+        
+        if valid_index is None:
+            # RETORN SIMPLIFICAT
+            return None, hourly_index, "No s'han trobat dades vàlides properes a l'hora sol·licitada."
+
+        sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[valid_index] for i, v in enumerate(h_base)}
 
         sfc_temp_C = sfc_data["temperature_2m"] * units.degC
         sfc_rh_percent = sfc_data["relative_humidity_2m"] * units.percent
@@ -1024,7 +1066,7 @@ def carregar_dades_sondeig_usa(lat, lon, hourly_index):
         p_data = {}
         var_count = len(h_base)
         for i, var in enumerate(["T", "RH", "WS", "WD", "H"]):
-            p_data[var] = [hourly.Variables(var_count + i * len(PRESS_LEVELS_GFS) + j).ValuesAsNumpy()[hourly_index] for j in range(len(PRESS_LEVELS_GFS))]
+            p_data[var] = [hourly.Variables(var_count + i * len(PRESS_LEVELS_GFS) + j).ValuesAsNumpy()[valid_index] for j in range(len(PRESS_LEVELS_GFS))]
         
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
         p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_dew_point], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
@@ -1037,9 +1079,12 @@ def carregar_dades_sondeig_usa(lat, lon, hourly_index):
                 u, v = mpcalc.wind_components(p_data["WS"][i] * units('km/h'), p_data["WD"][i] * units.degrees)
                 u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m); h_profile.append(p_data["H"][i])
 
-        return processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
+        processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
+        # RETORN SIMPLIFICAT
+        return processed_data, valid_index, error
     except Exception as e:
-        return None, f"Error en carregar dades del sondeig GFS: {e}"
+        # RETORN SIMPLIFICAT
+        return None, hourly_index, f"Error en carregar dades del sondeig GFS: {e}"
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_base_usa(variables, hourly_index):
@@ -1521,7 +1566,7 @@ def ui_peu_de_pagina():
 # --- Lògica Principal de l'Aplicació ---
 
 def run_catalunya_app():
-    # ... (tota la part A i B de la funció es manté igual) ...
+    # ... (tota la part A i B es mantenen igual) ...
     is_guest = st.session_state.get('guest_mode', False)
     now_local = datetime.now(TIMEZONE_CAT)
     hora_sel_str = f"{now_local.hour:02d}:00h" if is_guest else st.session_state.get('hora_selector', f"{now_local.hour:02d}:00h")
@@ -1590,13 +1635,14 @@ def run_catalunya_app():
         
     elif selected_tab in ["Anàlisi Vertical", "💬 Assistent IA"]:
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
-            (data_tuple, final_index), error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+            # DESEMPAQUETAT SIMPLIFICAT
+            data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
         
         if not error_msg and final_index != hourly_index_sel:
             now_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
             adjusted_utc = now_utc + timedelta(hours=final_index)
             adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
-            st.warning(f"**Avís:** No hi havia dades disponibles per a les {hora_sel_str} (possiblement per actualització del model). Es mostren les dades de l'hora més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+            st.warning(f"**Avís:** No hi havia dades disponibles per a les {hora_sel_str}. Es mostren les de l'hora més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
 
         if error_msg:
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
@@ -1614,7 +1660,7 @@ def run_catalunya_app():
         ui_pestanya_estacions_meteorologiques()
 
 def run_valley_halley_app():
-    # --- PART A: Configuració comuna i dades per a la capçalera ---
+    # ... (tota la part A i B es mantenen igual) ...
     now_local_usa = datetime.now(TIMEZONE_USA)
     dia_sel_str = st.session_state.get('dia_selector_usa', "Avui")
     hora_sel_str = st.session_state.get('hora_selector_usa', f"{now_local_usa.hour:02d}:00")
@@ -1632,7 +1678,6 @@ def run_valley_halley_app():
     if not error_map and map_data_conv_inicial:
         convergencies_usa = calcular_convergencies_per_llista(map_data_conv_inicial, USA_CITIES)
     
-    # --- PART B: Dibuixar la interfície (capçalera i navegació) ---
     ui_capcalera_selectors(None, zona_activa="tornado_alley", convergencies=convergencies_usa)
     
     nivells_disponibles_gfs = [925, 850, 700, 500, 300]
@@ -1646,7 +1691,6 @@ def run_valley_halley_app():
     menu_options_usa = ["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"]
     menu_icons_usa = ["map-fill", "graph-up-arrow", "globe-americas"]
 
-    # --- LÒGICA CLAU PER MANTENIR L'ESTAT DE LA PESTANYA ---
     if 'active_tab_usa' not in st.session_state:
         st.session_state.active_tab_usa = menu_options_usa[0]
 
@@ -1678,8 +1722,15 @@ def run_valley_halley_app():
             
     elif selected_tab_usa == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
-            data_tuple, error_msg = carregar_dades_sondeig_usa(lat_sel, lon_sel, hourly_index_sel)
+            # DESEMPAQUETAT SIMPLIFICAT
+            data_tuple, final_index, error_msg = carregar_dades_sondeig_usa(lat_sel, lon_sel, hourly_index_sel)
         
+        if not error_msg and final_index != hourly_index_sel:
+            now_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            adjusted_utc = now_utc + timedelta(hours=final_index)
+            adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_USA)
+            st.warning(f"**Avís:** No hi havia dades disponibles per a les {hora_sel_str}. Es mostren les de l'hora més propera: **{adjusted_local_time.strftime('%H:%M')}** (Central Time).")
+
         if error_msg:
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
