@@ -1539,7 +1539,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             with col_hora: st.selectbox("Hora:", (f"{now_local.hour:02d}:00h",) if is_guest else [f"{h:02d}:00h" for h in range(24)], key="hora_selector", disabled=is_guest)
             with col_nivell:
                 if not is_guest:
-                    nivells = [1000, 975, 950, 925, 900, 850, 800, 700, 500, 300]
+                    nivells = [1000, , 950, 925, 900, 850, 800, 700, 500, 300]
                     st.selectbox("Nivell:", nivells, key="level_cat_main", index=3, format_func=lambda x: f"{x} hPa")
                 else: st.session_state.level_cat_main = 925
         
@@ -1563,7 +1563,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             with col_dia_usa: st.selectbox("Dia:", ("Avui", "Demà", "Demà passat"), key="dia_selector_usa")
             with col_hora_usa: st.selectbox("Hora (CST):", [f"{h:02d}:00" for h in range(24)], key="hora_selector_usa")
             with col_nivell_usa:
-                nivells_gfs = [975, 950, 925, 900, 850, 700, 500, 300]
+                nivells_gfs = [1000, 950, 925, 900, 850, 700, 500, 300]
                 st.selectbox("Nivell (hPa):", options=nivells_gfs, key="level_usa_main", index=4)
                 
                 
