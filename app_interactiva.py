@@ -1837,10 +1837,11 @@ def main():
 
 def determinar_emoji_temps(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Meteorològic Expert v4.0
-    Utilitza RH per capes per a un diagnòstic precís del temps estable.
+    Sistema de Diagnòstic Meteorològic Expert v8.0
+    Implementa un sistema de "Potencial de Disparador" que dona prioritat a la
+    intensitat de la convergència per a un diagnòstic de convecció superior.
     """
-    # --- 0. DETERMINAR SI ÉS DE NIT O DE DIA ---
+    # --- 0. PREPARACIÓ ---
     es_de_nit = False
     if hora_actual:
         try:
@@ -1849,71 +1850,91 @@ def determinar_emoji_temps(params, nivell_conv, hora_actual=None):
         except (ValueError, AttributeError):
             es_de_nit = False
 
-    # --- 1. EXTREURE PARÀMETRES ---
+    # --- 1. EXTRACCIÓ DE PARÀMETRES ---
+    mlcape = params.get('MLCAPE', 0) or 0
     mucape = params.get('MUCAPE', 0) or 0
-    li = params.get('LI', 5) or 5
     cin = params.get('MLCIN', params.get('SBCIN', 0)) or 0
+    li = params.get('LI', 5) or 5
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     srh_1km = params.get('SRH_0-1km', 0) or 0
     lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
+    lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
     rh_capes = params.get('RH_CAPES', {'baixa': 0, 'mitjana': 0, 'alta': 0})
     
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
 
-    # --- 2. DIAGNÒSTIC DE CONVECCIÓ (PRIORITAT MÀXIMA) ---
-    hi_ha_inestabilitat = (mucape > 300 or li < -2)
+    # --- 2. AVALUACIÓ DEL POTENCIAL DE DISPARADOR ---
+    hi_ha_inestabilitat_latent = (mucape > 150 or li < -1)
+    trigger_potential = 'Nul'
 
-    if hi_ha_inestabilitat:
+    if hi_ha_inestabilitat_latent:
         FACTOR_CONV = 5.0
         cin_efectiu = abs(min(0, cin))
-        forçament_dinamic = (conv * FACTOR_CONV) if conv > 2 else 0
+        forçament_dinamic = (conv * FACTOR_CONV) if conv > 1 else 0
         forçament_net = forçament_dinamic - cin_efectiu
 
-        if forçament_net < -50:
-            return "🌤️", "Convecció Capada"
+        # Classifiquem la força del disparador basant-nos en la convergència
+        # Un disparador FORT pot superar un CIN significatiu.
+        if conv >= 30:
+            if forçament_net > -75: trigger_potential = 'Fort'
+        elif conv >= 15:
+            if forçament_net > -40: trigger_potential = 'Moderat'
+        elif conv >= 5:
+            if forçament_net > -20: trigger_potential = 'Feble'
         
-        cape_real = max(params.get('MLCAPE', 0), mucape)
+        # Si no hi ha convergència, la convecció només es dispara si no hi ha CIN
+        elif cin_efectiu < 15:
+            trigger_potential = 'Feble'
 
-        if bwd_6km >= 35 and srh_1km > 125 and cape_real > 1200:
-            if lcl_hgt < 1200 and srh_1km > 200:
-                return "🌪️", "Supercèl·lula (Alt Risc Tornàdic)"
-            return "🌪️", "Supercèl·lula (Calamarsa Severa)"
-        if bwd_6km >= 20 and cape_real > 800:
+    # --- 3. DIAGNÒSTIC JERÀRQUIC BASAT EN EL POTENCIAL DE DISPARADOR ---
+
+    # PRIORITAT 1: Tempestes Severes (requereixen disparador i dinàmica)
+    if trigger_potential in ['Fort', 'Moderat']:
+        cape_real = max(mlcape, mucape)
+        if cape_real > 1200 and bwd_6km > 25:
+            if bwd_6km >= 35 and srh_1km > 125:
+                if lcl_hgt < 1200 and srh_1km > 200: return "🌪️", "Supercèl·lula (Potencial Tornàdic)"
+                return "🌪️", "Supercèl·lula (Calamarsa Severa)"
             return "⛈️", "Tempestes Organitzades"
-        return "🌩️", "Tempesta Aïllada"
 
-    # --- 3. DIAGNÒSTIC DE TEMPS ESTABLE BASAT EN RH PER CAPES ---
-    # Si arribem aquí, no hi ha inestabilitat convectiva.
-    
-    rh_baixa = rh_capes.get('baixa', 0)
-    rh_mitjana = rh_capes.get('mitjana', 0)
-    rh_alta = rh_capes.get('alta', 0)
+    # PRIORITAT 2: Tempestes Comunes Aïllades
+    if trigger_potential in ['Fort', 'Moderat', 'Feble']:
+        cape_real = max(mlcape, mucape)
+        if cape_real > 800 and trigger_potential != 'Nul':
+             return "🌩️", "Tempesta Aïllada"
 
-    # Condició de Nimbostratus / Pluja Estratiforme
-    if rh_baixa > 85 and rh_mitjana > 80:
-        return "🌧️", "Pluja Dèbil (Nimboestratus)"
+    # PRIORITAT 3: Núvols Convectius Intermedis
+    if trigger_potential != 'Nul':
+        if mucape > 250 and mlcape < 150 and lcl_hgt > 1800 and rh_capes.get('mitjana', 0) > 60 and lfc_hgt < 3500:
+            if es_de_nit: return "🌙☁️", "Nit Inestable (Castellanus)"
+            return "🌥️", "Inestabilitat (Altocumulus Castellanus)"
+        if 400 < mlcape <= 1000 and cin > -50 and lfc_hgt < 2500:
+            if es_de_nit: return "🌙☁️", "Nit amb Desenvolupament Vertical"
+            return "☁️", "Núvols de Gran Desenvolupament (Congestus)"
+        if 50 < mlcape <= 400 and cin > -25:
+            if es_de_nit: return "🌙", "Nit amb Poca Nuvolositat"
+            return "🌤️", "Núvols de Bon Temps (Humilis)"
 
-    # Condició de Boira
-    if lcl_hgt < 150 and rh_baixa > 95:
-        return "🌫️", "Boira o Boirina"
+    # --- 4. PRIORITAT 4: NÚVOLS ESTABLES (si no hi ha cap tipus de convecció) ---
+    rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
+    rh_mitjana = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0
+    rh_alta = rh_capes.get('alta', 0) if pd.notna(rh_capes.get('alta')) else 0
 
-    # Condició de Núvols Baixos (Estratus/Estratocúmulus)
-    if rh_baixa > 80:
-        if es_de_nit: return "☁️", "Nit Ennuvolada"
-        return "☁️", "Cel Cobert (Núvols Baixos)"
-    
-    # Condició de Núvols Mitjans (Altocúmulus/Altostratus)
+    if rh_baixa > 85 and rh_mitjana > 80: return "🌧️", "Pluja/Plugim (Nimboestratus)"
+    if lcl_hgt < 150 and rh_baixa > 95: return "🌫️", "Boira o Boirina"
+    if rh_baixa > 75:
+        if es_de_nit: return "☁️", "Nit Coberta (Estratus)"
+        if lcl_hgt < 800: return "☁️", "Cel Cobert (Estratus)"
+        return "🌥️", "Núvols Baixos (Estratocúmulus)"
     if rh_mitjana > 70:
         if es_de_nit: return "🌙☁️", "Nit amb Núvols Mitjans"
-        return "🌥️", "Cel Variable (Núvols Mitjans)"
-
-    # Condició de Núvols Alts (Cirrus)
+        return "🌥️", "Núvols Mitjans (Altocúmulus)"
     if rh_alta > 60:
-        if es_de_nit: return "🌙", "Nit amb Núvols Alts"
-        return "🌤️", "Cel Poc Ennuvolat (Núvols Alts)"
+        if es_de_nit: return "🌙", "Nit amb Vels Alts (Cirrus)"
+        return "🌤️", "Núvols Alts (Cirrus)"
 
-    # --- 4. CAS PER DEFECTE (Bon temps) ---
+    # --- PRIORITAT 5: CEL SERÈ ---
     if es_de_nit:
         return "🌙", "Nit Serena"
     return "☀️", "Cel Serè"
