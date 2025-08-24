@@ -1035,14 +1035,15 @@ def mostrar_spinner_mapa(mensaje, funcion_carga, *args, **kwargs):
     """
     # Placeholders para el spinner y el mapa
     spinner_placeholder = st.empty()
-    mapa_placeholder = st.empty()
     result_container = [None]
     error_container = [None]
     
     # Función para ejecutar en segundo plano
     def cargar_mapa():
         try:
-            result_container[0] = funcion_carga(*args, **kwargs)
+            # LA FUNCIÓN DEVUELVE UNA TUPLA (data, error)
+            result = funcion_carga(*args, **kwargs)
+            result_container[0] = result
         except Exception as e:
             error_container[0] = e
     
@@ -1070,7 +1071,7 @@ def mostrar_spinner_mapa(mensaje, funcion_carga, *args, **kwargs):
         </div>
         """, unsafe_allow_html=True)
         
-        time.sleep(0.5)  # Actualizar cada medio segundo
+        time.sleep(0.5)
     
     # Cuando termine el hilo
     thread.join()
@@ -1078,12 +1079,13 @@ def mostrar_spinner_mapa(mensaje, funcion_carga, *args, **kwargs):
     # Limpiar spinner
     spinner_placeholder.empty()
     
-    # Manejar resultados
+    # Manejar resultados - LA FUNCIÓN DEVUELVE UNA TUPLA (data, error)
     if error_container[0]:
         st.error(f"Error carregant el mapa: {error_container[0]}")
         return None, str(error_container[0])
     
-    return result_container[0], None
+    # Devolver la tupla completa (data, error)
+    return result_container[0]
         
             
 @st.cache_data(ttl=3600)
@@ -1425,12 +1427,18 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
     
     if "Convergència" in mapa_sel:
-        # USAR EL NUEVO SPINNER
-        map_data, error_map = mostrar_spinner_mapa(
+        # USAR EL NUEVO SPINNER - AHORA DEVUELVE LA TUPLA COMPLETA
+        result = mostrar_spinner_mapa(
             "Generant mapa de convergència...", 
             carregar_dades_mapa_cat, 
             nivell_sel, hourly_index_sel
         )
+        
+        # DESEMPAQUETAR LA TUPLA
+        if result is not None:
+            map_data, error_map = result
+        else:
+            map_data, error_map = None, "Error desconegut"
         
         if error_map: 
             st.error(f"Error en carregar el mapa: {error_map}")
@@ -1449,11 +1457,17 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
         nivell = 700 if "700" in mapa_sel else 300
         variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
         
-        map_data, error_map = mostrar_spinner_mapa(
+        result = mostrar_spinner_mapa(
             f"Carregant vent a {nivell}hPa...",
             carregar_dades_mapa_base_cat,
             variables, hourly_index_sel
         )
+        
+        # DESEMPAQUETAR LA TUPLA
+        if result is not None:
+            map_data, error_map = result
+        else:
+            map_data, error_map = None, "Error desconegut"
         
         if error_map: 
             st.error(f"Error: {error_map}")
