@@ -1304,7 +1304,6 @@ def run_catalunya_app():
         for ciutat in sorted(CIUTATS_CATALUNYA.keys()):
             conv = convergencies.get(ciutat, 0)
             
-            # --- BLOC MODIFICAT: Eliminem la comprovació de CAPE ---
             if conv >= 40:
                 ciutats_formatejades.append(f"{ciutat} (⚡ Molt Recomanat)")
             elif conv >= 15:
@@ -1312,7 +1311,6 @@ def run_catalunya_app():
             else:
                 ciutats_formatejades.append(ciutat)
         
-        # --- NOVA LÍNIA: Reordenem la llista per prioritat de recomanació ---
         ciutats_per_selector = sorted(ciutats_formatejades, key=lambda c: (0 if "⚡" in c else 1 if "Potencial" in c else 2, c))
 
     
@@ -1339,10 +1337,11 @@ def run_catalunya_app():
         conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
         params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
     
+    # --- CORRECCIÓ: Passem hora_sel_str a ui_pestanya_vertical ---
     if is_guest:
         tab_mapes, tab_vertical, tab_estacions = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Estacions Meteorològiques"])
         with tab_mapes: ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
-        with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
+        with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str)
         with tab_estacions: ui_pestanya_estacions_meteorologiques()
     else:
         tab_mapes, tab_vertical, tab_ia, tab_estacions = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "💬 Assistent IA", "Estacions Meteorològiques"])
