@@ -1013,29 +1013,21 @@ def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str
 
 def mostrar_carga_avanzada(mensaje, funcion_a_ejecutar, *args, **kwargs):
     """
-    Diferencia clara: navegación instantánea, mapas con spinner real
+    Versión simplificada y funcional
     """
-    # LISTA DE OPERACIONES RÁPIDAS (navegación)
-    operaciones_rapidas = [
-        "sortir", "tancar", "canviar", "entrar", "inici", 
-        "obrir", "seleccionar", "nav", "change", "exit",
-        "logout", "login", "zona", "area"
-    ]
+    # Operaciones de navegación (rápidas)
+    operaciones_rapidas = ["sortir", "tancar", "canviar", "entrar", "seleccionar", "nav", "zona"]
     
-    es_rapida = any(palabra in mensaje.lower() for palabra in operaciones_rapidas)
-    
-    if es_rapida:
-        # NAVEGACIÓN: instantánea, sin esperas
+    if any(palabra in mensaje.lower() for palabra in operaciones_rapidas):
+        # Navegación: muy rápida
+        with st.spinner(f"⚡ {mensaje}"):
+            time.sleep(0.8)
         return None
     
+    # Operaciones de datos (las que tardan)
     else:
-        # OPERACIÓN PESADA: spinner con ejecución real
         with st.spinner(f"🌪️ {mensaje}..."):
             return funcion_a_ejecutar(*args, **kwargs)
-            
-        finally:
-            progress_bar.empty()
-            status_text.empty()
 
 
 # Y para las operaciones de navegación, usar mensajes específicos:
