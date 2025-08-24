@@ -1450,7 +1450,7 @@ def main():
     elif st.session_state['zone_selected'] == 'valley_halley': run_valley_halley_app()
 
 
-    def determinar_emoji_temps(params, nivell_conv):
+def determinar_emoji_temps(params, nivell_conv):
     """
     Sistema de Diagnòstic Meteorològic Expert.
     Analitza la interacció complexa de paràmetres (termodinàmics i dinàmics)
