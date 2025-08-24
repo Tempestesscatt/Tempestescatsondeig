@@ -119,9 +119,7 @@ THRESHOLDS_GLOBALS = {
     'MAX_UPDRAFT': (25, 40, 55) # >25m/s (Groc), >40m/s (Taronja), >55m/s (Vermell)
 }
 
-print(f"P: {p.m[:5]}...")
-print(f"T: {T.m[:5]}...") 
-print(f"Td: {Td.m[:5]}...")
+
 
 def get_color_global(value, param_key, reverse_colors=False):
     """
