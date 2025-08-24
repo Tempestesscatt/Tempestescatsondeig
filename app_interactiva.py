@@ -850,9 +850,9 @@ def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str
 
 # --- Funcions Específiques per a Tornado Alley ---
 
+@st.cache_data(ttl=3600)
 def carregar_dades_sondeig_usa(lat, lon, hourly_index):
     try:
-        mostrar_barra_carrega()
         h_base = ["temperature_2m", "relative_humidity_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS_GFS]
         params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "gfs_seamless", "forecast_days": 3}
@@ -884,13 +884,10 @@ def carregar_dades_sondeig_usa(lat, lon, hourly_index):
         return processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
     except Exception as e:
         return None, f"Error en carregar dades del sondeig GFS: {e}"
-    finally:
-        amagar_barra_carrega()
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_usa(nivell, hourly_index):
     try:
-        mostrar_barra_carrega()
         variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
         map_data_raw, error = carregar_dades_mapa_base_usa(variables, hourly_index)
         if error: return None, error
@@ -902,8 +899,6 @@ def carregar_dades_mapa_usa(nivell, hourly_index):
         return map_data_raw, None
     except Exception as e:
         return None, f"Error en processar dades del mapa GFS: {e}"
-    finally:
-        amagar_barra_carrega()
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_usa(nivell, hourly_index):
@@ -1350,6 +1345,7 @@ def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel):
     try:
         mostrar_barra_carrega()
         st.markdown("#### Mapes de Pronòstic (Model GFS)")
+        
         with st.spinner(f"Carregant dades del mapa GFS a {nivell_sel}hPa..."):
             map_data, error_map = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
         
@@ -1536,7 +1532,13 @@ def run_valley_halley_app():
     timestamp_str = f"{dia_sel_str} a les {hora_sel_str} (Central Time)"
     lat_sel, lon_sel = USA_CITIES[poble_sel]['lat'], USA_CITIES[poble_sel]['lon']
     
-    data_tuple, error_msg = carregar_dades_sondeig_usa(lat_sel, lon_sel, hourly_index_sel)
+    # BARRA DE CÀRREGA PER AL SONDEIG
+    try:
+        mostrar_barra_carrega()
+        data_tuple, error_msg = carregar_dades_sondeig_usa(lat_sel, lon_sel, hourly_index_sel)
+    finally:
+        amagar_barra_carrega()
+        
     if error_msg:
         st.error(f"No s'ha pogut carregar el sondeig per a {poble_sel}: {error_msg}")
         return
@@ -1549,19 +1551,27 @@ def run_valley_halley_app():
         key="level_usa_main"
     )
 
-    map_data_conv, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
+    # BARRA DE CÀRREGA PER AL MAPA
+    try:
+        mostrar_barra_carrega()
+        map_data_conv, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
+    finally:
+        amagar_barra_carrega()
 
     params_calc = data_tuple[1] if data_tuple else {}
     if data_tuple and map_data_conv:
         conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
         params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
 
-    # --- CORRECCIÓ: Passem hora_sel_str a ui_pestanya_vertical ---
     tab_mapes, tab_vertical, tab_satelit = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"])
+    
     with tab_mapes:
+        # La barra de càrrega es mostrarà dins de ui_pestanya_mapes_usa
         ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel)
+    
     with tab_vertical:
         ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str)
+    
     with tab_satelit:
         ui_pestanya_satelit_usa()
         
