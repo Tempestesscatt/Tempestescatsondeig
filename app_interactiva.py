@@ -2241,9 +2241,9 @@ def main():
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Meteorològic Expert v14.0 - LÒGICA FINAL
+    Sistema de Diagnòstic Meteorològic Expert v15.0 - LÒGICA CORREGIDA AMB VIRGA
     Implementa una clàusula d'excepció per a casos de forçament dinàmic extrem
-    (convergència molt alta), que pot superar LFCs alts o CIN moderat.
+    i ara detecta específicament la formació de Castellanus amb Virga.
     """
     # --- 0. PREPARACIÓ ---
     es_de_nit = False
@@ -2279,7 +2279,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
         FACTOR_CONV = 5.0; cin_efectiu = abs(min(0, cin))
         forçament_dinamic = (conv * FACTOR_CONV) if conv > 1 else 0
         forçament_net = forçament_dinamic - cin_efectiu
-        if conv >= 40 and forçament_net > -100: trigger_potential = 'Extrem' # <-- NOU NIVELL
+        if conv >= 40 and forçament_net > -100: trigger_potential = 'Extrem'
         elif conv >= 30 and forçament_net > -75: trigger_potential = 'Fort'
         elif conv >= 15 and forçament_net > -40: trigger_potential = 'Moderat'
         elif conv >= 5 and forçament_net > -20: trigger_potential = 'Feble'
@@ -2287,7 +2287,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
 
     # --- 3. DIAGNÒSTIC JERÀRQUIC AVANÇAT ---
     
-    # --- NOVA CLÀUSULA D'EXCEPCIÓ PER FORÇAMENT EXTREM ---
+    # Clàusula d'excepció per forçament extrem
     if trigger_potential == 'Extrem' and mlcape > 500:
         desc_amenaces = ""
         if max_updraft > 30: desc_amenaces += " amb Risc de Calamarsa"
@@ -2296,10 +2296,9 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
                 'veredicte': f"Potencial de tempestes severes forçades per una línia de convergència molt intensa{desc_amenaces}.", 
                 'factor_clau': "Convergència extrema (>40), que actua com un pistó i pot trencar tapes d'inversió significatives."}
     
-    # Prioritat 1: Tempestes Severes (condicions normals)
+    # Prioritat 1: Tempestes Severes
     cape_real = mlcape
     if trigger_potential in ['Fort', 'Moderat'] and cape_real > 1000 and bwd_6km > 20 and lfc_hgt < 3000:
-        # ... (la lògica de diagnòstic de severitat es manté igual) ...
         desc_calamarsa = ""; desc_vent = ""; desc_pluja = ""
         if max_updraft > 35 and freezing_lvl_hgt < 4000:
             if max_updraft > 50: desc_calamarsa = "Calamarsa Severa"
@@ -2319,12 +2318,22 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     if trigger_potential != 'Nul' and mucape > 700:
         desc_calamarsa = " amb Risc de Calamarsa" if max_updraft > 25 and freezing_lvl_hgt < 4200 else ""
         if mlcape < 300 and mucape > 800:
-            return {'emoji': "🌩️", 'descripcio': "Tempesta de Base Alta" + desc_calamarsa, 'veredicte': f"Tempestes que es formen a nivells mitjans{desc_calamarsa}.", 'factor_clau': "Forta inestabilitat elevada (MUCAPE) que supera una capa estable a la superfície."}
-        if cape_real > 500: # Afegim una condició mínima de CAPE real
-            return {'emoji': "🌩️", 'descripcio': "Tempesta Aïllada" + desc_calamarsa, 'veredicte': f"Potencial de tempestes aïllades{desc_calamarsa}.", 'factor_clau': "Inestabilitat suficient i un disparador efectiu, però sense prou organització."}
+            return {'emoji': "🌩️", 'descripcio': "Tempesta de Base Alta" + desc_calamarsa, 'veredicte': f"Tempestes que es formen a nivells mitjans{desc_amenaces}.", 'factor_clau': "Forta inestabilitat elevada (MUCAPE) que supera una capa estable a la superfície."}
+        if cape_real > 500:
+            return {'emoji': "🌩️", 'descripcio': "Tempesta Aïllada" + desc_calamarsa, 'veredicte': f"Potencial de tempestes aïllades{desc_amenaces}.", 'factor_clau': "Inestabilitat suficient i un disparador efectiu, però sense prou organització."}
 
     # Prioritat 3: Núvols Convectius (sense arribar a tempesta)
     if trigger_potential != 'Nul':
+        # --- NOU BLOC CORREGIT ---
+        # Aquesta és la nova condició específica per a Castellanus amb Virga.
+        rh_baixa_val = rh_capes.get('baixa', 100)
+        rh_mitjana_val = rh_capes.get('mitjana', 0)
+        if mucape > 250 and mlcape < 200 and rh_mitjana_val > 65 and rh_baixa_val < 50:
+             return {'emoji': "🌥️", 'descripcio': "Castellanus amb Virga", 
+                     'veredicte': "Potencial per a Altocumulus Castellanus amb virga. Convecció de base elevada amb precipitació que s'evapora.", 
+                     'factor_clau': "Capa humida i inestable a nivells mitjans sobre una capa molt seca a nivells baixos."}
+        # --- FI DEL NOU BLOC ---
+
         if mucape > 250 and mlcape < 150 and lcl_hgt > 1800 and lfc_hgt < 4000:
             return {'emoji': "🌥️", 'descripcio': "Inestabilitat (Castellanus)", 'veredicte': "Inestabilitat a nivells mitjans, convecció elevada.", 'factor_clau': "MUCAPE alt amb MLCAPE gairebé nul."}
         if 300 < mlcape <= 700 and cin > -50 and lfc_hgt < 2500:
