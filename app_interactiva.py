@@ -901,9 +901,9 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual)
 @st.cache_data(ttl=1800, show_spinner="Analitzant potencial de tempesta a la regió...")
 def analitzar_potencial_per_llista(map_data, llista_ciutats):
     """
-    Nova versió que analitza el potencial de tempesta combinant
-    Convergència (disparador) i CAPE (combustible), amb un llindar
-    mínim de CAPE de 1000 J/kg per a qualsevol avís.
+    Versió amb "Matriu de Decisió" v3.0.
+    Analitza la combinació de Convergència (disparador) i CAPE (combustible)
+    per determinar el potencial de tempesta de manera més realista.
     """
     if not map_data or 'lons' not in map_data or len(map_data['lons']) < 4:
         return {}
@@ -936,25 +936,29 @@ def analitzar_potencial_per_llista(map_data, llista_ciutats):
             dist_sq = (grid_lat - lat_sel)**2 + (grid_lon - lon_sel)**2
             min_dist_idx = np.unravel_index(np.argmin(dist_sq, axis=None), dist_sq.shape)
             
-            valor_conv = convergence_scaled[min_dist_idx]
-            valor_cape = grid_cape[min_dist_idx]
+            valor_conv = convergence_scaled[min_dist_idx] if pd.notna(convergence_scaled[min_dist_idx]) else 0
+            valor_cape = grid_cape[min_dist_idx] if pd.notna(grid_cape[min_dist_idx]) else 0
 
-            # --- LÒGICA DE DECISIÓ AMB EL NOU LLINDAR DE CAPE ---
+            # --- NOVA MATRIU DE DECISIÓ ---
             potencial = "Nul"
-            # PRIMER FILTRE: El CAPE ha de ser superior a 1000 J/kg per considerar qualsevol potencial.
-            if valor_cape > 1000:
-                # Si hi ha prou combustible, llavors avaluem el disparador (convergència).
-                if valor_conv > 35:
-                    potencial = "Molt Alt"
-                elif valor_conv > 25:
-                    potencial = "Alt"
-                elif valor_conv > 15:
-                    potencial = "Moderat"
-            # Si el CAPE no arriba a 1000, el potencial sempre serà "Nul", encara que hi hagi molta convergència.
+            
+            # Condicions per a Potencial "Molt Alt" (El millor dels dos mons)
+            if valor_conv > 35 and valor_cape > 1500:
+                potencial = "Molt Alt"
+            
+            # Condicions per a Potencial "Alt" (Una de dues: molt de combustible o un disparador extrem)
+            elif (valor_conv > 25 and valor_cape > 1000) or \
+                 (valor_conv > 35 and valor_cape > 700):
+                potencial = "Alt"
+            
+            # Condicions per a Potencial "Moderat" (Combinacions suficients per iniciar tempestes)
+            elif (valor_conv > 20 and valor_cape > 500) or \
+                 (valor_conv > 15 and valor_cape > 800):
+                potencial = "Moderat"
             
             resultats[nom_ciutat] = {
                 'potencial': potencial, 
-                'conv': valor_conv if pd.notna(valor_conv) else 0
+                'conv': valor_conv
             }
     except Exception:
         return {}
