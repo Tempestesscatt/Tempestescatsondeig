@@ -1145,8 +1145,9 @@ def mostrar_spinner_mapa(mensaje, funcion_carga, *args, **kwargs):
 @st.cache_data(ttl=1800, max_entries=20, show_spinner=False)
 def carregar_dades_sondeig_cat(lat, lon, hourly_index):
     """
-    Carrega i processa les dades del sondeig del model AROME per a un punt i hora concrets.
-    Inclou lògica de resiliència per buscar hores properes si la sol·licitada falla.
+    Versió Definitiva i Corregida.
+    Soluciona l'error fonamental assegurant que el perfil de pressió passat a
+    MetPy sigui sempre monòtonament decreixent, evitant errors en els càlculs.
     """
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
@@ -1155,26 +1156,19 @@ def carregar_dades_sondeig_cat(lat, lon, hourly_index):
         response = openmeteo.weather_api(API_URL_CAT, params=params)[0]
         hourly = response.Hourly()
 
-        # Lògica de resiliència per trobar l'índex vàlid més proper
-        valid_index = None
-        max_hours_to_check = 3
+        valid_index = None; max_hours_to_check = 3
         total_hours = len(hourly.Variables(0).ValuesAsNumpy())
-
         for offset in range(max_hours_to_check + 1):
             indices_to_try = sorted(list(set([hourly_index + offset, hourly_index - offset])))
             for h_idx in indices_to_try:
                 if 0 <= h_idx < total_hours:
                     sfc_check = [hourly.Variables(i).ValuesAsNumpy()[h_idx] for i in range(len(h_base))]
                     if not any(np.isnan(val) for val in sfc_check):
-                        valid_index = h_idx
-                        break
-            if valid_index is not None:
-                break
+                        valid_index = h_idx; break
+            if valid_index is not None: break
         
-        if valid_index is None:
-            return None, hourly_index, "No s'han trobat dades vàlides properes a l'hora sol·licitada."
+        if valid_index is None: return None, hourly_index, "No s'han trobat dades vàlides."
         
-        # Obtenim les dades amb l'índex vàlid
         sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[valid_index] for i, v in enumerate(h_base)}
         
         p_data = {}
@@ -1183,16 +1177,26 @@ def carregar_dades_sondeig_cat(lat, lon, hourly_index):
             p_data[var] = [hourly.Variables(var_count + i * len(PRESS_LEVELS_AROME) + j).ValuesAsNumpy()[valid_index] for j in range(len(PRESS_LEVELS_AROME))]
         
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
-        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
+        
+        # --- LÒGICA DE CONSTRUCCIÓ DEL PERFIL CORREGIDA ---
+        p_profile = [sfc_data["surface_pressure"]]
+        T_profile = [sfc_data["temperature_2m"]]
+        Td_profile = [sfc_data["dew_point_2m"]]
+        u_profile = [sfc_u.to('m/s').m]
+        v_profile = [sfc_v.to('m/s').m]
+        h_profile = [0.0]
         
         for i, p_val in enumerate(PRESS_LEVELS_AROME):
-            if p_val < sfc_data["surface_pressure"] and all(not np.isnan(p_data[v][i]) for v in ["T", "RH", "WS", "WD", "H"]):
+            # AQUESTA ÉS LA CONDICIÓ CLAU QUE SOLUCIONA TOT:
+            # Només afegim un nivell si la seva pressió és MÉS BAIXA que l'últim punt afegit.
+            if p_val < p_profile[-1] and all(not np.isnan(p_data[v][i]) for v in ["T", "RH", "WS", "WD", "H"]):
                 p_profile.append(p_val)
                 T_profile.append(p_data["T"][i])
                 Td_profile.append(mpcalc.dewpoint_from_relative_humidity(p_data["T"][i] * units.degC, p_data["RH"][i] * units.percent).m)
                 u, v = mpcalc.wind_components(p_data["WS"][i] * units('km/h'), p_data["WD"][i] * units.degrees)
                 u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m); h_profile.append(p_data["H"][i])
-        
+        # --- FI DE LA CORRECCIÓ ---
+
         processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
         return processed_data, valid_index, error
         
