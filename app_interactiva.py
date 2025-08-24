@@ -1013,55 +1013,67 @@ def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str
 
 def mostrar_carga_avanzada(mensaje, funcion_a_ejecutar, *args, **kwargs):
     """
-    Versión simplificada: solo operaciones pesadas tienen carga larga
+    Versión REAL que muestra el progreso actual de la carga
     """
-    # Determinar si es una operación pesada (mapas, datos)
-    es_operacion_pesada = any(palabra in mensaje.lower() for palabra in 
-                            ["mapa", "generant", "carregant", "analitzant", "processant", "convergència"])
-    
-    # Crear contenedores
     progress_bar = st.progress(0)
     status_text = st.empty()
     
     try:
-        if es_operacion_pesada:
-            # Operación pesada: 9 segundos para Catalunya, 6 para USA
+        # Iniciar inmediatamente la ejecución en un hilo
+        result_container = [None]
+        exception_container = [None]
+        
+        def ejecutar_funcion():
+            try:
+                result_container[0] = funcion_a_ejecutar(*args, **kwargs)
+            except Exception as e:
+                exception_container[0] = e
+        
+        # Iniciar el hilo de ejecución
+        thread = threading.Thread(target=ejecutar_funcion)
+        thread.start()
+        
+        # Animación que se actualiza mientras se ejecuta la función
+        start_time = time.time()
+        emojis = ["🔄", "⏳", "📡", "🌪️", "📊"]
+        emoji_index = 0
+        
+        while thread.is_alive():
+            # Calcular progreso basado en el tiempo estimado
             es_catalunya = "cat" in funcion_a_ejecutar.__name__ or any("cat" in str(arg).lower() for arg in args)
-            tiempo_total = 9 if es_catalunya else 6
-            pasos = 80
-        else:
-            # Navegación rápida: 2 segundos
-            tiempo_total = 2.0
-            pasos = 20
-        
-        tiempo_por_paso = tiempo_total / pasos
-        
-        # Animación
-        for i in range(pasos + 1):
-            progress_bar.progress(i / pasos)
-            dots = "." * ((i // 5) % 4)
-            emoji = "🔄" if i % 10 < 5 else "⏳"
-            status_text.text(f"{emoji} {mensaje}{dots}")
-            time.sleep(tiempo_por_paso)
+            tiempo_estimado = 9 if es_catalunya else 6
             
-        # Ejecutar función
-        progress_bar.progress(0.95)
-        status_text.text(f"🚀 Executant...")
-        time.sleep(0.2)
+            tiempo_transcurrido = time.time() - start_time
+            progreso = min(tiempo_transcurrido / tiempo_estimado, 0.95)  # Máximo 95% hasta que termine
+            
+            progress_bar.progress(progreso)
+            
+            # Animación de texto
+            dots = "." * (int(tiempo_transcurrido) % 4)
+            emoji = emojis[emoji_index % len(emojis)]
+            emoji_index += 1
+            
+            status_text.text(f"{emoji} {mensaje}{dots}")
+            time.sleep(0.3)
         
-        resultat = funcion_a_ejecutar(*args, **kwargs)
+        # Esperar a que el hilo termine completamente
+        thread.join()
         
-        # Completar
+        # Comprobar si hubo error
+        if exception_container[0]:
+            raise exception_container[0]
+        
+        # Completar al 100%
         progress_bar.progress(1.0)
-        status_text.text(f"✅ Completat!")
-        time.sleep(0.2)
+        status_text.text(f"✅ {mensaje}... Completat!")
+        time.sleep(0.3)
         
-        return resultat
+        return result_container[0]
         
     except Exception as e:
         progress_bar.progress(1.0)
-        status_text.text(f"❌ Error")
-        time.sleep(0.2)
+        status_text.text(f"❌ Error en el procés")
+        time.sleep(0.5)
         raise e
         
     finally:
