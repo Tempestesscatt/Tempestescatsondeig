@@ -690,6 +690,25 @@ def ui_caixa_parametres_sondeig(params, nivell_conv):
         styled_metric("UPDRAFT", params.get('MAX_UPDRAFT', np.nan), "m/s", 'UPDRAFT', precision=1)
 # --- Funcions Específiques per a Catalunya ---
 
+
+@st.cache_data(ttl=3600)
+def calcular_convergencia_per_ciutats(map_data):
+    """
+    Calcula la convergència per a cada ciutat de CIUTATS_CATALUNYA
+    utilitzant les dades del mapa ja carregades.
+    Retorna un diccionari: {'ciutat': valor_convergencia}.
+    """
+    if not map_data:
+        return {}
+    
+    convergencies = {}
+    for ciutat, coords in CIUTATS_CATALUNYA.items():
+        valor_conv = calcular_convergencia_puntual(map_data, coords['lat'], coords['lon'])
+        if not np.isnan(valor_conv):
+            convergencies[ciutat] = valor_conv
+    return convergencies
+    
+
 @st.cache_data(ttl=3600)
 def carregar_dades_sondeig_cat(lat, lon, hourly_index):
     try:
@@ -1081,10 +1100,24 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
         if zona_activa == 'catalunya':
             with col1:
                 if is_guest: st.info(f"ℹ️ **Mode Convidat:** {info_msg}")
-                poble_actual = st.session_state.get('poble_selector')
-                sorted_ciutats = sorted(ciutats_a_mostrar.keys())
-                index_poble = sorted_ciutats.index(poble_actual) if poble_actual in sorted_ciutats else 0
-                st.selectbox("Població de referència:", sorted_ciutats, key="poble_selector", index=index_poble)
+
+                # --- LÒGICA MODIFICADA PER GESTIONAR NOMS AMB ETIQUETES ---
+                poble_actual_net = st.session_state.get('poble_selector', '').split(' (')[0]
+                
+                # `ciutats_a_mostrar` serà una llista de strings (formats) per a usuaris
+                # o un diccionari de ciutats per a convidats.
+                opcions = sorted(list(ciutats_a_mostrar)) if isinstance(ciutats_a_mostrar, list) else sorted(ciutats_a_mostrar.keys())
+
+                # Trobar l'índex del poble actual a la llista d'opcions
+                index_poble = 0
+                for i, opcio in enumerate(opcions):
+                    if opcio.startswith(poble_actual_net):
+                        index_poble = i
+                        break
+                
+                st.selectbox("Població de referència:", opcions, key="poble_selector", index=index_poble)
+                # --- FI DE LA MODIFICACIÓ ---
+
             now_local = datetime.now(TIMEZONE_CAT)
             with col2: st.selectbox("Dia del pronòstic:", ("Avui",) if is_guest else ("Avui", "Demà"), key="dia_selector", disabled=is_guest, index=0)
             with col3: st.selectbox("Hora del pronòstic (Local):", (f"{now_local.hour:02d}:00h",) if is_guest else [f"{h:02d}:00h" for h in range(24)], key="hora_selector", disabled=is_guest, index=0 if is_guest else now_local.hour)
@@ -1094,7 +1127,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
              now_local = datetime.now(TIMEZONE_USA)
              with col2: st.selectbox("Dia del pronòstic:", ("Avui", "Demà", "Demà passat"), key="dia_selector_usa", index=0)
              with col3: st.selectbox("Hora del pronòstic (Local - CST):", [f"{h:02d}:00" for h in range(24)], key="hora_selector_usa", index=now_local.hour)
-
+                 
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
     col_capa, col_zoom = st.columns(2)
@@ -1239,23 +1272,8 @@ def run_catalunya_app():
     local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-    
-    ciutats_per_selector, info_msg = (obtenir_ciutats_actives(hourly_index_sel)[0], "Anàlisi limitada a les zones de més interès.") if is_guest else (CIUTATS_CATALUNYA, None)
-    ui_capcalera_selectors(ciutats_per_selector, info_msg, zona_activa="catalunya")
-    
-    poble_sel = st.session_state.poble_selector
-    if poble_sel not in ciutats_per_selector: 
-        st.session_state.poble_selector = sorted(ciutats_per_selector.keys())[0]; st.rerun()
-    
-    timestamp_str = f"{st.session_state.dia_selector} a les {st.session_state.hora_selector} (Hora Local)"
-    lat_sel, lon_sel = ciutats_per_selector[poble_sel]['lat'], ciutats_per_selector[poble_sel]['lon']
-    
-    # --- LÒGICA DE CÀLCUL CENTRALITZADA ---
-    data_tuple, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
-    if error_msg: 
-        st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
-        return
 
+    # --- LÒGICA MODIFICADA: EL SELECTOR DE NIVELL VA PRIMER ---
     nivell_sel = 925 # Valor per defecte
     if not is_guest:
         nivells_disponibles = [1000, 950, 925, 850, 800, 700]
@@ -1270,38 +1288,68 @@ def run_catalunya_app():
     else:
         st.info("ℹ️ L'anàlisi de vent i convergència està fixada a **925 hPa** en el mode convidat.")
 
+    # --- NOU BLOC: CÀLCUL DE CONVERGÈNCIA I FORMATACIÓ DE CIUTATS ---
     map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
     
-    # Aquesta línia és important per assegurar-nos que 'params_calc' existeix
-    params_calc = data_tuple[1] if data_tuple else {}
+    ciutats_per_selector = CIUTATS_CATALUNYA
+    info_msg = None
 
+    if is_guest:
+        ciutats_per_selector, info_msg = obtenir_ciutats_actives(hourly_index_sel)
+        info_msg = "Anàlisi limitada a les zones de més interès." # Assegurem el missatge
+    elif map_data_conv: # Només per a usuaris registrats i si tenim dades
+        convergencies = calcular_convergencia_per_ciutats(map_data_conv)
+        ciutats_formatejades = []
+        # Ordenem per nom de ciutat per mantenir l'ordre alfabètic
+        for ciutat in sorted(CIUTATS_CATALUNYA.keys()):
+            conv = convergencies.get(ciutat, 0)
+            if conv > 15:
+                ciutats_formatejades.append(f"{ciutat} (⚡ Molt Recomanat)")
+            elif conv > 5:
+                ciutats_formatejades.append(f"{ciutat} (Recomanat)")
+            else:
+                ciutats_formatejades.append(ciutat)
+        ciutats_per_selector = ciutats_formatejades
+    # --- FI DEL NOU BLOC ---
+    
+    ui_capcalera_selectors(ciutats_per_selector, info_msg, zona_activa="catalunya")
+    
+    # --- LÒGICA MODIFICADA: Extreure el nom net del poble seleccionat ---
+    poble_sel_formatat = st.session_state.poble_selector
+    poble_sel = poble_sel_formatat.split(' (')[0] # Neteja l'etiqueta per obtenir el nom real
+    
+    # Comprovació per si el poble seleccionat ja no és a la llista (canvi d'hora)
+    llista_pobles_disponibles = list(ciutats_per_selector.keys()) if isinstance(ciutats_per_selector, dict) else [c.split(' (')[0] for c in ciutats_per_selector]
+    if poble_sel not in llista_pobles_disponibles:
+        st.session_state.poble_selector = sorted(llista_pobles_disponibles)[0]
+        st.rerun()
+    
+    timestamp_str = f"{st.session_state.dia_selector} a les {st.session_state.hora_selector} (Hora Local)"
+    # Utilitzem el diccionari original per obtenir les coordenades
+    lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
+    
+    # --- El reste de la funció continua igual ---
+    data_tuple, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+    if error_msg: 
+        st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        return
+
+    params_calc = data_tuple[1] if data_tuple else {}
     if data_tuple and map_data_conv:
         conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
         params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
     
-    # --- VISUALITZACIÓ EN PESTANYES (ARA AMB LÒGICA PER A IA) ---
-    
     if is_guest:
-        # PESTANYES PER A CONVIDATS (SENSE IA)
         tab_mapes, tab_vertical, tab_estacions = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Estacions Meteorològiques"])
-        with tab_mapes: 
-            ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
-        with tab_vertical: 
-            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
-        with tab_estacions: 
-            ui_pestanya_estacions_meteorologiques()
+        with tab_mapes: ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
+        with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
+        with tab_estacions: ui_pestanya_estacions_meteorologiques()
     else:
-        # PESTANYES PER A USUARIS REGISTRATS (AMB IA)
         tab_mapes, tab_vertical, tab_ia, tab_estacions = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "💬 Assistent IA", "Estacions Meteorològiques"])
-        with tab_mapes: 
-            ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
-        with tab_vertical: 
-            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
-        with tab_ia:
-            # Cridem a la nova funció de la interfície de la IA
-            ui_pestanya_assistent_ia(params_calc, poble_sel)
-        with tab_estacions: 
-            ui_pestanya_estacions_meteorologiques()
+        with tab_mapes: ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
+        with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
+        with tab_ia: ui_pestanya_assistent_ia(params_calc, poble_sel)
+        with tab_estacions: ui_pestanya_estacions_meteorologiques()
 
 def run_valley_halley_app():
     ui_capcalera_selectors(None, zona_activa="tornado_alley")
