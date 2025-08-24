@@ -1242,27 +1242,32 @@ def hide_streamlit_style():
 
 def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi):
     """
-    Genera el prompt definitiu (v3), dissenyat per a la màxima claredat.
-    L'IA té una única missió: actuar com l'expert humà que comunica l'anàlisi
-    automàtica d'una manera propera i raonada.
+    Genera el prompt definitiu (v4), amb un format de sortida estricte per
+    garantir respostes completes i evitar la concisió no desitjada.
     """
     # --- ROL I PERSONALITAT ---
     prompt_parts = [
         "### ROL I PERSONALITAT",
-        "Ets un expert apassionat de la meteorologia. Estàs parlant amb el teu millor amic, que confia plenament en tu per entendre què passarà amb el temps. El teu to és didàctic, de confiança i molt apassionat, fent servir expressions col·loquials catalanes. La teva missió és traduir dades complexes a una explicació clara i directa.",
+        "Ets un expert molt apassionat en meteorologia. El teu to és de confiança, didàctic i col·loquial, com si parlessis amb un amic que comparteix la teva afició. La teva missió és traduir dades complexes a una explicació clara i completa.",
         
-        "\n### LA TEVA MISSIÓ",
-        "Un sistema automàtic ha analitzat un sondeig i t'ha donat un resum tècnic (el 'Veredicte').",
-        "La teva única tasca és escriure el missatge final per al teu amic. NO has de parlar del sistema automàtic ni dir 'l'ordinador diu que...'. Tu ets l'expert.",
-        "1. **Comença Directe:** Inicia amb una salutació i respon directament a la pregunta del teu amic, utilitzant el 'Veredicte' com la teva conclusió principal.",
-        "2. **Explica el Perquè:** Desenvolupa la teva resposta explicant la història que contenen les dades. Centra't en el 'Factor Clau' i explica per què és tan decisiu. Connecta les idees de 'combustible' (CAPE), 'tapa' (CIN), 'disparador' (Convergència) i 'organització' (Cisallament).",
-        "3. **Fes-ho Fàcil:** Tradueix els números a conceptes. En lloc de dir 'MLCAPE és 2500', digues 'tenim una quantitat de combustible brutal, més de 2500 J/kg, això és una barbaritat'.",
-        "4. **Sigues Honrat:** Basa't sempre en les dades. Respon només el que es pot deduir del sondeig.",
+        "\n### MISSIÓ I FORMAT DE RESPOSTA OBLIGATORI",
+        "Analitza les dades del sondeig per respondre la pregunta del teu amic. La teva resposta ha de seguir SEMPRE aquest format, amb els títols en negreta:",
+        
+        "**Veredicte Ràpid:**",
+        "[Aquí, escriu un paràgraf breu i directe que respongui a la pregunta de l'usuari, basant-te en el 'Veredicte de l'Ordinador'.]",
+        
+        "**La Situació al Detall:**",
+        "[Aquí, desenvolupa l'explicació completa. Teixeix un relat connectant el combustible (CAPE), la tapa (CIN), els disparadors (Convergència) i l'organització (Cisallament). Centra't en explicar el 'Factor Clau' i per què és tan important. Fes servir les dades en brut per justificar cada pas del teu raonament.]",
 
-        "\n### RESUM DE L'ORDINADOR (Punt de Partida)",
+        "\n### REGLES ADDICIONALS",
+        "- Basa't només en les dades proporcionades.",
+        "- Tradueix els números a conceptes fàcils d'entendre (ex: 'un CAPE de 2500 és una barbaritat de combustible').",
+        "- Respon sempre en català col·loquial.",
+
+        "\n### ANÀLISI AUTOMÀTICA (El teu punt de partida)",
         f"**Localitat:** {poble}",
-        f"**Veredicte:** {pre_analisi.get('veredicte', 'No determinat')}",
-        f"**Factor Clau:** {pre_analisi.get('factor_clau', 'No determinat')}",
+        f"**Veredicte de l'Ordinador:** {pre_analisi.get('veredicte', 'No determinat')}",
+        f"**Factor Clau Identificat:** {pre_analisi.get('factor_clau', 'No determinat')}",
         
         "\n### DADES EN BRUT ('LA CHICHA')",
     ]
@@ -1287,41 +1292,9 @@ def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi):
             if valor is not None and not np.isnan(valor): prompt_parts.append(f"- {nom}: {valor:.1f}")
 
     prompt_parts.append("\n### INSTRUCCIÓ FINAL")
-    prompt_parts.append(f"Ara, escriu el missatge per al teu amic. Ell t'ha preguntat: \"{pregunta_usuari}\"")
+    prompt_parts.append(f"Ara, escriu la teva anàlisi seguint el format obligatori. La pregunta del teu amic és: \"{pregunta_usuari}\"")
 
     return "\n".join(prompt_parts)
-
-def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi):
-    """
-    Crea la interfície d'usuari per a la pestanya de l'assistent d'IA.
-    Ara rep una pre-anàlisi per guiar l'IA.
-    """
-    st.markdown("#### Assistent d'Anàlisi (IA Gemini)")
-    st.info("Fes una pregunta en llenguatge natural. L'assistent utilitzarà una pre-anàlisi automàtica per donar-te una resposta raonada i de confiança.")
-
-    if "messages" not in st.session_state: st.session_state.messages = []
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]): st.markdown(message["content"])
-
-    if prompt := st.chat_input("Fes una pregunta sobre el sondeig..."):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"): st.markdown(prompt)
-        with st.chat_message("assistant"):
-            try:
-                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                
-                # Passem la pre-anàlisi al generador de prompts
-                prompt_complet = generar_prompt_per_ia(params_calc, prompt, poble_sel, pre_analisi)
-                
-                with st.expander("Veure el prompt enviat a la IA (amb la pre-anàlisi)"):
-                    st.text(prompt_complet)
-                
-                response = model.generate_content(prompt_complet, stream=True)
-                resposta_completa = st.write_stream(response)
-                st.session_state.messages.append({"role": "assistant", "content": resposta_completa})
-            except Exception as e:
-                st.error(f"Hi ha hagut un error en contactar amb l'assistent d'IA: {e}")
 
 def hide_streamlit_style():
     """Injecta CSS per amagar el peu de pàgina i el menú de Streamlit."""
