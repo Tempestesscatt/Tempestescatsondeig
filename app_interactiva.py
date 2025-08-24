@@ -297,139 +297,218 @@ def calcular_mlcape_robusta(p, T, Td):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Antifràgil v4.0.
-    Implementa un sistema de "Pla B". Si el càlcul del perfil de capa barrejada (ml_prof)
-    falla, l'algoritme continua i calcula tots els paràmetres possibles utilitzant
-    el perfil de superfície (sfc_prof), garantint que l'usuari sempre vegi un resultat.
+    Versió Definitiva i Antifràgil v4.0 - CORREGIDA
     """
     # --- 1. PREPARACIÓ I NETEJA DE DADES ---
-    if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
-    p = np.array(p_profile) * units.hPa; T = np.array(T_profile) * units.degC
-    Td = np.array(Td_profile) * units.degC; u = np.array(u_profile) * units('m/s')
-    v = np.array(v_profile) * units('m/s'); heights = np.array(h_profile) * units.meter
-    valid_indices = ~np.isnan(p.m) & ~np.isnan(T.m) & ~np.isnan(Td.m) & ~np.isnan(u.m) & ~np.isnan(v.m)
-    p, T, Td, u, v, heights = p[valid_indices], T[valid_indices], Td[valid_indices], u[valid_indices], v[valid_indices], heights[valid_indices]
-    if len(p) < 3: return None, "No hi ha prou dades vàlides."
-    sort_idx = np.argsort(p.m)[::-1]
-    p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
-    params_calc = {}; heights_agl = heights - heights[0]
-
-    # --- 2. CÀLCULS BASE I PERFILS DE PARCEL·LA (AMB PLA B) ---
-    with parcel_lock:
-        sfc_prof, ml_prof = None, None # Inicialitzem a None
+    if len(p_profile) < 4: 
+        return None, "Perfil atmosfèric massa curt."
+    
+    try:
+        p = np.array(p_profile) * units.hPa
+        T = np.array(T_profile) * units.degC
+        Td = np.array(Td_profile) * units.degC
+        u = np.array(u_profile) * units('m/s')
+        v = np.array(v_profile) * units('m/s')
+        heights = np.array(h_profile) * units.meter
         
-        try:
-            sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
-        except Exception:
-            return None, "Error crític: No s'ha pogut calcular ni el perfil de superfície."
+        # Neteja de valors invàlids
+        valid_indices = ~np.isnan(p.m) & ~np.isnan(T.m) & ~np.isnan(Td.m)
+        p, T, Td, heights = p[valid_indices], T[valid_indices], Td[valid_indices], heights[valid_indices]
+        
+        if len(p) < 3: 
+            return None, "No hi ha prou dades vàlides."
+        
+        # Ordenar per pressió descendent
+        sort_idx = np.argsort(p.m)[::-1]
+        p, T, Td, heights = p[sort_idx], T[sort_idx], Td[sort_idx], heights[sort_idx]
+        
+        params_calc = {}
+        heights_agl = heights - heights[0]
+
+        # --- 2. PERFILS DE PARCEL·LA (AMB SISTEMA DE FALLBACK) ---
+        with parcel_lock:
+            # Sempre intentem calcular el perfil superficial primer
+            try:
+                sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
+            except Exception as e:
+                return None, f"Error calculant perfil superficial: {str(e)}"
             
+            # Intentem calcular el perfil de capa barrejada
+            try:
+                _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
+            except Exception:
+                # SI FALLA, UTILITZEM EL PERFIL SUPERFICIAL COM A FALLBACK
+                ml_prof = sfc_prof
+            
+            # El perfil principal serà el que estigui disponible
+            main_prof = ml_prof if ml_prof is not None else sfc_prof
+
+        # --- 3. CÀLCULS INDIVIDUALS I ROBUSTOS ---
+        
+        # Paràmetres bàsics (sense dependències)
         try:
-            _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
-        except Exception:
-            ml_prof = None 
-
-        main_prof = ml_prof if ml_prof is not None else sfc_prof
-
-        # --- 3. CÀLCULS ROBUSTS I AÏLLATS ---
-        try: 
-            rh = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
-            params_calc['RH_CAPES'] = {
-                'baixa': np.mean(rh[(p.m <= 1000) & (p.m > 850)]),
-                'mitjana': np.mean(rh[(p.m <= 850) & (p.m > 500)]),
-                'alta': np.mean(rh[(p.m <= 500) & (p.m > 250)])
-            }
-        except: params_calc['RH_CAPES'] = {'baixa': np.nan, 'mitjana': np.nan, 'alta': np.nan}
-        try: params_calc['PWAT'] = float(mpcalc.precipitable_water(p, Td).to('mm').m)
-        except: params_calc['PWAT'] = np.nan
+            params_calc['PWAT'] = float(mpcalc.precipitable_water(p, Td).to('mm').m)
+        except:
+            params_calc['PWAT'] = np.nan
+        
         try:
             _, fl_h = mpcalc.freezing_level(p, T, heights)
-            params_calc['FREEZING_LVL_HGT'] = float(fl_h[0].to('m').m)
-        except: params_calc['FREEZING_LVL_HGT'] = np.nan
-        try: params_calc['DCAPE'] = float(mpcalc.dcape(p, T, Td)[0].m)
-        except: params_calc['DCAPE'] = np.nan
-        try: params_calc['LR_0-3km'] = float(mpcalc.lapse_rate(p, T, height=heights_agl, depth=3000 * units('m')).to('delta_degC/km').m)
-        except: params_calc['LR_0-3km'] = np.nan
+            params_calc['FREEZING_LVL_HGT'] = float(fl_h[0].to('m').m) if len(fl_h) > 0 else np.nan
+        except:
+            params_calc['FREEZING_LVL_HGT'] = np.nan
         
-        if sfc_prof is not None:
-            try:
-                sbcape, sbcin = mpcalc.cape_cin(p, T, Td, sfc_prof)
-                params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m)
-                params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if sbcape.m > 0 else 0.0
-            except: params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
+        try:
+            dcape_val = mpcalc.dcape(p, T, Td)
+            params_calc['DCAPE'] = float(dcape_val[0].m) if dcape_val[0] else np.nan
+        except:
+            params_calc['DCAPE'] = np.nan
         
-        if ml_prof is not None:
-            try:
+        try:
+            lr = mpcalc.lapse_rate(p, T, height=heights, depth=3000 * units.meter)
+            params_calc['LR_0-3km'] = float(lr.to('delta_degC/km').m)
+        except:
+            params_calc['LR_0-3km'] = np.nan
+
+        # CAPE/CIN amb el perfil principal (que sempre existeix)
+        try:
+            cape, cin = mpcalc.cape_cin(p, T, Td, main_prof)
+            params_calc['SBCAPE'] = float(cape.m) if cape else 0.0
+            params_calc['SBCIN'] = float(cin.m) if cin else 0.0
+            params_calc['MAX_UPDRAFT'] = np.sqrt(2 * params_calc['SBCAPE']) if params_calc['SBCAPE'] > 0 else 0.0
+        except:
+            params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
+
+        # Intentar calcular MLCAPE/MUCAPE separadament
+        try:
+            if ml_prof is not None and ml_prof is not sfc_prof:
                 mlcape, mlcin = mpcalc.cape_cin(p, T, Td, ml_prof)
-                params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
-            except: params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
-        else:
+                params_calc['MLCAPE'] = float(mlcape.m) if mlcape else 0.0
+                params_calc['MLCIN'] = float(mlcin.m) if mlcin else 0.0
+            else:
+                # Si són el mateix, dupliquem els valors
+                params_calc['MLCAPE'] = params_calc['SBCAPE']
+                params_calc['MLCIN'] = params_calc['SBCIN']
+        except:
             params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
 
-        if main_prof is not None:
-            try: params_calc['LI'] = float(mpcalc.lifted_index(p, T, main_prof).m)
-            except: params_calc['LI'] = np.nan
-            try:
-                lfc_p, _ = mpcalc.lfc(p, T, Td, main_prof); params_calc['LFC_p'] = float(lfc_p.m)
-                params_calc['LFC_Hgt'] = float(np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1]))
-            except: params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
-            try:
-                el_p, _ = mpcalc.el(p, T, Td, main_prof); params_calc['EL_p'] = float(el_p.m)
-                params_calc['EL_Hgt'] = float(np.interp(el_p.m, p.m[::-1], heights_agl.m[::-1]))
-            except: params_calc.update({'EL_p': np.nan, 'EL_Hgt': np.nan})
-            try:
-                idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
-                cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], main_prof[:idx_3km+1])
-                params_calc['CAPE_0-3km'] = float(cape_0_3.m)
-            except: params_calc['CAPE_0-3km'] = np.nan
-        
         try:
-            mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td); params_calc['MUCAPE'] = float(mucape.m)
-            params_calc['MUCIN'] = float(mucin.m)
-        except: params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
+            mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td)
+            params_calc['MUCAPE'] = float(mucape.m) if mucape else 0.0
+            params_calc['MUCIN'] = float(mucin.m) if mucin else 0.0
+        except:
+            params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
+
+        # LCL (sempre hauria de funcionar)
         try:
-            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); params_calc['LCL_p'] = float(lcl_p.m)
+            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0])
+            params_calc['LCL_p'] = float(lcl_p.m)
             params_calc['LCL_Hgt'] = float(np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1]))
-        except: params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
-        
+        except:
+            params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
+
+        # LFC i EL (amb el perfil principal)
+        try:
+            lfc_p, _ = mpcalc.lfc(p, T, Td, main_prof)
+            if lfc_p:
+                params_calc['LFC_p'] = float(lfc_p.m)
+                params_calc['LFC_Hgt'] = float(np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1]))
+        except:
+            params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
+
+        try:
+            el_p, _ = mpcalc.el(p, T, Td, main_prof)
+            if el_p:
+                params_calc['EL_p'] = float(el_p.m)
+                params_calc['EL_Hgt'] = float(np.interp(el_p.m, p.m[::-1], heights_agl.m[::-1]))
+        except:
+            params_calc.update({'EL_p': np.nan, 'EL_Hgt': np.nan})
+
+        # Lifted Index
+        try:
+            li = mpcalc.lifted_index(p, T, main_prof)
+            params_calc['LI'] = float(li.m)
+        except:
+            params_calc['LI'] = np.nan
+
+        # CAPE 0-3km
+        try:
+            idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
+            if idx_3km < len(p):
+                cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], main_prof[:idx_3km+1])
+                params_calc['CAPE_0-3km'] = float(cape_0_3.m) if cape_0_3 else 0.0
+        except:
+            params_calc['CAPE_0-3km'] = np.nan
+
+        # Paràmetres de vent
         try:
             for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
                 bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter)
                 params_calc[f'BWD_{name}'] = float(mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m)
-        except: params_calc.update({'BWD_0-1km': np.nan, 'BWD_0-6km': np.nan})
+        except:
+            params_calc.update({'BWD_0-1km': np.nan, 'BWD_0-6km': np.nan})
+
+        # Moviment de tempesta
         try:
             rm, lm, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
-            params_calc['RM'] = (float(rm[0].m), float(rm[1].m)); params_calc['LM'] = (float(lm[0].m), float(lm[1].m))
-        except: params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan)})
-        
+            params_calc['RM'] = (float(rm[0].m), float(rm[1].m))
+            params_calc['LM'] = (float(lm[0].m), float(lm[1].m))
+        except:
+            params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan)})
+
+        # Helicitat
         if params_calc.get('RM') and not np.isnan(params_calc['RM'][0]):
-            u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
             try:
+                u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
                 for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
-                    srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.meter, storm_u=u_storm, storm_v=v_storm)[0]
+                    srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.meter, 
+                                                       storm_u=u_storm, storm_v=v_storm)[0]
                     params_calc[f'SRH_{name}'] = float(srh.m)
-            except: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-        
+            except:
+                params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
+
+        # Capa efectiva
         try:
             eff_bottom, eff_top = mpcalc.effective_inflow_layer(p, T, Td)
-            eff_bwd_u, eff_bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, bottom=eff_bottom, top=eff_top)
-            params_calc['EBWD'] = float(mpcalc.wind_speed(eff_bwd_u, eff_bwd_v).to('kt').m)
-            if params_calc.get('RM') and not np.isnan(params_calc['RM'][0]):
-                u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
-                esrh, _, _ = mpcalc.storm_relative_helicity(heights, u, v, bottom=eff_bottom, top=eff_top, storm_u=u_storm, storm_v=v_storm)
-                params_calc['ESRH'] = float(esrh.m)
-            else: params_calc['ESRH'] = np.nan
-        except: params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
-        
-        try:
-            stp_val = mpcalc.significant_tornado(sbcape=params_calc.get('MLCAPE', 0) * units('J/kg'), effective_srh=params_calc.get('ESRH', 0) * units('m**2/s**2'), effective_bulk_shear=params_calc.get('EBWD', 0) * units('kt'), lcl_height=params_calc.get('LCL_Hgt', 9999) * units('m'), cin=params_calc.get('MLCIN', 0) * units('J/kg'))[0]
-            params_calc['STP'] = float(stp_val)
-        except: params_calc['STP'] = np.nan
-        try:
-            scp_val = mpcalc.supercell_composite(mucape=params_calc.get('MUCAPE', 0) * units('J/kg'), effective_srh=params_calc.get('ESRH', 0) * units('m**2/s**2'), effective_bulk_shear=params_calc.get('EBWD', 0) * units('kt'))[0]
-            params_calc['SCP'] = float(scp_val)
-        except: params_calc['SCP'] = np.nan
+            if eff_bottom and eff_top:
+                eff_bwd_u, eff_bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, bottom=eff_bottom, top=eff_top)
+                params_calc['EBWD'] = float(mpcalc.wind_speed(eff_bwd_u, eff_bwd_v).to('kt').m)
+                
+                if params_calc.get('RM') and not np.isnan(params_calc['RM'][0]):
+                    u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
+                    esrh, _, _ = mpcalc.storm_relative_helicity(heights, u, v, bottom=eff_bottom, top=eff_top, 
+                                                              storm_u=u_storm, storm_v=v_storm)
+                    params_calc['ESRH'] = float(esrh.m)
+        except:
+            params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
 
-    return ((p, T, Td, u, v, heights, sfc_prof), params_calc), None
+        # Índexs compostos
+        try:
+            stp_val = mpcalc.significant_tornado(
+                sbcape=params_calc.get('MLCAPE', 0) * units('J/kg'),
+                effective_srh=params_calc.get('ESRH', 0) * units('m**2/s**2'),
+                effective_bulk_shear=params_calc.get('EBWD', 0) * units('kt'),
+                lcl_height=params_calc.get('LCL_Hgt', 9999) * units('m'),
+                cin=params_calc.get('MLCIN', 0) * units('J/kg')
+            )[0]
+            params_calc['STP'] = float(stp_val.m) if hasattr(stp_val, 'm') else float(stp_val)
+        except:
+            params_calc['STP'] = np.nan
+
+        try:
+            scp_val = mpcalc.supercell_composite(
+                mucape=params_calc.get('MUCAPE', 0) * units('J/kg'),
+                effective_srh=params_calc.get('ESRH', 0) * units('m**2/s**2'),
+                effective_bulk_shear=params_calc.get('EBWD', 0) * units('kt')
+            )[0]
+            params_calc['SCP'] = float(scp_val.m) if hasattr(scp_val, 'm') else float(scp_val)
+        except:
+            params_calc['SCP'] = np.nan
+
+        return ((p, T, Td, u, v, heights, main_prof), params_calc), None
+
+    except Exception as e:
+        import traceback
+        return None, f"Error crític: {str(e)}\n{traceback.format_exc()}"
 
 
 def diagnosticar_potencial_tempesta(params):
@@ -542,46 +621,110 @@ def verificar_datos_entrada(p, T, Td, u, v, heights):
 
 def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     """
-    Versió final i neta. Dibuixa les línies de nivell per a LCL, LFC i EL,
-    però SENSE el text de les etiquetes per a una visualització més clara.
+    Versió millorada del Skew-T amb èmfasi en el EL i CAPE
     """
-    fig = plt.figure(dpi=150, figsize=(7, 8))
-    skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
-    skew.ax.grid(True, linestyle='-', alpha=0.5)
-    
-    skew.ax.axvline(0, color='cyan', linestyle='--', linewidth=1.5, alpha=0.7)
-
-    skew.plot_dry_adiabats(color='coral', linestyle='--', alpha=0.5)
-    skew.plot_moist_adiabats(color='cornflowerblue', linestyle='--', alpha=0.5)
-    skew.plot_mixing_lines(color='limegreen', linestyle='--', alpha=0.5)
-    
-    if prof is not None:
-        skew.shade_cape(p, T, prof, color='red', alpha=0.2)
-        skew.shade_cin(p, T, prof, color='blue', alpha=0.2)
-        skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la (SFC)', 
-                  path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
-
-    skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
-    skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
+    try:
+        fig = plt.figure(dpi=150, figsize=(7, 8))
+        skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
+        skew.ax.grid(True, linestyle='-', alpha=0.5)
         
-    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
-    skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40)
-    skew.ax.set_title(titol, weight='bold', fontsize=14, pad=15)
-    skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
+        skew.ax.axvline(0, color='cyan', linestyle='--', linewidth=1.5, alpha=0.7)
 
-    # --- LÒGICA SIMPLIFICADA ---
-    # Ara només dibuixem les línies horitzontals, sense el text.
-    levels_to_plot = ['LCL_p', 'LFC_p', 'EL_p']
-    for key in levels_to_plot:
-        p_lvl = params_calc.get(key)
-        if p_lvl is not None and not np.isnan(p_lvl):
-            p_val = p_lvl.m if hasattr(p_lvl, 'm') else p_lvl
-            skew.ax.axhline(p_val, color='blue', linestyle='--', linewidth=1.5)
-    # --- FI DE LA MODIFICACIÓ ---
+        # Dibuixar adiabàtiques
+        skew.plot_dry_adiabats(color='coral', linestyle='--', alpha=0.5)
+        skew.plot_moist_adiabats(color='cornflowerblue', linestyle='--', alpha=0.5)
+        skew.plot_mixing_lines(color='limegreen', linestyle='--', alpha=0.5)
+        
+        # Dibuixar perfil de parcel·la si està disponible
+        if prof is not None:
+            try:
+                # Calcular CAPE i CIN per sombrejar
+                cape, cin = mpcalc.cape_cin(p, T, Td, prof)
+                
+                if cape and cape.m > 0:
+                    # Sombrejar CAPE en verd i CIN en vermell
+                    skew.shade_cape(p, T, prof, color='limegreen', alpha=0.3)
+                    skew.shade_cin(p, T, prof, color='red', alpha=0.2)
+                
+                # Dibuixar la trajectòria de la parcel·la
+                skew.plot(p, prof, 'black', linewidth=3, label='Trajectòria Parcel·la', 
+                          path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+                
+            except Exception as e:
+                print(f"Error dibuixant parcel·la: {e}")
 
-    skew.ax.legend()
-    return fig
-    g
+        # Dibuixar perfils ambientals
+        skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
+        skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
+        
+        # Dibuixar barbes de vent
+        try:
+            skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
+        except:
+            pass
+
+        # Configurar límits del gràfic
+        skew.ax.set_ylim(max(p.m) + 50, 100)
+        skew.ax.set_xlim(-40, 40)
+        
+        skew.ax.set_title(titol, weight='bold', fontsize=14, pad=15)
+        skew.ax.set_xlabel("Temperatura (°C)")
+        skew.ax.set_ylabel("Pressió (hPa)")
+
+        # DIBUIXAR NIVELS CARACTERÍSTICS AMB ÈNFASI EN L'EL
+        levels_info = {
+            'LCL_p': ('LCL', 'blue'),
+            'LFC_p': ('LFC', 'purple'), 
+            'EL_p': ('EL', 'red')  # Nivell d'Equilibri (cim del núvol)
+        }
+        
+        for key, (name, color) in levels_info.items():
+            p_val = params_calc.get(key)
+            if p_val is not None and not np.isnan(p_val):
+                try:
+                    p_num = p_val.m if hasattr(p_val, 'm') else p_val
+                    if 100 <= p_num <= 1000:  # Validar que sigui una pressió raonable
+                        skew.ax.axhline(p_num, color=color, linestyle='-', linewidth=2, alpha=0.8)
+                        
+                        # Per l'EL, afegir informació addicional
+                        if key == 'EL_p':
+                            cape_val = params_calc.get('SBCAPE', 0)
+                            if not np.isnan(cape_val) and cape_val > 0:
+                                skew.ax.text(skew.ax.get_xlim()[1] - 2, p_num - 15, 
+                                           f'Cim núvol: {params_calc.get("EL_Hgt", "N/A"):.0f} m', 
+                                           color='red', ha='right', va='top', fontsize=9, weight='bold')
+                
+                except Exception as e:
+                    continue
+
+        # Afegir informació sobre CAPE
+        cape_val = params_calc.get('SBCAPE', 0)
+        if not np.isnan(cape_val) and cape_val > 0:
+            info_text = f"CAPE: {cape_val:.0f} J/kg"
+            skew.ax.text(0.02, 0.98, info_text, transform=skew.ax.transAxes,
+                       bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+                       verticalalignment='top', fontsize=10, weight='bold')
+
+        # Afegir llegenda
+        try:
+            handles, labels = skew.ax.get_legend_handles_labels()
+            if handles:
+                skew.ax.legend(loc='upper left', framealpha=0.9)
+        except:
+            pass
+
+        return fig
+        
+    except Exception as e:
+        # Fallback per a errors greus
+        fig, ax = plt.subplots(figsize=(7, 8), dpi=150)
+        ax.set_facecolor('#f8f9fa')
+        ax.text(0.5, 0.5, "Error en la generació del Skew-T", 
+                ha='center', va='center', transform=ax.transAxes,
+                fontsize=12, color='red')
+        ax.set_title("Error en el gràfic", color='red', weight='bold')
+        ax.axis('off')
+        return fig
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
     gs = fig.add_gridspec(nrows=2, ncols=2, height_ratios=[1.5, 6], width_ratios=[1.5, 1], hspace=0.4, wspace=0.3)
