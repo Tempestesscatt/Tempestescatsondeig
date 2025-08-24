@@ -716,20 +716,53 @@ def analitzar_amenaces_especifiques(params):
     return resultats
 
 
-def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
+def analitzar_component_maritima(sounding_data):
+    """
+    Analitza el vent a nivells baixos (~950hPa) per determinar si hi ha
+    component marítima, crucial per l'aportació d'humitat a Catalunya.
+    Retorna un diccionari amb text i color per a la UI.
+    """
+    if not sounding_data:
+        return {'text': 'N/A', 'color': '#808080'}
+
+    p, u, v = sounding_data[0], sounding_data[3], sounding_data[4]
+    
+    try:
+        # Busquem el vent al nivell més proper a 950 hPa
+        target_p = 950 * units.hPa
+        idx = (np.abs(p - target_p)).argmin()
+
+        # Comprovem si el nivell trobat és raonable
+        if np.abs(p[idx] - target_p).m > 50:
+            return {'text': 'Indet.', 'color': '#808080'}
+
+        u_low, v_low = u[idx], v[idx]
+        direction = mpcalc.wind_direction(u_low, v_low).m
+        speed = mpcalc.wind_speed(u_low, v_low).to('km/h').m
+
+        # Per Catalunya, un vent entre 70° (ENE) i 200° (SSW) té component marítima.
+        if 70 <= direction <= 200 and speed > 5: # Ha de tenir una mínima velocitat per ser rellevant
+            return {'text': 'Sí', 'color': '#28a745'} # Verd = Ingredient present
+        else:
+            return {'text': 'No', 'color': '#dc3545'} # Vermell = Ingredient absent
+            
+    except (IndexError, ValueError):
+        return {'text': 'Error', 'color': '#808080'}
+
+
+def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual):
     TOOLTIPS = {
         'SBCAPE': "Energia Potencial Convectiva Disponible (CAPE) des de la Superfície. Mesura el 'combustible' per a les tempestes a partir d'una bombolla d'aire a la superfície.",
         'MUCAPE': "El CAPE més alt possible a l'atmosfera (Most Unstable). Útil per detectar inestabilitat elevada, fins i tot si la superfície és estable.",
-        'MLCAPE': "El CAPE calculat a partir d'una capa barrejada (Mixed Layer) de 100hPa. Es considera el valor més representatiu per al pronòstic de convecció durant el dia.",
+        'CONVERGENCIA': f"Força de la convergència de vent a {nivell_conv}hPa. Actua com el 'disparador' o 'mecanisme de forçament' que obliga l'aire a ascendir, ajudant a iniciar les tempestes. Valors positius i alts són crucials.",
         'SBCIN': "Inhibició Convectiva (CIN) des de la Superfície. És l'energia necessària per vèncer l'estabilitat inicial. Valors molt negatius actuen com una 'tapa' que impedeix les tempestes.",
         'MUCIN': "La CIN associada al MUCAPE.",
-        'MLCIN': "La CIN associada al MLCAPE. És la 'tapa' que ha de trencar una bombolla d'aire de la capa barrejada.",
+        'COMPONENT_MARITIMA': "Indica si el vent a nivells baixos (~950hPa) prové del mar. Aquesta component és la principal font d'humitat i un ingredient fonamental per a la formació de tempestes significatives a Catalunya.",
         'LI': "Índex d'Elevació (Lifted Index). Mesura la diferència de temperatura a 500hPa entre l'entorn i una bombolla d'aire elevada. Valors molt negatius indiquen una forta inestabilitat.",
         'PWAT': "Aigua Precipitable Total (Precipitable Water). Quantitat total de vapor d'aigua en la columna atmosfèrica. Valors alts indiquen potencial per a pluges fortes.",
         'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació (LCL). És l'alçada a la qual es formarà la base del núvol. Valors baixos (<1000m) afavoreixen el temps sever.",
         'LFC_Hgt': "Alçada del Nivell de Convecció Lliure (LFC). És l'alçada a partir de la qual una bombolla d'aire puja lliurement sense necessitat de forçament. Valors baixos són més favorables.",
         'EL_Hgt': "Alçada del Nivell d'Equilibri (EL). És l'alçada estimada del cim de la tempesta (top del cumulonimbus). Valors més alts indiquen tempestes més potents.",
-        f'CONV_{nivell_conv}hPa': f"Convergència de vent a {nivell_conv}hPa. Actua com un 'disparador' que força l'aire a ascendir, ajudant a trencar la inhibició (CIN) i iniciar les tempestes.",
         'BWD_0-6km': "Cisallament del Vent (Bulk Wind Shear) entre 0 i 6 km. Diferència de vent entre la superfície i 6 km. És crucial per a l'organització de les tempestes (multicèl·lules, supercèl·lules).",
         'BWD_0-1km': "Cisallament del Vent entre 0 i 1 km. Important per a la rotació a nivells baixos, un ingredient clau en la formació de tornados.",
         'CAPE_0-3km': "CAPE a la capa de 0 a 3 km. Mesura la rapidesa amb què una tempesta pot créixer en les seves etapes inicials. Valors alts afavoreixen corrents ascendents forts a la base.",
@@ -742,15 +775,15 @@ def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
     }
     
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
-        if hasattr(value, '__len__') and not isinstance(value, str):
-            value = value[0] if len(value) > 0 else np.nan
-        
-        if 'CONV' in param_key:
-            thresholds_conv = [-2, 2, 5, 10]
-            colors_conv = ["#28a745", "#808080", "#ffc107", "#fd7e14", "#dc3545"]
-            color = colors_conv[np.searchsorted(thresholds_conv, value if pd.notna(value) else -999)]
-        else:
-            color = get_color_global(value, param_key, reverse_colors)
+        color = "#FFFFFF" # Color per defecte
+        if pd.notna(value):
+            if 'CONV' in param_key:
+                # Llindars per la convergència: <5 (gris), 5-15 (verd), 15-30 (groc), >30 (taronja), >40 (vermell)
+                thresholds = [5, 15, 30, 40]
+                colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
+                color = colors[np.searchsorted(thresholds, value)]
+            else:
+                color = get_color_global(value, param_key, reverse_colors)
 
         val_str = f"{value:.{precision}f}" if not pd.isna(value) else "---"
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
@@ -759,6 +792,17 @@ def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
         <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
             <span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit}){tooltip_html}</span><br>
             <strong style="font-size: 1.6em; color: {color};">{val_str}</strong>
+        </div>""", unsafe_allow_html=True)
+
+    def styled_qualitative(label, analysis_dict, tooltip_text=""):
+        text = analysis_dict.get('text', 'N/A')
+        color = analysis_dict.get('color', '#808080')
+        tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
+        
+        st.markdown(f"""
+        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
+            <span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br>
+            <strong style="font-size: 1.6em; color: {color};">{text}</strong>
         </div>""", unsafe_allow_html=True)
         
     def styled_threat(label, analysis_dict, tooltip_key):
@@ -780,12 +824,18 @@ def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE', tooltip_text=TOOLTIPS.get('SBCAPE'))
     with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
-    with cols[2]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
+    # --- WIDGET DE MLCAPE CANVIAT PER CONVERGÈNCIA ---
+    with cols[2]: 
+        conv_key = f'CONV_{nivell_conv}hPa'
+        styled_metric("Convergència", params.get(conv_key, np.nan), "10⁻⁵ s⁻¹", conv_key, precision=1, tooltip_text=TOOLTIPS.get('CONVERGENCIA'))
     
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
-    with cols[2]: styled_metric("MLCIN", params.get('MLCIN', np.nan), "J/kg", 'MLCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MLCIN'))
+    # --- WIDGET DE MLCIN CANVIAT PER COMPONENT MARÍTIMA ---
+    with cols[2]:
+        maritim_analysis = analitzar_component_maritima(sounding_data)
+        styled_qualitative("Comp. Marítima", maritim_analysis, tooltip_text=TOOLTIPS.get('COMPONENT_MARITIMA'))
     
     cols = st.columns(3)
     with cols[0]: 
@@ -824,7 +874,6 @@ def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
     with cols[2]: 
         styled_metric("UPDRAFT", params.get('MAX_UPDRAFT', np.nan), "m/s", 'MAX_UPDRAFT', precision=1, tooltip_text=TOOLTIPS.get('MAX_UPDRAFT'))
 
-    # --- NOVA SECCIÓ D'AMENACES ---
     st.markdown("##### Potencial d'Amenaces Severes")
     amenaces = analitzar_amenaces_especifiques(params)
     
@@ -835,7 +884,6 @@ def ui_caixa_parametres_sondeig(params, nivell_conv, hora_actual):
         styled_threat("Esclafits (Ventades)", amenaces['esclafits'], 'AMENACA_ESCLAFITS')
     with cols[2]:
         styled_threat("Activitat Elèctrica", amenaces['llamps'], 'AMENACA_LLAMPS')
-        
         
 
 @st.cache_data(ttl=1800, show_spinner="Analitzant zones de convergència...")
@@ -1829,7 +1877,9 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             plt.close(fig_skewt)
             
             with st.container(border=True):
-                ui_caixa_parametres_sondeig(params_calculats, nivell_conv, hora_actual)
+                # *** LÍNIA CLAU MODIFICADA ***
+                # Ara passem 'sounding_data' a la funció que dibuixa els paràmetres
+                ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual)
 
         with col2:
             fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
