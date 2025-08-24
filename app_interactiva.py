@@ -1559,22 +1559,36 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual):
     if data_tuple:
         sounding_data, params_calculats = data_tuple
+        # La variable 'prof' encara es desempaqueta, però ja no es fa servir a la crida de sota
         p, T, Td, u, v, heights, prof = sounding_data
+        
         col1, col2 = st.columns(2, gap="large")
         with col1:
-            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
-            st.pyplot(fig_skewt, use_container_width=True); plt.close(fig_skewt)
-            with st.container(border=True): 
-                # MODIFICAT: Passem l'hora actual
+            # --- LÍNIA CORREGIDA ---
+            # Hem eliminat la variable 'prof' de la crida, ja que la funció
+            # ara la calcula internament. Passem de 8 a 7 arguments.
+            fig_skewt = crear_skewt(p, T, Td, u, v, params_calculats, f"Sondeig Vertical\n{poble_sel}")
+            # --- FI DE LA CORRECCIÓ ---
+            
+            st.pyplot(fig_skewt, use_container_width=True)
+            plt.close(fig_skewt)
+            
+            with st.container(border=True):
+                # La crida a la funció d'anàlisi es fa aquí dins ara
+                analisi_temps = analitzar_potencial_meteorologic(params_calculats, nivell_conv, hora_actual)
                 ui_caixa_parametres_sondeig(params_calculats, nivell_conv, hora_actual)
+
         with col2:
             fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
-            st.pyplot(fig_hodo, use_container_width=True); plt.close(fig_hodo)
+            st.pyplot(fig_hodo, use_container_width=True)
+            plt.close(fig_hodo)
+            
             st.markdown("##### Radar de Precipitació en Temps Real")
             radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},8&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
             html_code = f"""<div style="position: relative; width: 100%; height: 410px; border-radius: 10px; overflow: hidden;"><iframe src="{radar_url}" width="100%" height="410" frameborder="0" style="border:0;"></iframe><div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div></div>"""
             st.components.v1.html(html_code, height=410)
-    else: st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
+    else:
+        st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
     
 
 def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel):
