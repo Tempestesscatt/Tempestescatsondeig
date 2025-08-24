@@ -1243,7 +1243,7 @@ def hide_streamlit_style():
 def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi):
     """
     Crea la interfície d'usuari per a la pestanya de l'assistent d'IA.
-    Rep una pre-anàlisi per guiar l'IA.
+    Versió final que elimina el 'stream' per evitar el parpelleig del text.
     """
     st.markdown("#### Assistent d'Anàlisi (IA Gemini)")
     st.info("Fes una pregunta en llenguatge natural. L'assistent utilitzarà una pre-anàlisi automàtica per donar-te una resposta raonada i de confiança.")
@@ -1255,20 +1255,28 @@ def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi):
     if prompt := st.chat_input("Fes una pregunta sobre el sondeig..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"): st.markdown(prompt)
+        
         with st.chat_message("assistant"):
             try:
-                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                
-                # Passem la pre-anàlisi al generador de prompts
-                prompt_complet = generar_prompt_per_ia(params_calc, prompt, poble_sel, pre_analisi)
-                
-                with st.expander("Veure el prompt enviat a la IA (amb la pre-anàlisi)"):
-                    st.text(prompt_complet)
-                
-                response = model.generate_content(prompt_complet, stream=True)
-                resposta_completa = st.write_stream(response)
+                # Afegim un spinner per indicar que l'IA està pensant
+                with st.spinner("El teu amic expert està analitzant les dades..."):
+                    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    
+                    prompt_complet = generar_prompt_per_ia(params_calc, prompt, poble_sel, pre_analisi)
+                    
+                    # --- CANVI CLAU ---
+                    # 1. Eliminem 'stream=True'. Ara esperem la resposta completa.
+                    response = model.generate_content(prompt_complet)
+                    
+                    # 2. Accedim al text directament amb 'response.text' i el mostrem de cop amb st.markdown.
+                    resposta_completa = response.text
+                    st.markdown(resposta_completa)
+                    # --- FI DEL CANVI ---
+
+                # Guardem la resposta a l'historial
                 st.session_state.messages.append({"role": "assistant", "content": resposta_completa})
+
             except Exception as e:
                 st.error(f"Hi ha hagut un error en contactar amb l'assistent d'IA: {e}")
                 
