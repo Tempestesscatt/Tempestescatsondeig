@@ -759,20 +759,27 @@ def carregar_dades_mapa_base_cat(variables, hourly_index):
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_cat(nivell, hourly_index):
     try:
+        # --- LÍNIA MODIFICADA: S'afegeix 'cape' a la llista de variables base ---
+        variables_base = ["cape"] 
         if nivell >= 950:
-            variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            variables = variables_base + ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
             map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
             if error: return None, error
             map_data_raw['dewpoint_data'] = map_data_raw.pop('dew_point_2m')
         else:
-            variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+            variables = variables_base + [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
             map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
             if error: return None, error
             temp_data = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
             rh_data = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
             map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
+        
+        # --- BLOC MODIFICAT: S'extreu 'cape' i s'afegeix a les dades finals ---
+        map_data_raw['cape_data'] = map_data_raw.pop('cape')
         map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
         map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
+        # --- FI DE LA MODIFICACIÓ ---
+        
         return map_data_raw, None
     except Exception as e: return None, f"Error en processar dades del mapa: {e}"
 
@@ -1296,14 +1303,26 @@ def run_catalunya_app():
         ciutats_per_selector, info_msg = obtenir_ciutats_actives(hourly_index_sel)
         info_msg = "Anàlisi limitada a les zones de més interès."
     elif map_data_conv:
+        # La funció 'calcular_convergencia_per_ciutats' ara rep dades que també inclouen el CAPE
         convergencies = calcular_convergencia_per_ciutats(map_data_conv)
+        
+        # Creem un array amb les coordenades dels punts de dades per trobar el més proper
+        map_points = np.vstack((map_data_conv['lats'], map_data_conv['lons'])).T
+        
         ciutats_formatejades = []
         for ciutat in sorted(CIUTATS_CATALUNYA.keys()):
+            coords = CIUTATS_CATALUNYA[ciutat]
             conv = convergencies.get(ciutat, 0)
-            if conv >= 40:
+            
+            # --- BLOC MODIFICAT: S'afegeix la comprovació de CAPE ---
+            # Trobar l'índex del punt de dades més proper a la ciutat
+            closest_idx = cdist([[coords['lat'], coords['lon']]], map_points).argmin()
+            # Obtenir el valor de CAPE en aquest punt
+            cape = map_data_conv['cape_data'][closest_idx]
+
+            if conv >= 40 and cape >= 1000:
                 ciutats_formatejades.append(f"{ciutat} (⚡ Molt Recomanat)")
-            # --- LÍNIA MODIFICADA ---
-            elif conv >= 15:
+            elif conv >= 15 and cape >= 1000:
                 ciutats_formatejades.append(f"{ciutat} (Potencial d'Interès)")
             # --- FI DE LA MODIFICACIÓ ---
             else:
@@ -1344,6 +1363,7 @@ def run_catalunya_app():
         with tab_vertical: ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
         with tab_ia: ui_pestanya_assistent_ia(params_calc, poble_sel)
         with tab_estacions: ui_pestanya_estacions_meteorologiques()
+        
 def run_valley_halley_app():
     ui_capcalera_selectors(None, zona_activa="tornado_alley")
     
