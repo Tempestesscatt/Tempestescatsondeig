@@ -1273,22 +1273,22 @@ def run_catalunya_app():
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
 
-    # --- LÒGICA MODIFICADA: EL SELECTOR DE NIVELL VA PRIMER ---
-    nivell_sel = 925 # Valor per defecte
+    nivell_sel = 925
     if not is_guest:
         nivells_disponibles = [1000, 950, 925, 850, 800, 700]
         index_default = nivells_disponibles.index(925) if 925 in nivells_disponibles else 0
         nivell_sel = st.selectbox(
             "Nivell d'anàlisi per a Mapes i Convergència:", 
             options=nivells_disponibles, 
-            format_func=lambda x: f"{x} hPa", 
+            # --- LÍNIA MODIFICADA ---
+            format_func=lambda x: f"{x} hPa (⭐ Recomanat)" if x == 925 else f"{x} hPa",
+            # --- FI DE LA MODIFICACIÓ ---
             key="level_cat_main",
             index=index_default
         )
     else:
         st.info("ℹ️ L'anàlisi de vent i convergència està fixada a **925 hPa** en el mode convidat.")
 
-    # --- NOU BLOC: CÀLCUL DE CONVERGÈNCIA I FORMATACIÓ DE CIUTATS ---
     map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
     
     ciutats_per_selector = CIUTATS_CATALUNYA
@@ -1296,11 +1296,10 @@ def run_catalunya_app():
 
     if is_guest:
         ciutats_per_selector, info_msg = obtenir_ciutats_actives(hourly_index_sel)
-        info_msg = "Anàlisi limitada a les zones de més interès." # Assegurem el missatge
-    elif map_data_conv: # Només per a usuaris registrats i si tenim dades
+        info_msg = "Anàlisi limitada a les zones de més interès."
+    elif map_data_conv:
         convergencies = calcular_convergencia_per_ciutats(map_data_conv)
         ciutats_formatejades = []
-        # Ordenem per nom de ciutat per mantenir l'ordre alfabètic
         for ciutat in sorted(CIUTATS_CATALUNYA.keys()):
             conv = convergencies.get(ciutat, 0)
             if conv > 15:
@@ -1310,25 +1309,20 @@ def run_catalunya_app():
             else:
                 ciutats_formatejades.append(ciutat)
         ciutats_per_selector = ciutats_formatejades
-    # --- FI DEL NOU BLOC ---
     
     ui_capcalera_selectors(ciutats_per_selector, info_msg, zona_activa="catalunya")
     
-    # --- LÒGICA MODIFICADA: Extreure el nom net del poble seleccionat ---
     poble_sel_formatat = st.session_state.poble_selector
-    poble_sel = poble_sel_formatat.split(' (')[0] # Neteja l'etiqueta per obtenir el nom real
+    poble_sel = poble_sel_formatat.split(' (')[0]
     
-    # Comprovació per si el poble seleccionat ja no és a la llista (canvi d'hora)
     llista_pobles_disponibles = list(ciutats_per_selector.keys()) if isinstance(ciutats_per_selector, dict) else [c.split(' (')[0] for c in ciutats_per_selector]
     if poble_sel not in llista_pobles_disponibles:
         st.session_state.poble_selector = sorted(llista_pobles_disponibles)[0]
         st.rerun()
     
     timestamp_str = f"{st.session_state.dia_selector} a les {st.session_state.hora_selector} (Hora Local)"
-    # Utilitzem el diccionari original per obtenir les coordenades
     lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
     
-    # --- El reste de la funció continua igual ---
     data_tuple, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
     if error_msg: 
         st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
@@ -1367,18 +1361,18 @@ def run_valley_halley_app():
     timestamp_str = f"{dia_sel_str} a les {hora_sel_str} (Central Time)"
     lat_sel, lon_sel = USA_CITIES[poble_sel]['lat'], USA_CITIES[poble_sel]['lon']
     
-    # --- LÒGICA DE CÀLCUL CENTRALITZADA (ARA TAMBÉ PER A EUA) ---
     data_tuple, error_msg = carregar_dades_sondeig_usa(lat_sel, lon_sel, hourly_index_sel)
     if error_msg:
         st.error(f"No s'ha pogut carregar el sondeig per a {poble_sel}: {error_msg}")
         return
 
-    # Selector de nivell per a mapes i convergència (model GFS)
     nivells_disponibles_gfs = [925, 850, 700, 500, 300]
     nivell_sel = st.selectbox(
         "Nivell d'anàlisi per a Mapes i Convergència:", 
         options=nivells_disponibles_gfs, 
-        format_func=lambda x: f"{x} hPa", 
+        # --- LÍNIA MODIFICADA ---
+        format_func=lambda x: f"{x} hPa (⭐ Recomanat)" if x == 925 else f"{x} hPa",
+        # --- FI DE LA MODIFICACIÓ ---
         key="level_usa_main"
     )
 
@@ -1389,13 +1383,10 @@ def run_valley_halley_app():
         conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
         params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
 
-    # --- VISUALITZACIÓ EN PESTANYES ---
     tab_mapes, tab_vertical, tab_satelit = st.tabs(["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"])
     with tab_mapes:
-        # Passem el nivell seleccionat a la funció de mapes
         ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel)
     with tab_vertical:
-        # Passem el nivell seleccionat a la funció vertical
         ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel)
     with tab_satelit:
         ui_pestanya_satelit_usa()
