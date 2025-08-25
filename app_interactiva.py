@@ -250,43 +250,67 @@ def format_time_left(time_delta):
     total_seconds = int(time_delta.total_seconds()); hours, remainder = divmod(total_seconds, 3600); minutes, _ = divmod(remainder, 60)
     return f"{hours}h {minutes}min" if hours > 0 else f"{minutes} min"
 
-def main():
-    inject_custom_css()
-    hide_streamlit_style()
-    
-    if 'precache_completat' not in st.session_state:
-        st.session_state.precache_completat = False
-        
-    if not st.session_state.precache_completat:
-        try:
-            precache_datos_iniciales()
-            st.session_state.precache_completat = True
-        except:
-            pass
-    
-    if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
-    if 'guest_mode' not in st.session_state: st.session_state['guest_mode'] = False
-    if 'zone_selected' not in st.session_state: st.session_state['zone_selected'] = None
+def show_login_page():
+    st.markdown("<h1 style='text-align: center;'>Tempestes.cat</h1>", unsafe_allow_html=True)
+    st.markdown("---")
 
-    if not st.session_state['logged_in']:
-        # --- AFEGEIX LA LÍNIA AQUÍ ---
-        afegir_video_de_fons()
-        # -----------------------------
-        show_login_page()
-    elif not st.session_state['zone_selected']:
-        ui_zone_selection()
-    
-    # --- INICI DEL CANVI ---
-    # Ara, envolv_involucrem cada crida a una funció principal amb un spinner.
-    # Aquest spinner actuarà com una pantalla de càrrega que amaga la interfície anterior.
-    elif st.session_state['zone_selected'] == 'catalunya':
-        with st.spinner("Preparant l'entorn d'anàlisi de Catalunya..."):
-            run_catalunya_app()
+    # Controlem quina vista es mostra (login o registre) amb st.session_state
+    if 'view' not in st.session_state:
+        st.session_state.view = 'login'
+
+    # --- VISTA D'INICI DE SESSIÓ (PER DEFECTE) ---
+    if st.session_state.view == 'login':
+        st.subheader("Inicia Sessió")
+        with st.form("login_form"):
+            username = st.text_input("Nom d'usuari", key="login_user")
+            password = st.text_input("Contrasenya", type="password", key="login_pass")
             
-    elif st.session_state['zone_selected'] == 'valley_halley':
-        with st.spinner("Preparant l'entorn d'anàlisi de Tornado Alley..."):
-            run_valley_halley_app()
-    # --- FI DEL CANVI ---
+            if st.form_submit_button("Entra", use_container_width=True, type="primary"):
+                users = load_json_file(USERS_FILE)
+                if username in users and users[username] == get_hashed_password(password):
+                    st.session_state.update({'logged_in': True, 'username': username, 'guest_mode': False})
+                    st.rerun()
+                else:
+                    st.error("Nom d'usuari o contrasenya incorrectes.")
+        
+        # Botó per canviar a la vista de registre
+        if st.button("No tens un compte? Registra't aquí"):
+            st.session_state.view = 'register'
+            st.rerun()
+
+    # --- VISTA DE REGISTRE ---
+    elif st.session_state.view == 'register':
+        st.subheader("Crea un nou compte")
+        with st.form("register_form"):
+            new_username = st.text_input("Tria un nom d'usuari", key="reg_user")
+            new_password = st.text_input("Tria una contrasenya", type="password", key="reg_pass")
+            
+            if st.form_submit_button("Registra'm", use_container_width=True):
+                users = load_json_file(USERS_FILE)
+                if not new_username or not new_password:
+                    st.error("El nom d'usuari i la contrasenya no poden estar buits.")
+                elif new_username in users:
+                    st.error("Aquest nom d'usuari ja existeix.")
+                elif len(new_password) < 6:
+                    st.error("La contrasenya ha de tenir com a mínim 6 caràcters.")
+                else:
+                    users[new_username] = get_hashed_password(new_password)
+                    save_json_file(users, USERS_FILE)
+                    st.success("Compte creat amb èxit! Ara pots iniciar sessió.")
+        
+        # Botó per tornar a la vista d'inici de sessió
+        if st.button("Ja tens un compte? Inicia sessió"):
+            st.session_state.view = 'login'
+            st.rerun()
+    
+    st.divider()
+    st.markdown("<p style='text-align: center;'>O si ho prefereixes...</p>", unsafe_allow_html=True)
+
+    # Botó per entrar com a convidat
+    if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary"):
+        st.session_state.update({'guest_mode': True, 'logged_in': True})
+        st.rerun()
+        
 
 def calcular_mlcape_robusta(p, T, Td):
     """
@@ -2517,6 +2541,9 @@ def main():
     if 'zone_selected' not in st.session_state: st.session_state['zone_selected'] = None
 
     if not st.session_state['logged_in']:
+        # --- AFEGEIX LA LÍNIA AQUÍ ---
+        afegir_video_de_fons()
+        # -----------------------------
         show_login_page()
     elif not st.session_state['zone_selected']:
         ui_zone_selection()
@@ -2531,8 +2558,6 @@ def main():
     elif st.session_state['zone_selected'] == 'valley_halley':
         with st.spinner("Preparant l'entorn d'anàlisi de Tornado Alley..."):
             run_valley_halley_app()
-    # --- FI DEL CANVI ---
-
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
