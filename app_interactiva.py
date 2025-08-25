@@ -199,38 +199,43 @@ def format_time_left(time_delta):
 def inject_custom_css():
     st.markdown("""
     <style>
-    /* --- ESTILS GLOBALS I DARK MODE (PER DEFECTE) --- */
-    .stSpinner > div { justify-content: center; }
-    .blinking-alert { animation: blink 1.5s linear infinite; }
-    @keyframes blink { 50% { opacity: 0.6; } }
-    
-    /* Fons de vídeo (només visible a la pàgina de login) */
-    .video-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -2; overflow: hidden; }
-    .video-bg { width: 100%; height: 100%; object-fit: cover; }
-    .overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.65); z-index: -1; }
+    .stSpinner > div {
+        justify-content: center;
+    }
 
-    /* --- ESTILS ESPECÍFICS PER AL LIGHT MODE --- */
-    /* Aquests estils NOMÉS s'activen quan el body té la classe 'light-theme-active' */
+    .blinking-alert {
+        animation: blink 1.5s linear infinite;
+    }
 
-    /* Fons de l'aplicació principal */
-    .light-theme-active .stApp {
-        background-color: #FFFFFF;
-        color: #0e1117;
+    @keyframes blink {
+        50% { opacity: 0.6; }
     }
     
-    /* Textos generals */
-    .light-theme-active h1, .light-theme-active h2, .light-theme-active h3, .light-theme-active h4, .light-theme-active h5,
-    .light-theme-active .stMarkdown, .light-theme-active p, .light-theme-active .stSubheader, .light-theme-active .stTextInput label {
-        color: #0e1117 !important;
+    /* Contenidors per al vídeo de fons */
+    .video-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: -2;
+        overflow: hidden;
     }
     
-    /* Fons dels widgets de paràmetres */
-    .light-theme-active .styled-widget-box {
-        background-color: #FFFFFF !important;
-        border: 1px solid #E0E0E0 !important;
+    .video-bg {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
-    .light-theme-active .styled-widget-box span {
-        color: #31333F !important;
+
+    .overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: rgba(0, 0, 0, 0.65);
+        z-index: -1;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -238,10 +243,12 @@ def inject_custom_css():
 
 
 def show_login_page():
-    # Injecta el CSS específic del login per forçar el text blanc.
+    # Aquesta funció posa el vídeo i el seu propi CSS per garantir que el text sigui sempre blanc.
+    add_video_background("llamps.mp4")
+
     st.markdown("""
         <style>
-        /* Aquest CSS assegura que la pàgina de login sempre tingui text blanc, independentment del tema */
+        /* CSS específic i de màxima prioritat NOMÉS per a la pàgina de login */
         [data-testid="stSubheader"],
         div[data-testid="stTextInput"] label,
         div[data-testid="stMarkdown"] p {
@@ -249,8 +256,6 @@ def show_login_page():
         }
         </style>
     """, unsafe_allow_html=True)
-
-    add_video_background("llamps.mp4")
 
     st.markdown("<h1 style='text-align: center; color: white;'>Tempestes.cat</h1>", unsafe_allow_html=True)
     st.markdown("---")
@@ -297,6 +302,10 @@ def show_login_page():
     if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary", key="guest_login"):
         st.session_state.update({'guest_mode': True, 'logged_in': True})
         st.rerun()
+
+
+
+
 
 def set_theme_in_frontend(theme):
     """
@@ -2061,7 +2070,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
-    col_text, col_change, col_logout, col_theme = st.columns([0.6, 0.15, 0.15, 0.1])
+    col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
     
     with col_text:
         if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username')}**!")
@@ -2076,20 +2085,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
-            
-    # --- BLOC DE CANVI DE TEMA (VERSIÓ FINAL) ---
-    with col_theme:
-        theme = st.session_state.get('theme', 'dark')
-        
-        if theme == 'dark':
-            if st.button("🌙", key="theme_switch_to_light", help="Canviar a mode clar", use_container_width=True):
-                st.session_state.theme = 'light'
-                st.rerun()
-        else:
-            if st.button("☀️", key="theme_switch_to_dark", help="Canviar a mode fosc", use_container_width=True):
-                st.session_state.theme = 'dark'
-                st.rerun()
-    # --- FI DEL BLOC FINAL ---
 
     with st.container(border=True):
         def formatar_llista_ciutats(ciutats_dict, conv_data):
@@ -2542,16 +2537,7 @@ def ui_zone_selection():
                 st.rerun()
 
 def main():
-    # Inicialitza el tema si no existeix
-    if 'theme' not in st.session_state:
-        st.session_state.theme = 'dark'
-
-    # Injecta SEMPRE el full d'estils principal
     inject_custom_css()
-    
-    # Aquesta funció injecta el JS que afegeix o treu la classe 'light-theme-active'
-    set_theme_in_frontend(st.session_state.theme)
-
     hide_streamlit_style()
     
     if 'precache_completat' not in st.session_state:
