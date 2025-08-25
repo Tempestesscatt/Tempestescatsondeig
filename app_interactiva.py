@@ -2566,10 +2566,9 @@ def ui_zone_selection():
                 st.rerun()
 
 def main():
-    # --- INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
-    # Aquest bloc s'executa sempre primer i garanteix que les claus essencials existeixin.
+    # --- INICIALITZACIó ROBUSTA DE L'ESTAT ---
     if 'theme' not in st.session_state:
-        st.session_state.theme = 'dark' # Tema inicial per defecte
+        st.session_state.theme = 'dark'
     if 'logged_in' not in st.session_state: 
         st.session_state['logged_in'] = False
     if 'guest_mode' not in st.session_state: 
@@ -2580,11 +2579,10 @@ def main():
         st.session_state.precache_completat = False
     # --- FI DEL BLOC D'INICIALITZACIÓ ---
 
-    # Aquesta funció injecta el JS que força el tema visual
     set_theme_in_frontend(st.session_state.theme)
 
     inject_custom_css()
-    # hide_streamlit_style() # <-- LÍNIA COMENTADA PER FER REAPARÈIXER EL MENÚ
+    hide_streamlit_style() # <-- LÍNIA DESCOMENTADA PER TORNAR A AMAGAR EL MENÚ
 
     if not st.session_state.precache_completat:
         try:
