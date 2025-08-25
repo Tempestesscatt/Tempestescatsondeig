@@ -202,19 +202,9 @@ def inject_custom_css():
         50% { opacity: 0.6; }
     }
     
-    /* --- CSS PER AL FONS (VERSIÓ FINAL I DEFINITIVA) --- */
-
-    /* Apunta al contenidor principal de la vista de l'app */
-    [data-testid="stAppViewContainer"] > .main {
-        background: transparent; /* Fa que el fons sigui transparent */
-    }
-
-    /* Assegura que l'element arrel de Streamlit també sigui transparent */
     .stApp {
         background: transparent;
     }
-    
-    /* --- FI DEL CSS DE FONS --- */
 
     .video-container {
         position: fixed;
@@ -242,16 +232,21 @@ def inject_custom_css():
         z-index: -1;
     }
     
-    /* CSS de precisió per al Light Mode Login */
-    [data-testid="stSubheader"] {
-        color: white !important;
+    /* --- CSS PER AL LIGHT MODE DE L'APP PRINCIPAL (RESTAURAT) --- */
+    body.light .stMarkdown, 
+    body.light p {
+        color: #0e1117 !important;
     }
-    div[data-testid="stTextInput"] label {
-        color: white !important;
+    body.light .stSubheader {
+        color: #0e1117 !important;
     }
-    div[data-testid="stMarkdown"] p {
-        color: white !important;
+    body.light .stTextInput label {
+        color: #0e1117 !important;
     }
+    body.light [data-testid="stMetricLabel"] p {
+        color: #0e1117 !important;
+    }
+    /* --- FI DEL BLOC RESTAURAT --- */
     
     </style>
     """, unsafe_allow_html=True)
@@ -261,52 +256,22 @@ def format_time_left(time_delta):
     return f"{hours}h {minutes}min" if hours > 0 else f"{minutes} min"
 
 def show_login_page():
-    # Aquesta funció ara conté tota la lògica necessària per al fons de vídeo i els estils.
-    
-    video_file = "llamps.mp4"
-    if not os.path.exists(video_file):
-        st.warning(f"No s'ha trobat l'arxiu de vídeo de fons: {video_file}")
-    else:
-        with open(video_file, "rb") as video:
-            video_bytes = video.read()
-        video_base64 = base64.b64encode(video_bytes).decode("utf-8")
+    # Aquesta funció posa el vídeo i el seu propi CSS per garantir que el text sigui sempre blanc.
+    add_video_background("llamps.mp4")
 
-        st.markdown(f"""
-        <style>
-        /* Aquesta classe s'afegeix al body mitjançant JS */
-        .login-page-active {{
-            position: relative;
-            width: 100%;
-            height: 100%;
-        }}
-
-        /* Quan la classe està activa, força tots aquests elements a ser transparents */
-        .login-page-active .stApp,
-        .login-page-active [data-testid="stAppViewContainer"],
-        .login-page-active [data-testid="stAppViewContainer"] > .main {{
-            background: transparent !important;
-        }}
-
-        /* Força el text a ser blanc a la pàgina de login */
-        .login-page-active [data-testid="stSubheader"],
-        .login-page-active div[data-testid="stTextInput"] label,
-        .login-page-active div[data-testid="stMarkdown"] p {{
-            color: white !important;
-        }}
-        </style>
-
-        <div class="video-container">
-            <div class="overlay"></div>
-            <video autoplay loop muted class="video-bg">
-                <source src="data:video/mp4;base64,{video_base64}" type="video/mp4">
-            </video>
-        </div>
-
-        <script>
-        // Afegeix la classe al body per activar els estils de fons
-        window.parent.document.querySelector('body').classList.add('login-page-active');
-        </script>
-        """, unsafe_allow_html=True)
+    st.markdown("""
+    <style>
+    /* CSS específic i de màxima prioritat NOMÉS per a la pàgina de login */
+    body.st-emotion-cache-186356t { /* Selector molt específic per al body de Streamlit */
+        color: white !important;
+    }
+    [data-testid="stSubheader"],
+    div[data-testid="stTextInput"] label,
+    div[data-testid="stMarkdown"] p {
+        color: white !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
     st.markdown("<h1 style='text-align: center; color: white;'>Tempestes.cat</h1>", unsafe_allow_html=True)
     st.markdown("---")
@@ -319,7 +284,6 @@ def show_login_page():
         with st.form("login_form"):
             username = st.text_input("Nom d'usuari", key="login_user")
             password = st.text_input("Contrasenya", type="password", key="login_pass")
-            
             if st.form_submit_button("Entra", use_container_width=True, type="primary"):
                 users = load_json_file(USERS_FILE)
                 if username in users and users[username] == get_hashed_password(password):
@@ -327,7 +291,6 @@ def show_login_page():
                     st.rerun()
                 else:
                     st.error("Nom d'usuari o contrasenya incorrectes.")
-        
         if st.button("No tens un compte? Registra't aquí", key="go_to_register"):
             st.session_state.view = 'register'
             st.rerun()
@@ -337,7 +300,6 @@ def show_login_page():
         with st.form("register_form"):
             new_username = st.text_input("Tria un nom d'usuari", key="reg_user")
             new_password = st.text_input("Tria una contrasenya", type="password", key="reg_pass")
-            
             if st.form_submit_button("Registra'm", use_container_width=True):
                 users = load_json_file(USERS_FILE)
                 if not new_username or not new_password:
@@ -350,7 +312,6 @@ def show_login_page():
                     users[new_username] = get_hashed_password(new_password)
                     save_json_file(users, USERS_FILE)
                     st.success("Compte creat amb èxit! Ara pots iniciar sessió.")
-        
         if st.button("Ja tens un compte? Inicia sessió", key="go_to_login"):
             st.session_state.view = 'login'
             st.rerun()
