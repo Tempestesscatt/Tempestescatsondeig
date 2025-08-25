@@ -29,6 +29,8 @@ import threading
 import pandas as pd
 import xml.etree.ElementTree as ET
 from streamlit_option_menu import option_menu
+from math import radians, sin, cos, sqrt, atan2, degrees
+
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever")
@@ -1490,6 +1492,100 @@ def carregar_dades_mapa_usa(nivell, hourly_index):
         return None, f"Error en processar dades del mapa GFS: {e}"
 
 
+def haversine_distance(lat1, lon1, lat2, lon2):
+    """Calcula la distància en km entre dos punts geogràfics."""
+    R = 6371  # Radi de la Terra en km
+    dLat, dLon = radians(lat2 - lat1), radians(lon2 - lon1)
+    lat1, lat2 = radians(lat1), radians(lat2)
+    a = sin(dLat/2)**2 + cos(lat1) * cos(lat2) * sin(dLon/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1-a))
+    return R * c
+
+def get_bearing(lat1, lon1, lat2, lon2):
+    """Calcula la direcció (bearing) des del punt 1 al punt 2."""
+    dLon = radians(lon2 - lon1)
+    lat1, lat2 = radians(lat1), radians(lat2)
+    y = sin(dLon) * cos(lat2)
+    x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
+    bearing = degrees(atan2(y, x))
+    return (bearing + 360) % 360
+
+def angular_difference(angle1, angle2):
+    """Calcula la diferència més curta entre dos angles."""
+    diff = abs(angle1 - angle2) % 360
+    return diff if diff <= 180 else 360 - diff
+
+def analitzar_amenaça_convergencia_propera(map_data, params_calc, lat_sel, lon_sel):
+    """
+    Analitza si hi ha nuclis de convergència forts i propers que representin
+    una amenaça directa per a la ubicació seleccionada.
+    """
+    if not map_data or not params_calc or 'lons' not in map_data or len(map_data['lons']) < 4:
+        return None
+
+    # Extreu el moviment de la tempesta (prioritzem el Right-Mover)
+    moviment_vector = params_calc.get('RM') or params_calc.get('Mean_Wind')
+    if not moviment_vector or pd.isna(moviment_vector[0]):
+        return None
+
+    u_storm, v_storm = moviment_vector[0] * units('m/s'), moviment_vector[1] * units('m/s')
+    storm_speed_kmh = mpcalc.wind_speed(u_storm, v_storm).to('km/h').m
+    storm_dir_to = mpcalc.wind_direction(u_storm, v_storm, convention='to').m
+
+    # Llindars per a l'avís
+    CONV_THRESHOLD = 25
+    MAX_DIST_KM = 50
+    MIN_STORM_SPEED_KMH = 15
+    ANGLE_TOLERANCE = 45 # Marge de +/- 45 graus
+
+    if storm_speed_kmh < MIN_STORM_SPEED_KMH:
+        return None
+
+    try:
+        # Interpola les dades de convergència a una graella fina
+        lons, lats, speed_data, dir_data = map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data']
+        grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100))
+        u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+        grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+        grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+        
+        with np.errstate(invalid='ignore'):
+            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+            convergence = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
+        
+        # Troba tots els punts que superen el llindar de convergència
+        punts_forts_idx = np.argwhere(convergence > CONV_THRESHOLD)
+        if len(punts_forts_idx) == 0: return None
+
+        amenaces_potencials = []
+        for idx in punts_forts_idx:
+            lat_conv, lon_conv = grid_lat[idx[0], idx[1]], grid_lon[idx[0], idx[1]]
+            dist = haversine_distance(lat_sel, lon_sel, lat_conv, lon_conv)
+
+            if dist <= MAX_DIST_KM:
+                # Calcula la direcció des del nucli de convergència cap a nosaltres
+                bearing_to_target = get_bearing(lat_conv, lon_conv, lat_sel, lon_sel)
+                # Compara si la tempesta es mou en aquesta direcció
+                if angular_difference(storm_dir_to, bearing_to_target) <= ANGLE_TOLERANCE:
+                    amenaces_potencials.append({'dist': dist, 'lat': lat_conv, 'lon': lon_conv})
+        
+        if not amenaces_potencials: return None
+
+        # Tria l'amenaça més propera
+        amenaça_principal = min(amenaces_potencials, key=lambda x: x['dist'])
+        dist_final = amenaça_principal['dist']
+        
+        # Calcula la direcció cardinal des de la nostra posició
+        bearing_from_target = get_bearing(lat_sel, lon_sel, amenaça_principal['lat'], amenaça_principal['lon'])
+        dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"]
+        direccio_cardinal = dirs[int(round(bearing_from_target / 22.5)) % 16]
+
+        return f"⚠️ **AVÍS DE PROXIMITAT:** S'ha detectat un nucli de forta convergència a **{dist_final:.0f} km** al **{direccio_cardinal}**. Les tempestes que es formin allà podrien desplaçar-se cap a la teva posició a uns **{storm_speed_kmh:.0f} km/h**."
+
+    except Exception:
+        return None # Evita que un error en aquest càlcul bloquegi l'app
+
+
         
 def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     # 1. Crear el mapa base amb la projecció correcta per als EUA
@@ -1977,29 +2073,29 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
                 st.pyplot(fig, use_container_width=True)
                 plt.close(fig)
             
-def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual):
+def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, avis_proximitat=None): # <-- 1. AFEGEIX EL NOU PARÀMETRE
     if data_tuple:
         sounding_data, params_calculats = data_tuple
-        # Desempaquetem 'prof' (la trajectòria de superfície)
         p, T, Td, u, v, heights, prof = sounding_data
         
         col1, col2 = st.columns(2, gap="large")
         with col1:
-            # Tornem a passar 'prof' i 'titol' com a arguments
             fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
-            
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             
             with st.container(border=True):
-                # *** LÍNIA CLAU MODIFICADA ***
-                # Ara passem 'sounding_data' a la funció que dibuixa els paràmetres
                 ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual)
 
         with col2:
             fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
+
+            # --- 2. AFEGEIX AQUEST BLOC SENCER ---
+            if avis_proximitat:
+                st.warning(avis_proximitat)
+            # --- FI DEL BLOC AFEGIT ---
             
             st.markdown("##### Radar de Precipitació en Temps Real")
             radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},8&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
@@ -2007,7 +2103,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             st.components.v1.html(html_code, height=410)
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
-    
 
 def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model GFS)")
@@ -2167,8 +2262,12 @@ def run_catalunya_app():
             
             analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
             
+            # Crida a la nova funció d'anàlisi de proximitat
+            avis_proximitat = analitzar_amenaça_convergencia_propera(pre_map_data, params_calc, lat_sel, lon_sel)
+            
             if selected_tab == "Anàlisi Vertical":
-                ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str)
+                # Passa el resultat a la funció de la UI
+                ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, avis_proximitat)
             
             elif selected_tab == "💬 Assistent IA":
                 interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
