@@ -69,9 +69,10 @@ CIUTATS_CATALUNYA = {
     'Vilanova i la Geltrú': {'lat': 41.2241, 'lon': 1.7252},
     
     # --- NOUS SONDEJOS MARINS AFEGITS ---
-    'Costes de Girona (Mar)': {'lat': 42.05, 'lon': 3.55},      # <-- NOU SONDEIG MARÍ
-    'Litoral Barceloní (Mar)': {'lat': 41.30, 'lon': 2.50},    # <-- NOU SONDEIG MARÍ
-    'Aigües de Tarragona (Mar)': {'lat': 40.90, 'lon': 1.65},  # <-- NOU SONDEIG MARÍ
+    'Costes de Girona (Mar)': {'lat': 42.05, 'lon': 3.55},      
+    'Litoral Barceloní (Mar)': {'lat': 41.30, 'lon': 2.50},   
+    'Aigües de Tarragona (Mar)': {'lat': 40.90, 'lon': 1.65},
+    'Mar Profunda': {'lat': 41.45, 'lon': 2.90},  
 }
 POBLACIONS_TERRA = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' not in k}
 PUNTS_MAR = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' in k}
