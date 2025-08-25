@@ -255,6 +255,8 @@ def format_time_left(time_delta):
     total_seconds = int(time_delta.total_seconds()); hours, remainder = divmod(total_seconds, 3600); minutes, _ = divmod(remainder, 60)
     return f"{hours}h {minutes}min" if hours > 0 else f"{minutes} min"
 
+
+
 def show_login_page():
     # Aquesta funció posa el vídeo i el seu propi CSS per garantir que el text sigui sempre blanc.
     add_video_background("llamps.mp4")
@@ -322,6 +324,8 @@ def show_login_page():
     if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary", key="guest_login"):
         st.session_state.update({'guest_mode': True, 'logged_in': True})
         st.rerun()
+
+
 
 def set_theme_in_frontend(theme):
     """
@@ -2568,9 +2572,8 @@ def ui_zone_selection():
 
 def main():
     if 'theme' not in st.session_state:
-        st.session_state.theme = 'dark' # Tema inicial per defecte
+        st.session_state.theme = 'dark'
 
-    # Forcem el tema visual a cada recàrrega
     set_theme_in_frontend(st.session_state.theme)
 
     inject_custom_css()
@@ -2602,7 +2605,6 @@ def main():
     elif st.session_state['zone_selected'] == 'valley_halley':
         with st.spinner("Preparant l'entorn d'anàlisi de Tornado Alley..."):
             run_valley_halley_app()
-
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
