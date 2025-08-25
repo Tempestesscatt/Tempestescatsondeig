@@ -540,50 +540,57 @@ def verificar_datos_entrada(p, T, Td, u, v, heights):
     
     print("=============================")
 
-def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
+
+
+
+# Reemplaça la teva funció 'crear_skewt' amb aquesta:
+def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str):
     """
-    Versió final i millorada. Afegeix un ombrejat a la part inferior per
-    representar visualment el terreny quan l'anàlisi es fa en un punt elevat,
-    millorant la claredat del gràfic.
+    Versió final i estètica. Afegeix un degradat de color per representar
+    el terreny i ara inclou la data i hora al títol.
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
     skew.ax.grid(True, linestyle='-', alpha=0.5)
 
-    # --- NOU BLOC PER A L'OMBREJAT DEL TERRENY ---
-    # Obtenim la pressió de superfície (el primer punt del perfil de pressió)
     pressio_superficie = p[0].m
     
-    # Si la pressió de superfície és inferior a 995 hPa, significa que el terreny
-    # està elevat. Ombregem aquesta zona per a una millor visualització.
-    if pressio_superficie < 999:
-        skew.ax.axhspan(
-            1000,                      # Des del fons del gràfic (1000 hPa)
-            pressio_superficie,        # Fins a la pressió de superfície real
-            facecolor='#b2b28c',       # Un color verd/marró tipus terra
-            alpha=0.9,                 # Amb una certa transparència
-            zorder=0                   # Dibuixat al fons de tot, darrere de les línies
+    if pressio_superficie < 995:
+        colors = ["#66462F", "#799845"] 
+        cmap_terreny = LinearSegmentedColormap.from_list("terreny_cmap", colors)
+        gradient = np.linspace(0, 1, 256).reshape(-1, 1)
+        xlims = skew.ax.get_xlim()
+        skew.ax.imshow(
+            gradient.T, 
+            aspect='auto', 
+            cmap=cmap_terreny, 
+            origin='lower',
+            extent=(xlims[0], xlims[1], 1000, pressio_superficie),
+            alpha=0.6,
+            zorder=0
         )
-    # --- FI DEL NOU BLOC ---
     
     skew.ax.axvline(0, color='cyan', linestyle='--', linewidth=1.5, alpha=0.7)
-
     skew.plot_dry_adiabats(color='coral', linestyle='--', alpha=0.5)
     skew.plot_moist_adiabats(color='cornflowerblue', linestyle='--', alpha=0.5)
     skew.plot_mixing_lines(color='limegreen', linestyle='--', alpha=0.5)
     
     if prof is not None:
-        skew.shade_cape(p, T, prof, color='yellow', alpha=0.4)
-        skew.shade_cin(p, T, prof, color='gray', alpha=0.3)
-        skew.plot(p, prof, 'k', linewidth=2, label='Trajectòria Parcel·la (SFC)', 
-                  path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+        skew.shade_cape(p, T, prof, color='red', alpha=0.2)
+        skew.shade_cin(p, T, prof, color='blue', alpha=0.2)
+        skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la (SFC)', 
+                  path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
 
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
-    skew.plot(p, Td, 'blue', lw=2.5, label='Punt de Rosada')
+    skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
         
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
     skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40)
-    skew.ax.set_title(titol, weight='bold', fontsize=14, pad=15)
+    
+    # --- LÍNIA MODIFICADA ---
+    # Afegim el timestamp_str com a subtítol.
+    skew.ax.set_title(f"{titol}\n{timestamp_str}", weight='bold', fontsize=14, pad=15)
+    
     skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
 
     levels_to_plot = ['LCL_p', 'LFC_p', 'EL_p']
@@ -595,14 +602,21 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
 
     skew.ax.legend()
     return fig
-    
-def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
+
+
+def crear_hodograf_avancat(p, u, v, heights, params_calc, titol, timestamp_str):
+    """
+    Versió final que inclou el timestamp al títol per a una millor contextualització.
+    """
     fig = plt.figure(dpi=150, figsize=(8, 8))
     gs = fig.add_gridspec(nrows=2, ncols=2, height_ratios=[1.5, 6], width_ratios=[1.5, 1], hspace=0.4, wspace=0.3)
     ax_barbs = fig.add_subplot(gs[0, :]); ax_hodo = fig.add_subplot(gs[1, 0]); ax_params = fig.add_subplot(gs[1, 1])
-    fig.suptitle(titol, weight='bold', fontsize=16)
     
-    # --- GRÀFIC DE BARBES DE VENT (Sense canvis) ---
+    # --- LÍNIA MODIFICADA ---
+    # Afegim el timestamp_str com a subtítol.
+    fig.suptitle(f"{titol}\n{timestamp_str}", weight='bold', fontsize=16)
+    
+    # --- GRÀFIC DE BARBES DE VENT ---
     ax_barbs.set_title("Vent a Nivells Clau", fontsize=11, pad=15)
     heights_agl = heights - heights[0]
     barb_altitudes_km = [1, 3, 6, 9]; barb_altitudes_m = [h * 1000 for h in barb_altitudes_km] * units.m
@@ -624,13 +638,13 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         else: ax_barbs.text(x_pos[i], 0, "N/A", ha='center', va='center', fontsize=9, color='grey')
     ax_barbs.set_xticks(x_pos); ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km]); ax_barbs.set_yticks([]); ax_barbs.spines[:].set_visible(False); ax_barbs.tick_params(axis='x', length=0, pad=5); ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5); ax_barbs.set_ylim(-1.5, 1.5)
     
-    # --- HODÒGRAF (Sense canvis) ---
+    # --- HODÒGRAF ---
     h = Hodograph(ax_hodo, component_range=80.); h.add_grid(increment=20, color='gray', linestyle='--')
     intervals = np.array([0, 1, 3, 6, 9, 12]) * units.km; colors_hodo = ['red', 'blue', 'green', 'purple', 'gold']
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
     ax_hodo.set_xlabel('U-Component (nusos)'); ax_hodo.set_ylabel('V-Component (nusos)')
 
-    # --- PANELL DE PARÀMETRES AMB LÒGICA DE COLOR CORREGIDA ---
+    # --- PANELL DE PARÀMETRES ---
     ax_params.axis('off')
     def degrees_to_cardinal_ca(d):
         dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"]
@@ -649,20 +663,18 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
         else: ax_params.text(1, y, "---", ha='right', va='center')
         y-=0.1
 
-    # --- LÒGICA DE COLOR DEFINITIVA ---
-    # 1. Obtenim el text i el color del diagnòstic directament de la funció experta.
     tipus_tempesta, color_tempesta, base_nuvol, color_base = diagnosticar_potencial_tempesta(params_calc)
 
     y-=0.05
     ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
     for key, label in [('BWD_0-1km', '0-1 km'), ('BWD_0-6km', '0-6 km')]:
         val = params_calc.get(key, np.nan)
-        color = get_color_global(val, key) # El color del número es calcula individualment...
+        color = get_color_global(val, key)
         ax_params.text(0, y, f"{label}:", ha='left', va='center')
         ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
         y-=0.08
     ax_params.text(0, y, "Tipus:", ha='left', va='center', weight='bold')
-    ax_params.text(0.05, y - 0.08, tipus_tempesta, ha='left', va='center', weight='bold', color=color_tempesta) # ...però el color del text ve del diagnòstic.
+    ax_params.text(0.05, y - 0.08, tipus_tempesta, ha='left', va='center', weight='bold', color=color_tempesta)
     y-=0.16
 
     y-=0.05
@@ -677,6 +689,12 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     ax_params.text(0.05, y - 0.08, base_nuvol, ha='left', va='center', weight='bold', color=color_base)
     
     return fig
+
+
+
+
+
+    
 
 def calcular_puntuacio_tempesta(sounding_data, params, nivell_conv):
     """
@@ -2104,29 +2122,30 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
                 st.pyplot(fig, use_container_width=True)
                 plt.close(fig)
             
-def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, avis_proximitat=None): # <-- 1. AFEGEIX EL NOU PARÀMETRE
+def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None):
     if data_tuple:
         sounding_data, params_calculats = data_tuple
         p, T, Td, u, v, heights, prof = sounding_data
         
         col1, col2 = st.columns(2, gap="large")
         with col1:
-            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical\n{poble_sel}")
+            # Passa el timestamp_str a la funció de gràfic
+            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str)
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             
             with st.container(border=True):
-                ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual)
+                # Passa l'avís de proximitat a la caixa de paràmetres
+                ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual, avis_proximitat)
 
         with col2:
-            fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat\n{poble_sel}")
+            # Passa el timestamp_str a la funció de gràfic
+            fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat - {poble_sel}", timestamp_str)
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
 
-            # --- 2. AFEGEIX AQUEST BLOC SENCER ---
             if avis_proximitat:
                 st.warning(avis_proximitat)
-            # --- FI DEL BLOC AFEGIT ---
             
             st.markdown("##### Radar de Precipitació en Temps Real")
             radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},8&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
@@ -2293,19 +2312,17 @@ def run_catalunya_app():
             
             analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
             
-            # Crida a la nova funció d'anàlisi de proximitat
             avis_proximitat = analitzar_amenaça_convergencia_propera(pre_map_data, params_calc, lat_sel, lon_sel)
             
             if selected_tab == "Anàlisi Vertical":
-                # Passa el resultat a la funció de la UI
-                ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, avis_proximitat)
+                ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, avis_proximitat)
             
             elif selected_tab == "💬 Assistent IA":
                 interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
                 ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia)
 
 def run_valley_halley_app():
-    # --- PAS 0: INICIALITZACIÓ DE L'ESTAT (AMB L'HORA LOCALITZADA I FORMATADA) ---
+    # --- PAS 0: INICIALITZACIÓ DE L'ESTAT ---
     if 'poble_selector_usa' not in st.session_state:
         st.session_state.poble_selector_usa = "Oklahoma City, OK"
     if 'dia_selector_usa' not in st.session_state:
@@ -2314,14 +2331,12 @@ def run_valley_halley_app():
     if 'hora_selector_usa' not in st.session_state:
         now_spain = datetime.now(TIMEZONE_CAT)
         time_in_usa = now_spain.astimezone(TIMEZONE_USA)
-        # Guardem el text complet amb les dues hores com a valor per defecte
         st.session_state.hora_selector_usa = f"{time_in_usa.hour:02d}:00 (Local: {now_spain.hour:02d}:00h)"
         
     if 'level_usa_main' not in st.session_state:
         st.session_state.level_usa_main = 850
 
-    # --- PAS 1: RECOLLIR TOTS ELS INPUTS DE L'USUARI ---
-    # Per als pre-càlculs, hem d'extreure l'hora CST del text
+    # --- PAS 1: RECOLLIR INPUTS ---
     pre_hora_sel_text = st.session_state.hora_selector_usa
     pre_hora_sel_cst = pre_hora_sel_text.split(' ')[0]
 
@@ -2339,11 +2354,11 @@ def run_valley_halley_app():
     
     ui_capcalera_selectors(None, zona_activa="tornado_alley", convergencies=pre_convergencies)
 
-    # --- PAS 2: LLEGIR L'ESTAT FINAL I CARREGAR DADES ---
+    # --- PAS 2: LLEGIR ESTAT FINAL I CARREGAR DADES ---
     poble_sel = st.session_state.poble_selector_usa
     dia_sel_str = st.session_state.dia_selector_usa
     hora_sel_str_full = st.session_state.hora_selector_usa
-    hora_sel_cst_only = hora_sel_str_full.split(' ')[0] # Extraiem només l'hora CST per als càlculs
+    hora_sel_cst_only = hora_sel_str_full.split(' ')[0]
     nivell_sel = st.session_state.level_usa_main
     lat_sel, lon_sel = USA_CITIES[poble_sel]['lat'], USA_CITIES[poble_sel]['lon']
 
@@ -2354,7 +2369,7 @@ def run_valley_halley_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     timestamp_str = f"{dia_sel_str} a les {hora_sel_cst_only} (Central Time)"
 
-    # --- PAS 3: DIBUIXAR EL MENÚ I MOSTRAR RESULTATS ---
+    # --- PAS 3: DIBUIXAR MENÚ I RESULTATS ---
     menu_options_usa = ["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"]
     menu_icons_usa = ["map-fill", "graph-up-arrow", "globe-americas"]
 
@@ -2399,11 +2414,11 @@ def run_valley_halley_app():
                     if map_data_nivell_sel:
                         params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_nivell_sel, lat_sel, lon_sel)
             
-            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_cst_only)
+            # Passa el timestamp_str a la funció de la UI
+            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_cst_only, timestamp_str)
         
     elif selected_tab_usa == "Satèl·lit (Temps Real)":
         ui_pestanya_satelit_usa()
-        
 
         
 def ui_zone_selection():
