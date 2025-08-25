@@ -2020,13 +2020,16 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             with col_nivell:
                 if not is_guest:
                     nivells = [1000, 950, 925, 900, 850, 800, 700]
-                    # --- LÒGICA CORREGIDA ---
                     nivell_actual = st.session_state.get('level_cat_main', 925)
                     try:
                         idx_nivell = nivells.index(nivell_actual)
                     except ValueError:
-                        idx_nivell = 2 # Per defecte a 925hPa
-                    st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx_nivell, format_func=lambda x: f"{x} hPa")
+                        idx_nivell = 2
+                    # --- NOU FORMAT VISUAL PER ALS NIVELLS ---
+                    st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx_nivell, 
+                                 format_func=lambda x: f"{x} hPa ⭐ (Nucli tempesta)" if x == 925 
+                                                       else f"{x} hPa 🌊 (Anàlisi Marítima)" if x == 1000 
+                                                       else f"{x} hPa")
                 else:
                     st.session_state.level_cat_main = 925
         
@@ -2066,14 +2069,18 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 st.selectbox("Hora (CST):", hores_opcions, key="hora_selector_usa", index=idx_hora)
 
             with col_nivell:
-                # --- LÒGICA CORREGIDA ---
                 nivells_gfs_ordenats = sorted(PRESS_LEVELS_GFS, reverse=False)
                 nivell_actual_usa = st.session_state.get('level_usa_main', 850)
                 try:
                     idx_nivell_usa = nivells_gfs_ordenats.index(nivell_actual_usa)
                 except ValueError:
                     idx_nivell_usa = nivells_gfs_ordenats.index(850) if 850 in nivells_gfs_ordenats else 0
-                st.selectbox("Nivell:", nivells_gfs_ordenats, key="level_usa_main", index=idx_nivell_usa, format_func=lambda x: f"{x} hPa")
+                # --- NOU FORMAT VISUAL PER ALS NIVELLS ---
+                st.selectbox("Nivell:", nivells_gfs_ordenats, key="level_usa_main", index=idx_nivell_usa, 
+                             format_func=lambda x: f"{x} hPa ⭐ (Nucli tempesta)" if x == 925 
+                                                   else f"{x} hPa 🌊 (Anàlisi Marítima)" if x == 1000 
+                                                   else f"{x} hPa")
+                
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
     
