@@ -408,10 +408,9 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
 
 def diagnosticar_potencial_tempesta(params):
     """
-    Versió Definitiva i Lògica v3.0 - LÒGICA DE CISALLAMENT CORREGIDA.
-    Desacobla la dependència estricta entre la cisalladura i el CAPE, permetent
-    una diagnosi correcta en escenaris de "Low-CAPE, High-Shear".
-    Retorna el text del diagnòstic I el seu color corresponent.
+    Versió Definitiva i Lògica v4.0 - LÒGICA DE CISALLAMENT CORREGIDA FINAL
+    La cizalladura (BWD) és ara el factor DOMINANT per determinar el tipus
+    d'organització, eliminant la dependència estricta d'un CAPE alt.
     """
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     srh_1km = params.get('SRH_0-1km', 0) or 0
@@ -421,27 +420,32 @@ def diagnosticar_potencial_tempesta(params):
     bwd_thresh = THRESHOLDS_GLOBALS['BWD_0-6km'] # Llindars: (20, 30, 40)
     srh_thresh = THRESHOLDS_GLOBALS['SRH_0-1km'] # Llindars: (100, 150, 250)
     
-    # --- LÒGICA DE TIPUS DE TEMPESTA CORREGIDA ---
-    tipus_tempesta = "Cèl·lula Simple"; color_tempesta = "#2ca02c" # Verd
-    
-    # Es necessita un mínim de CAPE per a qualsevol tempesta organitzada.
-    MIN_CAPE_PER_ORGANITZACIO = 250 
+    # --- LÒGICA DE TIPUS DE TEMPESTA BASADA EN LA CISALLADURA ---
+    tipus_tempesta = "Cèl·lula Simple"; color_tempesta = "#2ca02c" # Verd per defecte
 
-    if bwd_6km >= bwd_thresh[0] and cape > MIN_CAPE_PER_ORGANITZACIO: # > 20 nusos
+    # Si la cizalladura supera els 20 nusos, ja hi ha potencial d'organització.
+    if bwd_6km >= bwd_thresh[0]:
         tipus_tempesta = "Multicèl·lula"
         color_tempesta = "#ffc107" # Groc
     
-    if bwd_6km >= bwd_thresh[1] and cape > MIN_CAPE_PER_ORGANITZACIO: # > 30 nusos
-        # Si el CAPE també és moderat, pot ser severa
-        if cape > 800:
+    # Si supera els 30 nusos, l'organització és més probable i forta.
+    if bwd_6km >= bwd_thresh[1]:
+        # El CAPE ara només serveix per qualificar-la de "Severa" si és alt.
+        if cape > 1200:
             tipus_tempesta = "Multicèl·lula Severa"
         else:
             tipus_tempesta = "Multicèl·lula Organitzada"
         color_tempesta = "#fd7e14" # Taronja
         
-    if bwd_6km >= bwd_thresh[2] and cape > MIN_CAPE_PER_ORGANITZACIO: # > 40 nusos
+    # Si supera els 40 nusos, el potencial de supercèl·lula és real.
+    if bwd_6km >= bwd_thresh[2]:
         tipus_tempesta = "Supercèl·lula"
         color_tempesta = "#dc3545" # Vermell
+
+    # Si no hi ha gens de CAPE, no es pot formar res, així que tornem a simple.
+    if cape < 100:
+        tipus_tempesta = "Cèl·lula Simple"; color_tempesta = "#2ca02c"
+
 
     # --- Lògica de la base del núvol (sense canvis) ---
     base_nuvol = "Plana i Alta"; color_base = "#2ca02c"
