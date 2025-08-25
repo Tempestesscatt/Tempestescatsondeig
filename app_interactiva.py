@@ -232,16 +232,25 @@ def inject_custom_css():
         z-index: -1;
     }
     
-    /* --- NOU BLOC PER AL LIGHT MODE LOGIN --- */
-    body.light .stTextInput label,
-    body.light .stSubheader,
+    /* --- BLOC DE CSS PER AL LIGHT MODE LOGIN (VERSIÓ CORREGIDA I FINAL) --- */
+    
+    /* Aplica color fosc a TOTS els textos estàndard en Light Mode */
+    body.light .stMarkdown, 
     body.light p {
-        color: #0e1117 !important; /* Text fosc per a fons clar */
+        color: #0e1117 !important;
     }
-    body.light .stMarkdown {
-        color: #0e1117;
+
+    /* Aplica color fosc a les etiquetes dels camps de text */
+    body.light .stTextInput label {
+        color: #0e1117 !important;
     }
-    /* --- FI DEL NOU BLOC --- */
+
+    /* Aplica color fosc als títols dels formularis */
+    body.light .stSubheader {
+        color: #0e1117 !important;
+    }
+    
+    /* --- FI DEL BLOC FINAL --- */
     
     </style>
     """, unsafe_allow_html=True)
