@@ -190,66 +190,42 @@ def count_unread_messages(history):
 def inject_custom_css():
     st.markdown("""
     <style>
-    .stSpinner > div {
-        justify-content: center;
-    }
+    /* --- ESTILS GLOBALS I DARK MODE (PER DEFECTE) --- */
+    .stSpinner > div { justify-content: center; }
+    .blinking-alert { animation: blink 1.5s linear infinite; }
+    @keyframes blink { 50% { opacity: 0.6; } }
+    
+    /* Fons de vídeo (només visible a la pàgina de login) */
+    .video-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -2; overflow: hidden; }
+    .video-bg { width: 100%; height: 100%; object-fit: cover; }
+    .overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.65); z-index: -1; }
 
-    .blinking-alert {
-        animation: blink 1.5s linear infinite;
-    }
+    /* --- ESTILS ESPECÍFICS PER AL LIGHT MODE --- */
+    /* Aquests estils NOMÉS s'activen quan el body té la classe 'light-theme-active' */
 
-    @keyframes blink {
-        50% { opacity: 0.6; }
+    /* Fons de l'aplicació principal */
+    .light-theme-active .stApp {
+        background-color: #FFFFFF;
+        color: #0e1117;
     }
     
-    .stApp {
-        background: transparent;
-    }
-
-    .video-container {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        z-index: -2;
-        overflow: hidden;
+    /* Textos generals */
+    .light-theme-active h1, .light-theme-active h2, .light-theme-active h3, .light-theme-active h4, .light-theme-active h5,
+    .light-theme-active .stMarkdown, .light-theme-active p, .light-theme-active .stSubheader, .light-theme-active .stTextInput label {
+        color: #0e1117 !important;
     }
     
-    .video-bg {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
+    /* Fons dels widgets de paràmetres */
+    .light-theme-active .styled-widget-box {
+        background-color: #FFFFFF !important;
+        border: 1px solid #E0E0E0 !important;
     }
-
-    .overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        background-color: rgba(0, 0, 0, 0.65);
-        z-index: -1;
+    .light-theme-active .styled-widget-box span {
+        color: #31333F !important;
     }
-    
-    /* --- CSS PER AL LIGHT MODE DE L'APP PRINCIPAL (RESTAURAT) --- */
-    body.light .stMarkdown, 
-    body.light p {
-        color: #0e1117 !important;
-    }
-    body.light .stSubheader {
-        color: #0e1117 !important;
-    }
-    body.light .stTextInput label {
-        color: #0e1117 !important;
-    }
-    body.light [data-testid="stMetricLabel"] p {
-        color: #0e1117 !important;
-    }
-    /* --- FI DEL BLOC RESTAURAT --- */
-    
     </style>
     """, unsafe_allow_html=True)
+    
     
 def format_time_left(time_delta):
     total_seconds = int(time_delta.total_seconds()); hours, remainder = divmod(total_seconds, 3600); minutes, _ = divmod(remainder, 60)
@@ -258,22 +234,19 @@ def format_time_left(time_delta):
 
 
 def show_login_page():
-    # Aquesta funció posa el vídeo i el seu propi CSS per garantir que el text sigui sempre blanc.
-    add_video_background("llamps.mp4")
-
+    # Injecta el CSS específic del login per forçar el text blanc.
     st.markdown("""
-    <style>
-    /* CSS específic i de màxima prioritat NOMÉS per a la pàgina de login */
-    body.st-emotion-cache-186356t { /* Selector molt específic per al body de Streamlit */
-        color: white !important;
-    }
-    [data-testid="stSubheader"],
-    div[data-testid="stTextInput"] label,
-    div[data-testid="stMarkdown"] p {
-        color: white !important;
-    }
-    </style>
+        <style>
+        /* Aquest CSS assegura que la pàgina de login sempre tingui text blanc, independentment del tema */
+        [data-testid="stSubheader"],
+        div[data-testid="stTextInput"] label,
+        div[data-testid="stMarkdown"] p {
+            color: white !important;
+        }
+        </style>
     """, unsafe_allow_html=True)
+
+    add_video_background("llamps.mp4")
 
     st.markdown("<h1 style='text-align: center; color: white;'>Tempestes.cat</h1>", unsafe_allow_html=True)
     st.markdown("---")
@@ -291,8 +264,7 @@ def show_login_page():
                 if username in users and users[username] == get_hashed_password(password):
                     st.session_state.update({'logged_in': True, 'username': username, 'guest_mode': False})
                     st.rerun()
-                else:
-                    st.error("Nom d'usuari o contrasenya incorrectes.")
+                else: st.error("Nom d'usuari o contrasenya incorrectes.")
         if st.button("No tens un compte? Registra't aquí", key="go_to_register"):
             st.session_state.view = 'register'
             st.rerun()
@@ -304,12 +276,9 @@ def show_login_page():
             new_password = st.text_input("Tria una contrasenya", type="password", key="reg_pass")
             if st.form_submit_button("Registra'm", use_container_width=True):
                 users = load_json_file(USERS_FILE)
-                if not new_username or not new_password:
-                    st.error("El nom d'usuari i la contrasenya no poden estar buits.")
-                elif new_username in users:
-                    st.error("Aquest nom d'usuari ja existeix.")
-                elif len(new_password) < 6:
-                    st.error("La contrasenya ha de tenir com a mínim 6 caràcters.")
+                if not new_username or not new_password: st.error("El nom d'usuari i la contrasenya no poden estar buits.")
+                elif new_username in users: st.error("Aquest nom d'usuari ja existeix.")
+                elif len(new_password) < 6: st.error("La contrasenya ha de tenir com a mínim 6 caràcters.")
                 else:
                     users[new_username] = get_hashed_password(new_password)
                     save_json_file(users, USERS_FILE)
@@ -2571,23 +2540,25 @@ def ui_zone_selection():
                 st.rerun()
 
 def main():
+    # Inicialitza el tema si no existeix
     if 'theme' not in st.session_state:
         st.session_state.theme = 'dark'
 
+    # Injecta SEMPRE el full d'estils principal
+    inject_custom_css()
+    
+    # Aquesta funció injecta el JS que afegeix o treu la classe 'light-theme-active'
     set_theme_in_frontend(st.session_state.theme)
 
-    inject_custom_css()
     hide_streamlit_style()
     
     if 'precache_completat' not in st.session_state:
         st.session_state.precache_completat = False
-        
     if not st.session_state.precache_completat:
         try:
             precache_datos_iniciales()
             st.session_state.precache_completat = True
-        except:
-            pass
+        except: pass
     
     if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
     if 'guest_mode' not in st.session_state: st.session_state['guest_mode'] = False
@@ -2597,15 +2568,11 @@ def main():
         show_login_page()
     elif not st.session_state['zone_selected']:
         ui_zone_selection()
-    
     elif st.session_state['zone_selected'] == 'catalunya':
-        with st.spinner("Preparant l'entorn d'anàlisi de Catalunya..."):
-            run_catalunya_app()
-            
+        run_catalunya_app()
     elif st.session_state['zone_selected'] == 'valley_halley':
-        with st.spinner("Preparant l'entorn d'anàlisi de Tornado Alley..."):
-            run_valley_halley_app()
-
+        run_valley_halley_app()
+        
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
     Sistema de Diagnòstic Meteorològic Expert v19.0 - REFINAMENT AMB HUMITAT
