@@ -2566,21 +2566,34 @@ def ui_zone_selection():
                 st.rerun()
 
 def main():
+    # --- INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
+    # Aquest bloc s'executa sempre primer i garanteix que les claus essencials existeixin.
+    if 'theme' not in st.session_state:
+        st.session_state.theme = 'dark' # Tema inicial per defecte
+    if 'logged_in' not in st.session_state: 
+        st.session_state['logged_in'] = False
+    if 'guest_mode' not in st.session_state: 
+        st.session_state['guest_mode'] = False
+    if 'zone_selected' not in st.session_state: 
+        st.session_state['zone_selected'] = None
+    if 'precache_completat' not in st.session_state:
+        st.session_state.precache_completat = False
+    # --- FI DEL BLOC D'INICIALITZACIÓ ---
+
+    # Aquesta funció injecta el JS que força el tema visual
+    set_theme_in_frontend(st.session_state.theme)
+
     inject_custom_css()
     hide_streamlit_style()
     
-    if 'precache_completat' not in st.session_state:
-        st.session_state.precache_completat = False
     if not st.session_state.precache_completat:
         try:
             precache_datos_iniciales()
             st.session_state.precache_completat = True
-        except: pass
+        except: 
+            pass
     
-    if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
-    if 'guest_mode' not in st.session_state: st.session_state['guest_mode'] = False
-    if 'zone_selected' not in st.session_state: st.session_state['zone_selected'] = None
-
+    # Lògica de navegació principal
     if not st.session_state['logged_in']:
         show_login_page()
     elif not st.session_state['zone_selected']:
