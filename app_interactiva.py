@@ -652,7 +652,8 @@ def verificar_datos_entrada(p, T, Td, u, v, heights):
 def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str, theme='dark'):
     text_color = '#31333F' if theme == 'light' else 'white'
     grid_color = '#C5C5C5' if theme == 'light' else '#555555'
-    
+    barb_color = '#31333F' if theme == 'light' else 'white' # Color per a les barbes
+
     fig = plt.figure(dpi=150, figsize=(7, 8))
     fig.patch.set_alpha(0.0)
     
@@ -678,7 +679,11 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str, theme='
         skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la (SFC)', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
     skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
-    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
+    
+    # --- LÍNIA CLAU MODIFICADA ---
+    # S'ha afegit el color dinàmic per a les barbes de vent
+    skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03, color=barb_color)
+    
     skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40)
     
     skew.ax.set_title(f"{titol}\n{timestamp_str}", weight='bold', fontsize=14, pad=15, color=text_color)
