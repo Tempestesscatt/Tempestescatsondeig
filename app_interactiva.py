@@ -2728,9 +2728,9 @@ def main():
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v25.0 - Detecció de Pluja Estratiforme.
-    Afegeix una comprovació d'alta prioritat per a perfils atmosfèrics saturats,
-    indicatius de pluja contínua i estable (Nimboestratus).
+    Sistema de Diagnòstic v26.0 - Regla de Pluja Estable Refinada.
+    Activa el diagnòstic de Nimboestratus només en condicions de CAPE inexistent
+    i alta humitat, tal com s'ha especificat.
     """
     # --- 1. EXTRACCIÓ ROBUSTA DE PARÀMETRES ---
     mlcape = params.get('MLCAPE', 0) or 0; mucape = params.get('MUCAPE', 0) or 0
@@ -2746,31 +2746,32 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     dcape = params.get('DCAPE', 0) or 0; pwat = params.get('PWAT', 0) or 0
     conv_key = f'CONV_{nivell_conv}hPa'; conv = params.get(conv_key, 0) or 0
 
-    # --- NOU BLOC DE DETECCIÓ DE PLUJA ESTABLE (MÀXIMA PRIORITAT) ---
+    # --- NOU BLOC DE DETECCIÓ DE PLUJA ESTABLE (REGLA CORREGIDA) ---
     rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
     rh_mitjana = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0
     
-    # Condició: Humitat molt alta (>85%) tant a nivells baixos com mitjans, i poc CAPE.
-    # Un perfil saturat normalment té molt poc o gens de CAPE.
-    if rh_baixa > 85 and rh_mitjana > 80 and max(sbcape, mucape) < 250:
+    # --- CANVI CLAU: La condició ara exigeix CAPE pràcticament nul (< 100 J/kg) ---
+    if rh_baixa > 85 and rh_mitjana > 80 and max(sbcape, mucape) < 100:
         return {'emoji': "🌧️", 'descripcio': "Pluja Estable (Nimboestratus)",
-                'veredicte': "Precipitació contínua i generalitzada a causa d'una capa d'humitat molt profunda i saturada. No s'espera activitat convectiva significativa.",
-                'factor_clau': "Perfil atmosfèric saturat en una capa molt profunda."}
+                'veredicte': "Precipitació contínua i generalitzada a causa d'una capa d'humitat molt profunda i saturada. No s'espera activitat convectiva.",
+                'factor_clau': "Perfil atmosfèric saturat i sense inestabilitat (CAPE)."}
     # --- FI DEL NOU BLOC ---
 
-    # --- Detecció de Castellanus (com a cas especial de convecció elevada) ---
+    # --- Detecció de Castellanus (la resta de la lògica es manté) ---
     castellanus_score = 0
     if cin < -75: castellanus_score += 2
     if lfc_hgt > 2500: castellanus_score += 2
     elif lfc_hgt > 2000: castellanus_score += 1
     if mucape > 400: castellanus_score += 1
-    if rh_mitjana is not None and rh_mitjana >= 50: castellanus_score += 1
+    rh_mitjana_val = rh_capes.get('mitjana')
+    if rh_mitjana_val is not None and rh_mitjana_val >= 50: castellanus_score += 1
     if castellanus_score >= 4:
         descripcio = "Castellanus (Convecció Elevada)"
-        if rh_baixa is not None and rh_baixa < 50: descripcio = "Castellanus amb Virga"
+        rh_baixa_val = rh_capes.get('baixa')
+        if rh_baixa_val is not None and rh_baixa_val < 50: descripcio = "Castellanus amb Virga"
         return {'emoji': "🌥️", 'descripcio': descripcio, 'veredicte': "Potencial per a Altocumulus Castellanus.", 'factor_clau': "Inhibició, LFC elevat, energia i humitat en alçada."}
 
-    # --- AVALUACIÓ DEL POTENCIAL CONVECTIU (la resta de la funció) ---
+    # --- AVALUACIÓ DEL POTENCIAL CONVECTIU ---
     # ... (la resta de la funció continua exactament igual que abans) ...
     hi_ha_inestabilitat_latent = (max(sbcape, mucape) > 150 or li < -1)
     trigger_potential = 'Nul'
