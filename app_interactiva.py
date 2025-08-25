@@ -2001,6 +2001,7 @@ def hide_streamlit_style():
     st.markdown(hide_style, unsafe_allow_html=True)
 
 
+
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya", convergencies=None):
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
@@ -2095,7 +2096,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                         idx_nivell = nivells.index(nivell_actual)
                     except ValueError:
                         idx_nivell = 2
-                    # --- NOU FORMAT VISUAL PER ALS NIVELLS ---
                     st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx_nivell, 
                                  format_func=lambda x: f"{x} hPa (Per tempestes terrestres)" if x == 925 
                                                        else f"{x} hPa (Per punts marítims)" if x == 1000 
@@ -2126,16 +2126,27 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 st.selectbox("Dia:", opcions_dia_usa, key="dia_selector_usa")
 
             with col_hora:
-                now_spain = datetime.now(TIMEZONE_CAT)
+                # --- INICI DE LA CORRECCIÓ ---
+                # 1. Llegim el dia seleccionat per l'usuari des de l'estat de la sessió.
+                dia_sel_str = st.session_state.get("dia_selector_usa", datetime.now(TIMEZONE_USA).strftime('%d/%m/%Y'))
+                target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
+
+                # 2. Generem la llista d'hores basant-nos en el 'target_date', no en 'datetime.now()'.
                 hores_opcions = []
-                for h in range(24):
-                    time_in_spain = now_spain.replace(hour=h, minute=0, second=0, microsecond=0)
-                    time_in_usa = time_in_spain.astimezone(TIMEZONE_USA)
+                for h_usa in range(24):
+                    # Creem un objecte de temps per a cada hora del dia seleccionat a la zona horària dels EUA
+                    time_in_usa = TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h_usa))
+                    # El convertim a l'hora local de Catalunya per mostrar-lo a l'etiqueta
+                    time_in_spain = time_in_usa.astimezone(TIMEZONE_CAT)
                     hores_opcions.append(f"{time_in_usa.hour:02d}:00 (Local: {time_in_spain.hour:02d}:00h)")
+                # --- FI DE LA CORRECCIÓ ---
+
                 hora_actual_str = st.session_state.get('hora_selector_usa')
                 idx_hora = 0
                 if hora_actual_str in hores_opcions:
                     idx_hora = hores_opcions.index(hora_actual_str)
+                
+                # Assignem la clau directament al widget, que gestionarà l'estat per nosaltres
                 st.selectbox("Hora (CST):", hores_opcions, key="hora_selector_usa", index=idx_hora)
 
             with col_nivell:
@@ -2145,12 +2156,13 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     idx_nivell_usa = nivells_gfs_ordenats.index(nivell_actual_usa)
                 except ValueError:
                     idx_nivell_usa = nivells_gfs_ordenats.index(850) if 850 in nivells_gfs_ordenats else 0
-                # --- NOU FORMAT VISUAL PER ALS NIVELLS ---
                 st.selectbox("Nivell:", nivells_gfs_ordenats, key="level_usa_main", index=idx_nivell_usa, 
-                             format_func=lambda x: f"{x} hPa ⭐ (Nucli tempesta)" if x == 925 
+                             format_func=lambda x: f"{x} hPa ⭐ (Nucli tempesta)" if x == 850 
                                                    else f"{x} hPa 🌊 (Anàlisi Marítima)" if x == 1000 
                                                    else f"{x} hPa")
-                
+
+
+
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
     
