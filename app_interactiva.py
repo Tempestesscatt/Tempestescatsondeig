@@ -1781,7 +1781,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
         if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username')}**!")
     with col_change:
         if st.button("Canviar Anàlisi", use_container_width=True):
-            for key in ['poble_selector', 'poble_selector_usa', 'zone_selected', 'active_tab_cat', 'active_tab_usa', 'selector_terra', 'selector_mar', 'last_terra_sel', 'last_mar_sel']:
+            for key in ['poble_selector', 'poble_selector_usa', 'zone_selected', 'active_tab_cat', 'active_tab_usa']:
                 if key in st.session_state:
                     del st.session_state[key]
             st.rerun()
@@ -1816,7 +1816,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 else:
                     ciutats_sense_conv.append(city)
             
-            ciutats_ordenades = sorted(sorted(ciutats_amb_conv, key=lambda item: item[1], reverse=True))
+            ciutats_ordenades = sorted(ciutats_amb_conv, key=lambda item: item[1], reverse=True)
             llista_final = [item[0] for item in ciutats_ordenades]
             return llista_final + ciutats_sense_conv
 
@@ -1827,7 +1827,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             
             tooltip_text = "Mostra els punts amb major convergència ('disparador' de tempestes).\n\nLlegenda:\n- 🟡 (>15): Moderada\n- 🟠 (>30): Alta\n- 🔴 (>40): Molt Alta\n\nEl valor és la força de la convergència."
 
-            # Guarda la selecció principal actual per a comparar-la
             poble_actual_master = st.session_state.get('poble_selector')
 
             with col_terra:
@@ -1838,7 +1837,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                         idx_terra = next(i for i, opt in enumerate(opcions_terra) if opt.startswith(poble_actual_master))
                     except (ValueError, StopIteration): idx_terra = 0
                 
-                terra_sel = st.selectbox("Població:", opcions_terra, key="selector_terra", index=idx_terra, help=tooltip_text)
+                terra_sel = st.selectbox("Població:", opcions_terra, key="selector_terra_widget", index=idx_terra, help=tooltip_text)
 
             with col_mar:
                 opcions_mar = [PLACEHOLDER_MAR] + formatar_llista_ciutats(PUNTS_MAR, convergencies)
@@ -1848,25 +1847,18 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                         idx_mar = next(i for i, opt in enumerate(opcions_mar) if opt.startswith(poble_actual_master))
                     except (ValueError, StopIteration): idx_mar = 0
                 
-                mar_sel = st.selectbox("Punt Marí:", opcions_mar, key="selector_mar", index=idx_mar, help=tooltip_text)
+                mar_sel = st.selectbox("Punt Marí:", opcions_mar, key="selector_mar_widget", index=idx_mar, help=tooltip_text)
 
-            # --- NOVA LÒGICA DE GESTIÓ D'ESTAT (MOLT MÉS ROBUSTA) ---
             terra_sel_net = terra_sel.split(' (')[0]
             mar_sel_net = mar_sel.split(' (')[0]
 
-            # Comprovar si l'usuari ha canviat el selector de terra
             if terra_sel != PLACEHOLDER_TERRA and terra_sel_net != poble_actual_master:
                 st.session_state.poble_selector = terra_sel_net
-                st.session_state.selector_mar = PLACEHOLDER_MAR # Reseteja l'altre selector
                 st.rerun()
 
-            # Comprovar si l'usuari ha canviat el selector de mar
             elif mar_sel != PLACEHOLDER_MAR and mar_sel_net != poble_actual_master:
                 st.session_state.poble_selector = mar_sel_net
-                st.session_state.selector_terra = PLACEHOLDER_TERRA # Reseteja l'altre selector
                 st.rerun()
-            
-            # --- FI DE LA NOVA LÒGICA ---
 
             now_local = datetime.now(TIMEZONE_CAT)
             with col_dia: st.selectbox("Dia:", ("Avui",) if is_guest else ("Avui", "Demà"), key="dia_selector", disabled=is_guest)
@@ -1882,17 +1874,19 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
 
             with col_ciutat:
                 opcions_usa = formatar_llista_ciutats(USA_CITIES, convergencies)
-                # Neteja el nom de la ciutat seleccionada per a la cerca
                 poble_sel_net = st.session_state.get('poble_selector_usa', 'Oklahoma City, OK').split(' (')[0]
                 try:
                     idx = next(i for i, opt in enumerate(opcions_usa) if opt.startswith(poble_sel_net))
                 except (ValueError, StopIteration):
                     idx = 0
                 
-                # Captura la selecció i actualitza l'estat directament
                 poble_seleccionat = st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa_widget", index=idx)
-                st.session_state.poble_selector_usa = poble_seleccionat.split(' (')[0]
-
+                
+                # Lògica d'actualització directa i segura
+                nou_poble_net = poble_seleccionat.split(' (')[0]
+                if st.session_state.get('poble_selector_usa') != nou_poble_net:
+                    st.session_state.poble_selector_usa = nou_poble_net
+                    st.rerun()
 
             with col_dia:
                 st.selectbox("Dia:", ("Avui", "Demà", "Demà passat"), key="dia_selector_usa")
