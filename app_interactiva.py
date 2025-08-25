@@ -945,7 +945,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         if avis_proximitat:
             background_color = "#fd7e14"
             title_text = "⚠️ ATENCIÓ: FOCUS PRÒXIM"
-            main_text = "Si es forma anirá cap a la teva zona!"
+            main_text = "Si es forma anirá          cap a la teva zona!"
             sub_text = f"Entorn actual: {emoji} {descripcio}"
             # --- LÍNIA CLAU MODIFICADA ---
             # S'ha afegit la classe CSS 'blinking-alert' al div.
