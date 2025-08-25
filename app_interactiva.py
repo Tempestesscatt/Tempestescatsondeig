@@ -710,17 +710,16 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str):
 
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol, timestamp_str):
     """
-    Versió final que inclou el timestamp al títol per a una millor contextualització.
+    Versió final que inclou el timestamp al títol i una anàlisi estructural
+    detallada al panell de paràmetres.
     """
     fig = plt.figure(dpi=150, figsize=(8, 8))
     gs = fig.add_gridspec(nrows=2, ncols=2, height_ratios=[1.5, 6], width_ratios=[1.5, 1], hspace=0.4, wspace=0.3)
     ax_barbs = fig.add_subplot(gs[0, :]); ax_hodo = fig.add_subplot(gs[1, 0]); ax_params = fig.add_subplot(gs[1, 1])
     
-    # --- LÍNIA MODIFICADA ---
-    # Afegim el timestamp_str com a subtítol.
     fig.suptitle(f"{titol}\n{timestamp_str}", weight='bold', fontsize=16)
     
-    # --- GRÀFIC DE BARBES DE VENT ---
+    # --- GRÀFIC DE BARBES DE VENT (Sense canvis) ---
     ax_barbs.set_title("Vent a Nivells Clau", fontsize=11, pad=15)
     heights_agl = heights - heights[0]
     barb_altitudes_km = [1, 3, 6, 9]; barb_altitudes_m = [h * 1000 for h in barb_altitudes_km] * units.m
@@ -742,63 +741,67 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol, timestamp_str):
         else: ax_barbs.text(x_pos[i], 0, "N/A", ha='center', va='center', fontsize=9, color='grey')
     ax_barbs.set_xticks(x_pos); ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km]); ax_barbs.set_yticks([]); ax_barbs.spines[:].set_visible(False); ax_barbs.tick_params(axis='x', length=0, pad=5); ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5); ax_barbs.set_ylim(-1.5, 1.5)
     
-    # --- HODÒGRAF ---
+    # --- HODÒGRAF (Sense canvis) ---
     h = Hodograph(ax_hodo, component_range=80.); h.add_grid(increment=20, color='gray', linestyle='--')
     intervals = np.array([0, 1, 3, 6, 9, 12]) * units.km; colors_hodo = ['red', 'blue', 'green', 'purple', 'gold']
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
     ax_hodo.set_xlabel('U-Component (nusos)'); ax_hodo.set_ylabel('V-Component (nusos)')
 
-    # --- PANELL DE PARÀMETRES ---
+    # --- PANELL DE PARÀMETRES (TOTALMENT REESTRUCTURAT) ---
     ax_params.axis('off')
     def degrees_to_cardinal_ca(d):
         dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"]
         return dirs[int(round(d / 22.5)) % 16]
 
-    y = 0.95
-    motion_data = {'M. Dret': params_calc.get('RM'), 'M. Esquerre': params_calc.get('LM'), 'Es mourà cap a': params_calc.get('Mean_Wind')}
-    ax_params.text(0, y, "Moviment (cap a dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
-    for display_name, vec in motion_data.items():
-        ax_params.text(-0.05, y, f"{display_name}:", ha='left', va='center')
+    y = 0.98  # Comencem una mica més amunt
+
+    # 1. Moviment de la tempesta
+    motion_data = {'Moviment Dret': params_calc.get('RM'), 'Moviment Esquerre': params_calc.get('LM')}
+    ax_params.text(0.5, y, "Moviment Tempesta (dir/km/h)", ha='center', weight='bold', fontsize=11); y-=0.12
+    for name, vec in motion_data.items():
+        val_str = "---"
         if vec and not pd.isna(vec[0]):
             u_motion = vec[0] * units('m/s'); v_motion = vec[1] * units('m/s')
-            speed = mpcalc.wind_speed(u_motion, v_motion).to('km/h').m; direction = mpcalc.wind_direction(u_motion, v_motion, convention='to').to('deg').m
-            cardinal = degrees_to_cardinal_ca(direction)
-            ax_params.text(1, y, f"{cardinal} / {speed:.0f} km/h", ha='right', va='center')
-        else: ax_params.text(1, y, "---", ha='right', va='center')
-        y-=0.1
-
-    tipus_tempesta, color_tempesta, base_nuvol, color_base = diagnosticar_potencial_tempesta(params_calc)
-
-    y-=0.05
-    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
-    for key, label in [('BWD_0-1km', '0-1 km'), ('BWD_0-6km', '0-6 km')]:
-        val = params_calc.get(key, np.nan)
-        color = get_color_global(val, key)
-        ax_params.text(0, y, f"{label}:", ha='left', va='center')
-        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
-        y-=0.08
-    ax_params.text(0, y, "Tipus:", ha='left', va='center', weight='bold')
-    ax_params.text(0.05, y - 0.08, tipus_tempesta, ha='left', va='center', weight='bold', color=color_tempesta)
-    y-=0.16
-
-    y-=0.05
-    ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.1
-    for key, label in [('SRH_0-1km', '0-1 km'), ('SRH_0-3km', '0-3 km')]:
-        val = params_calc.get(key, np.nan)
-        color = get_color_global(val, key)
-        ax_params.text(0, y, f"{label}:", ha='left', va='center')
-        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
-        y-=0.08
-    ax_params.text(0, y, "Base:", ha='left', va='center', weight='bold')
-    ax_params.text(0.05, y - 0.08, base_nuvol, ha='left', va='center', weight='bold', color=color_base)
+            speed = mpcalc.wind_speed(u_motion, v_motion).to('km/h').m
+            direction = mpcalc.wind_direction(u_motion, v_motion, convention='to').to('deg').m
+            val_str = f"{degrees_to_cardinal_ca(direction)} / {speed:.0f} km/h"
+        ax_params.text(0, y, f"{name}:", ha='left', va='center', fontsize=10)
+        ax_params.text(1, y, val_str, ha='right', va='center', fontsize=10)
+        y -= 0.08
     
+    y -= 0.05 # Espai extra
+
+    # 2. Paràmetres clau numèrics
+    ax_params.text(0.5, y, "Paràmetres Clau", ha='center', weight='bold', fontsize=11); y-=0.12
+    params_a_mostrar = {
+        'Cisallament 0-6km': ('BWD_0-6km', 'nusos'),
+        'Helicitat 0-3km': ('SRH_0-3km', 'm²/s²'),
+        'Helicitat 0-1km': ('SRH_0-1km', 'm²/s²'),
+    }
+    for label, (key, unit) in params_a_mostrar.items():
+        val = params_calc.get(key, np.nan)
+        color = get_color_global(val, key)
+        ax_params.text(0, y, f"{label}:", ha='left', va='center', fontsize=10)
+        ax_params.text(1, y, f"{val:.0f} {unit}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color, fontsize=10)
+        y -= 0.08
+        
+    y -= 0.05 # Espai extra
+
+    # 3. NOVA ANÀLISI ESTRUCTURAL
+    estructura_analisi = analitzar_estructura_tempesta(params_calc)
+    ax_params.text(0.5, y, "Anàlisi Estructural", ha='center', weight='bold', fontsize=11); y-=0.12
+    
+    for label, data in [
+        ('Pot. Organització:', estructura_analisi['organitzacio']),
+        ('Pot. Mesocicló:', estructura_analisi['mesociclo']),
+        ('Pot. Tornàdic (Base):', estructura_analisi['tornadic']),
+    ]:
+        ax_params.text(0, y, label, ha='left', va='center', fontsize=10)
+        ax_params.text(1, y, data['text'], ha='right', va='center', weight='bold', color=data['color'], fontsize=10)
+        y -= 0.08
+
     return fig
 
-
-
-
-
-    
 
 def calcular_puntuacio_tempesta(sounding_data, params, nivell_conv):
     """
@@ -856,6 +859,53 @@ def calcular_puntuacio_tempesta(sounding_data, params, nivell_conv):
     elif final_score >= 1: color = '#2ca02c' # Verd
 
     return {'score': final_score, 'color': color}
+
+
+def analitzar_estructura_tempesta(params):
+    """
+    Analitza els paràmetres clau per determinar el potencial d'organització,
+    la formació de mesociclons i el risc tornàdic a la base del núvol.
+    Retorna un diccionari amb text i color per a la UI.
+    """
+    # Valors per defecte (entorn de baixa severitat)
+    resultats = {
+        'organitzacio': {'text': 'Febla (Cèl·lules Aïllades)', 'color': '#2ca02c'},
+        'mesociclo': {'text': 'Molt Baix', 'color': '#2ca02c'},
+        'tornadic': {'text': 'Nul', 'color': '#2ca02c'}
+    }
+
+    # Extreure paràmetres de manera segura
+    bwd_6km = params.get('BWD_0-6km', 0) or 0
+    srh_3km = params.get('SRH_0-3km', 0) or 0
+    srh_1km = params.get('SRH_0-1km', 0) or 0
+    lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
+
+    # 1. Potencial d'Organització (basat en el Cisallament 0-6 km)
+    # Aquest paràmetre ens diu si la tempesta serà una simple cèl·lula, multicèl·lules o una supercèl·lula.
+    if bwd_6km >= 40:
+        resultats['organitzacio'] = {'text': 'Molt Alt (Pot. Supercèl·lules)', 'color': '#dc3545'}
+    elif bwd_6km >= 25:
+        resultats['organitzacio'] = {'text': 'Moderat (Pot. Multicèl·lules)', 'color': '#ffc107'}
+
+    # 2. Potencial de Mesocicló (basat en l'Helicitat 0-3 km)
+    # Aquest paràmetre mesura la rotació a nivells mitjans, el cor del mesocicló.
+    if srh_3km >= 400:
+        resultats['mesociclo'] = {'text': 'Extrem', 'color': '#dc3545'}
+    elif srh_3km >= 250:
+        resultats['mesociclo'] = {'text': 'Alt', 'color': '#fd7e14'}
+    elif srh_3km >= 150:
+        resultats['mesociclo'] = {'text': 'Moderat', 'color': '#ffc107'}
+
+    # 3. Potencial Tornàdic a la Base (Helicitat 0-1 km + Alçada LCL)
+    # Aquest és el més important per a tornados. Necessitem rotació a nivells molt baixos i una base del núvol baixa.
+    if srh_1km >= 200 and lcl_hgt < 1000:
+        resultats['tornadic'] = {'text': 'Alt (Entorn Favorable)', 'color': '#dc3545'}
+    elif srh_1km >= 150 and lcl_hgt < 1200:
+        resultats['tornadic'] = {'text': 'Moderat', 'color': '#fd7e14'}
+    elif srh_1km >= 100:
+        resultats['tornadic'] = {'text': 'Baix (Rotació a la base)', 'color': '#ffc107'}
+
+    return resultats
 
 def analitzar_amenaces_especifiques(params):
     """
