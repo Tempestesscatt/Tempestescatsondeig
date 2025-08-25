@@ -94,7 +94,7 @@ USA_CITIES = {
     'Tulsa, OK': {'lat': 36.1540, 'lon': -95.9928},
     'Wichita, KS': {'lat': 37.6872, 'lon': -97.3301},
 }
-MAP_EXTENT_USA = [-105, -85, 30, 48]
+MAP_EXTENT_USA = [-105, -85, 28, 48]
 PRESS_LEVELS_GFS = sorted([1000, 975, 950, 925, 900, 850, 800, 750, 700, 600, 500, 400, 300, 250, 200, 100], reverse=True)
 
 # --- Constants Generals ---
