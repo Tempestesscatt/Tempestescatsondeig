@@ -202,10 +202,8 @@ def inject_custom_css():
         50% { opacity: 0.6; }
     }
     
-    /* --- NOU BLOC DE CSS PER AL FONS DE VÍDEO --- */
-    /* Aquest codi s'injecta sempre, però només serà visible quan el vídeo estigui present */
     .stApp {
-        background: transparent; /* Fa transparent el fons principal de l'app */
+        background: transparent;
     }
 
     .video-container {
@@ -233,8 +231,18 @@ def inject_custom_css():
         background-color: rgba(0, 0, 0, 0.65);
         z-index: -1;
     }
+    
+    /* --- NOU BLOC PER AL LIGHT MODE LOGIN --- */
+    body.light .stTextInput label,
+    body.light .stSubheader,
+    body.light p {
+        color: #0e1117 !important; /* Text fosc per a fons clar */
+    }
+    body.light .stMarkdown {
+        color: #0e1117;
+    }
     /* --- FI DEL NOU BLOC --- */
-
+    
     </style>
     """, unsafe_allow_html=True)
     
@@ -243,9 +251,20 @@ def format_time_left(time_delta):
     return f"{hours}h {minutes}min" if hours > 0 else f"{minutes} min"
 
 def show_login_page():
-    # JA NO CRIDEM A add_video_background() DES D'AQUÍ
+    # Detecta el tema actiu per adaptar la pàgina
+    theme = st.session_state.get('theme', 'dark')
 
-    st.markdown("<h1 style='text-align: center; color: white;'>Tempestes.cat</h1>", unsafe_allow_html=True)
+    if theme == 'dark':
+        # Només mostra el vídeo en Dark Mode
+        add_video_background("llamps.mp4")
+        title_color = "white"
+        text_color = "white"
+    else:
+        # En Light Mode, utilitza el fons per defecte de Streamlit
+        title_color = "#0e1117" # Negre
+        text_color = "#0e1117"  # Negre
+
+    st.markdown(f"<h1 style='text-align: center; color: {title_color};'>Tempestes.cat</h1>", unsafe_allow_html=True)
     st.markdown("---")
 
     if 'view' not in st.session_state:
@@ -293,7 +312,7 @@ def show_login_page():
             st.rerun()
     
     st.divider()
-    st.markdown("<p style='text-align: center;'>O si ho prefereixes...</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: center; color: {text_color};'>O si ho prefereixes...</p>", unsafe_allow_html=True)
 
     if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary", key="guest_login"):
         st.session_state.update({'guest_mode': True, 'logged_in': True})
