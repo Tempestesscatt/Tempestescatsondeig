@@ -192,7 +192,7 @@ def afegir_video_de_fons():
     com un fons de pantalla complet per a la pàgina de login.
     """
     # Assegura't que el vídeo 'llamps.mp4' estigui a la mateixa carpeta que l'script
-    video_file = 'llamps.mp4'
+    video_file = 'llamps2.mp4'
 
     if not os.path.exists(video_file):
         # Si el vídeo no existeix, no facis res per evitar un error
