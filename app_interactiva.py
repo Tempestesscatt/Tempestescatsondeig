@@ -2583,7 +2583,7 @@ def main():
     # Aquesta funció injecta el JS que força el tema visual
     set_theme_in_frontend(st.session_state.theme)
 
-    inject_custom_css()
+    #inject_custom_css()
     hide_streamlit_style()
     
     if not st.session_state.precache_completat:
