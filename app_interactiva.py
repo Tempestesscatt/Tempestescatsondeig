@@ -566,8 +566,8 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     skew.plot_mixing_lines(color='limegreen', linestyle='--', alpha=0.5)
     
     if prof is not None:
-        skew.shade_cape(p, T, prof, color='red', alpha=0.2)
-        skew.shade_cin(p, T, prof, color='blue', alpha=0.2)
+        skew.shade_cape(p, T, prof, color='red', alpha=0.9)
+        skew.shade_cin(p, T, prof, color='blue', alpha=0.9)
         skew.plot(p, prof, 'k', linewidth=2, label='Trajectòria Parcel·la (SFC)', 
                   path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
 
