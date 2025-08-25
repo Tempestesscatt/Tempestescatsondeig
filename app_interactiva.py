@@ -768,8 +768,8 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol, timestamp_str):
 
     y = 0.98
     # Moviment
-    ax_params.text(0.5, y, "Moviment (dir/km/h)", ha='center', weight='bold', fontsize=11); y-=0.15
-    motion_data = {'M. Dret': params_calc.get('RM'), 'M. Esquerre': params_calc.get('LM'), 'Vent Mitjà': params_calc.get('Mean_Wind')}
+    ax_params.text(0.5, y, "Moviment (dir/ km/h)", ha='center', weight='bold', fontsize=11); y-=0.15
+    motion_data = {'M. Dret': params_calc.get('RM'), 'M. Esquerre': params_calc.get('LM'), 'direcció del sistema': params_calc.get('Mean_Wind')}
     for name, vec in motion_data.items():
         val_str = "---"
         if vec and not pd.isna(vec[0]):
