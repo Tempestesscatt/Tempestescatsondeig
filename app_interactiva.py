@@ -261,29 +261,53 @@ def format_time_left(time_delta):
     return f"{hours}h {minutes}min" if hours > 0 else f"{minutes} min"
 
 def show_login_page():
-    # 1. Posa sempre el vídeo de fons.
-    add_video_background("llamps.mp4")
+    # Aquesta funció ara conté tota la lògica necessària per al fons de vídeo i els estils.
+    
+    video_file = "llamps.mp4"
+    if not os.path.exists(video_file):
+        st.warning(f"No s'ha trobat l'arxiu de vídeo de fons: {video_file}")
+    else:
+        with open(video_file, "rb") as video:
+            video_bytes = video.read()
+        video_base64 = base64.b64encode(video_bytes).decode("utf-8")
 
-    # 2. Injecta un CSS local i de màxima precisió que força el text a ser blanc.
-    # Aquest codi NOMÉS afecta la pàgina de login.
-    st.markdown("""
-    <style>
-    /* Títol principal "Inicia Sessió" / "Crea un nou compte" */
-    [data-testid="stSubheader"] {
-        color: white !important;
-    }
-    /* Etiquetes "Nom d'usuari" i "Contrasenya" */
-    div[data-testid="stTextInput"] label {
-        color: white !important;
-    }
-    /* Text "O si ho prefereixes..." */
-    div[data-testid="stMarkdown"] p {
-        color: white !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+        st.markdown(f"""
+        <style>
+        /* Aquesta classe s'afegeix al body mitjançant JS */
+        .login-page-active {{
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }}
 
-    # El títol principal ja es força a blanc aquí.
+        /* Quan la classe està activa, força tots aquests elements a ser transparents */
+        .login-page-active .stApp,
+        .login-page-active [data-testid="stAppViewContainer"],
+        .login-page-active [data-testid="stAppViewContainer"] > .main {{
+            background: transparent !important;
+        }}
+
+        /* Força el text a ser blanc a la pàgina de login */
+        .login-page-active [data-testid="stSubheader"],
+        .login-page-active div[data-testid="stTextInput"] label,
+        .login-page-active div[data-testid="stMarkdown"] p {{
+            color: white !important;
+        }}
+        </style>
+
+        <div class="video-container">
+            <div class="overlay"></div>
+            <video autoplay loop muted class="video-bg">
+                <source src="data:video/mp4;base64,{video_base64}" type="video/mp4">
+            </video>
+        </div>
+
+        <script>
+        // Afegeix la classe al body per activar els estils de fons
+        window.parent.document.querySelector('body').classList.add('login-page-active');
+        </script>
+        """, unsafe_allow_html=True)
+
     st.markdown("<h1 style='text-align: center; color: white;'>Tempestes.cat</h1>", unsafe_allow_html=True)
     st.markdown("---")
 
