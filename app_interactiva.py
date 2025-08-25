@@ -2068,46 +2068,41 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             st.rerun()
 
     with st.container(border=True):
-        def formatar_llista_ciutats(ciutats_dict, conv_data):
-            if not conv_data: return sorted(list(ciutats_dict.keys()))
-            ciutats_amb_conv, ciutats_sense_conv = [], []
-            for city in sorted(ciutats_dict.keys()):
-                conv = conv_data.get(city)
-                if conv is not None and pd.notna(conv):
-                    emoji = "🔴" if conv >= 40 else "🟠" if conv >= 30 else "🟡" if conv >= 15 else ""
-                    text = f"{city} ({emoji} {conv:.0f})" if emoji else city
-                    ciutats_amb_conv.append((text, conv))
-                else: ciutats_sense_conv.append(city)
-            ciutats_ordenades = sorted(ciutats_amb_conv, key=lambda item: item[1], reverse=True)
-            return [item[0] for item in ciutats_ordenades] + ciutats_sense_conv
+        # --- LÒGICA DE FORMAT SIMPLIFICADA I SEGURA ---
+        def format_city_label(city_key):
+            if not convergencies or city_key not in convergencies:
+                return city_key
+            conv = convergencies[city_key]
+            emoji = "🔴" if conv >= 40 else "🟠" if conv >= 30 else "🟡" if conv >= 15 else ""
+            return f"{city_key} ({emoji} {conv:.0f})" if emoji else city_key
 
         if zona_activa == 'catalunya':
             col_terra, col_mar, col_dia, col_hora, col_nivell = st.columns(5)
-            PLACEHOLDER_TERRA = "--- Selecciona Població ---"; PLACEHOLDER_MAR = "--- Selecciona Punt Marí ---"
-            poble_actual_master = st.session_state.get('poble_selector')
+            
+            # Combinem els dos diccionaris en un de sol per a un únic selector
+            opcions_cat_combinades = list(POBLACIONS_TERRA.keys()) + list(PUNTS_MAR.keys())
+            
+            # --- CANVI CLAU: UN ÚNIC SELECTOR PER A CATALUNYA ---
             with col_terra:
-                opcions = [PLACEHOLDER_TERRA] + formatar_llista_ciutats(POBLACIONS_TERRA, convergencies)
-                idx = 0
-                if poble_actual_master in POBLACIONS_TERRA:
-                    try: idx = next(i for i, opt in enumerate(opcions) if opt.startswith(poble_actual_master))
-                    except (ValueError, StopIteration): pass
-                st.selectbox("Població:", opcions, key="selector_terra_widget", index=idx, on_change=on_city_change, args=("selector_terra_widget", "selector_mar_widget", PLACEHOLDER_MAR, POBLACIONS_TERRA))
-            with col_mar:
-                opcions = [PLACEHOLDER_MAR] + formatar_llista_ciutats(PUNTS_MAR, convergencies)
-                idx = 0
-                if poble_actual_master in PUNTS_MAR:
-                    try: idx = next(i for i, opt in enumerate(opcions) if opt.startswith(poble_actual_master))
-                    except (ValueError, StopIteration): pass
-                st.selectbox("Punt Marí:", opcions, key="selector_mar_widget", index=idx, on_change=on_city_change, args=("selector_mar_widget", "selector_terra_widget", PLACEHOLDER_TERRA, PUNTS_MAR))
+                st.selectbox(
+                    "Localitat:",
+                    options=opcions_cat_combinades,
+                    key="poble_selector",
+                    format_func=format_city_label,
+                    # index=opcions_cat_combinades.index(st.session_state.get('poble_selector', 'Barcelona'))
+                )
+
             with col_dia:
                 now_local = datetime.now(TIMEZONE_CAT)
                 opcions_dia = (now_local.strftime('%d/%m/%Y'), (now_local + timedelta(days=1)).strftime('%d/%m/%Y'))
                 st.selectbox("Dia:", opcions_dia, key="dia_selector", disabled=is_guest, on_change=on_day_change_cat)
+            
             with col_hora:
                 opcions_hora = [f"{h:02d}:00h" for h in range(24)]
                 hora_actual = st.session_state.get('hora_selector', f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h")
                 idx = opcions_hora.index(hora_actual) if hora_actual in opcions_hora else 0
                 st.selectbox("Hora:", opcions_hora, key="hora_selector", disabled=is_guest, index=idx)
+            
             with col_nivell:
                 if not is_guest:
                     nivells = [1000, 950, 925, 900, 850, 800, 700]; nivell_actual = st.session_state.get('level_cat_main', 925)
@@ -2117,18 +2112,19 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
         else: # Zona USA
             col_ciutat, col_dia, col_hora, col_nivell = st.columns(4)
             with col_ciutat:
-                opcions_usa = formatar_llista_ciutats(USA_CITIES, convergencies)
-                poble_sel_net = st.session_state.get('poble_selector_usa', 'Oklahoma City, OK')
-                idx = 0
-                try: idx = next(i for i, opt in enumerate(opcions_usa) if opt.startswith(poble_sel_net))
-                except (ValueError, StopIteration): pass
-                st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa_widget", index=idx, on_change=on_city_change, args=("poble_selector_usa_widget", None, None, USA_CITIES))
+                opcions_usa = list(USA_CITIES.keys())
+                st.selectbox(
+                    "Ciutat:",
+                    options=opcions_usa,
+                    key="poble_selector_usa",
+                    format_func=format_city_label
+                )
             with col_dia:
                 now_usa = datetime.now(TIMEZONE_USA)
                 opcions_dia_usa = (now_usa.strftime('%d/%m/%Y'), (now_usa + timedelta(days=1)).strftime('%d/%m/%Y'), (now_usa + timedelta(days=2)).strftime('%d/%m/%Y'))
                 st.selectbox("Dia:", opcions_dia_usa, key="dia_selector_usa_widget", on_change=on_day_change_usa)
             with col_hora:
-                dia_sel_str = st.session_state.dia_selector_usa_widget
+                dia_sel_str = st.session_state.get('dia_selector_usa_widget', datetime.now(TIMEZONE_USA).strftime('%d/%m/%Y'))
                 target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
                 hores_opcions = [f"{TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h)).strftime('%H:%M')} (Local: {TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h)).astimezone(TIMEZONE_CAT).strftime('%H:%Mh')})" for h in range(24)]
                 hora_actual_str = st.session_state.get('hora_selector_usa')
@@ -2138,8 +2134,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 nivells_gfs = sorted(PRESS_LEVELS_GFS, reverse=False)
                 nivell_actual = st.session_state.get('level_usa_main', 850)
                 idx = nivells_gfs.index(nivell_actual) if nivell_actual in nivells_gfs else nivells_gfs.index(850)
-                st.selectbox("Nivell:", nivells_gfs, key="level_usa_main", index=idx, format_func=lambda x: f"{x} hPa ⭐" if x == 850 else f"{x} hPa" )
-
+                st.selectbox("Nivell:", nivells_gfs, key="level_usa_main", index=idx, format_func=lambda x: f"{x} hPa ⭐" if x == 850 else f"{x} hPa")
 
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
@@ -2347,14 +2342,18 @@ def run_catalunya_app():
     ui_capcalera_selectors(None, None, zona_activa="catalunya", convergencies=pre_convergencies)
 
     # --- PAS 3: LLEGIR L'ESTAT FINAL I CARREGAR DADES ---
+    # Aquesta línia ara és SEGURA perquè st.session_state.poble_selector sempre serà una clau vàlida.
     poble_sel = st.session_state.poble_selector
-    if not poble_sel or "---" in poble_sel:
-        st.info("Selecciona una població o un punt marítim per començar l'anàlisi.")
+    
+    if not poble_sel: # Comprovació per si de cas
+        st.info("Selecciona una localitat per començar l'anàlisi.")
         return
 
     dia_sel_str = st.session_state.dia_selector
     hora_sel_str = st.session_state.hora_selector
     nivell_sel = st.session_state.level_cat_main if not is_guest else 925
+    
+    # Aquesta línia ara és SEGURA
     lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
     
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
