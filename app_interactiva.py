@@ -710,8 +710,8 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str):
 
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol, timestamp_str):
     """
-    Versió final que inclou el timestamp al títol i afegeix la nova
-    anàlisi estructural sense alterar el disseny original.
+    Versió final que manté el disseny original, integrant la nova
+    anàlisi d'organització i base de manera subtil.
     """
     fig = plt.figure(dpi=150, figsize=(8, 8))
     gs = fig.add_gridspec(nrows=2, ncols=2, height_ratios=[1.5, 6], width_ratios=[1.5, 1], hspace=0.4, wspace=0.3)
@@ -747,7 +747,7 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol, timestamp_str):
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
     ax_hodo.set_xlabel('U-Component (nusos)'); ax_hodo.set_ylabel('V-Component (nusos)')
 
-    # --- PANELL DE PARÀMETRES (ESTRUCTURA ORIGINAL AMB NOU CONTINGUT) ---
+    # --- PANELL DE PARÀMETRES (ESTRUCTURA FINAL I CORREGIDA) ---
     ax_params.axis('off')
     def degrees_to_cardinal_ca(d):
         dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"]
@@ -765,44 +765,43 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol, timestamp_str):
             ax_params.text(1, y, f"{cardinal} / {speed:.0f}", ha='right', va='center')
         else: ax_params.text(1, y, "---", ha='right', va='center')
         y-=0.1
-    
+
     # --- INICI DEL CANVI ---
-    # Obtenim la nova anàlisi estructural
-    analisi = analitzar_estructura_tempesta(params_calc)
+    # Obtenim la diagnosi original de 'Tipus' i 'Base'
+    tipus_tempesta, color_tempesta, base_nuvol, color_base = diagnosticar_potencial_tempesta(params_calc)
 
     y-=0.05
-    ax_params.text(0, y, "Cisallament (nusos)", ha='left', weight='bold', fontsize=11); y-=0.1
+    ax_params.text(0, y, "Organització (Cisallament)", ha='left', weight='bold', fontsize=11)
+    
+    # Mostrem el tipus de tempesta just a sota del títol
+    ax_params.text(1, y, tipus_tempesta, ha='right', va='center', weight='bold', color=color_tempesta)
+    y-=0.1
+    
+    # Mostrem els valors de cisallament
     for key, label in [('BWD_0-1km', '0-1 km'), ('BWD_0-6km', '0-6 km')]:
         val = params_calc.get(key, np.nan)
         color = get_color_global(val, key)
         ax_params.text(0, y, f"{label}:", ha='left', va='center')
         ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
-        y-=0.08
-    
-    # Substituïm "Tipus:" per la nova anàlisi d'organització
-    ax_params.text(0, y, "Organització:", ha='left', va='center', weight='bold')
-    ax_params.text(1, y, analisi['organitzacio']['text'], ha='right', va='center', weight='bold', color=analisi['organitzacio']['color'])
-    y-=0.12 # Més espai
+        y-=0.12 # Més espai
 
     y-=0.05
-    ax_params.text(0, y, "Helicitat (m²/s²)", ha='left', weight='bold', fontsize=11); y-=0.1
+    ax_params.text(0, y, "Rotació (Helicitat)", ha='left', weight='bold', fontsize=11)
+    
+    # Mostrem la diagnosi de la base just a sota del títol
+    ax_params.text(1, y, base_nuvol, ha='right', va='center', weight='bold', color=color_base)
+    y-=0.1
+
+    # Mostrem els valors d'helicitat
     for key, label in [('SRH_0-1km', '0-1 km'), ('SRH_0-3km', '0-3 km')]:
         val = params_calc.get(key, np.nan)
         color = get_color_global(val, key)
         ax_params.text(0, y, f"{label}:", ha='left', va='center')
         ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
         y-=0.08
-        
-    # Substituïm "Base:" per la nova anàlisi de rotació
-    ax_params.text(0, y, "Pot. Mesocicló:", ha='left', va='center', weight='bold')
-    ax_params.text(1, y, analisi['mesociclo']['text'], ha='right', va='center', weight='bold', color=analisi['mesociclo']['color'])
-    y-=0.08
-    ax_params.text(0, y, "Pot. Tornàdic:", ha='left', va='center', weight='bold')
-    ax_params.text(1, y, analisi['tornadic']['text'], ha='right', va='center', weight='bold', color=analisi['tornadic']['color'])
     # --- FI DEL CANVI ---
     
     return fig
-
 
 def calcular_puntuacio_tempesta(sounding_data, params, nivell_conv):
     """
