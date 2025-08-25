@@ -674,43 +674,48 @@ def verificar_datos_entrada(p, T, Td, u, v, heights):
 
 
 
-# Aquesta funció substitueix l'anterior
 def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str, zoom_capa_baixa=False):
     """
-    Versió professional amb zoom real. Redibuixa el gràfic amb paràmetres
-    específics per a la capa baixa en lloc de simplement retallar-lo.
+    Versió professional amb zoom real i proporcional. Redibuixa el gràfic
+    ajustant ambdós eixos per mantenir l'aspecte correcte del Skew-T.
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     
-    # --- LÒGICA DE ZOOM PROFESSIONAL ---
-    if zoom_capa_baixa:
-        # Per al zoom, creem un gràfic amb un rectangle diferent i ajustem la rotació
-        # per a una millor visualització de la capa límit.
-        skew = SkewT(fig, rotation=30, rect=(0.1, 0.1, 0.85, 0.8))
-        # Establim els límits de pressió per a la capa baixa
-        pressio_superficie = p[0].m
-        skew.ax.set_ylim(pressio_superficie + 10, 600)
-        # Ajustem l'interval de les isòbares
-        skew.ax.yaxis.set_major_locator(plt.MultipleLocator(50))
-        # Ajustem el rang de temperatures per a la capa baixa
-        skew.ax.set_xlim(-10, 40)
-    else:
-        # Comportament normal per al gràfic complet
-        skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
-        skew.ax.set_ylim(1000, 100)
-        skew.ax.set_xlim(-40, 40)
-    # --- FI DE LA LÒGICA DE ZOOM ---
-
+    # Mantenim una única configuració per a la creació del SkewT
+    skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
     skew.ax.grid(True, linestyle='-', alpha=0.5)
 
-    pressio_superficie = p[0].m
-    if pressio_superficie < 995 and not zoom_capa_baixa: # No mostrem el terreny al zoom
-        colors = ["#66462F", "#799845"] 
-        cmap_terreny = LinearSegmentedColormap.from_list("terreny_cmap", colors)
-        gradient = np.linspace(0, 1, 256).reshape(-1, 1)
-        xlims = skew.ax.get_xlim()
-        skew.ax.imshow(gradient.T, aspect='auto', cmap=cmap_terreny, origin='lower', extent=(xlims[0], xlims[1], 1000, pressio_superficie), alpha=0.6, zorder=0)
-    
+    # --- LÒGICA DE ZOOM PROFESSIONAL I PROPORCIONAL ---
+    if zoom_capa_baixa:
+        # 1. Definim els límits de pressió per al zoom (eix Y)
+        pressio_superficie = p[0].m
+        skew.ax.set_ylim(pressio_superficie + 5, 800) # Marge petit a la superfície
+        
+        # 2. Calculem els límits de temperatura NOMÉS per a aquesta capa (eix X)
+        # Això és el pas clau per mantenir les proporcions!
+        mask_capa_baixa = (p.m <= pressio_superficie) & (p.m >= 800)
+        T_capa_baixa = T[mask_capa_baixa]
+        Td_capa_baixa = Td[mask_capa_baixa]
+        
+        # Trobem les temperatures mínima i màxima en aquesta capa i afegim un marge
+        temp_min = min(T_capa_baixa.min().m, Td_capa_baixa.min().m) - 5
+        temp_max = max(T_capa_baixa.max().m, Td_capa_baixa.max().m) + 5
+        skew.ax.set_xlim(temp_min, temp_max)
+    else:
+        # Comportament normal per al gràfic complet
+        skew.ax.set_ylim(1000, 100)
+        skew.ax.set_xlim(-40, 40)
+        
+        # Dibuixem el terreny només a la vista completa
+        pressio_superficie = p[0].m
+        if pressio_superficie < 995:
+            colors = ["#66462F", "#799845"] 
+            cmap_terreny = LinearSegmentedColormap.from_list("terreny_cmap", colors)
+            gradient = np.linspace(0, 1, 256).reshape(-1, 1)
+            xlims = skew.ax.get_xlim()
+            skew.ax.imshow(gradient.T, aspect='auto', cmap=cmap_terreny, origin='lower', extent=(xlims[0], xlims[1], 1000, pressio_superficie), alpha=0.6, zorder=0)
+    # --- FI DE LA LÒGICA DE ZOOM ---
+
     skew.ax.axvline(0, color='cyan', linestyle='--', linewidth=1.5, alpha=0.7)
     skew.plot_dry_adiabats(color='coral', linestyle='--', alpha=0.5)
     skew.plot_moist_adiabats(color='cornflowerblue', linestyle='--', alpha=0.5)
@@ -2357,9 +2362,10 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
         
         col1, col2 = st.columns(2, gap="large")
         with col1:
-            zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 600 hPa)")
+            # Canviem el text per reflectir el nou límit
+            zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 800 hPa)")
             
-            # --- CANVI CLAU: Passem l'estat del checkbox a la funció de dibuix ---
+            # Passem l'estat del checkbox a la nostra funció de dibuix millorada
             fig_skewt = crear_skewt(
                 p, T, Td, u, v, prof, params_calculats, 
                 f"Sondeig Vertical - {poble_sel}", 
