@@ -2473,6 +2473,9 @@ def run_catalunya_app():
         st.session_state.hora_selector = f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h"
     if 'level_cat_main' not in st.session_state:
         st.session_state.level_cat_main = 925
+    # --- NOU ESTAT PER A LA PESTANYA ACTIVA ---
+    if 'active_tab_cat' not in st.session_state:
+        st.session_state.active_tab_cat = "Anàlisi de Mapes"
 
     # --- PAS 2: CÀLCULS PREVIS I CAPÇALERA ---
     is_guest = st.session_state.get('guest_mode', False)
@@ -2492,9 +2495,6 @@ def run_catalunya_app():
     # --- PAS 3: LLEGIR L'ESTAT FINAL I CARREGAR DADES ---
     poble_sel = st.session_state.poble_selector
     
-    # --- COMPROVACIÓ FINAL DE SEGURETAT ---
-    # Si l'usuari ha seleccionat un separador (que ara és un valor invàlid),
-    # li diem que triï una opció vàlida.
     if "---" in poble_sel:
         st.info("Selecciona una localitat de la llista per començar l'anàlisi.")
         return
@@ -2511,15 +2511,30 @@ def run_catalunya_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     timestamp_str = f"{dia_sel_str} a les {hora_sel_str} (Hora Local)"
 
-    # --- PAS 4: DIBUIXAR EL MENÚ I MOSTRAR RESULTATS ---
+    # --- PAS 4: DIBUIXAR EL MENÚ I MOSTRAR RESULTATS (LÒGICA CORREGIDA) ---
     menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical"] if is_guest else ["Anàlisi de Mapes", "Anàlisi Vertical", "💬 Assistent IA"]
     menu_icons = ["map", "graph-up-arrow"] if is_guest else ["map", "graph-up-arrow", "chat-quote-fill"]
 
-    selected_tab = option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key="catalunya_nav")
+    # Calculem l'índex de la pestanya guardada
+    default_idx = menu_options.index(st.session_state.active_tab_cat) if st.session_state.active_tab_cat in menu_options else 0
+    
+    selected_tab = option_menu(
+        menu_title=None, 
+        options=menu_options, 
+        icons=menu_icons,
+        menu_icon="cast", 
+        orientation="horizontal",
+        default_index=default_idx,
+        key="catalunya_nav_selector" # Canviem la clau per evitar conflictes
+    )
+
+    # Sincronitzem el nostre estat amb la selecció de l'usuari
+    st.session_state.active_tab_cat = selected_tab
 
     if selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
     elif selected_tab in ["Anàlisi Vertical", "💬 Assistent IA"]:
+        # ... (la resta de la lògica es manté exactament igual)
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
         
@@ -2556,6 +2571,9 @@ def run_valley_halley_app():
         st.session_state.hora_selector_usa = f"{time_in_usa.hour:02d}:00 (Local: {now_spain.hour:02d}:00h)"
     if 'level_usa_main' not in st.session_state:
         st.session_state.level_usa_main = 850
+    # --- NOU ESTAT PER A LA PESTANYA ACTIVA ---
+    if 'active_tab_usa' not in st.session_state:
+        st.session_state.active_tab_usa = "Anàlisi de Mapes"
 
     # --- PAS 2: CÀLCULS PREVIS I CAPÇALERA ---
     pre_hora_sel_text = st.session_state.hora_selector_usa
@@ -2594,16 +2612,22 @@ def run_valley_halley_app():
     menu_options_usa = ["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"]
     menu_icons_usa = ["map-fill", "graph-up-arrow", "globe-americas"]
 
+    default_idx_usa = menu_options_usa.index(st.session_state.active_tab_usa) if st.session_state.active_tab_usa in menu_options_usa else 0
+
     selected_tab_usa = option_menu(
         menu_title=None, 
         options=menu_options_usa, 
         icons=menu_icons_usa,
         menu_icon="cast", 
         orientation="horizontal", 
-        key="usa_nav"
+        default_index=default_idx_usa,
+        key="usa_nav_selector"
     )
     
+    st.session_state.active_tab_usa = selected_tab_usa
+
     if selected_tab_usa == "Anàlisi de Mapes":
+        # ... (la resta de la lògica es manté exactament igual)
         with st.spinner(f"Carregant mapa GFS a {nivell_sel}hPa..."):
             map_data_final, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
         if map_data_final:
