@@ -2728,9 +2728,9 @@ def main():
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v26.0 - Regla de Pluja Estable Refinada.
-    Activa el diagnòstic de Nimboestratus només en condicions de CAPE inexistent
-    i alta humitat, tal com s'ha especificat.
+    Sistema de Diagnòstic v27.0 - Detecció de Saturació Profunda.
+    Afegeix una comprovació d'alta prioritat per a perfils amb >70% d'humitat
+    a totes les capes, indicatiu de pluja estratiforme generalitzada.
     """
     # --- 1. EXTRACCIÓ ROBUSTA DE PARÀMETRES ---
     mlcape = params.get('MLCAPE', 0) or 0; mucape = params.get('MUCAPE', 0) or 0
@@ -2746,16 +2746,24 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     dcape = params.get('DCAPE', 0) or 0; pwat = params.get('PWAT', 0) or 0
     conv_key = f'CONV_{nivell_conv}hPa'; conv = params.get(conv_key, 0) or 0
 
-    # --- NOU BLOC DE DETECCIÓ DE PLUJA ESTABLE (REGLA CORREGIDA) ---
+    # --- NOUS BLOCS DE DETECCIÓ DE PLUJA ESTABLE (MÀXIMA PRIORITAT) ---
     rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
     rh_mitjana = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0
-    
-    # --- CANVI CLAU: La condició ara exigeix CAPE pràcticament nul (< 100 J/kg) ---
+    rh_alta = rh_capes.get('alta', 0) if pd.notna(rh_capes.get('alta')) else 0
+
+    # --- NOVA REGLA: Saturació Profunda a Totes les Capes ---
+    # Si totes les capes tenen >70% d'humitat i no hi ha CAPE, és pluja estable.
+    if rh_baixa >= 70 and rh_mitjana >= 70 and rh_alta >= 70 and max(sbcape, mucape) < 100:
+        return {'emoji': "🌧️", 'descripcio': "Pluja Estable (Saturació Profunda)",
+                'veredicte': "Precipitació generalitzada a causa d'una atmosfera saturada de dalt a baix. No s'espera activitat convectiva.",
+                'factor_clau': "Humitat > 70% a totes les capes i CAPE inexistent."}
+
+    # Regla anterior (es manté per a altres casos de saturació)
     if rh_baixa > 85 and rh_mitjana > 80 and max(sbcape, mucape) < 100:
         return {'emoji': "🌧️", 'descripcio': "Pluja Estable (Nimboestratus)",
-                'veredicte': "Precipitació contínua i generalitzada a causa d'una capa d'humitat molt profunda i saturada. No s'espera activitat convectiva.",
-                'factor_clau': "Perfil atmosfèric saturat i sense inestabilitat (CAPE)."}
-    # --- FI DEL NOU BLOC ---
+                'veredicte': "Precipitació contínua a causa d'una capa d'humitat molt profunda i saturada. No s'espera activitat convectiva.",
+                'factor_clau': "Perfil atmosfàric saturat i sense inestabilitat (CAPE)."}
+    # --- FI DELS BLOCS DE PLUJA ESTABLE ---
 
     # --- Detecció de Castellanus (la resta de la lògica es manté) ---
     castellanus_score = 0
@@ -2763,12 +2771,10 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     if lfc_hgt > 2500: castellanus_score += 2
     elif lfc_hgt > 2000: castellanus_score += 1
     if mucape > 400: castellanus_score += 1
-    rh_mitjana_val = rh_capes.get('mitjana')
-    if rh_mitjana_val is not None and rh_mitjana_val >= 50: castellanus_score += 1
+    if rh_mitjana is not None and rh_mitjana >= 50: castellanus_score += 1
     if castellanus_score >= 4:
         descripcio = "Castellanus (Convecció Elevada)"
-        rh_baixa_val = rh_capes.get('baixa')
-        if rh_baixa_val is not None and rh_baixa_val < 50: descripcio = "Castellanus amb Virga"
+        if rh_baixa is not None and rh_baixa < 50: descripcio = "Castellanus amb Virga"
         return {'emoji': "🌥️", 'descripcio': descripcio, 'veredicte': "Potencial per a Altocumulus Castellanus.", 'factor_clau': "Inhibició, LFC elevat, energia i humitat en alçada."}
 
     # --- AVALUACIÓ DEL POTENCIAL CONVECTIU ---
@@ -2819,7 +2825,6 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
             return {'emoji': "🌤️", 'descripcio': "Núvols de Bon Temps (Humilis)", 'veredicte': "Petits cúmuls de bon temps.", 'factor_clau': "Molt poca inestabilitat."}
 
     # Aquesta secció ara només s'executa si no s'han complert les condicions anteriors.
-    rh_alta = rh_capes.get('alta', 0) if pd.notna(rh_capes.get('alta')) else 0
     if lcl_hgt < 150 and rh_baixa > 95: return {'emoji': "🌫️", 'descripcio': "Boira o Boirina", 'veredicte': "Visibilitat reduïda.", 'factor_clau': "Saturació a la superfície."}
     if rh_baixa > 75:
         desc = "Cel Cobert (Estratus)" if lcl_hgt < 800 else "Cel Cobert (Estratocúmulus)"
