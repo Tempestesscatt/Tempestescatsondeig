@@ -2728,13 +2728,15 @@ def main():
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v21.0 - Detecció de Castellanus per Puntuació.
-    Implementa un sistema de puntuació flexible per a una detecció molt més
-    fiable de la convecció de base elevada (Castellanus).
+    Sistema de Diagnòstic v22.0 - Detecció de Castellanus amb Virga.
+    Afegeix una sub-condició per identificar virga basada en un CIN positiu
+    i una capa baixa seca.
     """
     # --- 1. EXTRACCIÓ DE PARÀMETRES ---
     mlcape = params.get('MLCAPE', 0) or 0; mucape = params.get('MUCAPE', 0) or 0
+    # Per al CIN, ara necessitem el valor real, no només el negatiu
     cin = params.get('MUCIN', params.get('SBCIN', 0)) or 0
+    
     li = params.get('LI', 5) or 5
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     srh_1km = params.get('SRH_0-1km', 0) or 0; srh_3km = params.get('SRH_0-3km', 0) or 0
@@ -2745,31 +2747,30 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     dcape = params.get('DCAPE', 0) or 0; pwat = params.get('PWAT', 0) or 0
     conv_key = f'CONV_{nivell_conv}hPa'; conv = params.get(conv_key, 0) or 0
 
-    # --- NOU SISTEMA DE PUNTUACIÓ PER A CASTELLANUS ---
+    # --- SISTEMA DE PUNTUACIÓ PER A CASTELLANUS ---
     castellanus_score = 0
-    
-    # Condició 1: Inhibició (és l'ingredient clau)
     if cin < -75: castellanus_score += 2
-    
-    # Condició 2: LFC (ha de ser elevat)
     if lfc_hgt > 3000: castellanus_score += 2
     elif lfc_hgt > 2000: castellanus_score += 1
-        
-    # Condició 3: Energia en alçada (MUCAPE)
     if mucape > 500: castellanus_score += 1
-        
-    # Condició 4: Humitat a nivells mitjans
     rh_mitjana = rh_capes.get('mitjana')
     if rh_mitjana is not None and rh_mitjana >= 50: castellanus_score += 1
 
-    # Llindar final de diagnòstic
     if castellanus_score >= 4:
-        return {'emoji': "🌥️", 'descripcio': "Castellanus (Convecció Elevada)",
-                'veredicte': "Potencial per a Altocumulus Castellanus. L'energia i la humitat existeixen en alçada, però una inhibició significativa i un LFC elevat impedeixen la formació de tempestes des de la superfície.",
+        # --- NOU BLOC DE DETECCIÓ DE VIRGA ---
+        descripcio_castellanus = "Castellanus (Convecció Elevada)"
+        # Comprovem les teves condicions: tapa forta (CIN positiu) i aire sec a sota.
+        rh_baixa = rh_capes.get('baixa')
+        if cin > 50 and rh_baixa is not None and rh_baixa < 60:
+            descripcio_castellanus = "Castellanus amb Virga"
+        # --- FI DEL BLOC DE VIRGA ---
+            
+        return {'emoji': "🌥️", 'descripcio': descripcio_castellanus,
+                'veredicte': "Potencial per a Altocumulus Castellanus. L'energia i la humitat existeixen en alçada, però una inhibició significativa impedeix la formació de tempestes des de la superfície.",
                 'factor_clau': "Combinació favorable d'inhibició, LFC elevat, energia en alçada i humitat a nivells mitjans."}
-    # --- FI DEL SISTEMA DE PUNTUACIÓ ---
 
     # --- 2. AVALUACIÓ DEL DISPARADOR (Lògica anterior, es manté) ---
+    # ... (la resta de la funció continua exactament igual que abans) ...
     hi_ha_inestabilitat_latent = (mucape > 150 or li < -1)
     trigger_potential = 'Nul'
     if hi_ha_inestabilitat_latent:
@@ -2782,8 +2783,6 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
         elif conv >= 5 and forçament_net > -20: trigger_potential = 'Feble'
         elif cin_efectiu < 15: trigger_potential = 'Feble'
 
-    # --- 3. DIAGNÒSTIC JERÀRQUIC AVANÇAT (Lògica anterior, es manté) ---
-    # ... (la resta de la funció continua exactament igual que abans) ...
     if trigger_potential == 'Extrem' and mlcape > 500:
         desc_amenaces = ""
         if max_updraft > 30: desc_amenaces += " amb Risc de Calamarsa"
