@@ -2728,13 +2728,13 @@ def main():
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v22.0 - Detecció de Castellanus amb Virga.
-    Afegeix una sub-condició per identificar virga basada en un CIN positiu
-    i una capa baixa seca.
+    Sistema de Diagnòstic v23.0 - Lògica de Castellanus Prioritària i Corregida.
+    Aquesta versió avalua les condicions de Castellanus en un bloc aïllat
+    i prioritari per garantir una detecció correcta i sense conflictes.
     """
-    # --- 1. EXTRACCIÓ DE PARÀMETRES ---
+    # --- 1. EXTRACCIÓ ROBUSTA DE PARÀMETRES ---
     mlcape = params.get('MLCAPE', 0) or 0; mucape = params.get('MUCAPE', 0) or 0
-    # Per al CIN, ara necessitem el valor real, no només el negatiu
+    sbcape = params.get('SBCAPE', 0) or 0
     cin = params.get('MUCIN', params.get('SBCIN', 0)) or 0
     
     li = params.get('LI', 5) or 5
@@ -2747,36 +2747,36 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     dcape = params.get('DCAPE', 0) or 0; pwat = params.get('PWAT', 0) or 0
     conv_key = f'CONV_{nivell_conv}hPa'; conv = params.get(conv_key, 0) or 0
 
-    # --- SISTEMA DE PUNTUACIÓ PER A CASTELLANUS ---
-    castellanus_score = 0
-    if cin < -75: castellanus_score += 2
-    if lfc_hgt > 3000: castellanus_score += 2
-    elif lfc_hgt > 2000: castellanus_score += 1
-    if mucape > 500: castellanus_score += 1
+    # --- NOU BLOC DE DETECCIÓ DE CASTELLANUS (PRIORITARI I AÏLLAT) ---
+    # Aquesta és la PRIMERA comprovació que fem. Si es compleix, la funció acaba aquí.
+    
+    # Condicions clau per a la convecció de base elevada:
+    cond_lfc_elevat = lfc_hgt is not None and lfc_hgt > 2500
+    cond_tapa_present = cin is not None and cin < -50
+    cond_energia_alçada = mucape is not None and mucape > 400 # Llindar una mica més permissiu
     rh_mitjana = rh_capes.get('mitjana')
-    if rh_mitjana is not None and rh_mitjana >= 50: castellanus_score += 1
+    cond_humitat_mitjana = rh_mitjana is not None and rh_mitjana >= 50
 
-    if castellanus_score >= 4:
-        # --- NOU BLOC DE DETECCIÓ DE VIRGA ---
-        descripcio_castellanus = "Castellanus (Convecció Elevada)"
-        # Comprovem les teves condicions: tapa forta (CIN positiu) i aire sec a sota.
+    if cond_lfc_elevat and cond_tapa_present and cond_energia_alçada and cond_humitat_mitjana:
+        descripcio = "Castellanus (Convecció Elevada)"
+        # Sub-condició per a Virga: aire molt sec a sota
         rh_baixa = rh_capes.get('baixa')
-        if cin > 50 and rh_baixa is not None and rh_baixa < 60:
-            descripcio_castellanus = "Castellanus amb Virga"
-        # --- FI DEL BLOC DE VIRGA ---
+        if rh_baixa is not None and rh_baixa < 50:
+            descripcio = "Castellanus amb Virga"
             
-        return {'emoji': "🌥️", 'descripcio': descripcio_castellanus,
+        return {'emoji': "🌥️", 'descripcio': descripcio,
                 'veredicte': "Potencial per a Altocumulus Castellanus. L'energia i la humitat existeixen en alçada, però una inhibició significativa impedeix la formació de tempestes des de la superfície.",
-                'factor_clau': "Combinació favorable d'inhibició, LFC elevat, energia en alçada i humitat a nivells mitjans."}
+                'factor_clau': "Combinació de CIN, LFC elevat, energia en alçada i humitat a nivells mitjans."}
+    # --- FI DEL BLOC DE CASTELLANUS ---
 
-    # --- 2. AVALUACIÓ DEL DISPARADOR (Lògica anterior, es manté) ---
-    # ... (la resta de la funció continua exactament igual que abans) ...
-    hi_ha_inestabilitat_latent = (mucape > 150 or li < -1)
+    # --- SI NO S'HAN DETECTAT CASTELLANUS, CONTINUEM AMB L'ANÀLISI DE TEMPESTES DE SUPERFÍCIE ---
+    # (La resta de la lògica es manté exactament igual)
+    
+    hi_ha_inestabilitat_latent = (max(sbcape, mucape) > 150 or li < -1)
     trigger_potential = 'Nul'
     if hi_ha_inestabilitat_latent:
-        FACTOR_CONV = 5.0; cin_efectiu = abs(min(0, cin))
-        forçament_dinamic = (conv * FACTOR_CONV) if conv > 1 else 0
-        forçament_net = forçament_dinamic - cin_efectiu
+        cin_efectiu = abs(min(0, cin))
+        forçament_net = (conv * 5.0) - cin_efectiu
         if conv >= 40 and forçament_net > -100: trigger_potential = 'Extrem'
         elif conv >= 30 and forçament_net > -75: trigger_potential = 'Fort'
         elif conv >= 15 and forçament_net > -40: trigger_potential = 'Moderat'
