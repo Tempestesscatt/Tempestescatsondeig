@@ -1274,6 +1274,80 @@ def carregar_dades_mapa_cat(nivell, hourly_index):
         return map_data_raw, None
     except Exception as e:
         return None, f"Error en processar dades del mapa: {e}"
+
+
+
+
+def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent, theme='dark'):
+    fig, ax = crear_mapa_base(map_extent, theme=theme)
+    
+    text_color = '#31333F' if theme == 'light' else 'white'
+    
+    grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 400), np.linspace(map_extent[2], map_extent[3], 400))
+    grid_speed, grid_dewpoint = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
+    u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+    grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
+    speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140] 
+    custom_cmap = ListedColormap(colors_wind)
+    norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
+    
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
+    cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)", color=text_color)
+    cbar.ax.yaxis.set_tick_params(color=text_color)
+    plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color=text_color)
+
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6,arrowsize=0.3, density= 4.1, zorder=4, transform=ccrs.PlateCarree())
+    
+    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+    convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
+    
+    DEWPOINT_THRESHOLD = 14 if nivell >= 950 else 12 if nivell >= 925 else 7
+    convergence_in_humid_areas = np.where(grid_dewpoint >= DEWPOINT_THRESHOLD, convergence_scaled, 0)
+    fill_levels = [15, 25, 40, 150]; fill_colors = ['#ffc107', '#ff9800', '#f44336']; line_levels = [15, 25, 40]; line_colors = ['#e65100', '#bf360c', '#b71c1c']
+    line_styles = ['--', '--', '-']; line_widths = [1, 1.2, 1.5]
+    ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=fill_colors, alpha=0.4, zorder=5, transform=ccrs.PlateCarree())
+    contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors=line_colors, linestyles=line_styles, linewidths=line_widths, zorder=6, transform=ccrs.PlateCarree())
+    labels = ax.clabel(contours, inline=True, fontsize=6, fmt='%1.0f')
+    for label in labels: label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.6))
+    
+    ax.set_title(f"Vent i Nuclis de convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16, color=text_color)
+    return fig
+
+
+
+def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str, map_extent, theme='dark'):
+    fig, ax = crear_mapa_base(map_extent, theme=theme)
+    
+    text_color = '#31333F' if theme == 'light' else 'white'
+
+    grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 200), np.linspace(map_extent[2], map_extent[3], 200))
+    u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+    
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'linear')
+    
+    colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
+    speed_levels = [0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 220, 250]
+    custom_cmap = ListedColormap(colors_wind)
+    norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.7, density=2.5, zorder=3, transform=ccrs.PlateCarree())
+    
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7)
+    cbar.set_label("Velocitat del Vent (km/h)", color=text_color)
+    cbar.ax.yaxis.set_tick_params(color=text_color)
+    plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color=text_color)
+    
+    ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16, color=text_color)
+    
+    afegir_etiquetes_ciutats(ax, map_extent)
+    
+    return fig
+    
         
 @st.cache_data(ttl=1800, max_entries=5, show_spinner=False)
 def obtenir_ciutats_actives(hourly_index):
