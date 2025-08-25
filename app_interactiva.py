@@ -589,7 +589,7 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     skew.ax.legend()
     return fig
 
-Ara, quan seleccionis una ubicació elevada com Puigcerdà, Vielha o algun punt a les High Plains dels EUA, veuràs automàticament aquesta millora visual al gràfic.
+
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
     gs = fig.add_gridspec(nrows=2, ncols=2, height_ratios=[1.5, 6], width_ratios=[1.5, 1], hspace=0.4, wspace=0.3)
