@@ -2188,42 +2188,51 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
 
     with st.container(border=True):
         
-        def preparar_llistes_localitats(ciutats_dict, conv_data):
+        # --- LÒGICA DE PREPARACIÓ I FORMAT ROBUSTA ---
+        def preparar_i_formatejar_llista(ciutats_dict, titol_actius, titol_inactius):
+            opcions_disponibles = sorted(list(ciutats_dict.keys()))
             actives, inactives = [], []
-            if not conv_data: return [], sorted(list(ciutats_dict.keys()))
-            for city in sorted(ciutats_dict.keys()):
-                conv_value = conv_data.get(city)
-                if conv_value and conv_value >= 15:
-                    actives.append(city)
-                else: inactives.append(city)
-            actives.sort(key=lambda k: conv_data[k], reverse=True)
-            return actives, inactives
 
-        def format_city_label(city_key):
-            if "---" in city_key: return "────────────────"
-            if not convergencies or city_key not in convergencies: return city_key
-            conv = convergencies.get(city_key, 0)
-            emoji = "🔴" if conv >= 40 else "🟠" if conv >= 30 else "🟡" if conv >= 15 else ""
-            return f"{city_key} ({emoji} {conv:.0f})" if emoji else city_key
+            if convergencies:
+                for city in opcions_disponibles:
+                    conv_value = convergencies.get(city)
+                    if conv_value and conv_value >= 15:
+                        actives.append(city)
+                    else:
+                        inactives.append(city)
+                actives.sort(key=lambda k: convergencies[k], reverse=True)
+            else:
+                inactives = opcions_disponibles
+
+            # Aquesta funció interna crearà el text per mostrar
+            def format_func(city_key):
+                if city_key == titol_actius or city_key == titol_inactius:
+                    return f"--- {city_key} ---"
+                
+                conv = convergencies.get(city_key, 0) if convergencies else 0
+                emoji = "🔴" if conv >= 40 else "🟠" if conv >= 30 else "🟡" if conv >= 15 else ""
+                return f"{city_key} ({emoji} {conv:.0f})" if emoji else city_key
+
+            llista_final = []
+            if actives:
+                llista_final.append(titol_actius)
+                llista_final.extend(actives)
+            if inactives:
+                llista_final.append(titol_inactius)
+                llista_final.extend(inactives)
+            
+            return llista_final, format_func
 
         if zona_activa == 'catalunya':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc:
-                actives_terra, inactives_terra = preparar_llistes_localitats(POBLACIONS_TERRA, convergencies)
-                actives_mar, inactives_mar = preparar_llistes_localitats(PUNTS_MAR, convergencies)
-                opcions = []
-                if actives_terra: opcions.extend(["--- POBLACIONS ACTIVES ---"] + actives_terra)
-                if actives_mar: opcions.extend(["--- PUNTS MARINS ACTIUS ---"] + actives_mar)
-                if inactives_terra: opcions.extend(["--- ALTRES POBLACIONS ---"] + inactives_terra)
-                if inactives_mar: opcions.extend(["--- ALTRES PUNTS MARINS ---"] + inactives_mar)
+                opcions_cat, format_cat = preparar_i_formatejar_llista(CIUTATS_CATALUNYA, "ZONES ACTIVES", "ALTRES ZONES")
                 
-                # --- LÒGICA D'ÍNDEX A PROVA DE BALES ---
                 poble_actual = st.session_state.get('poble_selector', 'Barcelona')
-                idx = 0
-                if poble_actual in opcions:
-                    idx = opcions.index(poble_actual)
-                
-                st.selectbox("Localitat:", options=opcions, key="poble_selector", format_func=format_city_label, index=idx)
+                # Assegurem que l'índex per defecte sigui sempre una ciutat vàlida
+                idx = opcions_cat.index(poble_actual) if poble_actual in opcions_cat else opcions_cat.index('Barcelona') if 'Barcelona' in opcions_cat else 0
+
+                st.selectbox("Localitat:", options=opcions_cat, key="poble_selector", format_func=format_cat, index=idx)
 
             with col_dia:
                 now_local = datetime.now(TIMEZONE_CAT)
@@ -2243,17 +2252,13 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
         else: # Zona USA
             col_ciutat, col_dia, col_hora, col_nivell = st.columns(4)
             with col_ciutat:
-                actives_usa, inactives_usa = preparar_llistes_localitats(USA_CITIES, convergencies)
-                opcions_usa = []
-                if actives_usa: opcions_usa.extend(["--- CIUTATS ACTIVES ---"] + actives_usa)
-                if inactives_usa: opcions_usa.extend(["--- ALTRES CIUTATS ---"] + inactives_usa)
+                opcions_usa, format_usa = preparar_i_formatejar_llista(USA_CITIES, "CIUTATS ACTIVES", "ALTRES CIUTATS")
                 
                 poble_actual_usa = st.session_state.get('poble_selector_usa', 'Oklahoma City, OK')
-                idx_usa = 0
-                if poble_actual_usa in opcions_usa:
-                    idx_usa = opcions_usa.index(poble_actual_usa)
+                idx_usa = opcions_usa.index(poble_actual_usa) if poble_actual_usa in opcions_usa else opcions_usa.index('Oklahoma City, OK') if 'Oklahoma City, OK' in opcions_usa else 0
 
-                st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa", format_func=format_city_label, index=idx_usa)
+                st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa", format_func=format_usa, index=idx_usa)
+
             with col_dia:
                 now_usa = datetime.now(TIMEZONE_USA)
                 opcions_dia_usa = (now_usa.strftime('%d/%m/%Y'), (now_usa + timedelta(days=1)).strftime('%d/%m/%Y'), (now_usa + timedelta(days=2)).strftime('%d/%m/%Y'))
@@ -2479,7 +2484,9 @@ def run_catalunya_app():
     # --- PAS 3: LLEGIR L'ESTAT FINAL I CARREGAR DADES ---
     poble_sel = st.session_state.poble_selector
     
-    # --- CANVI CLAU: COMPROVACIÓ DE SEGURETAT ---
+    # --- COMPROVACIÓ FINAL DE SEGURETAT ---
+    # Si l'usuari ha seleccionat un separador (que ara és un valor invàlid),
+    # li diem que triï una opció vàlida.
     if "---" in poble_sel:
         st.info("Selecciona una localitat de la llista per començar l'anàlisi.")
         return
