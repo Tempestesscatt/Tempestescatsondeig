@@ -1745,7 +1745,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             PLACEHOLDER_TERRA = "--- Selecciona Població ---"
             PLACEHOLDER_MAR = "--- Selecciona Punt Marí ---"
             
-            # Aquest és el text que apareixerà a l'interrogant
             tooltip_text = "Mostra els punts amb major convergència ('disparador' de tempestes).\n\nLlegenda:\n- 🟡 (>15): Moderada\n- 🟠 (>30): Alta\n- 🔴 (>40): Molt Alta\n\nEl valor és la força de la convergència."
 
             def handle_selection_change():
@@ -1775,7 +1774,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                         idx = next(i for i, opt in enumerate(opcions) if opt.startswith(poble_actual))
                     except (ValueError, StopIteration):
                         idx = 0
-                # *** LÍNIA CLAU MODIFICADA ***
                 st.selectbox("Població:", opcions, key="selector_terra", index=idx, on_change=handle_selection_change, help=tooltip_text)
 
             with col_mar:
@@ -1787,7 +1785,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                         idx = next(i for i, opt in enumerate(opcions) if opt.startswith(poble_actual))
                     except (ValueError, StopIteration):
                         idx = 0
-                # *** LÍNIA CLAU MODIFICADA ***
                 st.selectbox("Punt Marí:", opcions, key="selector_mar", index=idx, on_change=handle_selection_change, help=tooltip_text)
 
             now_local = datetime.now(TIMEZONE_CAT)
@@ -1799,9 +1796,40 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     st.selectbox("Nivell:", nivells, key="level_cat_main", index=3, format_func=lambda x: f"{x} hPa")
                 else: st.session_state.level_cat_main = 925
         
-        else: # Zona USA
-            # Aquesta part no canvia
-            pass
+        # --- BLOC AFEGIT PER A LA ZONA USA ---
+        else:
+            col_ciutat, col_dia, col_hora, col_nivell = st.columns(4)
+
+            with col_ciutat:
+                opcions_usa = formatar_llista_ciutats(USA_CITIES, convergencies)
+                poble_actual_usa = st.session_state.get('poble_selector_usa', 'Oklahoma City, OK')
+                try:
+                    idx = next(i for i, opt in enumerate(opcions_usa) if opt.startswith(poble_actual_usa))
+                except (ValueError, StopIteration):
+                    idx = 0
+                st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa", index=idx)
+
+            with col_dia:
+                st.selectbox("Dia:", ("Avui", "Demà", "Demà passat"), key="dia_selector_usa")
+
+            with col_hora:
+                now_spain = datetime.now(TIMEZONE_CAT)
+                hores_opcions = []
+                for h in range(24):
+                    time_in_spain = now_spain.replace(hour=h, minute=0, second=0, microsecond=0)
+                    time_in_usa = time_in_spain.astimezone(TIMEZONE_USA)
+                    hores_opcions.append(f"{time_in_usa.hour:02d}:00 (Local: {time_in_spain.hour:02d}:00h)")
+                
+                hora_actual_str = st.session_state.get('hora_selector_usa')
+                idx_hora = 0
+                if hora_actual_str in hores_opcions:
+                    idx_hora = hores_opcions.index(hora_actual_str)
+                st.selectbox("Hora (CST):", hores_opcions, key="hora_selector_usa", index=idx_hora)
+
+            with col_nivell:
+                # Troba l'índex del nivell per defecte (850hPa)
+                default_level_index = PRESS_LEVELS_GFS.index(850) if 850 in PRESS_LEVELS_GFS else 0
+                st.selectbox("Nivell:", PRESS_LEVELS_GFS, key="level_usa_main", index=default_level_index, format_func=lambda x: f"{x} hPa")
 
                 
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
