@@ -211,14 +211,16 @@ def format_time_left(time_delta):
     return f"{hours}h {minutes}min" if hours > 0 else f"{minutes} min"
 
 def show_login_page():
-    st.markdown("<h1 style='text-align: center;'>Tempestes.cat</h1>", unsafe_allow_html=True)
+    add_video_background("llamps.mp4")
+
+    # --- LÍNIA MODIFICADA ---
+    # S'ha afegit 'color: white;' per garantir la visibilitat.
+    st.markdown("<h1 style='text-align: center; color: white;'>Tempestes.cat</h1>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # Controlem quina vista es mostra (login o registre) amb st.session_state
     if 'view' not in st.session_state:
         st.session_state.view = 'login'
 
-    # --- VISTA D'INICI DE SESSIÓ (PER DEFECTE) ---
     if st.session_state.view == 'login':
         st.subheader("Inicia Sessió")
         with st.form("login_form"):
@@ -233,10 +235,39 @@ def show_login_page():
                 else:
                     st.error("Nom d'usuari o contrasenya incorrectes.")
         
-        # Botó per canviar a la vista de registre
         if st.button("No tens un compte? Registra't aquí"):
             st.session_state.view = 'register'
             st.rerun()
+
+    elif st.session_state.view == 'register':
+        st.subheader("Crea un nou compte")
+        with st.form("register_form"):
+            new_username = st.text_input("Tria un nom d'usuari", key="reg_user")
+            new_password = st.text_input("Tria una contrasenya", type="password", key="reg_pass")
+            
+            if st.form_submit_button("Registra'm", use_container_width=True):
+                users = load_json_file(USERS_FILE)
+                if not new_username or not new_password:
+                    st.error("El nom d'usuari i la contrasenya no poden estar buits.")
+                elif new_username in users:
+                    st.error("Aquest nom d'usuari ja existeix.")
+                elif len(new_password) < 6:
+                    st.error("La contrasenya ha de tenir com a mínim 6 caràcters.")
+                else:
+                    users[new_username] = get_hashed_password(new_password)
+                    save_json_file(users, USERS_FILE)
+                    st.success("Compte creat amb èxit! Ara pots iniciar sessió.")
+        
+        if st.button("Ja tens un compte? Inicia sessió"):
+            st.session_state.view = 'login'
+            st.rerun()
+    
+    st.divider()
+    st.markdown("<p style='text-align: center;'>O si ho prefereixes...</p>", unsafe_allow_html=True)
+
+    if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary"):
+        st.session_state.update({'guest_mode': True, 'logged_in': True})
+        st.rerun()
 
     # --- VISTA DE REGISTRE ---
     elif st.session_state.view == 'register':
@@ -272,6 +303,66 @@ def show_login_page():
         st.rerun()
 
 # --- Funcions Base de Càlcul i Gràfics (Compartides) ---
+
+
+def add_video_background(video_file="llamps.mp4"):
+    """
+    Versió definitiva i robusta. Afegeix un vídeo de fons que funciona en harmonia
+    amb l'estructura de Streamlit, fent transparent el contenidor principal de l'app.
+    """
+    if not os.path.exists(video_file):
+        st.warning(f"No s'ha trobat l'arxiu de vídeo de fons: {video_file}")
+        return
+
+    with open(video_file, "rb") as video:
+        video_bytes = video.read()
+    
+    video_base64 = base64.b64encode(video_bytes).decode("utf-8")
+    
+    st.markdown(f"""
+        <style>
+        /* Contenidor principal de l'app de Streamlit */
+        [data-testid="stAppViewContainer"] > .main {{
+            background: none; /* Elimina el fons original */
+        }}
+
+        /* Vídeo de fons */
+        .video-bg {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            z-index: -2;
+        }}
+
+        /* Capa fosca per a llegibilitat */
+        .overlay {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.65);
+            z-index: -1;
+        }}
+        
+        /* Assegura que el text dels formularis sigui llegible */
+        .stTextInput label, .stButton > button, .stSubheader, p {{
+            color: white !important;
+        }}
+        .stMarkdown {{
+            color: white;
+        }}
+        </style>
+        
+        <div class="overlay"></div>
+        <video autoplay loop muted class="video-bg">
+            <source src="data:video/mp4;base64,{video_base64}" type="video/mp4">
+        </video>
+    """, unsafe_allow_html=True)
+    
 
 def calcular_mlcape_robusta(p, T, Td):
     """
