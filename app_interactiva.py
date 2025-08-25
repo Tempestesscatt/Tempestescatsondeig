@@ -68,12 +68,13 @@ CIUTATS_CATALUNYA = {
     'Vielha': {'lat': 42.7027, 'lon': 0.7966}, 'Vilafranca del Penedès': {'lat': 41.3453, 'lon': 1.6995},
     'Vilanova i la Geltrú': {'lat': 41.2241, 'lon': 1.7252},
     
-    # --- NOUS SONDEJOS MARINS AFEGITS ---
-    'Costes de Girona (Mar)': {'lat': 42.05, 'lon': 3.55},      
-    'Litoral Barceloní (Mar)': {'lat': 41.30, 'lon': 2.50},   
+    # --- Sondejos Marins (ARA AMB LA CLAU CORRECTA) ---
+    'Costes de Girona (Mar)': {'lat': 42.05, 'lon': 3.55},
+    'Mar Profunda (Mar)': {'lat': 41.45, 'lon': 2.90},      # <-- LÍNIA CORREGIDA
+    'Litoral Barceloní (Mar)': {'lat': 41.30, 'lon': 2.50},
     'Aigües de Tarragona (Mar)': {'lat': 40.90, 'lon': 1.65},
-    'Mar Profunda': {'lat': 41.45, 'lon': 2.90},  
 }
+
 POBLACIONS_TERRA = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' not in k}
 PUNTS_MAR = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' in k}
 CIUTATS_CONVIDAT = {
