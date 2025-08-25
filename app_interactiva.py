@@ -2188,8 +2188,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
 
     with st.container(border=True):
         
-        # --- NOVA FUNCIÓ AJUDANT PER PREPARAR LES LLISTES ---
-        # Aquesta funció separa les localitats en dos grups: amb i sense convergència.
         def preparar_llistes_localitats(ciutats_dict, conv_data):
             actives = {}
             inactives = []
@@ -2203,11 +2201,9 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 else:
                     inactives.append(city)
             
-            # Ordena les ciutats actives per convergència (de major a menor)
             actives_ordenades = sorted(actives.keys(), key=lambda k: actives[k], reverse=True)
             return actives_ordenades, sorted(inactives)
 
-        # Aquesta funció crea el text bonic que veurà l'usuari
         def format_city_label(city_key):
             if not convergencies or city_key not in convergencies:
                 return city_key
@@ -2219,11 +2215,8 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             
             with col_loc:
-                # --- CANVI CLAU: LÒGICA DE SEPARACIÓ VISUAL ---
                 actives_terra, inactives_terra = preparar_llistes_localitats(POBLACIONS_TERRA, convergencies)
                 actives_mar, inactives_mar = preparar_llistes_localitats(PUNTS_MAR, convergencies)
-
-                # Creem la llista final d'opcions amb separadors
                 opcions_finals = []
                 if actives_terra:
                     opcions_finals.append("--- POBLACIONS ACTIVES ---")
@@ -2231,17 +2224,25 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 if actives_mar:
                     opcions_finals.append("--- PUNTS MARINS ACTIUS ---")
                     opcions_finals.extend(actives_mar)
-                
                 opcions_finals.append("--- ALTRES POBLACIONS ---")
                 opcions_finals.extend(inactives_terra)
                 opcions_finals.append("--- ALTRES PUNTS MARINS ---")
                 opcions_finals.extend(inactives_mar)
 
+                # --- LÒGICA DE L'ÍNDEX CORREGIDA ---
+                poble_actual = st.session_state.get('poble_selector', 'Barcelona')
+                idx = 0
+                try:
+                    idx = opcions_finals.index(poble_actual)
+                except ValueError: # Si no el troba, es queda a l'inici
+                    pass
+                
                 st.selectbox(
                     "Localitat:",
                     options=opcions_finals,
                     key="poble_selector",
-                    format_func=lambda x: "────────────────" if "---" in x else format_city_label(x)
+                    format_func=lambda x: "────────────────" if "---" in x else format_city_label(x),
+                    index=idx # <-- AFEGIM L'ÍNDEX CALCULAT
                 )
 
             with col_dia:
@@ -2272,7 +2273,17 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 opcions_usa.append("--- ALTRES CIUTATS ---")
                 opcions_usa.extend(inactives_usa)
                 
-                st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa", format_func=lambda x: "────────────────" if "---" in x else format_city_label(x))
+                # --- LÒGICA DE L'ÍNDEX CORREGIDA (TAMBÉ PER A EUA) ---
+                poble_actual_usa = st.session_state.get('poble_selector_usa', 'Oklahoma City, OK')
+                idx_usa = 0
+                try:
+                    idx_usa = opcions_usa.index(poble_actual_usa)
+                except ValueError:
+                    pass
+                
+                st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa", 
+                             format_func=lambda x: "────────────────" if "---" in x else format_city_label(x),
+                             index=idx_usa)
 
             with col_dia:
                 now_usa = datetime.now(TIMEZONE_USA)
