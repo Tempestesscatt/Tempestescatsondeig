@@ -2002,68 +2002,51 @@ def hide_streamlit_style():
 
 
 
+# --- BLOC 1: SUBSTITUEIX TOTES LES FUNCIONS on_... PER AQUESTES ---
+
 def on_day_change_cat():
-    """
-    Callback que s'activa quan canvia el selector de dia de Catalunya.
-    Reseteja l'hora a un valor per defecte (migdia) per evitar
-    inconsistències d'estat.
-    """
-    # Per simplicitat, quan canviem de dia, posem l'hora a les 12:00h
-    # Això evita qualsevol error d'estat i és un comportament previsible
+    """ Callback segur per al canvi de dia a Catalunya. """
     st.session_state.hora_selector = "12:00h"
 
-
-
 def on_day_change_usa():
-    """
-    Aquesta funció s'activa quan canvia el selector de dia dels EUA.
-    Manté l'hora seleccionada consistent amb el nou dia.
-    """
+    """ Callback segur per al canvi de dia als EUA. """
     try:
-        # Intenta mantenir la mateixa hora del dia que estava seleccionada
         hora_num = int(st.session_state.hora_selector_usa.split(':')[0])
-    except (ValueError, AttributeError):
-        # Si falla, posa una hora per defecte (migdia)
+    except:
         hora_num = 12
-
-    # Agafa el nou dia que l'usuari acaba de seleccionar
     dia_sel_str = st.session_state.dia_selector_usa_widget
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
-
-    # Crea la nova cadena de text per a l'hora en el nou dia
     time_in_usa = TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_num))
     time_in_spain = time_in_usa.astimezone(TIMEZONE_CAT)
-    
-    # Actualitza manualment l'estat de l'hora abans que Streamlit redibuixi la pàgina
     st.session_state.hora_selector_usa = f"{time_in_usa.hour:02d}:00 (Local: {time_in_spain.hour:02d}:00h)"
 
+def on_city_change(source_widget_key, other_widget_key, placeholder_text, city_dict):
+    """
+    Funció de callback genèrica i robusta per gestionar el canvi de ciutat.
+    """
+    selected_raw_text = st.session_state[source_widget_key]
+    
+    if placeholder_text in selected_raw_text:
+        return # No facis res si s'ha seleccionat el placeholder
 
-def on_terra_city_change():
-    """ Callback que s'activa en canviar la selecció de POBLACIÓ. """
-    poble_sel_terra_raw = st.session_state.selector_terra_widget
-    if poble_sel_terra_raw != "--- Selecciona Població ---":
-        # Troba la clau original que correspon al text seleccionat
-        for key in POBLACIONS_TERRA.keys():
-            if poble_sel_terra_raw.startswith(key):
-                st.session_state.poble_selector = key
-                # Reseteja l'altre selector a la seva posició inicial
-                if 'selector_mar_widget' in st.session_state:
-                    st.session_state.selector_mar_widget = "--- Selecciona Punt Marí ---"
-                break
+    # Troba la clau original correcta sense perill de KeyErrors
+    found_key = None
+    for key in city_dict.keys():
+        if selected_raw_text.startswith(key):
+            found_key = key
+            break
+            
+    if found_key:
+        # Si la selecció és vàlida, actualitza l'estat principal
+        if 'poble_selector' in st.session_state:
+             st.session_state.poble_selector = found_key
+        elif 'poble_selector_usa' in st.session_state:
+            st.session_state.poble_selector_usa = found_key
 
-def on_mar_city_change():
-    """ Callback que s'activa en canviar la selecció de PUNT MARÍ. """
-    poble_sel_mar_raw = st.session_state.selector_mar_widget
-    if poble_sel_mar_raw != "--- Selecciona Punt Marí ---":
-        # Troba la clau original que correspon al text seleccionat
-        for key in PUNTS_MAR.keys():
-            if poble_sel_mar_raw.startswith(key):
-                st.session_state.poble_selector = key
-                # Reseteja l'altre selector a la seva posició inicial
-                if 'selector_terra_widget' in st.session_state:
-                    st.session_state.selector_terra_widget = "--- Selecciona Població ---"
-                break
-
+        # Important: Reseteja l'ALTRE selector només si existeix
+        if other_widget_key and other_widget_key in st.session_state:
+            # Utilitzem una clau interna per evitar disparar el callback de l'altre
+            st.session_state[other_widget_key] = placeholder_text
 
 
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya", convergencies=None):
@@ -2101,82 +2084,61 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
         if zona_activa == 'catalunya':
             col_terra, col_mar, col_dia, col_hora, col_nivell = st.columns(5)
             PLACEHOLDER_TERRA = "--- Selecciona Població ---"; PLACEHOLDER_MAR = "--- Selecciona Punt Marí ---"
-            tooltip_text = "Mostra els punts amb major convergència ('disparador' de tempestes).\n\nLlegenda:\n- 🟡 (>15): Moderada\n- 🟠 (>30): Alta\n- 🔴 (>40): Molt Alta"
             poble_actual_master = st.session_state.get('poble_selector')
-
             with col_terra:
-                opcions_terra = [PLACEHOLDER_TERRA] + formatar_llista_ciutats(POBLACIONS_TERRA, convergencies)
+                opcions = [PLACEHOLDER_TERRA] + formatar_llista_ciutats(POBLACIONS_TERRA, convergencies)
                 idx = 0
                 if poble_actual_master in POBLACIONS_TERRA:
-                    # Busquem la posició de l'element que comença amb la clau seleccionada
-                    try: idx = next(i for i, opt in enumerate(opcions_terra) if opt.startswith(poble_actual_master))
-                    except (ValueError, StopIteration): idx = 0
-                # --- CANVI CLAU: S'assigna el callback correcte ---
-                st.selectbox("Població:", opcions_terra, key="selector_terra_widget", index=idx, help=tooltip_text, on_change=on_terra_city_change)
-            
+                    try: idx = next(i for i, opt in enumerate(opcions) if opt.startswith(poble_actual_master))
+                    except (ValueError, StopIteration): pass
+                st.selectbox("Població:", opcions, key="selector_terra_widget", index=idx, on_change=on_city_change, args=("selector_terra_widget", "selector_mar_widget", PLACEHOLDER_MAR, POBLACIONS_TERRA))
             with col_mar:
-                opcions_mar = [PLACEHOLDER_MAR] + formatar_llista_ciutats(PUNTS_MAR, convergencies)
+                opcions = [PLACEHOLDER_MAR] + formatar_llista_ciutats(PUNTS_MAR, convergencies)
                 idx = 0
                 if poble_actual_master in PUNTS_MAR:
-                    try: idx = next(i for i, opt in enumerate(opcions_mar) if opt.startswith(poble_actual_master))
-                    except (ValueError, StopIteration): idx = 0
-                # --- CANVI CLAU: S'assigna el callback correcte ---
-                st.selectbox("Punt Marí:", opcions_mar, key="selector_mar_widget", index=idx, help=tooltip_text, on_change=on_mar_city_change)
-
-            # --- LÍNIES ELIMINADES: Ja no necessitem la lògica manual amb rerun() ---
-            # terra_sel_net = ...
-            # if ... st.rerun() ...
-
+                    try: idx = next(i for i, opt in enumerate(opcions) if opt.startswith(poble_actual_master))
+                    except (ValueError, StopIteration): pass
+                st.selectbox("Punt Marí:", opcions, key="selector_mar_widget", index=idx, on_change=on_city_change, args=("selector_mar_widget", "selector_terra_widget", PLACEHOLDER_TERRA, PUNTS_MAR))
             with col_dia:
                 now_local = datetime.now(TIMEZONE_CAT)
-                avui_str = now_local.strftime('%d/%m/%Y'); dema_str = (now_local + timedelta(days=1)).strftime('%d/%m/%Y')
-                opcions_dia = (avui_str,) if is_guest else (avui_str, dema_str)
+                opcions_dia = (now_local.strftime('%d/%m/%Y'), (now_local + timedelta(days=1)).strftime('%d/%m/%Y'))
                 st.selectbox("Dia:", opcions_dia, key="dia_selector", disabled=is_guest, on_change=on_day_change_cat)
-            
             with col_hora:
-                opcions_hora = (f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h",) if is_guest else [f"{h:02d}:00h" for h in range(24)]
-                hora_actual = st.session_state.get('hora_selector', opcions_hora[0])
+                opcions_hora = [f"{h:02d}:00h" for h in range(24)]
+                hora_actual = st.session_state.get('hora_selector', f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h")
                 idx = opcions_hora.index(hora_actual) if hora_actual in opcions_hora else 0
                 st.selectbox("Hora:", opcions_hora, key="hora_selector", disabled=is_guest, index=idx)
-            
             with col_nivell:
                 if not is_guest:
                     nivells = [1000, 950, 925, 900, 850, 800, 700]; nivell_actual = st.session_state.get('level_cat_main', 925)
                     idx = nivells.index(nivell_actual) if nivell_actual in nivells else 2
-                    st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx, format_func=lambda x: f"{x} hPa (Tempestes terrestres)" if x == 925 else f"{x} hPa (Punts marítims)" if x == 1000 else f"{x} hPa")
-                else: st.session_state.level_cat_main = 925
+                    st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx, format_func=lambda x: f"{x} hPa (Terrestre)" if x == 925 else f"{x} hPa (Marítim)" if x == 1000 else f"{x} hPa")
         
         else: # Zona USA
             col_ciutat, col_dia, col_hora, col_nivell = st.columns(4)
             with col_ciutat:
                 opcions_usa = formatar_llista_ciutats(USA_CITIES, convergencies)
-                poble_sel_net = st.session_state.get('poble_selector_usa', 'Oklahoma City, OK').split(' (')[0]
+                poble_sel_net = st.session_state.get('poble_selector_usa', 'Oklahoma City, OK')
                 idx = 0
                 try: idx = next(i for i, opt in enumerate(opcions_usa) if opt.startswith(poble_sel_net))
                 except (ValueError, StopIteration): pass
-                st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa_widget", index=idx, on_change=on_city_change_usa)
-
+                st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa_widget", index=idx, on_change=on_city_change, args=("poble_selector_usa_widget", None, None, USA_CITIES))
             with col_dia:
                 now_usa = datetime.now(TIMEZONE_USA)
-                avui_str = now_usa.strftime('%d/%m/%Y'); dema_str = (now_usa + timedelta(days=1)).strftime('%d/%m/%Y'); dema_passat_str = (now_usa + timedelta(days=2)).strftime('%d/%m/%Y')
-                opcions_dia_usa = (avui_str, dema_str, dema_passat_str)
+                opcions_dia_usa = (now_usa.strftime('%d/%m/%Y'), (now_usa + timedelta(days=1)).strftime('%d/%m/%Y'), (now_usa + timedelta(days=2)).strftime('%d/%m/%Y'))
                 st.selectbox("Dia:", opcions_dia_usa, key="dia_selector_usa_widget", on_change=on_day_change_usa)
             with col_hora:
                 dia_sel_str = st.session_state.dia_selector_usa_widget
                 target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
-                hores_opcions = []
-                for h_usa in range(24):
-                    time_in_usa = TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h_usa))
-                    time_in_spain = time_in_usa.astimezone(TIMEZONE_CAT)
-                    hores_opcions.append(f"{time_in_usa.hour:02d}:00 (Local: {time_in_spain.hour:02d}:00h)")
+                hores_opcions = [f"{TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h)).strftime('%H:%M')} (Local: {TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h)).astimezone(TIMEZONE_CAT).strftime('%H:%Mh')})" for h in range(24)]
                 hora_actual_str = st.session_state.get('hora_selector_usa')
                 idx = hores_opcions.index(hora_actual_str) if hora_actual_str in hores_opcions else 0
                 st.selectbox("Hora (CST):", hores_opcions, key="hora_selector_usa", index=idx)
             with col_nivell:
-                nivells_gfs_ordenats = sorted(PRESS_LEVELS_GFS, reverse=False)
-                nivell_actual_usa = st.session_state.get('level_usa_main', 850)
-                idx = nivells_gfs_ordenats.index(nivell_actual_usa) if nivell_actual_usa in nivells_gfs_ordenats else nivells_gfs_ordenats.index(850)
-                st.selectbox("Nivell:", nivells_gfs_ordenats, key="level_usa_main", index=idx, format_func=lambda x: f"{x} hPa ⭐ (Nucli tempesta)" if x == 850 else f"{x} hPa 🌊 (Anàlisi Marítima)" if x == 1000 else f"{x} hPa")
+                nivells_gfs = sorted(PRESS_LEVELS_GFS, reverse=False)
+                nivell_actual = st.session_state.get('level_usa_main', 850)
+                idx = nivells_gfs.index(nivell_actual) if nivell_actual in nivells_gfs else nivells_gfs.index(850)
+                st.selectbox("Nivell:", nivells_gfs, key="level_usa_main", index=idx, format_func=lambda x: f"{x} hPa ⭐" if x == 850 else f"{x} hPa" )
 
 
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
