@@ -514,21 +514,14 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
 
 def diagnosticar_potencial_tempesta(params):
     """
-    Sistema de Diagnòstic Meteorològic Expert v9.0.
-    Utilitza SBCAPE/MUCAPE i SBCIN/MUCIN per a una anàlisi completa,
-    considerant tant tempestes de superfície com de base elevada.
+    Sistema de Diagnòstic Meteorològic Expert v10.0.
+    Integra la Convergència (Disparador), LI (Inestabilitat) i EL (Profunditat)
+    per a un diagnòstic complet del cicle de vida de la tempesta.
     """
     # --- 1. EXTRACCIÓ ROBUSTA DE TOTS ELS PARÀMETRES ---
-    # Assegurem que tenim valors numèrics per a totes les variables
-    sbcape = params.get('SBCAPE', 0) or 0
-    mucape = params.get('MUCAPE', 0) or 0
-    sbcin = params.get('SBCIN', 0) or 0
-    mucin = params.get('MUCIN', 0) or 0
-    
-    # --- CANVI CLAU: Utilitzem el màxim combustible i la màxima inhibició ---
-    # El potencial real ve donat per la parcel·la més energètica (la més alta de les dues CAPE).
+    sbcape = params.get('SBCAPE', 0) or 0; mucape = params.get('MUCAPE', 0) or 0
+    sbcin = params.get('SBCIN', 0) or 0; mucin = params.get('MUCIN', 0) or 0
     max_cape = max(sbcape, mucape)
-    # La "tapa" real és la més forta (la més negativa de les dues CIN).
     strongest_cin = min(sbcin, mucin)
 
     bwd_6km = params.get('BWD_0-6km', 0) or 0
@@ -537,27 +530,43 @@ def diagnosticar_potencial_tempesta(params):
     lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
     dcape = params.get('DCAPE', 0) or 0
     pwat = params.get('PWAT', 0) or 0
+    
+    # --- NOUS PARÀMETRES CLAU ---
+    li_index = params.get('LI', 5) or 5
+    el_hgt = params.get('EL_Hgt', 0) or 0
+    # Assumim que la convergència ve de la caixa de paràmetres, busquem la clau
+    conv_key = next((k for k in params if k.startswith('CONV_')), None)
+    convergencia = params.get(conv_key, 0) or 0
 
-    # --- BLOC DE VETO PER INHIBICIÓ (CIN) ---
-    # Ara utilitzem la CIN més restrictiva per a la decisió.
-    if strongest_cin < -100:
-        tipus_tempesta = "Inhibició Forta (Tapa)"
+    # --- 2. AVALUACIÓ DEL POTENCIAL DE DISPAR (CONVERGÈNCIA vs CIN) ---
+    # Aquesta és la primera batalla: pot la guspira encendre el combustible?
+    potencial_dispar = False
+    if convergencia >= 15 and strongest_cin > -75: # Convergència moderada pot trencar una tapa feble
+        potencial_dispar = True
+    elif convergencia >= 30 and strongest_cin > -125: # Convergència forta pot trencar una tapa moderada
+        potencial_dispar = True
+    elif strongest_cin > -25: # Si gairebé no hi ha tapa, qualsevol cosa pot iniciar la tempesta
+        potencial_dispar = True
+
+    # --- BLOC DE VETO PRINCIPAL ---
+    # Si no hi ha combustible O no hi ha manera d'iniciar la convecció, no hi ha tempesta.
+    if max_cape < 500 or not potencial_dispar:
+        tipus_tempesta = "Inhibició / Sense Dispar" if max_cape >= 500 else "Sense Energia"
         color_tempesta = "#808080"
         base_nuvol = "Atmosfera Estable"
         color_base = "#808080"
         return tipus_tempesta, color_tempesta, base_nuvol, color_base
-    
-    # --- LÒGICA DEL TIPUS DE TEMPESTA (ORGANITZACIÓ) ---
+
+    # --- 3. SI HI HA ENERGIA I DISPAR, CLASSIFIQUEM LA TEMPESTA ---
     tipus_tempesta = "Cèl·lula Simple"; color_tempesta = "#2ca02c"
 
-    # Ara el llindar s'aplica al màxim CAPE disponible.
-    if max_cape < 700:
-        tipus_tempesta = "Cèl·lula Simple (Feble)"
-        color_tempesta = "#2ca02c"
-    elif bwd_6km >= 35:
-        if pwat > 45: tipus_tempesta = "Supercèl·lula HP (Alta Precipitació)"
-        elif pwat < 30: tipus_tempesta = "Supercèl·lula LP (Baixa Precipitació)"
-        else: tipus_tempesta = "Supercèl·lula Clàssica"
+    # Lògica d'Organització (Cisallament)
+    if bwd_6km >= 35:
+        # Refinem el diagnòstic de supercèl·lula amb LI i EL
+        if li_index < -6 and el_hgt > 12000:
+            tipus_tempesta = "Supercèl·lula (Pot. Sever)"
+        else:
+            tipus_tempesta = "Supercèl·lula"
         color_tempesta = "#dc3545"
     elif bwd_6km >= 20:
         if dcape > 1000:
@@ -566,16 +575,15 @@ def diagnosticar_potencial_tempesta(params):
         else:
             tipus_tempesta = "Grup Multicel·lular Organitzat"
             color_tempesta = "#ffc107"
-    else:
-        # La 'Cèl·lula de Pols' es beneficia de l'energia màxima.
-        if max_cape > 2500:
+    else: # Cisallament baix
+        if max_cape > 2500 and li_index < -5:
             tipus_tempesta = "Cèl·lula de Pols (Pot. Calamarsa)"
             color_tempesta = "#ffc107"
         else:
             tipus_tempesta = "Cèl·lula Simple"
             color_tempesta = "#2ca02c"
 
-    # --- LÒGICA DE LA BASE DEL NÚVOL (SENSE CANVIS, JA ERA ROBUSTA) ---
+    # --- 4. LÒGICA DE LA BASE DEL NÚVOL (SENSE CANVIS) ---
     base_nuvol = "Plana i Alta"; color_base = "#2ca02c"
     
     if srh_1km >= 250 and lcl_hgt < 1000 and lfc_hgt < 1500:
@@ -586,6 +594,7 @@ def diagnosticar_potencial_tempesta(params):
         base_nuvol = "Rotatòria (Inflow)"; color_base = "#ffc107"
         
     return tipus_tempesta, color_tempesta, base_nuvol, color_base
+    
 
 def debug_calculos(p, T, Td, u, v, heights, prof):
     """Función para depurar los cálculos problemáticos"""
