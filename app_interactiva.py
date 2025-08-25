@@ -258,9 +258,27 @@ def afegir_video_de_fons():
 def inject_custom_css():
     st.markdown("""
     <style>
-    .stSpinner > div {
-        justify-content: center;
+    /* --- ESTIL PER CENTRAR EL SPINNER A TOTA LA PANTALLA --- */
+    .stSpinner {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: rgba(0, 0, 0, 0.7); /* Fons fosc semitransparent */
+        display: flex;
+        justify-content: center; /* Centra horitzontalment */
+        align-items: center;     /* Centra verticalment */
+        z-index: 9999;           /* Assegura que estigui per sobre de tot */
     }
+
+    /* Estil per al contingut del spinner (icona i text) */
+    .stSpinner > div {
+        text-align: center;
+        font-size: 1.2em; /* Fa el text una mica més gran */
+        color: white;     /* Canvia el color del text a blanc per a més contrast */
+    }
+    /* --- FI DE L'ESTIL DEL SPINNER --- */
 
     /* --- NOU BLOC PER A L'ANIMACIÓ DE PARPADEIG --- */
     .blinking-alert {
@@ -274,6 +292,7 @@ def inject_custom_css():
     
     </style>
     """, unsafe_allow_html=True)
+    
     
 def format_time_left(time_delta):
     total_seconds = int(time_delta.total_seconds()); hours, remainder = divmod(total_seconds, 3600); minutes, _ = divmod(remainder, 60)
