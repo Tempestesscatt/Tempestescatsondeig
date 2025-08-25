@@ -199,39 +199,69 @@ def format_time_left(time_delta):
 def inject_custom_css():
     st.markdown("""
     <style>
-    /* --- ESTILS GLOBALS I DARK MODE (PER DEFECTE) --- */
-    .stSpinner > div { justify-content: center; }
-    .blinking-alert { animation: blink 1.5s linear infinite; }
-    @keyframes blink { 50% { opacity: 0.6; } }
-    
-    /* Fons de vídeo (només visible a la pàgina de login) */
-    .video-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -2; overflow: hidden; }
-    .video-bg { width: 100%; height: 100%; object-fit: cover; }
-    .overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.65); z-index: -1; }
+    .stSpinner > div {
+        justify-content: center;
+    }
 
-    /* --- ESTILS ESPECÍFICS PER AL LIGHT MODE --- */
-    /* Aquests estils NOMÉS s'activen quan el body té la classe 'light-theme-active' */
+    .blinking-alert {
+        animation: blink 1.5s linear infinite;
+    }
 
-    /* Fons de l'aplicació principal */
-    .light-theme-active .stApp {
-        background-color: #FFFFFF;
-        color: #0e1117;
+    @keyframes blink {
+        50% { opacity: 0.6; }
     }
     
-    /* Textos generals */
-    .light-theme-active h1, .light-theme-active h2, .light-theme-active h3, .light-theme-active h4, .light-theme-active h5,
-    .light-theme-active .stMarkdown, .light-theme-active p, .light-theme-active .stSubheader, .light-theme-active .stTextInput label {
-        color: #0e1117 !important;
+    /* --- CSS PER AL FONS (VERSIÓ FINAL I DEFINITIVA) --- */
+
+    /* Apunta al contenidor principal de la vista de l'app */
+    [data-testid="stAppViewContainer"] > .main {
+        background: transparent; /* Fa que el fons sigui transparent */
+    }
+
+    /* Assegura que l'element arrel de Streamlit també sigui transparent */
+    .stApp {
+        background: transparent;
     }
     
-    /* Fons dels widgets de paràmetres */
-    .light-theme-active .styled-widget-box {
-        background-color: #FFFFFF !important;
-        border: 1px solid #E0E0E0 !important;
+    /* --- FI DEL CSS DE FONS --- */
+
+    .video-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: -2;
+        overflow: hidden;
     }
-    .light-theme-active .styled-widget-box span {
-        color: #31333F !important;
+    
+    .video-bg {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
+
+    .overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: rgba(0, 0, 0, 0.65);
+        z-index: -1;
+    }
+    
+    /* CSS de precisió per al Light Mode Login */
+    [data-testid="stSubheader"] {
+        color: white !important;
+    }
+    div[data-testid="stTextInput"] label {
+        color: white !important;
+    }
+    div[data-testid="stMarkdown"] p {
+        color: white !important;
+    }
+    
     </style>
     """, unsafe_allow_html=True)
 
