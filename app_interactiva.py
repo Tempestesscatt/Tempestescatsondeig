@@ -2038,6 +2038,33 @@ def on_day_change_usa():
     st.session_state.hora_selector_usa = f"{time_in_usa.hour:02d}:00 (Local: {time_in_spain.hour:02d}:00h)"
 
 
+def on_terra_city_change():
+    """ Callback que s'activa en canviar la selecció de POBLACIÓ. """
+    poble_sel_terra_raw = st.session_state.selector_terra_widget
+    if poble_sel_terra_raw != "--- Selecciona Població ---":
+        # Troba la clau original que correspon al text seleccionat
+        for key in POBLACIONS_TERRA.keys():
+            if poble_sel_terra_raw.startswith(key):
+                st.session_state.poble_selector = key
+                # Reseteja l'altre selector a la seva posició inicial
+                if 'selector_mar_widget' in st.session_state:
+                    st.session_state.selector_mar_widget = "--- Selecciona Punt Marí ---"
+                break
+
+def on_mar_city_change():
+    """ Callback que s'activa en canviar la selecció de PUNT MARÍ. """
+    poble_sel_mar_raw = st.session_state.selector_mar_widget
+    if poble_sel_mar_raw != "--- Selecciona Punt Marí ---":
+        # Troba la clau original que correspon al text seleccionat
+        for key in PUNTS_MAR.keys():
+            if poble_sel_mar_raw.startswith(key):
+                st.session_state.poble_selector = key
+                # Reseteja l'altre selector a la seva posició inicial
+                if 'selector_terra_widget' in st.session_state:
+                    st.session_state.selector_terra_widget = "--- Selecciona Població ---"
+                break
+
+
 
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya", convergencies=None):
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
@@ -2048,12 +2075,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
         if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username')}**!")
     with col_change:
         if st.button("Canviar Anàlisi", use_container_width=True):
-            keys_to_delete = [
-                'poble_selector', 'poble_selector_usa', 'zone_selected', 
-                'active_tab_cat', 'active_tab_usa', 
-                'dia_selector', 'hora_selector', 
-                'dia_selector_usa_widget', 'hora_selector_usa'
-            ]
+            keys_to_delete = ['poble_selector', 'poble_selector_usa', 'zone_selected', 'active_tab_cat', 'active_tab_usa', 'dia_selector', 'hora_selector', 'dia_selector_usa_widget', 'hora_selector_usa']
             for key in keys_to_delete:
                 if key in st.session_state: del st.session_state[key]
             st.rerun()
@@ -2081,45 +2103,49 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             PLACEHOLDER_TERRA = "--- Selecciona Població ---"; PLACEHOLDER_MAR = "--- Selecciona Punt Marí ---"
             tooltip_text = "Mostra els punts amb major convergència ('disparador' de tempestes).\n\nLlegenda:\n- 🟡 (>15): Moderada\n- 🟠 (>30): Alta\n- 🔴 (>40): Molt Alta"
             poble_actual_master = st.session_state.get('poble_selector')
+
             with col_terra:
                 opcions_terra = [PLACEHOLDER_TERRA] + formatar_llista_ciutats(POBLACIONS_TERRA, convergencies)
                 idx = 0
                 if poble_actual_master in POBLACIONS_TERRA:
+                    # Busquem la posició de l'element que comença amb la clau seleccionada
                     try: idx = next(i for i, opt in enumerate(opcions_terra) if opt.startswith(poble_actual_master))
-                    except (ValueError, StopIteration): pass
-                terra_sel = st.selectbox("Població:", opcions_terra, key="selector_terra_widget", index=idx, help=tooltip_text)
+                    except (ValueError, StopIteration): idx = 0
+                # --- CANVI CLAU: S'assigna el callback correcte ---
+                st.selectbox("Població:", opcions_terra, key="selector_terra_widget", index=idx, help=tooltip_text, on_change=on_terra_city_change)
+            
             with col_mar:
                 opcions_mar = [PLACEHOLDER_MAR] + formatar_llista_ciutats(PUNTS_MAR, convergencies)
                 idx = 0
                 if poble_actual_master in PUNTS_MAR:
                     try: idx = next(i for i, opt in enumerate(opcions_mar) if opt.startswith(poble_actual_master))
-                    except (ValueError, StopIteration): pass
-                mar_sel = st.selectbox("Punt Marí:", opcions_mar, key="selector_mar_widget", index=idx, help=tooltip_text)
-            
-            terra_sel_net = terra_sel.split(' (')[0]; mar_sel_net = mar_sel.split(' (')[0]
-            if terra_sel != PLACEHOLDER_TERRA and terra_sel_net != poble_actual_master:
-                st.session_state.poble_selector = terra_sel_net; st.rerun()
-            elif mar_sel != PLACEHOLDER_MAR and mar_sel_net != poble_actual_master:
-                st.session_state.poble_selector = mar_sel_net; st.rerun()
+                    except (ValueError, StopIteration): idx = 0
+                # --- CANVI CLAU: S'assigna el callback correcte ---
+                st.selectbox("Punt Marí:", opcions_mar, key="selector_mar_widget", index=idx, help=tooltip_text, on_change=on_mar_city_change)
+
+            # --- LÍNIES ELIMINADES: Ja no necessitem la lògica manual amb rerun() ---
+            # terra_sel_net = ...
+            # if ... st.rerun() ...
 
             with col_dia:
                 now_local = datetime.now(TIMEZONE_CAT)
                 avui_str = now_local.strftime('%d/%m/%Y'); dema_str = (now_local + timedelta(days=1)).strftime('%d/%m/%Y')
-                opcions_dia = (avui_str, dema_str)
-                dia_actual = st.session_state.get('dia_selector', avui_str)
-                idx = opcions_dia.index(dia_actual) if dia_actual in opcions_dia else 0
-                st.selectbox("Dia:", opcions_dia, key="dia_selector", disabled=is_guest, on_change=on_day_change_cat, index=idx)
+                opcions_dia = (avui_str,) if is_guest else (avui_str, dema_str)
+                st.selectbox("Dia:", opcions_dia, key="dia_selector", disabled=is_guest, on_change=on_day_change_cat)
+            
             with col_hora:
-                opcions_hora = [f"{h:02d}:00h" for h in range(24)]
-                hora_actual = st.session_state.get('hora_selector', f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h")
+                opcions_hora = (f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h",) if is_guest else [f"{h:02d}:00h" for h in range(24)]
+                hora_actual = st.session_state.get('hora_selector', opcions_hora[0])
                 idx = opcions_hora.index(hora_actual) if hora_actual in opcions_hora else 0
                 st.selectbox("Hora:", opcions_hora, key="hora_selector", disabled=is_guest, index=idx)
+            
             with col_nivell:
-                nivells = [1000, 950, 925, 900, 850, 800, 700]
-                nivell_actual = st.session_state.get('level_cat_main', 925)
-                idx = nivells.index(nivell_actual) if nivell_actual in nivells else 2
-                st.selectbox("Nivell:", nivells, key="level_cat_main", disabled=is_guest, index=idx, format_func=lambda x: f"{x} hPa (Temp. terrestres)" if x == 925 else f"{x} hPa (Punts marítims)" if x == 1000 else f"{x} hPa")
-
+                if not is_guest:
+                    nivells = [1000, 950, 925, 900, 850, 800, 700]; nivell_actual = st.session_state.get('level_cat_main', 925)
+                    idx = nivells.index(nivell_actual) if nivell_actual in nivells else 2
+                    st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx, format_func=lambda x: f"{x} hPa (Tempestes terrestres)" if x == 925 else f"{x} hPa (Punts marítims)" if x == 1000 else f"{x} hPa")
+                else: st.session_state.level_cat_main = 925
+        
         else: # Zona USA
             col_ciutat, col_dia, col_hora, col_nivell = st.columns(4)
             with col_ciutat:
@@ -2128,10 +2154,8 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 idx = 0
                 try: idx = next(i for i, opt in enumerate(opcions_usa) if opt.startswith(poble_sel_net))
                 except (ValueError, StopIteration): pass
-                poble_seleccionat = st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa_widget", index=idx)
-                nou_poble_net = poble_seleccionat.split(' (')[0]
-                if st.session_state.get('poble_selector_usa') != nou_poble_net:
-                    st.session_state.poble_selector_usa = nou_poble_net; st.rerun()
+                st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa_widget", index=idx, on_change=on_city_change_usa)
+
             with col_dia:
                 now_usa = datetime.now(TIMEZONE_USA)
                 avui_str = now_usa.strftime('%d/%m/%Y'); dema_str = (now_usa + timedelta(days=1)).strftime('%d/%m/%Y'); dema_passat_str = (now_usa + timedelta(days=2)).strftime('%d/%m/%Y')
