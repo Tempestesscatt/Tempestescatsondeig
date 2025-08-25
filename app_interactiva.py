@@ -211,7 +211,7 @@ def format_time_left(time_delta):
     return f"{hours}h {minutes}min" if hours > 0 else f"{minutes} min"
 
 def show_login_page():
-    add_video_background("llamps.mp4")
+    # JA NO CRIDEM A add_video_background() DES D'AQUÍ
 
     st.markdown("<h1 style='text-align: center; color: white;'>Tempestes.cat</h1>", unsafe_allow_html=True)
     st.markdown("---")
@@ -233,8 +233,6 @@ def show_login_page():
                 else:
                     st.error("Nom d'usuari o contrasenya incorrectes.")
         
-        # --- LÍNIA CORREGIDA ---
-        # S'ha afegit una 'key' única a aquest botó.
         if st.button("No tens un compte? Registra't aquí", key="go_to_register"):
             st.session_state.view = 'register'
             st.rerun()
@@ -258,8 +256,6 @@ def show_login_page():
                     save_json_file(users, USERS_FILE)
                     st.success("Compte creat amb èxit! Ara pots iniciar sessió.")
         
-        # --- LÍNIA CORREGIDA ---
-        # S'ha afegit una 'key' única i diferent a aquest botó.
         if st.button("Ja tens un compte? Inicia sessió", key="go_to_login"):
             st.session_state.view = 'login'
             st.rerun()
@@ -267,8 +263,6 @@ def show_login_page():
     st.divider()
     st.markdown("<p style='text-align: center;'>O si ho prefereixes...</p>", unsafe_allow_html=True)
 
-    # --- LÍNIA CORREGIDA ---
-    # S'ha afegit una 'key' única per a aquest botó també.
     if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary", key="guest_login"):
         st.session_state.update({'guest_mode': True, 'logged_in': True})
         st.rerun()
@@ -2570,13 +2564,13 @@ def main():
     if 'zone_selected' not in st.session_state: st.session_state['zone_selected'] = None
 
     if not st.session_state['logged_in']:
+        # --- LÒGICA CORREGIDA ---
+        # Posem el vídeo de fons ABANS de dibuixar la pàgina de login.
+        add_video_background("llamps.mp4")
         show_login_page()
     elif not st.session_state['zone_selected']:
         ui_zone_selection()
     
-    # --- INICI DEL CANVI ---
-    # Ara, envolv_involucrem cada crida a una funció principal amb un spinner.
-    # Aquest spinner actuarà com una pantalla de càrrega que amaga la interfície anterior.
     elif st.session_state['zone_selected'] == 'catalunya':
         with st.spinner("Preparant l'entorn d'anàlisi de Catalunya..."):
             run_catalunya_app()
@@ -2584,7 +2578,6 @@ def main():
     elif st.session_state['zone_selected'] == 'valley_halley':
         with st.spinner("Preparant l'entorn d'anàlisi de Tornado Alley..."):
             run_valley_halley_app()
-    # --- FI DEL CANVI ---
 
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
