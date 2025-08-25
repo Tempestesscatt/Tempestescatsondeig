@@ -572,7 +572,7 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
                   path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
 
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
-    skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
+    skew.plot(p, Td, 'purple', lw=2.5, label='Punt de Rosada')
         
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
     skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40)
@@ -588,6 +588,7 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
 
     skew.ax.legend()
     return fig
+    
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol):
     fig = plt.figure(dpi=150, figsize=(8, 8))
     gs = fig.add_gridspec(nrows=2, ncols=2, height_ratios=[1.5, 6], width_ratios=[1.5, 1], hspace=0.4, wspace=0.3)
