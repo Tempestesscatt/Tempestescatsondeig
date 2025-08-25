@@ -2728,49 +2728,46 @@ def main():
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Meteorològic Expert v20.0 - Detecció de Castellanus Refinada.
-    Implementa regles estrictes per a l'LFC, CAPE màxim a 6km i humitat en
-    capes mitjanes per a una detecció precisa de la convecció de base elevada.
+    Sistema de Diagnòstic v21.0 - Detecció de Castellanus per Puntuació.
+    Implementa un sistema de puntuació flexible per a una detecció molt més
+    fiable de la convecció de base elevada (Castellanus).
     """
     # --- 1. EXTRACCIÓ DE PARÀMETRES ---
-    mlcape = params.get('MLCAPE', 0) or 0
-    mucape = params.get('MUCAPE', 0) or 0
+    mlcape = params.get('MLCAPE', 0) or 0; mucape = params.get('MUCAPE', 0) or 0
     cin = params.get('MUCIN', params.get('SBCIN', 0)) or 0
     li = params.get('LI', 5) or 5
     bwd_6km = params.get('BWD_0-6km', 0) or 0
-    srh_1km = params.get('SRH_0-1km', 0) or 0
-    srh_3km = params.get('SRH_0-3km', 0) or 0
-    lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
-    lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
+    srh_1km = params.get('SRH_0-1km', 0) or 0; srh_3km = params.get('SRH_0-3km', 0) or 0
+    lcl_hgt = params.get('LCL_Hgt', 9999) or 9999; lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
     rh_capes = params.get('RH_CAPES', {'baixa': 0, 'mitjana': 0, 'alta': 0})
     max_updraft = params.get('MAX_UPDRAFT', 0) or 0
     freezing_lvl_hgt = params.get('FREEZING_LVL_HGT', 9999) or 9999
-    
-    # Paràmetres clau per a Castellanus i disparador
-    cape_0_6km = params.get('CAPE_0-6km', 0) or 0 # Assumim que aquest paràmetre es calcula
-    dcape = params.get('DCAPE', 0) or 0
-    pwat = params.get('PWAT', 0) or 0
-    conv_key = f'CONV_{nivell_conv}hPa'
-    conv = params.get(conv_key, 0) or 0
+    dcape = params.get('DCAPE', 0) or 0; pwat = params.get('PWAT', 0) or 0
+    conv_key = f'CONV_{nivell_conv}hPa'; conv = params.get(conv_key, 0) or 0
 
-    # --- NOU BLOC DE DETECCIÓ DE CASTELLANUS (MOLT MÉS PRECÍS) ---
-    # Aquesta és la primera comprovació, ja que és una condició molt específica.
+    # --- NOU SISTEMA DE PUNTUACIÓ PER A CASTELLANUS ---
+    castellanus_score = 0
     
-    # 1. Hi ha una tapa forta a la superfície? (CIN alt)
-    cond_cin = cin < -75
-    # 2. La convecció s'inicia molt amunt? (LFC alt)
-    cond_lfc = lfc_hgt > 2500
-    # 3. Hi ha energia CONCENTRADA a nivells mitjans? (MUCAPE > 500, però no extrem)
-    cond_mucape = 500 < mucape < 1500 # Un MUCAPE massa alt ja seria una tempesta de base elevada
-    # 4. Hi ha prou humitat a la capa mitjana per formar els núvols?
-    rh_mitjana = rh_capes.get('mitjana', 0)
-    cond_humitat = rh_mitjana is not None and rh_mitjana >= 50
+    # Condició 1: Inhibició (és l'ingredient clau)
+    if cin < -75: castellanus_score += 2
     
-    if cond_cin and cond_lfc and cond_mucape and cond_humitat:
+    # Condició 2: LFC (ha de ser elevat)
+    if lfc_hgt > 3000: castellanus_score += 2
+    elif lfc_hgt > 2000: castellanus_score += 1
+        
+    # Condició 3: Energia en alçada (MUCAPE)
+    if mucape > 500: castellanus_score += 1
+        
+    # Condició 4: Humitat a nivells mitjans
+    rh_mitjana = rh_capes.get('mitjana')
+    if rh_mitjana is not None and rh_mitjana >= 50: castellanus_score += 1
+
+    # Llindar final de diagnòstic
+    if castellanus_score >= 4:
         return {'emoji': "🌥️", 'descripcio': "Castellanus (Convecció Elevada)",
-                'veredicte': "Potencial per a Altocumulus Castellanus. L'energia i la humitat existeixen en alçada, però una forta inhibició i un LFC molt alt impedeixen la formació de tempestes des de la superfície.",
-                'factor_clau': "Combinació de CIN alt, LFC > 2500m, MUCAPE moderat i humitat > 50% en capes mitjanes."}
-    # --- FI DEL NOU BLOC DE CASTELLANUS ---
+                'veredicte': "Potencial per a Altocumulus Castellanus. L'energia i la humitat existeixen en alçada, però una inhibició significativa i un LFC elevat impedeixen la formació de tempestes des de la superfície.",
+                'factor_clau': "Combinació favorable d'inhibició, LFC elevat, energia en alçada i humitat a nivells mitjans."}
+    # --- FI DEL SISTEMA DE PUNTUACIÓ ---
 
     # --- 2. AVALUACIÓ DEL DISPARADOR (Lògica anterior, es manté) ---
     hi_ha_inestabilitat_latent = (mucape > 150 or li < -1)
@@ -2787,55 +2784,47 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
 
     # --- 3. DIAGNÒSTIC JERÀRQUIC AVANÇAT (Lògica anterior, es manté) ---
     # ... (la resta de la funció continua exactament igual que abans) ...
-    # Clàusula d'excepció per forçament extrem
     if trigger_potential == 'Extrem' and mlcape > 500:
         desc_amenaces = ""
         if max_updraft > 30: desc_amenaces += " amb Risc de Calamarsa"
         if dcape > 1000: desc_amenaces += " i Fortes Ventades"
-        return {'emoji': "⛈️", 'descripcio': "Tempestes Forçades" + desc_amenaces,
-                'veredicte': f"Potencial de tempestes severes forçades per una línia de convergència molt intensa{desc_amenaces}.",
-                'factor_clau': "Convergència extrema (>40), que actua com un pistó i pot trencar tapes d'inversió significatives."}
+        return {'emoji': "⛈️", 'descripcio': "Tempestes Forçades" + desc_amenaces, 'veredicte': f"Potencial de tempestes severes forçades per una línia de convergència molt intensa{desc_amenaces}.", 'factor_clau': "Convergència extrema (>40)."}
 
-    # Prioritat 1: Tempestes Severes
     if trigger_potential in ['Fort', 'Moderat'] and mlcape > 1000 and bwd_6km > 20 and lfc_hgt < 3000:
-        desc_calamarsa = ""; desc_vent = ""; desc_pluja = ""
+        desc_amenaces = ""
         if max_updraft > 35 and freezing_lvl_hgt < 4000:
-            if max_updraft > 50: desc_calamarsa = "Calamarsa Severa"
-            else: desc_calamarsa = "Risc de Calamarsa"
-        if dcape > 1000: desc_vent = "Fortes Ventades"
-        if pwat > 45: desc_pluja = "Pluges Torrencials"
-        amenaces = [a for a in [desc_calamarsa, desc_vent, desc_pluja] if a]
-        desc_amenaces = f" ({', '.join(amenaces)})" if amenaces else ""
+            desc_calamarsa = "Calamarsa Severa" if max_updraft > 50 else "Risc de Calamarsa"
+            desc_amenaces += f" {desc_calamarsa}"
+        if dcape > 1000: desc_amenaces += " i Fortes Ventades"
+        if pwat > 45: desc_amenaces += " i Pluges Torrencials"
+        desc_amenaces = desc_amenaces.replace(" i ", ", ", 1).strip()
+        
         if bwd_6km >= 35 and srh_3km > 150:
             desc = "Supercèl·lula"
             if srh_1km > 150 and lcl_hgt < 1200: desc += " (Pot. Tornàdic)"
-            return {'emoji': "🌪️", 'descripcio': desc + desc_amenaces, 'veredicte': f"Potencial de {desc}{desc_amenaces}.", 'factor_clau': "Excel·lent combinació d'energia a nivells baixos, cisallament i helicitat."}
+            return {'emoji': "🌪️", 'descripcio': f"{desc} ({desc_amenaces})" if desc_amenaces else desc, 'veredicte': f"Potencial de {desc} amb risc de {desc_amenaces}.", 'factor_clau': "Excel·lent combinació d'energia, cisallament i helicitat."}
         if bwd_6km >= 20:
-            return {'emoji': "⛈️", 'descripcio': "Grup de tempestes" + desc_amenaces, 'veredicte': f"Potencial per a un grup de tempestes repartides{desc_amenaces}.", 'factor_clau': "Bona combinació d'energia i cisallament que afavoreix l'organització."}
+            return {'emoji': "⛈️", 'descripcio': f"Grup de tempestes ({desc_amenaces})" if desc_amenaces else "Grup de tempestes", 'veredicte': f"Potencial per a un grup de tempestes organitzades amb risc de {desc_amenaces}.", 'factor_clau': "Bona combinació d'energia i cisallament."}
 
-    # Prioritat 2: Tempestes Comunes o Elevades
     if trigger_potential != 'Nul' and mucape > 700:
         desc_calamarsa = " amb Risc de Calamarsa" if max_updraft > 25 and freezing_lvl_hgt < 4200 else ""
         if mlcape < 300 and mucape > 800:
-            return {'emoji': "🌩️", 'descripcio': "Tempesta de Base Alta" + desc_calamarsa, 'veredicte': f"Tempestes que es formen a nivells mitjans{desc_calamarsa}.", 'factor_clau': "Forta inestabilitat elevada (MUCAPE) que supera una capa estable a la superfície."}
+            return {'emoji': "🌩️", 'descripcio': "Tempesta de Base Alta" + desc_calamarsa, 'veredicte': f"Tempestes que es formen a nivells mitjans.", 'factor_clau': "Forta inestabilitat elevada (MUCAPE)."}
         if mlcape > 500:
-            return {'emoji': "🌩️", 'descripcio': "Tempesta Aïllada" + desc_calamarsa, 'veredicte': f"Potencial de tempestes aïllades{desc_calamarsa}.", 'factor_clau': "Inestabilitat suficient i un disparador efectiu, però sense prou organització."}
+            return {'emoji': "🌩️", 'descripcio': "Tempesta Aïllada" + desc_calamarsa, 'veredicte': f"Potencial de tempestes aïllades.", 'factor_clau': "Inestabilitat suficient i disparador efectiu."}
 
-    # Prioritat 3: Altres Núvols Convectius
     if trigger_potential != 'Nul':
         if 300 < mlcape <= 700 and cin > -50 and lfc_hgt < 2500:
-            return {'emoji': "☁️", 'descripcio': "Desenvolupament Vertical (Congestus)", 'veredicte': "Núvols de gran creixement que probablement no seran tempesta.", 'factor_clau': "Inestabilitat moderada i LFC baix."}
+            return {'emoji': "☁️", 'descripcio': "Desenvolupament Vertical (Congestus)", 'veredicte': "Núvols de gran creixement.", 'factor_clau': "Inestabilitat moderada i LFC baix."}
         if 50 < mlcape <= 300 and cin > -25:
-            return {'emoji': "🌤️", 'descripcio': "Núvols de Bon Temps (Humilis)", 'veredicte': "Formació de petits cúmuls de bon temps.", 'factor_clau': "Molt poca inestabilitat."}
+            return {'emoji': "🌤️", 'descripcio': "Núvols de Bon Temps (Humilis)", 'veredicte': "Petits cúmuls de bon temps.", 'factor_clau': "Molt poca inestabilitat."}
 
-    # Prioritat 4 i 5: Núvols Estables i Cel Serè
     rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
     rh_mitjana = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0
-    if rh_baixa > 85 and rh_mitjana > 80: return {'emoji': "🌧️", 'descripcio': "Pluja/Plugim (Nimboestratus)", 'veredicte': "Precipitació contínua.", 'factor_clau': "Capa d'humitat molt profunda i saturada."}
-    if lcl_hgt < 150 and rh_baixa > 95: return {'emoji': "🌫️", 'descripcio': "Boira o Boirina", 'veredicte': "Visibilitat reduïda.", 'factor_clau': "Saturació d'humitat a la superfície."}
+    if rh_baixa > 85 and rh_mitjana > 80: return {'emoji': "🌧️", 'descripcio': "Pluja/Plugim (Nimboestratus)", 'veredicte': "Precipitació contínua.", 'factor_clau': "Capa d'humitat molt profunda."}
+    if lcl_hgt < 150 and rh_baixa > 95: return {'emoji': "🌫️", 'descripcio': "Boira o Boirina", 'veredicte': "Visibilitat reduïda.", 'factor_clau': "Saturació a la superfície."}
     if rh_baixa > 75:
-        desc = "Cel Cobert (Estratus/Estratocúmulus)"
-        if lcl_hgt < 800: desc = "Cel Cobert (Estratus)"
+        desc = "Cel Cobert (Estratus)" if lcl_hgt < 800 else "Cel Cobert (Estratocúmulus)"
         return {'emoji': "☁️", 'descripcio': desc, 'veredicte': "Cel tapat amb núvols baixos.", 'factor_clau': "Capa d'humitat a nivells baixos."}
     if rh_mitjana > 70: return {'emoji': "🌥️", 'descripcio': "Núvols Mitjans (Altocúmulus)", 'veredicte': "Cel variable amb núvols mitjans.", 'factor_clau': "Capa d'humitat a nivells mitjans."}
     if rh_capes.get('alta', 0) > 60: return {'emoji': "🌤️", 'descripcio': "Núvols Alts (Cirrus)", 'veredicte': "Cel poc ennuvolat amb núvols alts.", 'factor_clau': "Humitat només a nivells molt alts."}
