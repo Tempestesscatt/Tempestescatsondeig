@@ -193,7 +193,6 @@ def inject_custom_css():
         justify-content: center;
     }
 
-    /* --- NOU BLOC PER A L'ANIMACIÓ DE PARPADEIG --- */
     .blinking-alert {
         animation: blink 1.5s linear infinite;
     }
@@ -201,8 +200,40 @@ def inject_custom_css():
     @keyframes blink {
         50% { opacity: 0.6; }
     }
-    /* --- FI DEL NOU BLOC --- */
     
+    /* --- NOU BLOC DE CSS PER AL FONS DE VÍDEO --- */
+    /* Aquest codi s'injecta sempre, però només serà visible quan el vídeo estigui present */
+    .stApp {
+        background: transparent; /* Fa transparent el fons principal de l'app */
+    }
+
+    .video-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: -2;
+        overflow: hidden;
+    }
+    
+    .video-bg {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: rgba(0, 0, 0, 0.65);
+        z-index: -1;
+    }
+    /* --- FI DEL NOU BLOC --- */
+
     </style>
     """, unsafe_allow_html=True)
     
@@ -271,10 +302,6 @@ def show_login_page():
 
 
 def add_video_background(video_file="llamps.mp4"):
-    """
-    Versió definitiva i robusta. Afegeix un vídeo de fons que funciona en harmonia
-    amb l'estructura de Streamlit, fent transparent el contenidor principal de l'app.
-    """
     if not os.path.exists(video_file):
         st.warning(f"No s'ha trobat l'arxiu de vídeo de fons: {video_file}")
         return
@@ -284,48 +311,14 @@ def add_video_background(video_file="llamps.mp4"):
     
     video_base64 = base64.b64encode(video_bytes).decode("utf-8")
     
+    # Ara només injectem l'HTML. El CSS ja està carregat globalment.
     st.markdown(f"""
-        <style>
-        /* Contenidor principal de l'app de Streamlit */
-        [data-testid="stAppViewContainer"] > .main {{
-            background: none; /* Elimina el fons original */
-        }}
-
-        /* Vídeo de fons */
-        .video-bg {{
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            object-fit: cover;
-            z-index: -2;
-        }}
-
-        /* Capa fosca per a llegibilitat */
-        .overlay {{
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background-color: rgba(0, 0, 0, 0.65);
-            z-index: -1;
-        }}
-        
-        /* Assegura que el text dels formularis sigui llegible */
-        .stTextInput label, .stButton > button, .stSubheader, p {{
-            color: white !important;
-        }}
-        .stMarkdown {{
-            color: white;
-        }}
-        </style>
-        
-        <div class="overlay"></div>
-        <video autoplay loop muted class="video-bg">
-            <source src="data:video/mp4;base64,{video_base64}" type="video/mp4">
-        </video>
+        <div class="video-container">
+            <div class="overlay"></div>
+            <video autoplay loop muted class="video-bg">
+                <source src="data:video/mp4;base64,{video_base64}" type="video/mp4">
+            </video>
+        </div>
     """, unsafe_allow_html=True)
     
 
