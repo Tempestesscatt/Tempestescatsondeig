@@ -70,7 +70,7 @@ CIUTATS_CATALUNYA = {
     
     # --- Sondejos Marins (ARA AMB LA CLAU CORRECTA) ---
     'Costes de Girona (Mar)': {'lat': 42.05, 'lon': 3.55},
-    'Mar Profunda (Mar)': {'lat': 41.45, 'lon': 2.90},      # <-- LÍNIA CORREGIDA
+    'Mar Profunda (Mar)': {'lat': 41.60, 'lon': 3.45}, 
     'Litoral Barceloní (Mar)': {'lat': 41.30, 'lon': 2.50},
     'Aigües de Tarragona (Mar)': {'lat': 40.90, 'lon': 1.65},
 }
