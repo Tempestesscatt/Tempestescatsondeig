@@ -231,26 +231,6 @@ def inject_custom_css():
         background-color: rgba(0, 0, 0, 0.65);
         z-index: -1;
     }
-    
-    /* --- CSS DE PRECISIÓ PER AL LIGHT MODE LOGIN (VERSIÓ FINAL) --- */
-    
-    /* Apunta directament al subheader (h2) de Streamlit */
-    body.light [data-testid="stSubheader"] {
-        color: #0e1117 !important;
-    }
-
-    /* Apunta directament a l'etiqueta (label) dels camps de text */
-    body.light div[data-testid="stTextInput"] label {
-        color: #0e1117 !important;
-    }
-
-    /* Apunta als paràgrafs dins dels contenidors de Markdown */
-    body.light div[data-testid="stMarkdown"] p {
-        color: #0e1117 !important;
-    }
-    
-    /* --- FI DEL BLOC FINAL --- */
-    
     </style>
     """, unsafe_allow_html=True)
     
@@ -259,17 +239,26 @@ def format_time_left(time_delta):
     return f"{hours}h {minutes}min" if hours > 0 else f"{minutes} min"
 
 def show_login_page():
-    theme = st.session_state.get('theme', 'dark')
+    add_video_background("llamps.mp4")
 
-    if theme == 'dark':
-        add_video_background("llamps.mp4")
-        title_color = "white"
-        text_color = "white"
-    else:
-        title_color = "#0e1117"
-        text_color = "#0e1117"
+    # --- NOU BLOC DE CSS LOCAL ---
+    # Aquest CSS s'injecta NOMÉS aquí i força els colors blancs
+    # per a una llegibilitat perfecta sobre el vídeo fosc.
+    st.markdown("""
+    <style>
+    [data-testid="stSubheader"] {
+        color: white !important;
+    }
+    div[data-testid="stTextInput"] label {
+        color: white !important;
+    }
+    div[data-testid="stMarkdown"] p {
+        color: white !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-    st.markdown(f"<h1 style='text-align: center; color: {title_color};'>Tempestes.cat</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: white;'>Tempestes.cat</h1>", unsafe_allow_html=True)
     st.markdown("---")
 
     if 'view' not in st.session_state:
@@ -317,13 +306,11 @@ def show_login_page():
             st.rerun()
     
     st.divider()
-    st.markdown(f"<p style='text-align: center; color: {text_color};'>O si ho prefereixes...</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>O si ho prefereixes...</p>", unsafe_allow_html=True)
 
     if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary", key="guest_login"):
         st.session_state.update({'guest_mode': True, 'logged_in': True})
         st.rerun()
-# --- Funcions Base de Càlcul i Gràfics (Compartides) ---
-
 
 def get_theme_from_frontend():
     """
