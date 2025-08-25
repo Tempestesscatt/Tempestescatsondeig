@@ -2070,11 +2070,27 @@ def hide_streamlit_style():
     st.markdown(hide_style, unsafe_allow_html=True)
 
 
+# Reemplaça la teva funció ui_capcalera_selectors amb aquesta:
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya", convergencies=None):
+    # Funció auxiliar per injectar el JavaScript que canvia el tema
+    def switch_theme_js():
+        components.html(
+            """
+            <script>
+            const body = window.parent.document.querySelector('body');
+            body.classList.toggle('light');
+            </script>
+            """,
+            height=0,
+            width=0,
+        )
+
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
-    col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
+    # S'ha afegit una columna per al botó del tema
+    col_text, col_change, col_logout, col_theme = st.columns([0.6, 0.15, 0.15, 0.1])
+    
     with col_text:
         if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username')}**!")
     with col_change:
@@ -2088,8 +2104,30 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
+            
+    # --- NOU BLOC PER AL BOTÓ DE CANVI DE TEMA ---
+    with col_theme:
+        theme = st.session_state.get('theme', 'dark')
+        button_clicked = False
+        
+        if theme == 'dark':
+            if st.button("🌙", key="theme_switch_to_light", help="Canviar a mode clar", use_container_width=True):
+                st.session_state.theme = 'light'
+                st.session_state.theme_detected = 'light' # Sincronitza amb el detector
+                button_clicked = True
+        else:
+            if st.button("☀️", key="theme_switch_to_dark", help="Canviar a mode fosc", use_container_width=True):
+                st.session_state.theme = 'dark'
+                st.session_state.theme_detected = 'dark' # Sincronitza amb el detector
+                button_clicked = True
+        
+        if button_clicked:
+            switch_theme_js()
+            st.rerun()
+    # --- FI DEL NOU BLOC ---
 
     with st.container(border=True):
+        # ... (la resta de la funció es queda exactament igual)
         def formatar_llista_ciutats(ciutats_dict, conv_data):
             if not conv_data:
                 return sorted(list(ciutats_dict.keys()))
@@ -2136,26 +2174,21 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     except (ValueError, StopIteration): idx_mar = 0
                 mar_sel = st.selectbox("Punt Marí:", opcions_mar, key="selector_mar_widget", index=idx_mar, help=tooltip_text)
 
-            # --- LÒGICA DE SELECCIÓ ROBUSTA CORREGIDA ---
             nova_seleccio = None
-            # Comprova si s'ha canviat la selecció de terra
             if terra_sel != PLACEHOLDER_TERRA:
                 for key in POBLACIONS_TERRA:
                     if terra_sel.startswith(key):
                         nova_seleccio = key
                         break
-            # Si no, comprova si s'ha canviat la de mar
             elif mar_sel != PLACEHOLDER_MAR:
                 for key in PUNTS_MAR:
                     if mar_sel.startswith(key):
                         nova_seleccio = key
                         break
             
-            # Si hi ha una nova selecció vàlida i és diferent de l'actual, actualitza i recarrega
             if nova_seleccio and nova_seleccio != poble_actual_master:
                 st.session_state.poble_selector = nova_seleccio
                 st.rerun()
-            # --- FI DE LA CORRECCIÓ ---
 
             now_local = datetime.now(TIMEZONE_CAT)
             with col_dia:
@@ -2174,8 +2207,8 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     try: idx_nivell = nivells.index(nivell_actual)
                     except ValueError: idx_nivell = 2
                     st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx_nivell, 
-                                 format_func=lambda x: f"{x} hPa Bo per el tereny" if x == 925 
-                                                       else f"{x} hPa Bo per zona marítima" if x == 1000 
+                                 format_func=lambda x: f"{x} hPa Recomenat per terreny" if x == 925 
+                                                       else f"{x} hPa Recomenat per zonamarína" if x == 1000 
                                                        else f"{x} hPa")
                 else:
                     st.session_state.level_cat_main = 925
@@ -2221,8 +2254,8 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 try: idx_nivell_usa = nivells_gfs_ordenats.index(nivell_actual_usa)
                 except ValueError: idx_nivell_usa = nivells_gfs_ordenats.index(850) if 850 in nivells_gfs_ordenats else 0
                 st.selectbox("Nivell:", nivells_gfs_ordenats, key="level_usa_main", index=idx_nivell_usa, 
-                             format_func=lambda x: f"{x} hPa Bo per el tereny" if x == 925 
-                                                   else f"{x} hPa Bo per zona marítima" if x == 1000 
+                             format_func=lambda x: f"{x} hPa Recomenat per terreny" if x == 925 
+                                                   else f"{x} hPa Recomenat per zonamarína" if x == 1000 
                                                    else f"{x} hPa")
 
 
@@ -2586,11 +2619,13 @@ def ui_zone_selection():
             if st.button("Analitzar Tornado Alley", use_container_width=True, key="btn_select_usa"):
                 st.session_state['zone_selected'] = 'valley_halley'
                 st.rerun()
+
 def main():
+    # Primer, injectem el CSS bàsic
     inject_custom_css()
     hide_streamlit_style()
     
-    # --- DETECCIÓ DE TEMA ---
+    # Després, detectem el tema
     theme = get_theme_from_frontend()
     st.session_state.theme = theme
 
@@ -2609,8 +2644,7 @@ def main():
     if 'zone_selected' not in st.session_state: st.session_state['zone_selected'] = None
 
     if not st.session_state['logged_in']:
-        add_video_background("llamps.mp4")
-        show_login_page()
+        show_login_page() # El login ja s'adapta sol
     elif not st.session_state['zone_selected']:
         ui_zone_selection()
     
