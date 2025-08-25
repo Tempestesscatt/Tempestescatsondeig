@@ -199,69 +199,39 @@ def format_time_left(time_delta):
 def inject_custom_css():
     st.markdown("""
     <style>
-    .stSpinner > div {
-        justify-content: center;
-    }
+    /* --- ESTILS GLOBALS I DARK MODE (PER DEFECTE) --- */
+    .stSpinner > div { justify-content: center; }
+    .blinking-alert { animation: blink 1.5s linear infinite; }
+    @keyframes blink { 50% { opacity: 0.6; } }
+    
+    /* Fons de vídeo (només visible a la pàgina de login) */
+    .video-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -2; overflow: hidden; }
+    .video-bg { width: 100%; height: 100%; object-fit: cover; }
+    .overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.65); z-index: -1; }
 
-    .blinking-alert {
-        animation: blink 1.5s linear infinite;
-    }
+    /* --- ESTILS ESPECÍFICS PER AL LIGHT MODE --- */
+    /* Aquests estils NOMÉS s'activen quan el body té la classe 'light-theme-active' */
 
-    @keyframes blink {
-        50% { opacity: 0.6; }
+    /* Fons de l'aplicació principal */
+    .light-theme-active .stApp {
+        background-color: #FFFFFF !important;
+        color: #0e1117 !important;
     }
     
-    /* --- CSS PER AL FONS (VERSIÓ FINAL I DEFINITIVA) --- */
-
-    /* Apunta al contenidor principal de la vista de l'app */
-    [data-testid="stAppViewContainer"] > .main {
-        background: transparent; /* Fa que el fons sigui transparent */
-    }
-
-    /* Assegura que l'element arrel de Streamlit també sigui transparent */
-    .stApp {
-        background: transparent;
+    /* Textos generals */
+    .light-theme-active h1, .light-theme-active h2, .light-theme-active h3, .light-theme-active h4, .light-theme-active h5,
+    .light-theme-active .stMarkdown, .light-theme-active p, .light-theme-active .stSubheader, .light-theme-active .stTextInput label {
+        color: #0e1117 !important;
     }
     
-    /* --- FI DEL CSS DE FONS --- */
-
-    .video-container {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        z-index: -2;
-        overflow: hidden;
+    /* Fons dels widgets de paràmetres i text intern */
+    .light-theme-active .styled-widget-box {
+        background-color: #FFFFFF !important;
+        border: 1px solid #E0E0E0 !important;
     }
-    
-    .video-bg {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
+    .light-theme-active .styled-widget-box span {
+        color: #31333F !important;
     }
-
-    .overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        background-color: rgba(0, 0, 0, 0.65);
-        z-index: -1;
-    }
-    
-    /* CSS de precisió per al Light Mode Login */
-    [data-testid="stSubheader"] {
-        color: white !important;
-    }
-    div[data-testid="stTextInput"] label {
-        color: white !important;
-    }
-    div[data-testid="stMarkdown"] p {
-        color: white !important;
-    }
-    
     </style>
     """, unsafe_allow_html=True)
 
@@ -2099,7 +2069,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
-    col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
+    col_text, col_change, col_logout, col_theme = st.columns([0.6, 0.15, 0.15, 0.1])
     
     with col_text:
         if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username')}**!")
@@ -2114,6 +2084,20 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
+            
+    # --- BLOC DE CANVI DE TEMA (VERSIÓ FINAL) ---
+    with col_theme:
+        theme = st.session_state.get('theme', 'dark')
+        
+        if theme == 'dark':
+            if st.button("🌙", key="theme_switch_to_light", help="Canviar a mode clar", use_container_width=True):
+                st.session_state.theme = 'light'
+                st.rerun()
+        else:
+            if st.button("☀️", key="theme_switch_to_dark", help="Canviar a mode fosc", use_container_width=True):
+                st.session_state.theme = 'dark'
+                st.rerun()
+    # --- FI DEL BLOC FINAL ---
 
     with st.container(border=True):
         def formatar_llista_ciutats(ciutats_dict, conv_data):
@@ -2566,40 +2550,41 @@ def ui_zone_selection():
                 st.rerun()
 
 def main():
-    # --- INICIALITZACIó ROBUSTA DE L'ESTAT ---
     if 'theme' not in st.session_state:
         st.session_state.theme = 'dark'
-    if 'logged_in' not in st.session_state: 
-        st.session_state['logged_in'] = False
-    if 'guest_mode' not in st.session_state: 
-        st.session_state['guest_mode'] = False
-    if 'zone_selected' not in st.session_state: 
-        st.session_state['zone_selected'] = None
-    if 'precache_completat' not in st.session_state:
-        st.session_state.precache_completat = False
-    # --- FI DEL BLOC D'INICIALITZACIÓ ---
 
+    # Forcem el tema visual a cada recàrrega
     set_theme_in_frontend(st.session_state.theme)
 
     inject_custom_css()
-    hide_streamlit_style() # <-- LÍNIA DESCOMENTADA PER TORNAR A AMAGAR EL MENÚ
-
+    hide_streamlit_style()
+    
+    if 'precache_completat' not in st.session_state:
+        st.session_state.precache_completat = False
+        
     if not st.session_state.precache_completat:
         try:
             precache_datos_iniciales()
             st.session_state.precache_completat = True
-        except: 
+        except:
             pass
     
-    # Lògica de navegació principal
+    if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
+    if 'guest_mode' not in st.session_state: st.session_state['guest_mode'] = False
+    if 'zone_selected' not in st.session_state: st.session_state['zone_selected'] = None
+
     if not st.session_state['logged_in']:
         show_login_page()
     elif not st.session_state['zone_selected']:
         ui_zone_selection()
+    
     elif st.session_state['zone_selected'] == 'catalunya':
-        run_catalunya_app()
+        with st.spinner("Preparant l'entorn d'anàlisi de Catalunya..."):
+            run_catalunya_app()
+            
     elif st.session_state['zone_selected'] == 'valley_halley':
-        run_valley_halley_app()
+        with st.spinner("Preparant l'entorn d'anàlisi de Tornado Alley..."):
+            run_valley_halley_app()
         
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
