@@ -1342,31 +1342,48 @@ def precache_datos_iniciales():
         print(f"Pre-caching falló: {e}")
         return False
 
-def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
-    fig, ax = crear_mapa_base(map_extent)
-    grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 400), np.linspace(map_extent[2], map_extent[3], 400))
-    grid_speed, grid_dewpoint = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
+def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, theme='dark'):
+    fig, ax = crear_mapa_base(MAP_EXTENT_USA, projection=ccrs.LambertConformal(central_longitude=-95, central_latitude=35), theme=theme)
+    # ... (la resta de la funció es queda igual)
+    if len(lons) < 4:
+        st.warning("No hi ha prou dades per generar un mapa interpolat.")
+        ax.set_title(f"Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16, color='black' if theme == 'light' else 'white')
+        return fig
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_USA[0], MAP_EXTENT_USA[1], 200), np.linspace(MAP_EXTENT_USA[2], MAP_EXTENT_USA[3], 200))
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic')
+    grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
-    grid_u, grid_v = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'), griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
     colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
-    speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]; 
-    custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
-    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
+    speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]
+    custom_cmap = ListedColormap(colors_wind)
+    norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    mesh = ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
-    cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.6,arrowsize=0.3, density= 4.1, zorder=4, transform=ccrs.PlateCarree())
+    cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)", color='black' if theme == 'light' else 'white')
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=4.5, arrowsize=0.5, zorder=4, transform=ccrs.PlateCarree())
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-    dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1); dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
+    dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1)
+    dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
     convergence_scaled = -(dudx + dvdy).to('1/s').magnitude * 1e5
-    DEWPOINT_THRESHOLD = 14 if nivell >= 950 else 12 if nivell >= 925 else 7
-    convergence_in_humid_areas = np.where(grid_dewpoint >= DEWPOINT_THRESHOLD, convergence_scaled, 0)
-    fill_levels = [15, 25, 40, 150]; fill_colors = ['#ffc107', '#ff9800', '#f44336']; line_levels = [15, 25, 40]; line_colors = ['#e65100', '#bf360c', '#b71c1c']
-    line_styles = ['--', '--', '-']; line_widths = [1, 1.2, 1.5]
-    ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=fill_colors, alpha=0.4, zorder=5, transform=ccrs.PlateCarree())
-    contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors=line_colors, linestyles=line_styles, linewidths=line_widths, zorder=6, transform=ccrs.PlateCarree())
-    labels = ax.clabel(contours, inline=True, fontsize=6, fmt='%1.0f')
-    for label in labels: label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.6))
-    ax.set_title(f"Vent i Nuclis de convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16); return fig
+    DEWPOINT_THRESHOLD_USA = 16 
+    convergence_in_humid_areas = np.where(grid_dewpoint >= DEWPOINT_THRESHOLD_USA, convergence_scaled, 0)
+    fill_levels = [5, 10, 15, 25]
+    fill_colors = ['#ffc107', '#ff9800', '#f44336']
+    line_levels = [5, 10, 15]
+    line_colors = ['#e65100', '#bf360c', '#b71c1c']
+    ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=fill_colors, alpha=0.5, zorder=5, transform=ccrs.PlateCarree())
+    contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors=line_colors, linestyles='--', linewidths=1.2, zorder=6, transform=ccrs.PlateCarree())
+    labels = ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
+    for label in labels:
+        label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.7))
+    for city, coords in USA_CITIES.items():
+        ax.plot(coords['lon'], coords['lat'], 'o', color='red', markersize=1, markeredgecolor='black', transform=ccrs.PlateCarree(), zorder=10)
+        ax.text(coords['lon'] + 0.2, coords['lat'] + 0.2, city, fontsize=7, transform=ccrs.PlateCarree(), zorder=10,
+                path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+    ax.set_title(f"Vent i Nuclis de convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16, color='black' if theme == 'light' else 'white')
+    return fig
 
 def crear_mapa_convergencia_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
@@ -2177,66 +2194,24 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                                                    else f"{x} hPa")
                 
                 
-def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
-    st.markdown("#### Mapes de Pronòstic (Model AROME)")
+def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel, theme='dark'):
+    st.markdown("#### Mapes de Pronòstic (Model GFS)")
     
-    col_capa, col_zoom = st.columns(2)
-    with col_capa:
-        mapa_sel = st.selectbox("Selecciona la capa del mapa:", 
-                               ["Anàlisi de Vent i Convergència", "Vent a 700hPa", "Vent a 300hPa"], 
-                               key="map_cat")
-    with col_zoom: 
-        zoom_sel = st.selectbox("Nivell de Zoom:", 
-                               options=list(MAP_ZOOM_LEVELS_CAT.keys()), 
-                               key="zoom_cat")
+    with st.spinner(f"Carregant dades del mapa GFS a {nivell_sel}hPa..."):
+        map_data, error_map = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
     
-    selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
-    
-    if "Convergència" in mapa_sel:
-        # USAR SPINNER SIMPLE
-        result = mostrar_spinner_mapa(
-            "Generant mapa de convergència...", 
-            carregar_dades_mapa_cat, 
-            nivell_sel, hourly_index_sel
+    if error_map:
+        st.error(f"Error en carregar el mapa: {error_map}")
+    elif map_data:
+        # Passa el theme a la funció del gràfic
+        fig = crear_mapa_forecast_combinat_usa(
+            map_data['lons'], map_data['lats'], 
+            map_data['speed_data'], map_data['dir_data'], 
+            map_data['dewpoint_data'], nivell_sel, 
+            timestamp_str, theme=theme
         )
-        
-        if result is not None:
-            map_data, error_map = result
-            if error_map: 
-                st.error(f"Error en carregar el mapa: {error_map}")
-            elif map_data:
-                fig = crear_mapa_forecast_combinat_cat(
-                    map_data['lons'], map_data['lats'], 
-                    map_data['speed_data'], map_data['dir_data'], 
-                    map_data['dewpoint_data'], nivell_sel, 
-                    timestamp_str, selected_extent
-                )
-                st.pyplot(fig, use_container_width=True)
-                plt.close(fig)
-    
-    else:
-        # Para otros mapas...
-        nivell = 700 if "700" in mapa_sel else 300
-        variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-        
-        result = mostrar_spinner_mapa(
-            f"Carregant vent a {nivell}hPa...",
-            carregar_dades_mapa_base_cat,
-            variables, hourly_index_sel
-        )
-        
-        if result is not None:
-            map_data, error_map = result
-            if error_map: 
-                st.error(f"Error: {error_map}")
-            elif map_data: 
-                fig = crear_mapa_vents_cat(
-                    map_data['lons'], map_data['lats'], 
-                    map_data[variables[0]], map_data[variables[1]], 
-                    nivell, timestamp_str, selected_extent
-                )
-                st.pyplot(fig, use_container_width=True)
-                plt.close(fig)
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
             
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None):
     if data_tuple:
