@@ -940,7 +940,7 @@ def analitzar_component_maritima(sounding_data):
         return {'text': 'Error', 'color': '#808080'}
 
 
-def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, avis_proximitat=None):
+def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, avis_proximitat=None, theme='dark'):
     TOOLTIPS = {
         'SBCAPE': "Energia Potencial Convectiva Disponible (CAPE) des de la Superfície. Mesura el 'combustible' per a les tempestes a partir d'una bombolla d'aire a la superfície.",
         'MUCAPE': "El CAPE més alt possible a l'atmosfera (Most Unstable). Útil per detectar inestabilitat elevada, fins i tot si la superfície és estable.",
@@ -961,6 +961,10 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         'PUNTUACIO_TEMPESTA': "Índex de 0 a 10 que valora el potencial global de formació de tempestes. Combina automàticament els ingredients clau: Combustible (CAPE), Organització (Cisallament), Disparador (Convergència), Humitat (Component Marítima) i la presència d'Inhibició (CIN).",
         'AMENACA_LLAMPS': "Potencial d'activitat elèctrica. S'estima a partir de la inestabilitat (Índex d'Elevació - LI) i la profunditat de la tempesta (Cim - EL_Hgt). Tempestes molt inestables (LI molt negatiu) i profundes generen molta més separació de càrrega i, per tant, més llamps."
     }
+
+    bg_color = '#FFFFFF' if theme == 'light' else '#2a2c34'
+    primary_text_color = '#31333F' if theme == 'light' else '#FAFAFA'
+    border_style = f"border: 1px solid {'#E0E0E0' if theme == 'light' else '#444'};"
     
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
         color = "#FFFFFF"
@@ -975,13 +979,11 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
                 color = colors[len(thresholds) - np.searchsorted(thresholds, value, side='right')]
             else:
                 color = get_color_global(value, param_key, reverse_colors)
-
         val_str = f"{value:.{precision}f}" if not pd.isna(value) else "---"
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
-
         st.markdown(f"""
-        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
-            <span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit}){tooltip_html}</span><br>
+        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: {bg_color}; margin-bottom: 10px; {border_style}">
+            <span style="font-size: 0.8em; color: {primary_text_color};">{label} ({unit}){tooltip_html}</span><br>
             <strong style="font-size: 1.6em; color: {color};">{val_str}</strong>
         </div>""", unsafe_allow_html=True)
 
@@ -990,8 +992,8 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         color = analysis_dict.get('color', '#808080')
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""
-        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
-            <span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br>
+        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: {bg_color}; margin-bottom: 10px; {border_style}">
+            <span style="font-size: 0.8em; color: {primary_text_color};">{label}{tooltip_html}</span><br>
             <strong style="font-size: 1.6em; color: {color};">{text}</strong>
         </div>""", unsafe_allow_html=True)
         
@@ -999,27 +1001,24 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         tooltip_text = TOOLTIPS.get(tooltip_key, "")
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""
-        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
-            <span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br>
+        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: {bg_color}; margin-bottom: 10px; {border_style}">
+            <span style="font-size: 0.8em; color: {primary_text_color};">{label}{tooltip_html}</span><br>
             <strong style="font-size: 1.6em; color: {color};">{text}</strong>
         </div>""", unsafe_allow_html=True)
 
     st.markdown("##### Paràmetres del Sondeig")
-    
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE', tooltip_text=TOOLTIPS.get('SBCAPE'))
     with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
     with cols[2]: 
         conv_key = f'CONV_{nivell_conv}hPa'
         styled_metric("Convergència", params.get(conv_key, np.nan), "10⁻⁵ s⁻¹", conv_key, precision=1, tooltip_text=TOOLTIPS.get('CONVERGENCIA'))
-    
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
     with cols[2]:
         maritim_analysis = analitzar_component_maritima(sounding_data)
         styled_qualitative("Comp. Marítima", maritim_analysis, tooltip_text=TOOLTIPS.get('COMPONENT_MARITIMA'))
-    
     cols = st.columns(3)
     with cols[0]: 
         li_value = params.get('LI', np.nan)
@@ -1031,56 +1030,47 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         analisi_temps = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
         emoji = analisi_temps['emoji']
         descripcio = analisi_temps['descripcio']
-
         if avis_proximitat:
             background_color = "#fd7e14"
-            title_text = "⚠️ATENCIÓ: FOCUS PRÒXIM⚠️"
-            main_text = "Si es forma anirá cap a tú!"
+            title_text = "⚠️ ATENCIÓ: NUCLI PRÒXIM"
+            main_text = "Amenaça en Aproximació"
             sub_text = f"Entorn actual: {emoji} {descripcio}"
-            # --- LÍNIA CLAU MODIFICADA ---
-            # S'ha afegit la classe CSS 'blinking-alert' al div.
             st.markdown(f"""
             <div class="blinking-alert" style="text-align: center; padding: 5px; border-radius: 10px; background-color: {background_color}; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
                 <span style="font-size: 0.8em; color: #FFFFFF; font-weight: bold;">{title_text}</span>
                 <strong style="font-size: 1.2em; color: #FFFFFF; line-height: 1.2;">{main_text}</strong>
                 <span style="font-size: 0.7em; color: #FFFFFF; opacity: 0.9;">{sub_text}</span>
             </div>""", unsafe_allow_html=True)
-        
         elif "Castellanus" in descripcio:
             background_color = "#ffc107"
             title_text = "Potencial de Dispar"
             main_emoji = emoji
             main_text = descripcio
             st.markdown(f"""
-            <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: {background_color}; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
+            <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: {background_color}; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center; border: 1px solid #E0E0E0;">
                 <span style="font-size: 0.8em; color: #212529;">{title_text}</span>
                 <strong style="font-size: 1.8em; line-height: 1;">{main_emoji}</strong>
                 <span style="font-size: 0.8em; color: #212529; font-weight: bold;">{main_text}</span>
             </div>""", unsafe_allow_html=True)
-
         else:
             st.markdown(f"""
-            <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
-                <span style="font-size: 0.8em; color: #FAFAFA;">Tipus de Cel Previst</span>
+            <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: {bg_color}; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center; {border_style}">
+                <span style="font-size: 0.8em; color: {primary_text_color};">Tipus de Cel Previst</span>
                 <strong style="font-size: 1.8em; line-height: 1;">{emoji}</strong>
-                <span style="font-size: 0.8em; color: #E0E0E0;">{descripcio}</span>
+                <span style="font-size: 0.8em; color: {'#6c757d' if theme == 'light' else '#E0E0E0'};">{descripcio}</span>
             </div>""", unsafe_allow_html=True)
-        
     cols = st.columns(3)
     with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
     with cols[1]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
     with cols[2]: styled_metric("CIM (EL)", params.get('EL_Hgt', np.nan), "m", 'EL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('EL_Hgt'))
-        
     cols = st.columns(3)
     with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km', tooltip_text=TOOLTIPS.get('BWD_0-6km'))
     with cols[1]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km', tooltip_text=TOOLTIPS.get('BWD_0-1km'))
     with cols[2]: 
         styled_metric("T 500hPa", params.get('T_500hPa', np.nan), "°C", 'T_500hPa', precision=1, tooltip_text=TOOLTIPS.get('T_500hPa'))
-
     st.markdown("##### Potencial d'Amenaces Severes")
     amenaces = analitzar_amenaces_especifiques(params)
     puntuacio_resultat = calcular_puntuacio_tempesta(sounding_data, params, nivell_conv)
-    
     cols = st.columns(3)
     with cols[0]:
         styled_threat("Calamarsa Gran (>2cm)", amenaces['calamarsa']['text'], amenaces['calamarsa']['color'], 'AMENACA_CALAMARSA')
