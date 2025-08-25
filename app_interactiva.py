@@ -2189,73 +2189,51 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     with st.container(border=True):
         
         def preparar_llistes_localitats(ciutats_dict, conv_data):
-            actives = {}
-            inactives = []
-            if not conv_data:
-                return [], sorted(list(ciutats_dict.keys()))
-
-            for city, coords in ciutats_dict.items():
+            actives, inactives = [], []
+            if not conv_data: return [], sorted(list(ciutats_dict.keys()))
+            for city in sorted(ciutats_dict.keys()):
                 conv_value = conv_data.get(city)
                 if conv_value and conv_value >= 15:
-                    actives[city] = conv_value
-                else:
-                    inactives.append(city)
-            
-            actives_ordenades = sorted(actives.keys(), key=lambda k: actives[k], reverse=True)
-            return actives_ordenades, sorted(inactives)
+                    actives.append(city)
+                else: inactives.append(city)
+            actives.sort(key=lambda k: conv_data[k], reverse=True)
+            return actives, inactives
 
         def format_city_label(city_key):
-            if not convergencies or city_key not in convergencies:
-                return city_key
+            if "---" in city_key: return "────────────────"
+            if not convergencies or city_key not in convergencies: return city_key
             conv = convergencies.get(city_key, 0)
             emoji = "🔴" if conv >= 40 else "🟠" if conv >= 30 else "🟡" if conv >= 15 else ""
             return f"{city_key} ({emoji} {conv:.0f})" if emoji else city_key
 
         if zona_activa == 'catalunya':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
-            
             with col_loc:
                 actives_terra, inactives_terra = preparar_llistes_localitats(POBLACIONS_TERRA, convergencies)
                 actives_mar, inactives_mar = preparar_llistes_localitats(PUNTS_MAR, convergencies)
-                opcions_finals = []
-                if actives_terra:
-                    opcions_finals.append("--- POBLACIONS ACTIVES ---")
-                    opcions_finals.extend(actives_terra)
-                if actives_mar:
-                    opcions_finals.append("--- PUNTS MARINS ACTIUS ---")
-                    opcions_finals.extend(actives_mar)
-                opcions_finals.append("--- ALTRES POBLACIONS ---")
-                opcions_finals.extend(inactives_terra)
-                opcions_finals.append("--- ALTRES PUNTS MARINS ---")
-                opcions_finals.extend(inactives_mar)
-
-                # --- LÒGICA DE L'ÍNDEX CORREGIDA ---
+                opcions = []
+                if actives_terra: opcions.extend(["--- POBLACIONS ACTIVES ---"] + actives_terra)
+                if actives_mar: opcions.extend(["--- PUNTS MARINS ACTIUS ---"] + actives_mar)
+                if inactives_terra: opcions.extend(["--- ALTRES POBLACIONS ---"] + inactives_terra)
+                if inactives_mar: opcions.extend(["--- ALTRES PUNTS MARINS ---"] + inactives_mar)
+                
+                # --- LÒGICA D'ÍNDEX A PROVA DE BALES ---
                 poble_actual = st.session_state.get('poble_selector', 'Barcelona')
                 idx = 0
-                try:
-                    idx = opcions_finals.index(poble_actual)
-                except ValueError: # Si no el troba, es queda a l'inici
-                    pass
+                if poble_actual in opcions:
+                    idx = opcions.index(poble_actual)
                 
-                st.selectbox(
-                    "Localitat:",
-                    options=opcions_finals,
-                    key="poble_selector",
-                    format_func=lambda x: "────────────────" if "---" in x else format_city_label(x),
-                    index=idx # <-- AFEGIM L'ÍNDEX CALCULAT
-                )
+                st.selectbox("Localitat:", options=opcions, key="poble_selector", format_func=format_city_label, index=idx)
 
             with col_dia:
                 now_local = datetime.now(TIMEZONE_CAT)
                 opcions_dia = (now_local.strftime('%d/%m/%Y'), (now_local + timedelta(days=1)).strftime('%d/%m/%Y'))
                 st.selectbox("Dia:", opcions_dia, key="dia_selector", disabled=is_guest)
-            
             with col_hora:
                 opcions_hora = [f"{h:02d}:00h" for h in range(24)]
                 hora_actual = st.session_state.get('hora_selector', f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h")
                 idx = opcions_hora.index(hora_actual) if hora_actual in opcions_hora else 0
                 st.selectbox("Hora:", opcions_hora, key="hora_selector", disabled=is_guest, index=idx)
-            
             with col_nivell:
                 if not is_guest:
                     nivells = [1000, 950, 925, 900, 850, 800, 700]; nivell_actual = st.session_state.get('level_cat_main', 925)
@@ -2267,24 +2245,15 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             with col_ciutat:
                 actives_usa, inactives_usa = preparar_llistes_localitats(USA_CITIES, convergencies)
                 opcions_usa = []
-                if actives_usa:
-                    opcions_usa.append("--- CIUTATS ACTIVES ---")
-                    opcions_usa.extend(actives_usa)
-                opcions_usa.append("--- ALTRES CIUTATS ---")
-                opcions_usa.extend(inactives_usa)
+                if actives_usa: opcions_usa.extend(["--- CIUTATS ACTIVES ---"] + actives_usa)
+                if inactives_usa: opcions_usa.extend(["--- ALTRES CIUTATS ---"] + inactives_usa)
                 
-                # --- LÒGICA DE L'ÍNDEX CORREGIDA (TAMBÉ PER A EUA) ---
                 poble_actual_usa = st.session_state.get('poble_selector_usa', 'Oklahoma City, OK')
                 idx_usa = 0
-                try:
+                if poble_actual_usa in opcions_usa:
                     idx_usa = opcions_usa.index(poble_actual_usa)
-                except ValueError:
-                    pass
-                
-                st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa", 
-                             format_func=lambda x: "────────────────" if "---" in x else format_city_label(x),
-                             index=idx_usa)
 
+                st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa", format_func=format_city_label, index=idx_usa)
             with col_dia:
                 now_usa = datetime.now(TIMEZONE_USA)
                 opcions_dia_usa = (now_usa.strftime('%d/%m/%Y'), (now_usa + timedelta(days=1)).strftime('%d/%m/%Y'), (now_usa + timedelta(days=2)).strftime('%d/%m/%Y'))
@@ -2301,7 +2270,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 nivell_actual = st.session_state.get('level_usa_main', 850)
                 idx = nivells_gfs.index(nivell_actual) if nivell_actual in nivells_gfs else nivells_gfs.index(850)
                 st.selectbox("Nivell:", nivells_gfs, key="level_usa_main", index=idx, format_func=lambda x: f"{x} hPa ⭐" if x == 850 else f"{x} hPa")
-                
 
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
@@ -2511,6 +2479,7 @@ def run_catalunya_app():
     # --- PAS 3: LLEGIR L'ESTAT FINAL I CARREGAR DADES ---
     poble_sel = st.session_state.poble_selector
     
+    # --- CANVI CLAU: COMPROVACIÓ DE SEGURETAT ---
     if "---" in poble_sel:
         st.info("Selecciona una localitat de la llista per començar l'anàlisi.")
         return
@@ -2527,23 +2496,12 @@ def run_catalunya_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     timestamp_str = f"{dia_sel_str} a les {hora_sel_str} (Hora Local)"
 
-    # --- PAS 4: DIBUIXAR EL MENÚ I MOSTRAR RESULTATS (LÒGICA CORREGIDA) ---
+    # --- PAS 4: DIBUIXAR EL MENÚ I MOSTRAR RESULTATS ---
     menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical"] if is_guest else ["Anàlisi de Mapes", "Anàlisi Vertical", "💬 Assistent IA"]
     menu_icons = ["map", "graph-up-arrow"] if is_guest else ["map", "graph-up-arrow", "chat-quote-fill"]
 
-    # Utilitzem la clau del widget com a única font de veritat.
-    # No necessitem 'default_index' si gestionem l'estat directament.
-    selected_tab = option_menu(
-        menu_title=None, 
-        options=menu_options, 
-        icons=menu_icons,
-        menu_icon="cast", 
-        orientation="horizontal",
-        # La clau 'catalunya_nav' guardarà la selecció a st.session_state.catalunya_nav
-        key="catalunya_nav" 
-    )
+    selected_tab = option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key="catalunya_nav")
 
-    # Ara, el contingut es mostra basant-se en el valor que el mateix widget ha guardat.
     if selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
     elif selected_tab in ["Anàlisi Vertical", "💬 Assistent IA"]:
