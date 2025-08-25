@@ -202,9 +202,19 @@ def inject_custom_css():
         50% { opacity: 0.6; }
     }
     
+    /* --- CSS PER AL FONS (VERSIÓ FINAL I DEFINITIVA) --- */
+
+    /* Apunta al contenidor principal de la vista de l'app */
+    [data-testid="stAppViewContainer"] > .main {
+        background: transparent; /* Fa que el fons sigui transparent */
+    }
+
+    /* Assegura que l'element arrel de Streamlit també sigui transparent */
     .stApp {
         background: transparent;
     }
+    
+    /* --- FI DEL CSS DE FONS --- */
 
     .video-container {
         position: fixed;
@@ -231,6 +241,18 @@ def inject_custom_css():
         background-color: rgba(0, 0, 0, 0.65);
         z-index: -1;
     }
+    
+    /* CSS de precisió per al Light Mode Login */
+    [data-testid="stSubheader"] {
+        color: white !important;
+    }
+    div[data-testid="stTextInput"] label {
+        color: white !important;
+    }
+    div[data-testid="stMarkdown"] p {
+        color: white !important;
+    }
+    
     </style>
     """, unsafe_allow_html=True)
     
