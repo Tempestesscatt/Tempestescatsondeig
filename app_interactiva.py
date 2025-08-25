@@ -408,26 +408,42 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
 
 def diagnosticar_potencial_tempesta(params):
     """
-    Versió Definitiva i Lògica v2.0.
-    Retorna el text del diagnòstic I el seu color corresponent, garantint una
-    coherència visual del 100% a l'hodògraf.
+    Versió Definitiva i Lògica v3.0 - LÒGICA DE CISALLAMENT CORREGIDA.
+    Desacobla la dependència estricta entre la cisalladura i el CAPE, permetent
+    una diagnosi correcta en escenaris de "Low-CAPE, High-Shear".
+    Retorna el text del diagnòstic I el seu color corresponent.
     """
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     srh_1km = params.get('SRH_0-1km', 0) or 0
     lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
     cape = params.get('MLCAPE', params.get('SBCAPE', 0)) or 0
 
-    bwd_thresh = THRESHOLDS_GLOBALS['BWD_0-6km']
-    srh_thresh = THRESHOLDS_GLOBALS['SRH_0-1km']
+    bwd_thresh = THRESHOLDS_GLOBALS['BWD_0-6km'] # Llindars: (20, 30, 40)
+    srh_thresh = THRESHOLDS_GLOBALS['SRH_0-1km'] # Llindars: (100, 150, 250)
+    
+    # --- LÒGICA DE TIPUS DE TEMPESTA CORREGIDA ---
+    tipus_tempesta = "Cèl·lula Simple"; color_tempesta = "#2ca02c" # Verd
+    
+    # Es necessita un mínim de CAPE per a qualsevol tempesta organitzada.
+    MIN_CAPE_PER_ORGANITZACIO = 250 
 
-    tipus_tempesta = "Cèl·lula Simple"; color_tempesta = "#2ca02c"
-    if bwd_6km >= bwd_thresh[2] and cape > 1200:
-        tipus_tempesta = "Supercèl·lula"; color_tempesta = "#dc3545"
-    elif bwd_6km >= bwd_thresh[1] and cape > 800:
-        tipus_tempesta = "Multicèl·lula Severa"; color_tempesta = "#fd7e14"
-    elif bwd_6km >= bwd_thresh[0] and cape > 500:
-        tipus_tempesta = "Multicèl·lula"; color_tempesta = "#ffc107"
+    if bwd_6km >= bwd_thresh[0] and cape > MIN_CAPE_PER_ORGANITZACIO: # > 20 nusos
+        tipus_tempesta = "Multicèl·lula"
+        color_tempesta = "#ffc107" # Groc
+    
+    if bwd_6km >= bwd_thresh[1] and cape > MIN_CAPE_PER_ORGANITZACIO: # > 30 nusos
+        # Si el CAPE també és moderat, pot ser severa
+        if cape > 800:
+            tipus_tempesta = "Multicèl·lula Severa"
+        else:
+            tipus_tempesta = "Multicèl·lula Organitzada"
+        color_tempesta = "#fd7e14" # Taronja
+        
+    if bwd_6km >= bwd_thresh[2] and cape > MIN_CAPE_PER_ORGANITZACIO: # > 40 nusos
+        tipus_tempesta = "Supercèl·lula"
+        color_tempesta = "#dc3545" # Vermell
 
+    # --- Lògica de la base del núvol (sense canvis) ---
     base_nuvol = "Plana i Alta"; color_base = "#2ca02c"
     if srh_1km >= srh_thresh[2] and lcl_hgt < 1200:
         base_nuvol = "Tornàdica (Wall Cloud)"; color_base = "#dc3545"
@@ -437,7 +453,6 @@ def diagnosticar_potencial_tempesta(params):
         base_nuvol = "Rotatòria (Inflow)"; color_base = "#ffc107"
         
     return tipus_tempesta, color_tempesta, base_nuvol, color_base
-
 
     
 
