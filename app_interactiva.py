@@ -315,26 +315,31 @@ def show_login_page():
     if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary", key="guest_login"):
         st.session_state.update({'guest_mode': True, 'logged_in': True})
         st.rerun()
-def get_theme_from_frontend():
+
+def set_theme_in_frontend(theme):
     """
-    Component 'espia' que detecta el tema actiu de Streamlit (light/dark)
-    des del frontend i retorna el resultat al backend de Python.
-    S'emmagatzema a st.session_state per evitar execucions innecessàries.
+    Injecta un script de JavaScript que FORÇA el tema visual del frontend
+    (afegint/eliminant les classes 'light'/'dark' del body) per a que coincideixi
+    amb l'estat desitjat del backend.
     """
-    component = components.html(
-        """
+    js_code = f"""
         <script>
         const body = window.parent.document.querySelector('body');
-        const theme = body.classList.contains('light') ? 'light' : 'dark';
-        
-        // Envia el tema detectat de tornada a Streamlit
-        window.parent.Streamlit.setComponentValue(theme);
+        const currentTheme = body.classList.contains('light') ? 'light' : 'dark';
+        const intendedTheme = "{theme}";
+
+        if (currentTheme !== intendedTheme) {{
+            if (intendedTheme === 'light') {{
+                body.classList.remove('dark');
+                body.classList.add('light');
+            }} else {{
+                body.classList.remove('light');
+                body.classList.add('dark');
+            }}
+        }}
         </script>
-        """,
-        height=0,
-        width=0,
-    )
-    return component if component else 'dark' # Per defecte, si alguna cosa falla
+    """
+    components.html(js_code, height=0, width=0)
 
 
 def add_video_background(video_file="llamps.mp4"):
@@ -2090,111 +2095,81 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 del st.session_state[key]
             st.rerun()
             
-    # --- BLOC DE CANVI DE TEMA (VERSIÓ SIMPLIFICADA I ROBUSTA) ---
+    # --- BLOC DE CANVI DE TEMA (VERSIÓ FINAL) ---
     with col_theme:
         theme = st.session_state.get('theme', 'dark')
         
         if theme == 'dark':
             if st.button("🌙", key="theme_switch_to_light", help="Canviar a mode clar", use_container_width=True):
                 st.session_state.theme = 'light'
-                st.session_state.theme_detected = 'light'
                 st.rerun()
         else:
             if st.button("☀️", key="theme_switch_to_dark", help="Canviar a mode fosc", use_container_width=True):
                 st.session_state.theme = 'dark'
-                st.session_state.theme_detected = 'dark'
                 st.rerun()
     # --- FI DEL BLOC FINAL ---
 
     with st.container(border=True):
         def formatar_llista_ciutats(ciutats_dict, conv_data):
-            if not conv_data:
-                return sorted(list(ciutats_dict.keys()))
-            ciutats_amb_conv = []
-            ciutats_sense_conv = []
+            if not conv_data: return sorted(list(ciutats_dict.keys()))
+            ciutats_amb_conv, ciutats_sense_conv = [], []
             for city in sorted(ciutats_dict.keys()):
                 conv = conv_data.get(city)
                 if conv is not None and pd.notna(conv):
                     emoji = ""
-                    if conv >= 40:   emoji = "🔴"
+                    if conv >= 40: emoji = "🔴"
                     elif conv >= 30: emoji = "🟠"
                     elif conv >= 15: emoji = "🟡"
-                    if emoji:
-                        text_formatat = f"{city} ({emoji} {conv:.0f})"
-                    else:
-                        text_formatat = city
+                    text_formatat = f"{city} ({emoji} {conv:.0f})" if emoji else city
                     ciutats_amb_conv.append((text_formatat, conv))
-                else:
-                    ciutats_sense_conv.append(city)
+                else: ciutats_sense_conv.append(city)
             ciutats_ordenades = sorted(ciutats_amb_conv, key=lambda item: item[1], reverse=True)
-            llista_final = [item[0] for item in ciutats_ordenades]
-            return llista_final + ciutats_sense_conv
-
+            return [item[0] for item in ciutats_ordenades] + ciutats_sense_conv
         if zona_activa == 'catalunya':
             col_terra, col_mar, col_dia, col_hora, col_nivell = st.columns(5)
-            PLACEHOLDER_TERRA = "--- Selecciona Població ---"
-            PLACEHOLDER_MAR = "--- Selecciona Punt Marí ---"
-            tooltip_text = "Mostra els punts amb major convergència ('disparador' de tempestes).\n\nLlegenda:\n- 🟡 (>15): Moderada\n- 🟠 (>30): Alta\n- 🔴 (>40): Molt Alta\n\nEl valor és la força de la convergència."
+            PLACEHOLDER_TERRA, PLACEHOLDER_MAR = "--- Selecciona Població ---", "--- Selecciona Punt Marí ---"
             poble_actual_master = st.session_state.get('poble_selector')
-
             with col_terra:
                 opcions_terra = [PLACEHOLDER_TERRA] + formatar_llista_ciutats(POBLACIONS_TERRA, convergencies)
                 idx_terra = 0
                 if poble_actual_master in POBLACIONS_TERRA:
                     try: idx_terra = next(i for i, opt in enumerate(opcions_terra) if opt.startswith(poble_actual_master))
                     except (ValueError, StopIteration): idx_terra = 0
-                terra_sel = st.selectbox("Població:", opcions_terra, key="selector_terra_widget", index=idx_terra, help=tooltip_text)
-
+                terra_sel = st.selectbox("Població:", opcions_terra, key="selector_terra_widget", index=idx_terra, help="Mostra els punts amb major convergència ('disparador' de tempestes).\n\nLlegenda:\n- 🟡 (>15): Moderada\n- 🟠 (>30): Alta\n- 🔴 (>40): Molt Alta")
             with col_mar:
                 opcions_mar = [PLACEHOLDER_MAR] + formatar_llista_ciutats(PUNTS_MAR, convergencies)
                 idx_mar = 0
                 if poble_actual_master in PUNTS_MAR:
                     try: idx_mar = next(i for i, opt in enumerate(opcions_mar) if opt.startswith(poble_actual_master))
                     except (ValueError, StopIteration): idx_mar = 0
-                mar_sel = st.selectbox("Punt Marí:", opcions_mar, key="selector_mar_widget", index=idx_mar, help=tooltip_text)
-
+                mar_sel = st.selectbox("Punt Marí:", opcions_mar, key="selector_mar_widget", index=idx_mar, help="Mostra els punts amb major convergència ('disparador' de tempestes).\n\nLlegenda:\n- 🟡 (>15): Moderada\n- 🟠 (>30): Alta\n- 🔴 (>40): Molt Alta")
             nova_seleccio = None
             if terra_sel != PLACEHOLDER_TERRA:
                 for key in POBLACIONS_TERRA:
-                    if terra_sel.startswith(key):
-                        nova_seleccio = key
-                        break
+                    if terra_sel.startswith(key): nova_seleccio = key; break
             elif mar_sel != PLACEHOLDER_MAR:
                 for key in PUNTS_MAR:
-                    if mar_sel.startswith(key):
-                        nova_seleccio = key
-                        break
-            
+                    if mar_sel.startswith(key): nova_seleccio = key; break
             if nova_seleccio and nova_seleccio != poble_actual_master:
                 st.session_state.poble_selector = nova_seleccio
                 st.rerun()
-
             now_local = datetime.now(TIMEZONE_CAT)
             with col_dia:
-                avui_str = now_local.strftime('%d/%m/%Y')
-                dema_str = (now_local + timedelta(days=1)).strftime('%d/%m/%Y')
+                avui_str, dema_str = now_local.strftime('%d/%m/%Y'), (now_local + timedelta(days=1)).strftime('%d/%m/%Y')
                 opcions_dia = (avui_str,) if is_guest else (avui_str, dema_str)
                 st.selectbox("Dia:", opcions_dia, key="dia_selector", disabled=is_guest)
-
             with col_hora:
                 st.selectbox("Hora:", (f"{now_local.hour:02d}:00h",) if is_guest else [f"{h:02d}:00h" for h in range(24)], key="hora_selector", disabled=is_guest)
-            
             with col_nivell:
                 if not is_guest:
                     nivells = [1000, 950, 925, 900, 850, 800, 700]
                     nivell_actual = st.session_state.get('level_cat_main', 925)
                     try: idx_nivell = nivells.index(nivell_actual)
                     except ValueError: idx_nivell = 2
-                    st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx_nivell, 
-                                 format_func=lambda x: f"{x} hPa ⭐ (Nucli tempesta)" if x == 925 
-                                                       else f"{x} hPa 🌊 (Anàlisi Marítima)" if x == 1000 
-                                                       else f"{x} hPa")
-                else:
-                    st.session_state.level_cat_main = 925
-        
+                    st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx_nivell, format_func=lambda x: f"{x} hPa ⭐ (Nucli tempesta)" if x == 925 else f"{x} hPa 🌊 (Anàlisi Marítima)" if x == 1000 else f"{x} hPa")
+                else: st.session_state.level_cat_main = 925
         else: # Zona USA
             col_ciutat, col_dia, col_hora, col_nivell = st.columns(4)
-
             with col_ciutat:
                 opcions_usa = formatar_llista_ciutats(USA_CITIES, convergencies)
                 poble_sel_net = st.session_state.get('poble_selector_usa', 'Oklahoma City, OK').split(' (')[0]
@@ -2205,37 +2180,22 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 if st.session_state.get('poble_selector_usa') != nou_poble_net:
                     st.session_state.poble_selector_usa = nou_poble_net
                     st.rerun()
-
             with col_dia:
                 now_usa = datetime.now(TIMEZONE_USA)
-                avui_str = now_usa.strftime('%d/%m/%Y')
-                dema_str = (now_usa + timedelta(days=1)).strftime('%d/%m/%Y')
-                dema_passat_str = (now_usa + timedelta(days=2)).strftime('%d/%m/%Y')
-                opcions_dia_usa = (avui_str, dema_str, dema_passat_str)
-                st.selectbox("Dia:", opcions_dia_usa, key="dia_selector_usa")
-
+                avui_str, dema_str, dema_passat_str = now_usa.strftime('%d/%m/%Y'), (now_usa + timedelta(days=1)).strftime('%d/%m/%Y'), (now_usa + timedelta(days=2)).strftime('%d/%m/%Y')
+                st.selectbox("Dia:", (avui_str, dema_str, dema_passat_str), key="dia_selector_usa")
             with col_hora:
                 now_spain = datetime.now(TIMEZONE_CAT)
-                hores_opcions = []
-                for h in range(24):
-                    time_in_spain = now_spain.replace(hour=h, minute=0, second=0, microsecond=0)
-                    time_in_usa = time_in_spain.astimezone(TIMEZONE_USA)
-                    hores_opcions.append(f"{time_in_usa.hour:02d}:00 (Local: {time_in_spain.hour:02d}:00h)")
+                hores_opcions = [f"{(now_spain.replace(hour=h).astimezone(TIMEZONE_USA)).hour:02d}:00 (Local: {h:02d}:00h)" for h in range(24)]
                 hora_actual_str = st.session_state.get('hora_selector_usa')
-                idx_hora = 0
-                if hora_actual_str in hores_opcions:
-                    idx_hora = hores_opcions.index(hora_actual_str)
+                idx_hora = hores_opcions.index(hora_actual_str) if hora_actual_str in hores_opcions else 0
                 st.selectbox("Hora (CST):", hores_opcions, key="hora_selector_usa", index=idx_hora)
-
             with col_nivell:
                 nivells_gfs_ordenats = sorted(PRESS_LEVELS_GFS, reverse=False)
                 nivell_actual_usa = st.session_state.get('level_usa_main', 850)
                 try: idx_nivell_usa = nivells_gfs_ordenats.index(nivell_actual_usa)
                 except ValueError: idx_nivell_usa = nivells_gfs_ordenats.index(850) if 850 in nivells_gfs_ordenats else 0
-                st.selectbox("Nivell:", nivells_gfs_ordenats, key="level_usa_main", index=idx_nivell_usa, 
-                             format_func=lambda x: f"{x} hPa ⭐ (Nucli tempesta)" if x == 925 
-                                                   else f"{x} hPa 🌊 (Anàlisi Marítima)" if x == 1000 
-                                                   else f"{x} hPa")
+                st.selectbox("Nivell:", nivells_gfs_ordenats, key="level_usa_main", index=idx_nivell_usa, format_func=lambda x: f"{x} hPa ⭐ (Nucli tempesta)" if x == 925 else f"{x} hPa 🌊 (Anàlisi Marítima)" if x == 1000 else f"{x} hPa")
 
 
 
@@ -2600,14 +2560,15 @@ def ui_zone_selection():
                 st.rerun()
 
 def main():
-    # Primer, injectem el CSS bàsic
+    if 'theme' not in st.session_state:
+        st.session_state.theme = 'dark' # Tema inicial per defecte
+
+    # Forcem el tema visual a cada recàrrega
+    set_theme_in_frontend(st.session_state.theme)
+
     inject_custom_css()
     hide_streamlit_style()
     
-    # Després, detectem el tema
-    theme = get_theme_from_frontend()
-    st.session_state.theme = theme
-
     if 'precache_completat' not in st.session_state:
         st.session_state.precache_completat = False
         
@@ -2623,7 +2584,7 @@ def main():
     if 'zone_selected' not in st.session_state: st.session_state['zone_selected'] = None
 
     if not st.session_state['logged_in']:
-        show_login_page() # El login ja s'adapta sol
+        show_login_page()
     elif not st.session_state['zone_selected']:
         ui_zone_selection()
     
