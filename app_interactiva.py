@@ -2338,25 +2338,25 @@ def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel, theme='da
         st.pyplot(fig, use_container_width=True)
         plt.close(fig)
             
-def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None):
+def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None, theme='dark'):
     if data_tuple:
         sounding_data, params_calculats = data_tuple
         p, T, Td, u, v, heights, prof = sounding_data
         
         col1, col2 = st.columns(2, gap="large")
         with col1:
-            # Passa el timestamp_str a la funció de gràfic
-            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str)
+            # Passa el theme a la funció del gràfic
+            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str, theme=theme)
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             
             with st.container(border=True):
-                # Passa l'avís de proximitat a la caixa de paràmetres
-                ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual, avis_proximitat)
+                # Passa el theme a la funció dels paràmetres
+                ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual, avis_proximitat, theme=theme)
 
         with col2:
-            # Passa el timestamp_str a la funció de gràfic
-            fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat - {poble_sel}", timestamp_str)
+            # Passa el theme a la funció del gràfic
+            fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat - {poble_sel}", timestamp_str, theme=theme)
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
 
@@ -2369,6 +2369,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             st.components.v1.html(html_code, height=410)
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
+        
 
 def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model GFS)")
