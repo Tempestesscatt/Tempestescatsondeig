@@ -232,21 +232,20 @@ def inject_custom_css():
         z-index: -1;
     }
     
-    /* --- BLOC DE CSS PER AL LIGHT MODE LOGIN (VERSIÓ CORREGIDA I FINAL) --- */
+    /* --- CSS DE PRECISIÓ PER AL LIGHT MODE LOGIN (VERSIÓ FINAL) --- */
     
-    /* Aplica color fosc a TOTS els textos estàndard en Light Mode */
-    body.light .stMarkdown, 
-    body.light p {
+    /* Apunta directament al subheader (h2) de Streamlit */
+    body.light [data-testid="stSubheader"] {
         color: #0e1117 !important;
     }
 
-    /* Aplica color fosc a les etiquetes dels camps de text */
-    body.light .stTextInput label {
+    /* Apunta directament a l'etiqueta (label) dels camps de text */
+    body.light div[data-testid="stTextInput"] label {
         color: #0e1117 !important;
     }
 
-    /* Aplica color fosc als títols dels formularis */
-    body.light .stSubheader {
+    /* Apunta als paràgrafs dins dels contenidors de Markdown */
+    body.light div[data-testid="stMarkdown"] p {
         color: #0e1117 !important;
     }
     
@@ -260,18 +259,15 @@ def format_time_left(time_delta):
     return f"{hours}h {minutes}min" if hours > 0 else f"{minutes} min"
 
 def show_login_page():
-    # Detecta el tema actiu per adaptar la pàgina
     theme = st.session_state.get('theme', 'dark')
 
     if theme == 'dark':
-        # Només mostra el vídeo en Dark Mode
         add_video_background("llamps.mp4")
         title_color = "white"
         text_color = "white"
     else:
-        # En Light Mode, utilitza el fons per defecte de Streamlit
-        title_color = "#0e1117" # Negre
-        text_color = "#0e1117"  # Negre
+        title_color = "#0e1117"
+        text_color = "#0e1117"
 
     st.markdown(f"<h1 style='text-align: center; color: {title_color};'>Tempestes.cat</h1>", unsafe_allow_html=True)
     st.markdown("---")
@@ -326,7 +322,6 @@ def show_login_page():
     if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary", key="guest_login"):
         st.session_state.update({'guest_mode': True, 'logged_in': True})
         st.rerun()
-
 # --- Funcions Base de Càlcul i Gràfics (Compartides) ---
 
 
