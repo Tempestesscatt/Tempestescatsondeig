@@ -283,11 +283,9 @@ def show_login_page():
     st.markdown("<h1 style='text-align: center;'>Tempestes.cat</h1>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # Controlem quina vista es mostra (login o registre) amb st.session_state
     if 'view' not in st.session_state:
         st.session_state.view = 'login'
 
-    # --- VISTA D'INICI DE SESSIÓ (PER DEFECTE) ---
     if st.session_state.view == 'login':
         st.subheader("Inicia Sessió")
         with st.form("login_form"):
@@ -297,17 +295,19 @@ def show_login_page():
             if st.form_submit_button("Entra", use_container_width=True, type="primary"):
                 users = load_json_file(USERS_FILE)
                 if username in users and users[username] == get_hashed_password(password):
+                    # --- LÍNIA CLAU AFEGIDA ---
+                    # Assegurem que la selecció de zona estigui neta abans de continuar.
+                    st.session_state['zone_selected'] = None
+                    # ---------------------------
                     st.session_state.update({'logged_in': True, 'username': username, 'guest_mode': False})
                     st.rerun()
                 else:
                     st.error("Nom d'usuari o contrasenya incorrectes.")
         
-        # Botó per canviar a la vista de registre
         if st.button("No tens un compte? Registra't aquí"):
             st.session_state.view = 'register'
             st.rerun()
 
-    # --- VISTA DE REGISTRE ---
     elif st.session_state.view == 'register':
         st.subheader("Crea un nou compte")
         with st.form("register_form"):
@@ -327,7 +327,6 @@ def show_login_page():
                     save_json_file(users, USERS_FILE)
                     st.success("Compte creat amb èxit! Ara pots iniciar sessió.")
         
-        # Botó per tornar a la vista d'inici de sessió
         if st.button("Ja tens un compte? Inicia sessió"):
             st.session_state.view = 'login'
             st.rerun()
@@ -335,8 +334,10 @@ def show_login_page():
     st.divider()
     st.markdown("<p style='text-align: center;'>O si ho prefereixes...</p>", unsafe_allow_html=True)
 
-    # Botó per entrar com a convidat
     if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary"):
+        # --- LÍNIA CLAU AFEGIDA (També per al mode convidat) ---
+        st.session_state['zone_selected'] = None
+        # ----------------------------------------------------
         st.session_state.update({'guest_mode': True, 'logged_in': True})
         st.rerun()
         
@@ -2531,36 +2532,31 @@ def main():
     inject_custom_css()
     hide_streamlit_style()
     
-    if 'precache_completat' not in st.session_state:
-        st.session_state.precache_completat = False
-        
-    if not st.session_state.precache_completat:
-        try:
-            precache_datos_iniciales()
-            st.session_state.precache_completat = True
-        except:
-            pass
-    
-    if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
-    if 'guest_mode' not in st.session_state: st.session_state['guest_mode'] = False
-    if 'zone_selected' not in st.session_state: st.session_state['zone_selected'] = None
+    # Inicialització d'estat a prova d'errors
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+    if 'zone_selected' not in st.session_state:
+        st.session_state.zone_selected = None
 
-    if not st.session_state['logged_in']:
-        # --- AFEGEIX LA LÍNIA AQUÍ ---
+    # --- FLUX DE NAVEGACIÓ PRINCIPAL ---
+
+    # 1. Si l'usuari no ha iniciat sessió, mostra la pàgina de login i atura't.
+    if not st.session_state.logged_in:
         afegir_video_de_fons()
-        # -----------------------------
         show_login_page()
-    elif not st.session_state['zone_selected']:
+        return
+
+    # 2. Si l'usuari ha iniciat sessió però no ha triat zona, mostra la selecció i atura't.
+    if st.session_state.zone_selected is None:
         ui_zone_selection()
-    
-    # --- INICI DEL CANVI ---
-    # Ara, envolv_involucrem cada crida a una funció principal amb un spinner.
-    # Aquest spinner actuarà com una pantalla de càrrega que amaga la interfície anterior.
-    elif st.session_state['zone_selected'] == 'catalunya':
+        return
+
+    # 3. Si s'ha triat una zona, executa l'aplicació corresponent.
+    if st.session_state.zone_selected == 'catalunya':
         with st.spinner("Preparant l'entorn d'anàlisi de Catalunya..."):
             run_catalunya_app()
             
-    elif st.session_state['zone_selected'] == 'valley_halley':
+    elif st.session_state.zone_selected == 'valley_halley':
         with st.spinner("Preparant l'entorn d'anàlisi de Tornado Alley..."):
             run_valley_halley_app()
 
