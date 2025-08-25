@@ -1516,6 +1516,49 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
     return fig
 # --- Seccions UI i Lògica Principal ---
 
+
+def calcular_convergencia_puntual(map_data, lat_sel, lon_sel):
+    """
+    Calcula el valor de convergència per a un únic punt geogràfic.
+    És una versió optimitzada de 'calcular_convergencies_per_llista' per a un sol cas.
+    """
+    if not map_data or 'lons' not in map_data or len(map_data['lons']) < 4:
+        return np.nan
+
+    try:
+        lons, lats = map_data['lons'], map_data['lats']
+        speed_data, dir_data = map_data['speed_data'], map_data['dir_data']
+
+        # Crear una graella d'interpolació
+        grid_lon, grid_lat = np.meshgrid(
+            np.linspace(min(lons), max(lons), 100),
+            np.linspace(min(lats), max(lats), 100)
+        )
+
+        # Calcular components U i V i interpolar-los
+        u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+        grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+        grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+
+        # Calcular la convergència a tota la graella
+        with np.errstate(invalid='ignore'):
+            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+            divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
+            convergence_scaled = -divergence.to('1/s').magnitude * 1e5
+
+        # Trobar el punt més proper a les coordenades donades
+        dist_sq = (grid_lat - lat_sel)**2 + (grid_lon - lon_sel)**2
+        min_dist_idx = np.unravel_index(np.argmin(dist_sq, axis=None), dist_sq.shape)
+        
+        # Retornar el valor de convergència en aquest punt
+        valor_conv = convergence_scaled[min_dist_idx]
+        
+        return valor_conv if pd.notna(valor_conv) else np.nan
+
+    except Exception:
+        # En cas d'error, retornar NaN per no bloquejar l'app
+        return np.nan
+
 def hide_streamlit_style():
     """Injecta CSS per amagar el peu de pàgina i el menú de Streamlit."""
     hide_style = """
