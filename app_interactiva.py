@@ -710,96 +710,80 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str):
 
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol, timestamp_str):
     """
-    Versió final que manté el disseny original, integrant la nova
-    anàlisi d'organització i base de manera subtil.
+    Versió definitiva i corregida. Mou la diagnosi qualitativa a un panell
+    superior, eliminant el gràfic de barbes i netejant el panell dret.
     """
     fig = plt.figure(dpi=150, figsize=(8, 8))
-    gs = fig.add_gridspec(nrows=2, ncols=2, height_ratios=[1.5, 6], width_ratios=[1.5, 1], hspace=0.4, wspace=0.3)
-    ax_barbs = fig.add_subplot(gs[0, :]); ax_hodo = fig.add_subplot(gs[1, 0]); ax_params = fig.add_subplot(gs[1, 1])
+    # Augmentem una mica l'espai per al panell superior
+    gs = fig.add_gridspec(nrows=2, ncols=2, height_ratios=[2, 6], width_ratios=[1.5, 1], hspace=0.4, wspace=0.3)
+    ax_top_panel = fig.add_subplot(gs[0, :]); ax_hodo = fig.add_subplot(gs[1, 0]); ax_params = fig.add_subplot(gs[1, 1])
     
     fig.suptitle(f"{titol}\n{timestamp_str}", weight='bold', fontsize=16)
     
-    # --- GRÀFIC DE BARBES DE VENT (Sense canvis) ---
-    ax_barbs.set_title("Vent a Nivells Clau", fontsize=11, pad=15)
-    heights_agl = heights - heights[0]
-    barb_altitudes_km = [1, 3, 6, 9]; barb_altitudes_m = [h * 1000 for h in barb_altitudes_km] * units.m
-    u_barbs_list, v_barbs_list = [], []
-    for h_m in barb_altitudes_m:
-        if h_m <= heights_agl.max():
-            u_interp_val = np.interp(h_m.m, heights_agl.m, u.m); v_interp_val = np.interp(h_m.m, heights_agl.m, v.m)
-            u_barbs_list.append(u_interp_val); v_barbs_list.append(v_interp_val)
-        else: u_barbs_list.append(np.nan); v_barbs_list.append(np.nan)
-    u_barbs = units.Quantity(u_barbs_list, u.units); v_barbs = units.Quantity(v_barbs_list, v.units)
-    speed_kmh_barbs = np.sqrt(u_barbs**2 + v_barbs**2).to('km/h').m
-    thresholds_barbs = [10, 40, 70, 100, 130]; colors_barbs = ['dimgrey', '#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd']
-    x_pos = np.arange(len(barb_altitudes_km)); u_barbs_kt = u_barbs.to('kt'); v_barbs_kt = v_barbs.to('kt')
-    for i, spd_kmh in enumerate(speed_kmh_barbs):
-        if not np.isnan(spd_kmh):
-            color_index = np.searchsorted(thresholds_barbs, spd_kmh); color = colors_barbs[color_index]
-            ax_barbs.barbs(x_pos[i], 0, u_barbs_kt[i], v_barbs_kt[i], length=8, pivot='middle', color=color)
-            ax_barbs.text(x_pos[i], -0.8, f"{spd_kmh:.0f} km/h", ha='center', va='top', fontsize=9, color=color, weight='bold')
-        else: ax_barbs.text(x_pos[i], 0, "N/A", ha='center', va='center', fontsize=9, color='grey')
-    ax_barbs.set_xticks(x_pos); ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km]); ax_barbs.set_yticks([]); ax_barbs.spines[:].set_visible(False); ax_barbs.tick_params(axis='x', length=0, pad=5); ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5); ax_barbs.set_ylim(-1.5, 1.5)
-    
+    # --- NOU PANELL SUPERIOR DE DIAGNÒSTIC (REEMPLAÇA LES BARBES DE VENT) ---
+    ax_top_panel.set_title("Diagnòstic de l'Estructura de la Tempesta", fontsize=12, weight='bold', pad=15)
+    ax_top_panel.axis('off') # Amaguem els eixos
+
+    # Obtenim la diagnosi
+    tipus_tempesta, color_tempesta, base_nuvol, color_base = diagnosticar_potencial_tempesta(params_calc)
+
+    # Dibuixem les dues caixes de diagnòstic al panell superior
+    # Columna 1: Tipus de Tempesta
+    ax_top_panel.text(0.25, 0.55, "Tipus de Tempesta", ha='center', va='center', fontsize=10, color='gray', transform=ax_top_panel.transAxes)
+    ax_top_panel.text(0.25, 0.2, tipus_tempesta, ha='center', va='center', fontsize=14, weight='bold', color=color_tempesta, transform=ax_top_panel.transAxes,
+                      bbox=dict(facecolor='white', alpha=0.1, boxstyle='round,pad=0.5'))
+
+    # Columna 2: Potencial a la Base
+    ax_top_panel.text(0.75, 0.55, "Potencial a la Base", ha='center', va='center', fontsize=10, color='gray', transform=ax_top_panel.transAxes)
+    ax_top_panel.text(0.75, 0.2, base_nuvol, ha='center', va='center', fontsize=14, weight='bold', color=color_base, transform=ax_top_panel.transAxes,
+                      bbox=dict(facecolor='white', alpha=0.1, boxstyle='round,pad=0.5'))
+
     # --- HODÒGRAF (Sense canvis) ---
     h = Hodograph(ax_hodo, component_range=80.); h.add_grid(increment=20, color='gray', linestyle='--')
     intervals = np.array([0, 1, 3, 6, 9, 12]) * units.km; colors_hodo = ['red', 'blue', 'green', 'purple', 'gold']
     h.plot_colormapped(u.to('kt'), v.to('kt'), heights, intervals=intervals, colors=colors_hodo, linewidth=2)
     ax_hodo.set_xlabel('U-Component (nusos)'); ax_hodo.set_ylabel('V-Component (nusos)')
 
-    # --- PANELL DE PARÀMETRES (ESTRUCTURA FINAL I CORREGIDA) ---
+    # --- PANELL DRET (NOMÉS VALORS NUMÈRICS) ---
     ax_params.axis('off')
     def degrees_to_cardinal_ca(d):
         dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"]
         return dirs[int(round(d / 22.5)) % 16]
 
-    y = 0.95
+    y = 0.98
+    # Moviment
+    ax_params.text(0.5, y, "Moviment (dir/km/h)", ha='center', weight='bold', fontsize=11); y-=0.15
     motion_data = {'M. Dret': params_calc.get('RM'), 'M. Esquerre': params_calc.get('LM'), 'Vent Mitjà': params_calc.get('Mean_Wind')}
-    ax_params.text(0, y, "Moviment (dir/km/h)", ha='left', weight='bold', fontsize=11); y-=0.1
-    for display_name, vec in motion_data.items():
-        ax_params.text(-0.05, y, f"{display_name}:", ha='left', va='center')
+    for name, vec in motion_data.items():
+        val_str = "---"
         if vec and not pd.isna(vec[0]):
-            u_motion = vec[0] * units('m/s'); v_motion = vec[1] * units('m/s')
-            speed = mpcalc.wind_speed(u_motion, v_motion).to('km/h').m; direction = mpcalc.wind_direction(u_motion, v_motion, convention='to').to('deg').m
-            cardinal = degrees_to_cardinal_ca(direction)
-            ax_params.text(1, y, f"{cardinal} / {speed:.0f}", ha='right', va='center')
-        else: ax_params.text(1, y, "---", ha='right', va='center')
-        y-=0.1
-
-    # --- INICI DEL CANVI ---
-    # Obtenim la diagnosi original de 'Tipus' i 'Base'
-    tipus_tempesta, color_tempesta, base_nuvol, color_base = diagnosticar_potencial_tempesta(params_calc)
-
-    y-=0.05
-    ax_params.text(0, y, "Organització (Cisallament)", ha='left', weight='bold', fontsize=11)
+            u_motion, v_motion = vec[0] * units('m/s'), vec[1] * units('m/s')
+            speed = mpcalc.wind_speed(u_motion, v_motion).to('km/h').m
+            direction = mpcalc.wind_direction(u_motion, v_motion, convention='to').to('deg').m
+            val_str = f"{degrees_to_cardinal_ca(direction)} / {speed:.0f}"
+        ax_params.text(0, y, f"{name}:", ha='left', va='center', fontsize=10)
+        ax_params.text(1, y, val_str, ha='right', va='center', fontsize=10)
+        y -= 0.1
     
-    # Mostrem el tipus de tempesta just a sota del títol
-    ax_params.text(1, y, tipus_tempesta, ha='right', va='center', weight='bold', color=color_tempesta)
-    y-=0.1
-    
-    # Mostrem els valors de cisallament
+    y -= 0.08
+    # Cisallament
+    ax_params.text(0.5, y, "Cisallament (nusos)", ha='center', weight='bold', fontsize=11); y-=0.15
     for key, label in [('BWD_0-1km', '0-1 km'), ('BWD_0-6km', '0-6 km')]:
         val = params_calc.get(key, np.nan)
         color = get_color_global(val, key)
-        ax_params.text(0, y, f"{label}:", ha='left', va='center')
-        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
-        y-=0.12 # Més espai
+        ax_params.text(0, y, f"{label}:", ha='left', va='center', fontsize=10)
+        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color, fontsize=12)
+        y -= 0.1
 
-    y-=0.05
-    ax_params.text(0, y, "Rotació (Helicitat)", ha='left', weight='bold', fontsize=11)
-    
-    # Mostrem la diagnosi de la base just a sota del títol
-    ax_params.text(1, y, base_nuvol, ha='right', va='center', weight='bold', color=color_base)
-    y-=0.1
-
-    # Mostrem els valors d'helicitat
+    y -= 0.08
+    # Helicitat
+    ax_params.text(0.5, y, "Helicitat (m²/s²)", ha='center', weight='bold', fontsize=11); y-=0.15
     for key, label in [('SRH_0-1km', '0-1 km'), ('SRH_0-3km', '0-3 km')]:
         val = params_calc.get(key, np.nan)
         color = get_color_global(val, key)
-        ax_params.text(0, y, f"{label}:", ha='left', va='center')
-        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color)
-        y-=0.08
-    # --- FI DEL CANVI ---
+        ax_params.text(0, y, f"{label}:", ha='left', va='center', fontsize=10)
+        ax_params.text(1, y, f"{val:.0f}" if not pd.isna(val) else "---", ha='right', va='center', weight='bold', color=color, fontsize=12)
+        y -= 0.1
     
     return fig
 
