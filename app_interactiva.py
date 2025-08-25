@@ -1987,7 +1987,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     try:
                         idx_terra = next(i for i, opt in enumerate(opcions_terra) if opt.startswith(poble_actual_master))
                     except (ValueError, StopIteration): idx_terra = 0
-                
                 terra_sel = st.selectbox("Població:", opcions_terra, key="selector_terra_widget", index=idx_terra, help=tooltip_text)
 
             with col_mar:
@@ -1997,7 +1996,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     try:
                         idx_mar = next(i for i, opt in enumerate(opcions_mar) if opt.startswith(poble_actual_master))
                     except (ValueError, StopIteration): idx_mar = 0
-                
                 mar_sel = st.selectbox("Punt Marí:", opcions_mar, key="selector_mar_widget", index=idx_mar, help=tooltip_text)
 
             terra_sel_net = terra_sel.split(' (')[0]
@@ -2012,13 +2010,22 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 st.rerun()
 
             now_local = datetime.now(TIMEZONE_CAT)
-            with col_dia: st.selectbox("Dia:", ("Avui",) if is_guest else ("Avui", "Demà"), key="dia_selector", disabled=is_guest)
-            with col_hora: st.selectbox("Hora:", (f"{now_local.hour:02d}:00h",) if is_guest else [f"{h:02d}:00h" for h in range(24)], key="hora_selector", disabled=is_guest)
+            with col_dia:
+                # --- CANVI ---
+                avui_str = now_local.strftime('%d/%m/%Y')
+                dema_str = (now_local + timedelta(days=1)).strftime('%d/%m/%Y')
+                opcions_dia = (avui_str,) if is_guest else (avui_str, dema_str)
+                st.selectbox("Dia:", opcions_dia, key="dia_selector", disabled=is_guest)
+
+            with col_hora:
+                st.selectbox("Hora:", (f"{now_local.hour:02d}:00h",) if is_guest else [f"{h:02d}:00h" for h in range(24)], key="hora_selector", disabled=is_guest)
+            
             with col_nivell:
                 if not is_guest:
                     nivells = [1000, 950, 925, 900, 850, 800, 700]
                     st.selectbox("Nivell:", nivells, key="level_cat_main", index=3, format_func=lambda x: f"{x} hPa")
-                else: st.session_state.level_cat_main = 925
+                else:
+                    st.session_state.level_cat_main = 925
         
         else: # Zona USA
             col_ciutat, col_dia, col_hora, col_nivell = st.columns(4)
@@ -2030,17 +2037,20 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     idx = next(i for i, opt in enumerate(opcions_usa) if opt.startswith(poble_sel_net))
                 except (ValueError, StopIteration):
                     idx = 0
-                
                 poble_seleccionat = st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa_widget", index=idx)
-                
-                # Lògica d'actualització directa i segura
                 nou_poble_net = poble_seleccionat.split(' (')[0]
                 if st.session_state.get('poble_selector_usa') != nou_poble_net:
                     st.session_state.poble_selector_usa = nou_poble_net
                     st.rerun()
 
             with col_dia:
-                st.selectbox("Dia:", ("Avui", "Demà", "Demà passat"), key="dia_selector_usa")
+                # --- CANVI ---
+                now_usa = datetime.now(TIMEZONE_USA)
+                avui_str = now_usa.strftime('%d/%m/%Y')
+                dema_str = (now_usa + timedelta(days=1)).strftime('%d/%m/%Y')
+                dema_passat_str = (now_usa + timedelta(days=2)).strftime('%d/%m/%Y')
+                opcions_dia_usa = (avui_str, dema_str, dema_passat_str)
+                st.selectbox("Dia:", opcions_dia_usa, key="dia_selector_usa")
 
             with col_hora:
                 now_spain = datetime.now(TIMEZONE_CAT)
@@ -2245,13 +2255,15 @@ def run_catalunya_app():
     is_guest = st.session_state.get('guest_mode', False)
     
     if 'poble_selector' not in st.session_state: st.session_state.poble_selector = "Barcelona"
-    if 'dia_selector' not in st.session_state: st.session_state.dia_selector = "Avui"
+    # --- CANVI ---
+    if 'dia_selector' not in st.session_state: st.session_state.dia_selector = datetime.now(TIMEZONE_CAT).strftime('%d/%m/%Y')
     if 'hora_selector' not in st.session_state: st.session_state.hora_selector = f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h"
     if 'level_cat_main' not in st.session_state: st.session_state.level_cat_main = 925
 
     pre_hora_sel = st.session_state.hora_selector
     pre_dia_sel = st.session_state.dia_selector
-    pre_target_date = datetime.now(TIMEZONE_CAT).date() + timedelta(days=1) if pre_dia_sel == "Demà" else datetime.now(TIMEZONE_CAT).date()
+    # --- CANVI ---
+    pre_target_date = datetime.strptime(pre_dia_sel, '%d/%m/%Y').date()
     pre_local_dt = TIMEZONE_CAT.localize(datetime.combine(pre_target_date, datetime.min.time()).replace(hour=int(pre_hora_sel.split(':')[0])))
     pre_start_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     pre_hourly_index = int((pre_local_dt.astimezone(pytz.utc) - pre_start_utc).total_seconds() / 3600)
@@ -2272,7 +2284,8 @@ def run_catalunya_app():
     nivell_sel = 925 if is_guest else st.session_state.level_cat_main
     lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
     
-    target_date = datetime.now(TIMEZONE_CAT).date() + timedelta(days=1) if dia_sel_str == "Demà" else datetime.now(TIMEZONE_CAT).date()
+    # --- CANVI ---
+    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
@@ -2320,13 +2333,14 @@ def run_catalunya_app():
             elif selected_tab == "💬 Assistent IA":
                 interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
                 ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia)
-
+                
 def run_valley_halley_app():
     # --- PAS 0: INICIALITZACIÓ DE L'ESTAT ---
     if 'poble_selector_usa' not in st.session_state:
         st.session_state.poble_selector_usa = "Oklahoma City, OK"
+    # --- CANVI ---
     if 'dia_selector_usa' not in st.session_state:
-        st.session_state.dia_selector_usa = "Avui"
+        st.session_state.dia_selector_usa = datetime.now(TIMEZONE_USA).strftime('%d/%m/%Y')
     
     if 'hora_selector_usa' not in st.session_state:
         now_spain = datetime.now(TIMEZONE_CAT)
@@ -2339,11 +2353,9 @@ def run_valley_halley_app():
     # --- PAS 1: RECOLLIR INPUTS ---
     pre_hora_sel_text = st.session_state.hora_selector_usa
     pre_hora_sel_cst = pre_hora_sel_text.split(' ')[0]
-
-    pre_now_usa = datetime.now(TIMEZONE_USA)
     pre_dia_sel = st.session_state.dia_selector_usa
-    pre_day_offset = {"Avui": 0, "Demà": 1, "Demà passat": 2}[pre_dia_sel]
-    pre_target_date = pre_now_usa.date() + timedelta(days=pre_day_offset)
+    # --- CANVI ---
+    pre_target_date = datetime.strptime(pre_dia_sel, '%d/%m/%Y').date()
     pre_local_dt = TIMEZONE_USA.localize(datetime.combine(pre_target_date, datetime.min.time()).replace(hour=int(pre_hora_sel_cst.split(':')[0])))
     pre_start_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     pre_hourly_index = int((pre_local_dt.astimezone(pytz.utc) - pre_start_utc).total_seconds() / 3600)
@@ -2362,8 +2374,8 @@ def run_valley_halley_app():
     nivell_sel = st.session_state.level_usa_main
     lat_sel, lon_sel = USA_CITIES[poble_sel]['lat'], USA_CITIES[poble_sel]['lon']
 
-    day_offset = {"Avui": 0, "Demà": 1, "Demà passat": 2}[dia_sel_str]
-    target_date = datetime.now(TIMEZONE_USA).date() + timedelta(days=day_offset)
+    # --- CANVI ---
+    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     local_dt = TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_cst_only.split(':')[0])))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
@@ -2414,12 +2426,10 @@ def run_valley_halley_app():
                     if map_data_nivell_sel:
                         params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_nivell_sel, lat_sel, lon_sel)
             
-            # Passa el timestamp_str a la funció de la UI
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_cst_only, timestamp_str)
         
     elif selected_tab_usa == "Satèl·lit (Temps Real)":
         ui_pestanya_satelit_usa()
-
         
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
