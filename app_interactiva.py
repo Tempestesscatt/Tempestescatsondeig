@@ -514,20 +514,23 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
 
 def diagnosticar_potencial_tempesta(params):
     """
-    Sistema de Diagnòstic Meteorològic Expert v8.0.
-    Introdueix la Inhibició Convectiva (CIN) com un factor de VETO principal.
-    Si el CIN és massa alt, el diagnòstic es bloqueja en un estat estable.
+    Sistema de Diagnòstic Meteorològic Expert v9.0.
+    Utilitza SBCAPE/MUCAPE i SBCIN/MUCIN per a una anàlisi completa,
+    considerant tant tempestes de superfície com de base elevada.
     """
-    # --- 1. EXTRACCIÓ SEGURA I PRIORITZADA DELS PARÀMETRES ---
-    cape = params.get('MLCAPE')
-    if cape is None or pd.isna(cape): cape = params.get('SBCAPE', 0)
-    cape = cape or 0
-
-    # Prioritzem MLCIN, ja que està associat a la parcel·la més representativa.
-    cin = params.get('MLCIN')
-    if cin is None or pd.isna(cin): cin = params.get('SBCIN', 0)
-    cin = cin or 0
+    # --- 1. EXTRACCIÓ ROBUSTA DE TOTS ELS PARÀMETRES ---
+    # Assegurem que tenim valors numèrics per a totes les variables
+    sbcape = params.get('SBCAPE', 0) or 0
+    mucape = params.get('MUCAPE', 0) or 0
+    sbcin = params.get('SBCIN', 0) or 0
+    mucin = params.get('MUCIN', 0) or 0
     
+    # --- CANVI CLAU: Utilitzem el màxim combustible i la màxima inhibició ---
+    # El potencial real ve donat per la parcel·la més energètica (la més alta de les dues CAPE).
+    max_cape = max(sbcape, mucape)
+    # La "tapa" real és la més forta (la més negativa de les dues CIN).
+    strongest_cin = min(sbcin, mucin)
+
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     srh_1km = params.get('SRH_0-1km', 0) or 0
     lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
@@ -535,24 +538,22 @@ def diagnosticar_potencial_tempesta(params):
     dcape = params.get('DCAPE', 0) or 0
     pwat = params.get('PWAT', 0) or 0
 
-    # --- NOU BLOC DE VETO PER INHIBICIÓ (CIN) ---
-    # Aquesta és la primera i més important comprovació. Si la "tapa" és massa forta,
-    # res més importa. Un valor de -100 J/kg és un bon llindar per a una tapa significativa.
-    if cin < -100:
+    # --- BLOC DE VETO PER INHIBICIÓ (CIN) ---
+    # Ara utilitzem la CIN més restrictiva per a la decisió.
+    if strongest_cin < -100:
         tipus_tempesta = "Inhibició Forta (Tapa)"
-        color_tempesta = "#808080"  # Gris
+        color_tempesta = "#808080"
         base_nuvol = "Atmosfera Estable"
-        color_base = "#808080"      # Gris
+        color_base = "#808080"
         return tipus_tempesta, color_tempesta, base_nuvol, color_base
-    # --- FI DEL BLOC DE VETO ---
-
-    # --- SI LA INHIBICIÓ NO ÉS FORTA, CONTINUEM AMB LA LÒGICA NORMAL ---
-
-    # --- 2. LÒGICA DEL TIPUS DE TEMPESTA (ORGANITZACIÓ) ---
+    
+    # --- LÒGICA DEL TIPUS DE TEMPESTA (ORGANITZACIÓ) ---
     tipus_tempesta = "Cèl·lula Simple"; color_tempesta = "#2ca02c"
 
-    if cape < 700:
-        tipus_tempesta = "Cèl·lula Simple (Feble)"; color_tempesta = "#2ca02c"
+    # Ara el llindar s'aplica al màxim CAPE disponible.
+    if max_cape < 700:
+        tipus_tempesta = "Cèl·lula Simple (Feble)"
+        color_tempesta = "#2ca02c"
     elif bwd_6km >= 35:
         if pwat > 45: tipus_tempesta = "Supercèl·lula HP (Alta Precipitació)"
         elif pwat < 30: tipus_tempesta = "Supercèl·lula LP (Baixa Precipitació)"
@@ -566,14 +567,15 @@ def diagnosticar_potencial_tempesta(params):
             tipus_tempesta = "Grup Multicel·lular Organitzat"
             color_tempesta = "#ffc107"
     else:
-        if cape > 2500:
+        # La 'Cèl·lula de Pols' es beneficia de l'energia màxima.
+        if max_cape > 2500:
             tipus_tempesta = "Cèl·lula de Pols (Pot. Calamarsa)"
             color_tempesta = "#ffc107"
         else:
             tipus_tempesta = "Cèl·lula Simple"
             color_tempesta = "#2ca02c"
 
-    # --- 3. LÒGICA DE LA BASE DEL NÚVOL (POTENCIAL DE ROTACIÓ A NIVELLS BAIXOS) ---
+    # --- LÒGICA DE LA BASE DEL NÚVOL (SENSE CANVIS, JA ERA ROBUSTA) ---
     base_nuvol = "Plana i Alta"; color_base = "#2ca02c"
     
     if srh_1km >= 250 and lcl_hgt < 1000 and lfc_hgt < 1500:
