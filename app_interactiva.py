@@ -2192,6 +2192,57 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                              format_func=lambda x: f"{x} hPa Bo per el tereny" if x == 925 
                                                    else f"{x} hPa Bo per zona marítima" if x == 1000 
                                                    else f"{x} hPa")
+
+
+
+def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel, theme='dark'):
+    st.markdown("#### Mapes de Pronòstic (Model AROME)")
+    
+    col_capa, col_zoom = st.columns(2)
+    with col_capa:
+        mapa_sel = st.selectbox("Selecciona la capa del mapa:", 
+                               ["Anàlisi de Vent i Convergència", "Vent a 700hPa", "Vent a 300hPa"], 
+                               key="map_cat")
+    with col_zoom: 
+        zoom_sel = st.selectbox("Nivell de Zoom:", 
+                               options=list(MAP_ZOOM_LEVELS_CAT.keys()), 
+                               key="zoom_cat")
+    
+    selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
+    
+    if "Convergència" in mapa_sel:
+        with st.spinner("Generant mapa de convergència..."):
+            map_data, error_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
+        
+        if error_map: 
+            st.error(f"Error en carregar el mapa: {error_map}")
+        elif map_data:
+            fig = crear_mapa_forecast_combinat_cat(
+                map_data['lons'], map_data['lats'], 
+                map_data['speed_data'], map_data['dir_data'], 
+                map_data['dewpoint_data'], nivell_sel, 
+                timestamp_str, selected_extent, theme=theme
+            )
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
+    
+    else:
+        nivell = 700 if "700" in mapa_sel else 300
+        variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+        
+        with st.spinner(f"Carregant vent a {nivell}hPa..."):
+            map_data, error_map = carregar_dades_mapa_base_cat(variables, hourly_index_sel)
+        
+        if error_map: 
+            st.error(f"Error: {error_map}")
+        elif map_data: 
+            fig = crear_mapa_vents_cat(
+                map_data['lons'], map_data['lats'], 
+                map_data[variables[0]], map_data[variables[1]], 
+                nivell, timestamp_str, selected_extent, theme=theme
+            )
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
                 
                 
 def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel, theme='dark'):
