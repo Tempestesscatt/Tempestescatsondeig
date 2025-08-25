@@ -2338,7 +2338,6 @@ def run_valley_halley_app():
     # --- PAS 0: INICIALITZACIÓ DE L'ESTAT ---
     if 'poble_selector_usa' not in st.session_state:
         st.session_state.poble_selector_usa = "Oklahoma City, OK"
-    # --- CANVI ---
     if 'dia_selector_usa' not in st.session_state:
         st.session_state.dia_selector_usa = datetime.now(TIMEZONE_USA).strftime('%d/%m/%Y')
     
@@ -2354,7 +2353,6 @@ def run_valley_halley_app():
     pre_hora_sel_text = st.session_state.hora_selector_usa
     pre_hora_sel_cst = pre_hora_sel_text.split(' ')[0]
     pre_dia_sel = st.session_state.dia_selector_usa
-    # --- CANVI ---
     pre_target_date = datetime.strptime(pre_dia_sel, '%d/%m/%Y').date()
     pre_local_dt = TIMEZONE_USA.localize(datetime.combine(pre_target_date, datetime.min.time()).replace(hour=int(pre_hora_sel_cst.split(':')[0])))
     pre_start_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -2374,7 +2372,6 @@ def run_valley_halley_app():
     nivell_sel = st.session_state.level_usa_main
     lat_sel, lon_sel = USA_CITIES[poble_sel]['lat'], USA_CITIES[poble_sel]['lon']
 
-    # --- CANVI ---
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     local_dt = TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_cst_only.split(':')[0])))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -2426,11 +2423,15 @@ def run_valley_halley_app():
                     if map_data_nivell_sel:
                         params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_nivell_sel, lat_sel, lon_sel)
             
-            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_cst_only, timestamp_str)
+            # --- LÒGICA D'ANÀLISI DE PROXIMITAT (ARA TAMBÉ PER A EUA) ---
+            avis_proximitat_usa = analitzar_amenaça_convergencia_propera(pre_map_data, params_calc, lat_sel, lon_sel)
+            
+            # --- CRIDA A LA UI CORREGIDA ---
+            # Ara passem correctament tots els paràmetres, inclòs l'avís de proximitat.
+            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_cst_only, timestamp_str, avis_proximitat_usa)
         
     elif selected_tab_usa == "Satèl·lit (Temps Real)":
         ui_pestanya_satelit_usa()
-        
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
