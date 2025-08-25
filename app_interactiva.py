@@ -183,6 +183,48 @@ def load_and_clean_chat_history():
 def count_unread_messages(history):
     last_seen = st.session_state.get('last_seen_timestamp', 0); current_user = st.session_state.get('username')
     return sum(1 for msg in history if msg['timestamp'] > last_seen and msg['username'] != current_user)
+
+
+
+def afegir_video_de_fons():
+    """
+    Llegeix un arxiu de vídeo local, el codifica en Base64 i l'injecta
+    com un fons de pantalla complet per a la pàgina de login.
+    """
+    # Assegura't que el vídeo 'llamps.mp4' estigui a la mateixa carpeta que l'script
+    video_file = 'llamps.mp4'
+
+    if not os.path.exists(video_file):
+        # Si el vídeo no existeix, no facis res per evitar un error
+        return
+
+    with open(video_file, "rb") as video:
+        video_bytes = video.read()
+    
+    video_b64 = base64.b64encode(video_bytes).decode()
+    
+    video_html = f"""
+    <style>
+    .stApp {{
+        background-color: transparent;
+    }}
+    #login-bg {{
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        object-fit: cover;
+        z-index: -1;
+        opacity: 0.8; /* Pots ajustar l'opacitat del vídeo aquí */
+    }}
+    </style>
+    <video autoplay loop muted id="login-bg">
+        <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
+    </video>
+    """
+    st.markdown(video_html, unsafe_allow_html=True)
+    
     
 def inject_custom_css():
     st.markdown("""
@@ -208,68 +250,43 @@ def format_time_left(time_delta):
     total_seconds = int(time_delta.total_seconds()); hours, remainder = divmod(total_seconds, 3600); minutes, _ = divmod(remainder, 60)
     return f"{hours}h {minutes}min" if hours > 0 else f"{minutes} min"
 
-def show_login_page():
-    st.markdown("<h1 style='text-align: center;'>Tempestes.cat</h1>", unsafe_allow_html=True)
-    st.markdown("---")
-
-    # Controlem quina vista es mostra (login o registre) amb st.session_state
-    if 'view' not in st.session_state:
-        st.session_state.view = 'login'
-
-    # --- VISTA D'INICI DE SESSIÓ (PER DEFECTE) ---
-    if st.session_state.view == 'login':
-        st.subheader("Inicia Sessió")
-        with st.form("login_form"):
-            username = st.text_input("Nom d'usuari", key="login_user")
-            password = st.text_input("Contrasenya", type="password", key="login_pass")
-            
-            if st.form_submit_button("Entra", use_container_width=True, type="primary"):
-                users = load_json_file(USERS_FILE)
-                if username in users and users[username] == get_hashed_password(password):
-                    st.session_state.update({'logged_in': True, 'username': username, 'guest_mode': False})
-                    st.rerun()
-                else:
-                    st.error("Nom d'usuari o contrasenya incorrectes.")
-        
-        # Botó per canviar a la vista de registre
-        if st.button("No tens un compte? Registra't aquí"):
-            st.session_state.view = 'register'
-            st.rerun()
-
-    # --- VISTA DE REGISTRE ---
-    elif st.session_state.view == 'register':
-        st.subheader("Crea un nou compte")
-        with st.form("register_form"):
-            new_username = st.text_input("Tria un nom d'usuari", key="reg_user")
-            new_password = st.text_input("Tria una contrasenya", type="password", key="reg_pass")
-            
-            if st.form_submit_button("Registra'm", use_container_width=True):
-                users = load_json_file(USERS_FILE)
-                if not new_username or not new_password:
-                    st.error("El nom d'usuari i la contrasenya no poden estar buits.")
-                elif new_username in users:
-                    st.error("Aquest nom d'usuari ja existeix.")
-                elif len(new_password) < 6:
-                    st.error("La contrasenya ha de tenir com a mínim 6 caràcters.")
-                else:
-                    users[new_username] = get_hashed_password(new_password)
-                    save_json_file(users, USERS_FILE)
-                    st.success("Compte creat amb èxit! Ara pots iniciar sessió.")
-        
-        # Botó per tornar a la vista d'inici de sessió
-        if st.button("Ja tens un compte? Inicia sessió"):
-            st.session_state.view = 'login'
-            st.rerun()
+def main():
+    inject_custom_css()
+    hide_streamlit_style()
     
-    st.divider()
-    st.markdown("<p style='text-align: center;'>O si ho prefereixes...</p>", unsafe_allow_html=True)
+    if 'precache_completat' not in st.session_state:
+        st.session_state.precache_completat = False
+        
+    if not st.session_state.precache_completat:
+        try:
+            precache_datos_iniciales()
+            st.session_state.precache_completat = True
+        except:
+            pass
+    
+    if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
+    if 'guest_mode' not in st.session_state: st.session_state['guest_mode'] = False
+    if 'zone_selected' not in st.session_state: st.session_state['zone_selected'] = None
 
-    # Botó per entrar com a convidat
-    if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary"):
-        st.session_state.update({'guest_mode': True, 'logged_in': True})
-        st.rerun()
-
-# --- Funcions Base de Càlcul i Gràfics (Compartides) ---
+    if not st.session_state['logged_in']:
+        # --- AFEGEIX LA LÍNIA AQUÍ ---
+        afegir_video_de_fons()
+        # -----------------------------
+        show_login_page()
+    elif not st.session_state['zone_selected']:
+        ui_zone_selection()
+    
+    # --- INICI DEL CANVI ---
+    # Ara, envolv_involucrem cada crida a una funció principal amb un spinner.
+    # Aquest spinner actuarà com una pantalla de càrrega que amaga la interfície anterior.
+    elif st.session_state['zone_selected'] == 'catalunya':
+        with st.spinner("Preparant l'entorn d'anàlisi de Catalunya..."):
+            run_catalunya_app()
+            
+    elif st.session_state['zone_selected'] == 'valley_halley':
+        with st.spinner("Preparant l'entorn d'anàlisi de Tornado Alley..."):
+            run_valley_halley_app()
+    # --- FI DEL CANVI ---
 
 def calcular_mlcape_robusta(p, T, Td):
     """
