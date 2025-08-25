@@ -674,32 +674,42 @@ def verificar_datos_entrada(p, T, Td, u, v, heights):
 
 
 
-# Reemplaça la teva funció 'crear_skewt' amb aquesta:
-def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str):
+# Aquesta funció substitueix l'anterior
+def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str, zoom_capa_baixa=False):
     """
-    Versió final i estètica. Afegeix un degradat de color per representar
-    el terreny i ara inclou la data i hora al títol.
+    Versió professional amb zoom real. Redibuixa el gràfic amb paràmetres
+    específics per a la capa baixa en lloc de simplement retallar-lo.
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
-    skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
+    
+    # --- LÒGICA DE ZOOM PROFESSIONAL ---
+    if zoom_capa_baixa:
+        # Per al zoom, creem un gràfic amb un rectangle diferent i ajustem la rotació
+        # per a una millor visualització de la capa límit.
+        skew = SkewT(fig, rotation=30, rect=(0.1, 0.1, 0.85, 0.8))
+        # Establim els límits de pressió per a la capa baixa
+        pressio_superficie = p[0].m
+        skew.ax.set_ylim(pressio_superficie + 10, 600)
+        # Ajustem l'interval de les isòbares
+        skew.ax.yaxis.set_major_locator(plt.MultipleLocator(50))
+        # Ajustem el rang de temperatures per a la capa baixa
+        skew.ax.set_xlim(-10, 40)
+    else:
+        # Comportament normal per al gràfic complet
+        skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
+        skew.ax.set_ylim(1000, 100)
+        skew.ax.set_xlim(-40, 40)
+    # --- FI DE LA LÒGICA DE ZOOM ---
+
     skew.ax.grid(True, linestyle='-', alpha=0.5)
 
     pressio_superficie = p[0].m
-    
-    if pressio_superficie < 995:
+    if pressio_superficie < 995 and not zoom_capa_baixa: # No mostrem el terreny al zoom
         colors = ["#66462F", "#799845"] 
         cmap_terreny = LinearSegmentedColormap.from_list("terreny_cmap", colors)
         gradient = np.linspace(0, 1, 256).reshape(-1, 1)
         xlims = skew.ax.get_xlim()
-        skew.ax.imshow(
-            gradient.T, 
-            aspect='auto', 
-            cmap=cmap_terreny, 
-            origin='lower',
-            extent=(xlims[0], xlims[1], 1000, pressio_superficie),
-            alpha=0.6,
-            zorder=0
-        )
+        skew.ax.imshow(gradient.T, aspect='auto', cmap=cmap_terreny, origin='lower', extent=(xlims[0], xlims[1], 1000, pressio_superficie), alpha=0.6, zorder=0)
     
     skew.ax.axvline(0, color='cyan', linestyle='--', linewidth=1.5, alpha=0.7)
     skew.plot_dry_adiabats(color='coral', linestyle='--', alpha=0.5)
@@ -709,19 +719,14 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str):
     if prof is not None:
         skew.shade_cape(p, T, prof, color='red', alpha=0.2)
         skew.shade_cin(p, T, prof, color='blue', alpha=0.2)
-        skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la (SFC)', 
-                  path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+        skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la (SFC)', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
 
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
     skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
         
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
-    skew.ax.set_ylim(1000, 100); skew.ax.set_xlim(-40, 40)
     
-    # --- LÍNIA MODIFICADA ---
-    # Afegim el timestamp_str com a subtítol.
     skew.ax.set_title(f"{titol}\n{timestamp_str}", weight='bold', fontsize=14, pad=15)
-    
     skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
 
     levels_to_plot = ['LCL_p', 'LFC_p', 'EL_p']
@@ -2352,19 +2357,15 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
         
         col1, col2 = st.columns(2, gap="large")
         with col1:
-            # --- NOU WIDGET PER AL ZOOM ---
-            zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 700 hPa)")
+            zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 600 hPa)")
             
-            # Creem la figura del Skew-T
-            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str)
-            
-            # --- NOVA LÒGICA PER APLICAR EL ZOOM ---
-            if zoom_capa_baixa:
-                # Obtenim l'eix del gràfic
-                ax_skewt = fig_skewt.axes[0]
-                # Establim els nous límits per al zoom
-                ax_skewt.set_ylim(p[0].m + 10, 700) # Des de la superfície + un petit marge, fins a 700 hPa
-                ax_skewt.set_xlim(-10, 40) # Ajustem l'eix de temperatures per a la capa baixa
+            # --- CANVI CLAU: Passem l'estat del checkbox a la funció de dibuix ---
+            fig_skewt = crear_skewt(
+                p, T, Td, u, v, prof, params_calculats, 
+                f"Sondeig Vertical - {poble_sel}", 
+                timestamp_str, 
+                zoom_capa_baixa=zoom_capa_baixa
+            )
             
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
