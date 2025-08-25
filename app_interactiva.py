@@ -258,29 +258,29 @@ def afegir_video_de_fons():
 def inject_custom_css():
     st.markdown("""
     <style>
-    /* --- ESTIL PER CENTRAR EL SPINNER A TOTA LA PANTALLA --- */
-    .stSpinner {
+    /* --- ESTIL PER CENTRAR TOTS ELS SPINNERS --- */
+    /* Apuntem a qualsevol spinner que estigui dins del contenidor principal de l'app */
+    .stApp > .main .stSpinner {
         position: fixed;
         top: 0;
         left: 0;
         width: 100vw;
         height: 100vh;
-        background-color: rgba(0, 0, 0, 0.7); /* Fons fosc semitransparent */
+        background-color: rgba(0, 0, 0, 0.7);
         display: flex;
-        justify-content: center; /* Centra horitzontalment */
-        align-items: center;     /* Centra verticalment */
-        z-index: 9999;           /* Assegura que estigui per sobre de tot */
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
     }
 
-    /* Estil per al contingut del spinner (icona i text) */
-    .stSpinner > div {
+    /* Estil per al contingut intern de tots els spinners */
+    .stApp > .main .stSpinner > div {
         text-align: center;
-        font-size: 1.2em; /* Fa el text una mica més gran */
-        color: white;     /* Canvia el color del text a blanc per a més contrast */
+        font-size: 1.2em;
+        color: white;
     }
-    /* --- FI DE L'ESTIL DEL SPINNER --- */
-
-    /* --- NOU BLOC PER A L'ANIMACIÓ DE PARPADEIG --- */
+    
+    /* --- Mantenim l'estil de parpelleig --- */
     .blinking-alert {
         animation: blink 1.5s linear infinite;
     }
@@ -288,8 +288,6 @@ def inject_custom_css():
     @keyframes blink {
         50% { opacity: 0.6; }
     }
-    /* --- FI DEL NOU BLOC --- */
-    
     </style>
     """, unsafe_allow_html=True)
     
