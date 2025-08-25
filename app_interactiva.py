@@ -2583,9 +2583,9 @@ def main():
     # Aquesta funció injecta el JS que força el tema visual
     set_theme_in_frontend(st.session_state.theme)
 
-    #inject_custom_css()
-    hide_streamlit_style()
-    
+    inject_custom_css()
+    # hide_streamlit_style() # <-- LÍNIA COMENTADA PER FER REAPARÈIXER EL MENÚ
+
     if not st.session_state.precache_completat:
         try:
             precache_datos_iniciales()
