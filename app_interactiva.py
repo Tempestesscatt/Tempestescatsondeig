@@ -258,29 +258,34 @@ def afegir_video_de_fons():
 def inject_custom_css():
     st.markdown("""
     <style>
-    /* --- ESTIL PER CENTRAR TOTS ELS SPINNERS --- */
-    /* Apuntem a qualsevol spinner que estigui dins del contenidor principal de l'app */
-    .stApp > .main .stSpinner {
-        position: fixed;
+    /* --- ESTIL DEFINITIU I ROBUST PER A TOTS ELS SPINNERS --- */
+    /* Aquesta regla s'aplica a qualsevol spinner, en qualsevol lloc de l'app */
+    .stSpinner {
+        position: fixed; /* Posició fixa respecte a la finestra del navegador */
         top: 0;
         left: 0;
-        width: 100vw;
-        height: 100vh;
-        background-color: rgba(0, 0, 0, 0.7);
+        width: 100%;     /* Ocupa tota l'amplada */
+        height: 100%;    /* Ocupa tota l'alçada */
+        background-color: rgba(0, 0, 0, 0.7); /* Fons fosc semitransparent */
+        z-index: 9999;   /* Assegura que estigui per sobre de tot */
+        
+        /* Centrat perfecte amb Flexbox */
         display: flex;
         justify-content: center;
         align-items: center;
-        z-index: 9999;
     }
 
-    /* Estil per al contingut intern de tots els spinners */
-    .stApp > .main .stSpinner > div {
+    /* Estil per al contingut intern (la icona i el text) */
+    .stSpinner > div {
         text-align: center;
-        font-size: 1.2em;
-        color: white;
+        color: white;         /* Text en blanc per a més contrast */
+        font-size: 1.2rem;    /* Mida del text una mica més gran */
+        font-weight: bold;
     }
+    /* --- FI DE L'ESTIL DEL SPINNER --- */
     
-    /* --- Mantenim l'estil de parpelleig --- */
+
+    /* --- ESTIL DE L'ALERTA PARPELLEJANT (ES MANTÉ) --- */
     .blinking-alert {
         animation: blink 1.5s linear infinite;
     }
