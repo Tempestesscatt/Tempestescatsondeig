@@ -187,6 +187,15 @@ def count_unread_messages(history):
     last_seen = st.session_state.get('last_seen_timestamp', 0); current_user = st.session_state.get('username')
     return sum(1 for msg in history if msg['timestamp'] > last_seen and msg['username'] != current_user)
     
+
+    
+    
+def format_time_left(time_delta):
+    total_seconds = int(time_delta.total_seconds()); hours, remainder = divmod(total_seconds, 3600); minutes, _ = divmod(remainder, 60)
+    return f"{hours}h {minutes}min" if hours > 0 else f"{minutes} min"
+
+
+
 def inject_custom_css():
     st.markdown("""
     <style>
@@ -225,11 +234,6 @@ def inject_custom_css():
     }
     </style>
     """, unsafe_allow_html=True)
-    
-    
-def format_time_left(time_delta):
-    total_seconds = int(time_delta.total_seconds()); hours, remainder = divmod(total_seconds, 3600); minutes, _ = divmod(remainder, 60)
-    return f"{hours}h {minutes}min" if hours > 0 else f"{minutes} min"
 
 
 
@@ -293,8 +297,6 @@ def show_login_page():
     if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary", key="guest_login"):
         st.session_state.update({'guest_mode': True, 'logged_in': True})
         st.rerun()
-
-
 
 def set_theme_in_frontend(theme):
     """
