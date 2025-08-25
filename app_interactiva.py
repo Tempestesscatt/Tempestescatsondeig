@@ -2070,25 +2070,10 @@ def hide_streamlit_style():
     st.markdown(hide_style, unsafe_allow_html=True)
 
 
-# Reemplaça la teva funció ui_capcalera_selectors amb aquesta:
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya", convergencies=None):
-    # Funció auxiliar per injectar el JavaScript que canvia el tema
-    def switch_theme_js():
-        components.html(
-            """
-            <script>
-            const body = window.parent.document.querySelector('body');
-            body.classList.toggle('light');
-            </script>
-            """,
-            height=0,
-            width=0,
-        )
-
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
-    # S'ha afegit una columna per al botó del tema
     col_text, col_change, col_logout, col_theme = st.columns([0.6, 0.15, 0.15, 0.1])
     
     with col_text:
@@ -2105,29 +2090,23 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 del st.session_state[key]
             st.rerun()
             
-    # --- NOU BLOC PER AL BOTÓ DE CANVI DE TEMA ---
+    # --- BLOC DE CANVI DE TEMA (VERSIÓ SIMPLIFICADA I ROBUSTA) ---
     with col_theme:
         theme = st.session_state.get('theme', 'dark')
-        button_clicked = False
         
         if theme == 'dark':
             if st.button("🌙", key="theme_switch_to_light", help="Canviar a mode clar", use_container_width=True):
                 st.session_state.theme = 'light'
-                st.session_state.theme_detected = 'light' # Sincronitza amb el detector
-                button_clicked = True
+                st.session_state.theme_detected = 'light'
+                st.rerun()
         else:
             if st.button("☀️", key="theme_switch_to_dark", help="Canviar a mode fosc", use_container_width=True):
                 st.session_state.theme = 'dark'
-                st.session_state.theme_detected = 'dark' # Sincronitza amb el detector
-                button_clicked = True
-        
-        if button_clicked:
-            switch_theme_js()
-            st.rerun()
-    # --- FI DEL NOU BLOC ---
+                st.session_state.theme_detected = 'dark'
+                st.rerun()
+    # --- FI DEL BLOC FINAL ---
 
     with st.container(border=True):
-        # ... (la resta de la funció es queda exactament igual)
         def formatar_llista_ciutats(ciutats_dict, conv_data):
             if not conv_data:
                 return sorted(list(ciutats_dict.keys()))
@@ -2207,8 +2186,8 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     try: idx_nivell = nivells.index(nivell_actual)
                     except ValueError: idx_nivell = 2
                     st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx_nivell, 
-                                 format_func=lambda x: f"{x} hPa Recomenat per terreny" if x == 925 
-                                                       else f"{x} hPa Recomenat per zonamarína" if x == 1000 
+                                 format_func=lambda x: f"{x} hPa ⭐ (Nucli tempesta)" if x == 925 
+                                                       else f"{x} hPa 🌊 (Anàlisi Marítima)" if x == 1000 
                                                        else f"{x} hPa")
                 else:
                     st.session_state.level_cat_main = 925
@@ -2254,8 +2233,8 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 try: idx_nivell_usa = nivells_gfs_ordenats.index(nivell_actual_usa)
                 except ValueError: idx_nivell_usa = nivells_gfs_ordenats.index(850) if 850 in nivells_gfs_ordenats else 0
                 st.selectbox("Nivell:", nivells_gfs_ordenats, key="level_usa_main", index=idx_nivell_usa, 
-                             format_func=lambda x: f"{x} hPa Recomenat per terreny" if x == 925 
-                                                   else f"{x} hPa Recomenat per zonamarína" if x == 1000 
+                             format_func=lambda x: f"{x} hPa ⭐ (Nucli tempesta)" if x == 925 
+                                                   else f"{x} hPa 🌊 (Anàlisi Marítima)" if x == 1000 
                                                    else f"{x} hPa")
 
 
