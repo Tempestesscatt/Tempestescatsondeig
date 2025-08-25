@@ -918,9 +918,9 @@ def analitzar_estructura_tempesta(params):
 
 def analitzar_amenaces_especifiques(params):
     """
-    Analitza paràmetres visibles per determinar el potencial de calamarsa,
-    esclafits i activitat elèctrica, retornant un text i un color per a la UI.
-    Versió 2.0 - Independent de MLCAPE i DCAPE.
+    Sistema d'Anàlisi d'Amenaces v3.0.
+    Ajusta el potencial teòric de calamarsa i activitat elèctrica basant-se en
+    la probabilitat que la tempesta es formi (Balanç Convergència vs. CIN).
     """
     resultats = {
         'calamarsa': {'text': 'Nul·la', 'color': '#808080'},
@@ -928,42 +928,79 @@ def analitzar_amenaces_especifiques(params):
         'llamps': {'text': 'Nul·la', 'color': '#808080'}
     }
 
-    # 1. Anàlisi de Calamarsa Gran (>2cm) - (Sense canvis, ja depèn de paràmetres visibles)
+    # --- 1. EXTRACCIÓ DE PARÀMETRES ---
     updraft = params.get('MAX_UPDRAFT', 0) or 0
     isozero = params.get('FREEZING_LVL_HGT', 5000) or 5000
-    if updraft > 55 or (updraft > 45 and isozero < 3500):
-        resultats['calamarsa'] = {'text': 'Molt Alta', 'color': '#dc3545'}
-    elif updraft > 40 or (updraft > 30 and isozero < 3800):
-        resultats['calamarsa'] = {'text': 'Alta', 'color': '#fd7e14'}
-    elif updraft > 25:
-        resultats['calamarsa'] = {'text': 'Moderada', 'color': '#ffc107'}
-    elif updraft > 15:
-        resultats['calamarsa'] = {'text': 'Baixa', 'color': '#2ca02c'}
-
-    # 2. Anàlisi d'Esclafits (Ventades fortes) - *** LÒGICA NOVA ***
-    # Basat en el Gradient Tèrmic a nivells baixos (LR 0-3km) i la humitat (PWAT).
-    # Un ambient sec i amb refredament ràpid afavoreix els esclafits.
+    li = params.get('LI', 5) or 5
+    el_hgt = params.get('EL_Hgt', 0) or 0
     lr_0_3km = params.get('LR_0-3km', 0) or 0
     pwat = params.get('PWAT', 100) or 100
+    mucape = params.get('MUCAPE', 0) or 0
+
+    # Paràmetres per al balanç del disparador
+    conv_key = next((k for k in params if k.startswith('CONV_')), None)
+    convergencia = params.get(conv_key, 0) or 0
+    cin = min(params.get('SBCIN', 0), params.get('MUCIN', 0)) or 0
+
+    # --- 2. AVALUACIÓ DEL POTENCIAL DE DISPAR ---
+    # Definim un factor de realització (de 0 a 1)
+    factor_realitzacio = 0.0
+    if convergencia >= 30 and cin > -100:
+        factor_realitzacio = 1.0  # Disparador molt probable
+    elif convergencia >= 15 and cin > -50:
+        factor_realitzacio = 0.7  # Disparador probable
+    elif cin > -20:
+        factor_realitzacio = 0.4  # Disparador possible (sense tapa)
+
+    # Si no hi ha CAPE, no hi ha amenaça, independentment del disparador
+    if mucape < 300:
+        return resultats
+
+    # --- 3. ANÀLISI D'AMENACES AMB AJUSTAMENT ---
+
+    # --- Calamarsa Gran (>2cm) ---
+    potencial_calamarsa_teoric = 0
+    if updraft > 55 or (updraft > 45 and isozero < 3500): potencial_calamarsa_teoric = 4 # Molt Alt
+    elif updraft > 40 or (updraft > 30 and isozero < 3800): potencial_calamarsa_teoric = 3 # Alt
+    elif updraft > 25: potencial_calamarsa_teoric = 2 # Moderat
+    elif updraft > 15: potencial_calamarsa_teoric = 1 # Baix
+
+    # Ajustem el potencial teòric amb el factor de realització
+    potencial_calamarsa_real = potencial_calamarsa_teoric * factor_realitzacio
+    if potencial_calamarsa_real >= 3.5:
+        resultats['calamarsa'] = {'text': 'Molt Alta', 'color': '#dc3545'}
+    elif potencial_calamarsa_real >= 2.5:
+        resultats['calamarsa'] = {'text': 'Alta', 'color': '#fd7e14'}
+    elif potencial_calamarsa_real >= 1.5:
+        resultats['calamarsa'] = {'text': 'Moderada', 'color': '#ffc107'}
+    elif potencial_calamarsa_real >= 0.5:
+        resultats['calamarsa'] = {'text': 'Baixa', 'color': '#2ca02c'}
+
+    # --- Activitat Elèctrica (Llamps) ---
+    potencial_llamps_teoric = 0
+    if li < -7 or (li < -5 and el_hgt > 12000): potencial_llamps_teoric = 4 # Extrema
+    elif li < -4 or (li < -2 and el_hgt > 10000): potencial_llamps_teoric = 3 # Alta
+    elif li < -1: potencial_llamps_teoric = 2 # Moderada
+    elif mucape > 150: potencial_llamps_teoric = 1 # Baixa
+
+    # Ajustem el potencial teòric
+    potencial_llamps_real = potencial_llamps_teoric * factor_realitzacio
+    if potencial_llamps_real >= 3.5:
+        resultats['llamps'] = {'text': 'Extrema', 'color': '#dc3545'}
+    elif potencial_llamps_real >= 2.5:
+        resultats['llamps'] = {'text': 'Alta', 'color': '#fd7e14'}
+    elif potencial_llamps_real >= 1.5:
+        resultats['llamps'] = {'text': 'Moderada', 'color': '#ffc107'}
+    elif potencial_llamps_real >= 0.5:
+        resultats['llamps'] = {'text': 'Baixa', 'color': '#2ca02c'}
+
+    # --- Esclafits (Aquesta amenaça es manté igual, ja que no depèn tant del CAPE) ---
     if lr_0_3km > 8.0 and pwat < 35:
         resultats['esclafits'] = {'text': 'Alta', 'color': '#fd7e14'}
     elif lr_0_3km > 7.0 and pwat < 40:
         resultats['esclafits'] = {'text': 'Moderada', 'color': '#ffc107'}
     elif lr_0_3km > 6.5:
         resultats['esclafits'] = {'text': 'Baixa', 'color': '#2ca02c'}
-
-    # 3. Anàlisi d'Activitat Elèctrica (Llamps) - *** LÒGICA NOVA ***
-    # Basat en la inestabilitat (LI) i la profunditat de la tempesta (EL_Hgt).
-    li = params.get('LI', 5) or 5
-    el_hgt = params.get('EL_Hgt', 0) or 0
-    if li < -7 or (li < -5 and el_hgt > 12000):
-        resultats['llamps'] = {'text': 'Extrema', 'color': '#dc3545'}
-    elif li < -4 or (li < -2 and el_hgt > 10000):
-        resultats['llamps'] = {'text': 'Alta', 'color': '#fd7e14'}
-    elif li < -1:
-        resultats['llamps'] = {'text': 'Moderada', 'color': '#ffc107'}
-    elif params.get('MUCAPE', 0) > 150: # Si hi ha una mínima inestabilitat
-        resultats['llamps'] = {'text': 'Baixa', 'color': '#2ca02c'}
         
     return resultats
 
