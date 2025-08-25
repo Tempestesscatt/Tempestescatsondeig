@@ -514,61 +514,53 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
 
 def diagnosticar_potencial_tempesta(params):
     """
-    Versió Definitiva i Lògica v5.0 - SISTEMA DE CATEGORIES ENRIQUIT.
-    Implementa una classificació molt més detallada per als tipus de tempesta,
-    diferenciant entre nivells de severitat dins de les multicèl·lules i supercèl·lules.
+    Versió Definitiva v6.0 - Amb Llindar de CAPE i Base Refinada amb LFC.
+    Implementa regles de decisió més precises per a l'organització i el
+    potencial tornàdic de la base.
     """
+    # Extreure paràmetres de manera segura
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     srh_1km = params.get('SRH_0-1km', 0) or 0
     lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
+    lfc_hgt = params.get('LFC_Hgt', 9999) or 9999 # <-- NOU PARÀMETRE UTILITZAT
     cape = params.get('MLCAPE', params.get('SBCAPE', 0)) or 0
 
-    bwd_thresh = THRESHOLDS_GLOBALS['BWD_0-6km'] # Llindars: (20, 30, 40)
-    srh_thresh = THRESHOLDS_GLOBALS['SRH_0-1km'] # Llindars: (100, 150, 250)
+    bwd_thresh = THRESHOLDS_GLOBALS['BWD_0-6km'] 
+    srh_thresh = THRESHOLDS_GLOBALS['SRH_0-1km'] 
     
-    # --- NOVA LÒGICA DE CLASSIFICACIÓ DETALLADA ---
-    tipus_tempesta = "Cèl·lula Simple"; color_tempesta = "#2ca02c" # Verd per defecte
+    # --- 1. LÒGICA DEL TIPUS DE TEMPESTA (ORGANITZACIÓ) ---
+    tipus_tempesta = "Cèl·lula Simple"; color_tempesta = "#2ca02c"
 
-    # La jerarquia va del més sever al menys sever.
-    
-    # Nivell Supercèl·lula (>= 40 nusos)
-    if bwd_6km >= bwd_thresh[2]:
-        # Comprovem si té potencial tornàdic
-        if srh_1km > 150 and lcl_hgt < 1200:
-            tipus_tempesta = "Supercèl·lula (Pot. Tornàdic)"
-        else:
-            tipus_tempesta = "Supercèl·lula Clàssica"
-        color_tempesta = "#dc3545" # Vermell
-        
-    # Nivell Multicèl·lula Forta (30-39 nusos)
-    elif bwd_6km >= bwd_thresh[1]:
-        # El CAPE diferencia si és només organitzada o severa (QLCS)
-        if cape > 1200:
-            tipus_tempesta = "Multicèl·lula Severa (QLCS)"
-        else:
-            tipus_tempesta = "Multicèl·lula Organitzada"
-        color_tempesta = "#fd7e14" # Taronja
-    
-    # Nivell Multicèl·lula Feble (20-29 nusos)
-    elif bwd_6km >= bwd_thresh[0]:
+    if bwd_6km >= bwd_thresh[2]: # > 40 nusos
+        tipus_tempesta = "Supercèl·lula"
+        color_tempesta = "#dc3545"
+    elif bwd_6km >= bwd_thresh[1]: # 30-39 nusos
+        tipus_tempesta = "Multicèl·lula Severa (QLCS)"
+        color_tempesta = "#fd7e14"
+    elif bwd_6km >= bwd_thresh[0]: # 20-29 nusos
         tipus_tempesta = "Línia de Multicèl·lules"
-        color_tempesta = "#ffc107" # Groc
+        color_tempesta = "#ffc107"
     
-    # Condició de seguretat: si no hi ha gens de CAPE, no hi ha tempesta.
-    if cape < 100:
+    # --- CANVI CLAU 1: LLINDAR DE COMBUSTIBLE (CAPE) ---
+    # Si no hi ha prou energia (< 700 J/kg), la tempesta no es pot organitzar,
+    # independentment de com de bo sigui el cisallament.
+    if cape < 700:
         tipus_tempesta = "Cèl·lula Simple"; color_tempesta = "#2ca02c"
 
-    # --- Lògica de la base del núvol (sense canvis) ---
+    # --- 2. LÒGICA DE LA BASE DEL NÚVOL (POTENCIAL DE ROTACIÓ) ---
     base_nuvol = "Plana i Alta"; color_base = "#2ca02c"
-    if srh_1km >= srh_thresh[2] and lcl_hgt < 1200:
-        base_nuvol = "Tornàdica (Wall Cloud)"; color_base = "#dc3545"
-    elif srh_1km >= srh_thresh[1] and lcl_hgt < 1500:
-        base_nuvol = "Rotatòria Forta"; color_base = "#fd7e14"
-    elif srh_1km >= srh_thresh[0]:
+
+    # --- CANVI CLAU 2: BASE REFINADA AMB LCL I LFC ---
+    # La condició més perillosa ("Tornàdica") ara requereix que TOT sigui favorable:
+    # rotació molt forta (SRH), base del núvol molt baixa (LCL) i "metxa" molt curta (LFC).
+    if srh_1km >= srh_thresh[2] and lcl_hgt < 1000 and lfc_hgt < 1500: # SRH > 250, LCL < 1km, LFC < 1.5km
+        base_nuvol = "Tornàdica (Potencial Alt)"; color_base = "#dc3545"
+    elif srh_1km >= srh_thresh[1] and lcl_hgt < 1200: # SRH > 150, LCL < 1.2km
+        base_nuvol = "Rotatòria Forta (Wall Cloud)"; color_base = "#fd7e14"
+    elif srh_1km >= srh_thresh[0]: # SRH > 100
         base_nuvol = "Rotatòria (Inflow)"; color_base = "#ffc107"
         
     return tipus_tempesta, color_tempesta, base_nuvol, color_base
-
     
 
 def debug_calculos(p, T, Td, u, v, heights, prof):
