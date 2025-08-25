@@ -2352,17 +2352,27 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
         
         col1, col2 = st.columns(2, gap="large")
         with col1:
-            # Passa el timestamp_str a la funció de gràfic
+            # --- NOU WIDGET PER AL ZOOM ---
+            zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 700 hPa)")
+            
+            # Creem la figura del Skew-T
             fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str)
+            
+            # --- NOVA LÒGICA PER APLICAR EL ZOOM ---
+            if zoom_capa_baixa:
+                # Obtenim l'eix del gràfic
+                ax_skewt = fig_skewt.axes[0]
+                # Establim els nous límits per al zoom
+                ax_skewt.set_ylim(p[0].m + 10, 700) # Des de la superfície + un petit marge, fins a 700 hPa
+                ax_skewt.set_xlim(-10, 40) # Ajustem l'eix de temperatures per a la capa baixa
+            
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             
             with st.container(border=True):
-                # Passa l'avís de proximitat a la caixa de paràmetres
                 ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual, avis_proximitat)
 
         with col2:
-            # Passa el timestamp_str a la funció de gràfic
             fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat - {poble_sel}", timestamp_str)
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
