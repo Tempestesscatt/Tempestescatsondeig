@@ -85,9 +85,14 @@ MAP_ZOOM_LEVELS_CAT = {'Catalunya (Complet)': MAP_EXTENT_CAT, 'Nord-est (Girona)
 API_URL_USA = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_USA = pytz.timezone('America/Chicago')
 USA_CITIES = {
-    'Dallas, TX': {'lat': 32.7767, 'lon': -96.7970}, 'Oklahoma City, OK': {'lat': 35.4676, 'lon': -97.5164},
-    'Kansas City, MO': {'lat': 39.0997, 'lon': -94.5786}, 'Omaha, NE': {'lat': 41.2565, 'lon': -95.9345},
-    'Wichita, KS': {'lat': 37.6872, 'lon': -97.3301}, 'Tulsa, OK': {'lat': 36.1540, 'lon': -95.9928},
+    'Dallas, TX': {'lat': 32.7767, 'lon': -96.7970},
+    'Elk City, OK': {'lat': 35.4098, 'lon': -99.4084},    # <-- NOU PUNT AFEGIT
+    'Houston, TX': {'lat': 29.7604, 'lon': -95.3698},     # <-- NOU PUNT AFEGIT
+    'Kansas City, MO': {'lat': 39.0997, 'lon': -94.5786},
+    'Oklahoma City, OK': {'lat': 35.4676, 'lon': -97.5164},
+    'Omaha, NE': {'lat': 41.2565, 'lon': -95.9345},
+    'Tulsa, OK': {'lat': 36.1540, 'lon': -95.9928},
+    'Wichita, KS': {'lat': 37.6872, 'lon': -97.3301},
 }
 MAP_EXTENT_USA = [-105, -85, 30, 48]
 PRESS_LEVELS_GFS = sorted([1000, 975, 950, 925, 900, 850, 800, 750, 700, 600, 500, 400, 300, 250, 200, 100], reverse=True)
