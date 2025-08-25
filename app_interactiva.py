@@ -190,6 +190,17 @@ def inject_custom_css():
     .stSpinner > div {
         justify-content: center;
     }
+
+    /* --- NOU BLOC PER A L'ANIMACIÓ DE PARPADEIG --- */
+    .blinking-alert {
+        animation: blink 1.5s linear infinite;
+    }
+
+    @keyframes blink {
+        50% { opacity: 0.6; }
+    }
+    /* --- FI DEL NOU BLOC --- */
+    
     </style>
     """, unsafe_allow_html=True)
     
@@ -927,27 +938,26 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols[1]: 
         styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1, tooltip_text=TOOLTIPS.get('PWAT'))
     with cols[2]:
-        # --- NOVA LÒGICA D'AVISOS INTEGRADA ---
         analisi_temps = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
         emoji = analisi_temps['emoji']
         descripcio = analisi_temps['descripcio']
 
-        # 1. Prioritat Màxima: Avís de Proximitat
         if avis_proximitat:
-            background_color = "#fd7e14" # Taronja d'alerta
+            background_color = "#fd7e14"
             title_text = "⚠️ ATENCIÓ: NUCLI PRÒXIM"
             main_text = "Amenaça en Aproximació"
             sub_text = f"Entorn actual: {emoji} {descripcio}"
+            # --- LÍNIA CLAU MODIFICADA ---
+            # S'ha afegit la classe CSS 'blinking-alert' al div.
             st.markdown(f"""
-            <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: {background_color}; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
+            <div class="blinking-alert" style="text-align: center; padding: 5px; border-radius: 10px; background-color: {background_color}; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
                 <span style="font-size: 0.8em; color: #FFFFFF; font-weight: bold;">{title_text}</span>
                 <strong style="font-size: 1.2em; color: #FFFFFF; line-height: 1.2;">{main_text}</strong>
                 <span style="font-size: 0.7em; color: #FFFFFF; opacity: 0.9;">{sub_text}</span>
             </div>""", unsafe_allow_html=True)
         
-        # 2. Segona Prioritat: Alerta de Castellanus
         elif "Castellanus" in descripcio:
-            background_color = "#ffc107" # Groc de precaució
+            background_color = "#ffc107"
             title_text = "Potencial de Dispar"
             main_emoji = emoji
             main_text = descripcio
@@ -958,7 +968,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
                 <span style="font-size: 0.8em; color: #212529; font-weight: bold;">{main_text}</span>
             </div>""", unsafe_allow_html=True)
 
-        # 3. Cas per defecte (com estava abans)
         else:
             st.markdown(f"""
             <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
@@ -966,7 +975,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
                 <strong style="font-size: 1.8em; line-height: 1;">{emoji}</strong>
                 <span style="font-size: 0.8em; color: #E0E0E0;">{descripcio}</span>
             </div>""", unsafe_allow_html=True)
-        # --- FI DE LA NOVA LÒGICA ---
         
     cols = st.columns(3)
     with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
