@@ -1999,15 +1999,26 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     except (ValueError, StopIteration): idx_mar = 0
                 mar_sel = st.selectbox("Punt Marí:", opcions_mar, key="selector_mar_widget", index=idx_mar, help=tooltip_text)
 
-            terra_sel_net = terra_sel.split(' (')[0]
-            mar_sel_net = mar_sel.split(' (')[0]
-
-            if terra_sel != PLACEHOLDER_TERRA and terra_sel_net != poble_actual_master:
-                st.session_state.poble_selector = terra_sel_net
+            # --- LÒGICA DE SELECCIÓ ROBUSTA CORREGIDA ---
+            nova_seleccio = None
+            # Comprova si s'ha canviat la selecció de terra
+            if terra_sel != PLACEHOLDER_TERRA:
+                for key in POBLACIONS_TERRA:
+                    if terra_sel.startswith(key):
+                        nova_seleccio = key
+                        break
+            # Si no, comprova si s'ha canviat la de mar
+            elif mar_sel != PLACEHOLDER_MAR:
+                for key in PUNTS_MAR:
+                    if mar_sel.startswith(key):
+                        nova_seleccio = key
+                        break
+            
+            # Si hi ha una nova selecció vàlida i és diferent de l'actual, actualitza i recarrega
+            if nova_seleccio and nova_seleccio != poble_actual_master:
+                st.session_state.poble_selector = nova_seleccio
                 st.rerun()
-            elif mar_sel != PLACEHOLDER_MAR and mar_sel_net != poble_actual_master:
-                st.session_state.poble_selector = mar_sel_net
-                st.rerun()
+            # --- FI DE LA CORRECCIÓ ---
 
             now_local = datetime.now(TIMEZONE_CAT)
             with col_dia:
@@ -2023,14 +2034,11 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 if not is_guest:
                     nivells = [1000, 950, 925, 900, 850, 800, 700]
                     nivell_actual = st.session_state.get('level_cat_main', 925)
-                    try:
-                        idx_nivell = nivells.index(nivell_actual)
-                    except ValueError:
-                        idx_nivell = 2
-                    # --- NOU FORMAT VISUAL PER ALS NIVELLS ---
+                    try: idx_nivell = nivells.index(nivell_actual)
+                    except ValueError: idx_nivell = 2
                     st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx_nivell, 
-                                 format_func=lambda x: f"{x} hPa (Bo per tempestes terrestres)" if x == 925 
-                                                       else f"{x} hPa (Bo per punts marítims)" if x == 1000 
+                                 format_func=lambda x: f"{x} hPa Bo per el tereny" if x == 925 
+                                                       else f"{x} hPa Bo per zona marítima" if x == 1000 
                                                        else f"{x} hPa")
                 else:
                     st.session_state.level_cat_main = 925
@@ -2073,15 +2081,13 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             with col_nivell:
                 nivells_gfs_ordenats = sorted(PRESS_LEVELS_GFS, reverse=False)
                 nivell_actual_usa = st.session_state.get('level_usa_main', 850)
-                try:
-                    idx_nivell_usa = nivells_gfs_ordenats.index(nivell_actual_usa)
-                except ValueError:
-                    idx_nivell_usa = nivells_gfs_ordenats.index(850) if 850 in nivells_gfs_ordenats else 0
-                # --- NOU FORMAT VISUAL PER ALS NIVELLS ---
+                try: idx_nivell_usa = nivells_gfs_ordenats.index(nivell_actual_usa)
+                except ValueError: idx_nivell_usa = nivells_gfs_ordenats.index(850) if 850 in nivells_gfs_ordenats else 0
                 st.selectbox("Nivell:", nivells_gfs_ordenats, key="level_usa_main", index=idx_nivell_usa, 
-                             format_func=lambda x: f"{x} hPa (Bo per tempestes terrestres)" if x == 925 
-                                                   else f"{x} hPa (Bo per punts marítims)" if x == 1000 
+                             format_func=lambda x: f"{x} hPa Bo per el tereny" if x == 925 
+                                                   else f"{x} hPa Bo per zona marítima" if x == 1000 
                                                    else f"{x} hPa")
+                
                 
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
