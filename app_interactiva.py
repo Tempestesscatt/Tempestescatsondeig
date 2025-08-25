@@ -2027,8 +2027,8 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                         idx_nivell = 2
                     # --- NOU FORMAT VISUAL PER ALS NIVELLS ---
                     st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx_nivell, 
-                                 format_func=lambda x: f"{x} hPa ⭐ (Nucli tempesta)" if x == 925 
-                                                       else f"{x} hPa 🌊 (Anàlisi Marítima)" if x == 1000 
+                                 format_func=lambda x: f"{x} hPa Recomanació: (Per tempestes terrestres)" if x == 925 
+                                                       else f"{x} hPa (Recomanació: Per tempestes en punts marítims)" if x == 1000 
                                                        else f"{x} hPa")
                 else:
                     st.session_state.level_cat_main = 925
