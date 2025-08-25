@@ -2382,8 +2382,6 @@ def run_catalunya_app():
     # --- PAS 3: LLEGIR L'ESTAT FINAL I CARREGAR DADES ---
     poble_sel = st.session_state.poble_selector
     
-    # --- CANVI CLAU: COMPROVACIÓ DE SEGURETAT ---
-    # Si l'usuari ha seleccionat un separador, no fem res.
     if "---" in poble_sel:
         st.info("Selecciona una localitat de la llista per començar l'anàlisi.")
         return
@@ -2392,7 +2390,6 @@ def run_catalunya_app():
     hora_sel_str = st.session_state.hora_selector
     nivell_sel = st.session_state.level_cat_main if not is_guest else 925
     
-    # Aquesta línia ara és 100% SEGURA
     lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
     
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
@@ -2401,17 +2398,23 @@ def run_catalunya_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     timestamp_str = f"{dia_sel_str} a les {hora_sel_str} (Hora Local)"
 
-    # --- PAS 4: DIBUIXAR EL MENÚ I MOSTRAR RESULTATS ---
+    # --- PAS 4: DIBUIXAR EL MENÚ I MOSTRAR RESULTATS (LÒGICA CORREGIDA) ---
     menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical"] if is_guest else ["Anàlisi de Mapes", "Anàlisi Vertical", "💬 Assistent IA"]
     menu_icons = ["map", "graph-up-arrow"] if is_guest else ["map", "graph-up-arrow", "chat-quote-fill"]
 
-    if 'active_tab_cat' not in st.session_state: st.session_state.active_tab_cat = menu_options[0]
-    try: default_idx = menu_options.index(st.session_state.active_tab_cat)
-    except ValueError: default_idx = 0
+    # Utilitzem la clau del widget com a única font de veritat.
+    # No necessitem 'default_index' si gestionem l'estat directament.
+    selected_tab = option_menu(
+        menu_title=None, 
+        options=menu_options, 
+        icons=menu_icons,
+        menu_icon="cast", 
+        orientation="horizontal",
+        # La clau 'catalunya_nav' guardarà la selecció a st.session_state.catalunya_nav
+        key="catalunya_nav" 
+    )
 
-    selected_tab = option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", default_index=default_idx, orientation="horizontal", key="catalunya_nav")
-    st.session_state.active_tab_cat = selected_tab
-
+    # Ara, el contingut es mostra basant-se en el valor que el mateix widget ha guardat.
     if selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
     elif selected_tab in ["Anàlisi Vertical", "💬 Assistent IA"]:
@@ -2469,6 +2472,10 @@ def run_valley_halley_app():
 
     # --- PAS 3: LLEGIR ESTAT FINAL I CARREGAR DADES ---
     poble_sel = st.session_state.poble_selector_usa
+    if "---" in poble_sel:
+        st.info("Selecciona una ciutat de la llista per començar l'anàlisi.")
+        return
+
     dia_sel_str = st.session_state.dia_selector_usa_widget
     hora_sel_str_full = st.session_state.hora_selector_usa
     hora_sel_cst_only = hora_sel_str_full.split(' ')[0]
@@ -2481,17 +2488,19 @@ def run_valley_halley_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     timestamp_str = f"{dia_sel_str} a les {hora_sel_cst_only} (Central Time)"
 
-    # --- PAS 4: DIBUIXAR MENÚ I RESULTATS ---
+    # --- PAS 4: DIBUIXAR MENÚ I RESULTATS (LÒGICA CORREGIDA) ---
     menu_options_usa = ["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"]
     menu_icons_usa = ["map-fill", "graph-up-arrow", "globe-americas"]
 
-    if 'active_tab_usa' not in st.session_state: st.session_state.active_tab_usa = menu_options_usa[0]
-    try: default_idx_usa = menu_options_usa.index(st.session_state.active_tab_usa)
-    except ValueError: default_idx_usa = 0
-
-    selected_tab_usa = option_menu(menu_title=None, options=menu_options_usa, icons=menu_icons_usa, menu_icon="cast", default_index=default_idx_usa, orientation="horizontal", key="usa_nav")
-    st.session_state.active_tab_usa = selected_tab_usa
-
+    selected_tab_usa = option_menu(
+        menu_title=None, 
+        options=menu_options_usa, 
+        icons=menu_icons_usa,
+        menu_icon="cast", 
+        orientation="horizontal", 
+        key="usa_nav"
+    )
+    
     if selected_tab_usa == "Anàlisi de Mapes":
         with st.spinner(f"Carregant mapa GFS a {nivell_sel}hPa..."):
             map_data_final, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
@@ -2526,6 +2535,7 @@ def run_valley_halley_app():
         
     elif selected_tab_usa == "Satèl·lit (Temps Real)":
         ui_pestanya_satelit_usa()
+        
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
