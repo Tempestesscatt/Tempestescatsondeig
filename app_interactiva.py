@@ -2188,51 +2188,53 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
 
     with st.container(border=True):
         
-        # --- LÒGICA DE PREPARACIÓ I FORMAT ROBUSTA ---
-        def preparar_i_formatejar_llista(ciutats_dict, titol_actius, titol_inactius):
-            opcions_disponibles = sorted(list(ciutats_dict.keys()))
+        def preparar_llistes_localitats(ciutats_dict, conv_data):
             actives, inactives = [], []
+            if not conv_data: return [], sorted(list(ciutats_dict.keys()))
+            for city in sorted(ciutats_dict.keys()):
+                conv_value = conv_data.get(city)
+                if conv_value and conv_value >= 15:
+                    actives.append(city)
+                else: inactives.append(city)
+            actives.sort(key=lambda k: conv_data[k], reverse=True)
+            return actives, inactives
 
-            if convergencies:
-                for city in opcions_disponibles:
-                    conv_value = convergencies.get(city)
-                    if conv_value and conv_value >= 15:
-                        actives.append(city)
-                    else:
-                        inactives.append(city)
-                actives.sort(key=lambda k: convergencies[k], reverse=True)
-            else:
-                inactives = opcions_disponibles
-
-            # Aquesta funció interna crearà el text per mostrar
-            def format_func(city_key):
-                if city_key == titol_actius or city_key == titol_inactius:
-                    return f"--- {city_key} ---"
-                
-                conv = convergencies.get(city_key, 0) if convergencies else 0
-                emoji = "🔴" if conv >= 40 else "🟠" if conv >= 30 else "🟡" if conv >= 15 else ""
-                return f"{city_key} ({emoji} {conv:.0f})" if emoji else city_key
-
-            llista_final = []
-            if actives:
-                llista_final.append(titol_actius)
-                llista_final.extend(actives)
-            if inactives:
-                llista_final.append(titol_inactius)
-                llista_final.extend(inactives)
-            
-            return llista_final, format_func
+        def format_city_label(city_key):
+            if "---" in city_key: return "────────────────"
+            if not convergencies or city_key not in convergencies: return city_key
+            conv = convergencies.get(city_key, 0)
+            emoji = "🔴" if conv >= 40 else "🟠" if conv >= 30 else "🟡" if conv >= 15 else ""
+            return f"{city_key} ({emoji} {conv:.0f})" if emoji else city_key
 
         if zona_activa == 'catalunya':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc:
-                opcions_cat, format_cat = preparar_i_formatejar_llista(CIUTATS_CATALUNYA, "ZONES ACTIVES", "ALTRES ZONES")
-                
-                poble_actual = st.session_state.get('poble_selector', 'Barcelona')
-                # Assegurem que l'índex per defecte sigui sempre una ciutat vàlida
-                idx = opcions_cat.index(poble_actual) if poble_actual in opcions_cat else opcions_cat.index('Barcelona') if 'Barcelona' in opcions_cat else 0
+                # --- INICI DE LA NOVA LÒGICA D'AGRUPACIÓ ---
+                actives_terra, inactives_terra = preparar_llistes_localitats(POBLACIONS_TERRA, convergencies)
+                # Obtenim tots els punts marins i els ordenem alfabèticament
+                tots_els_punts_marins = sorted(list(PUNTS_MAR.keys()))
 
-                st.selectbox("Localitat:", options=opcions_cat, key="poble_selector", format_func=format_cat, index=idx)
+                # Construïm la llista final amb la nova estructura
+                opcions_finals = []
+                if actives_terra:
+                    opcions_finals.append("--- POBLACIONS AMB DISPAR ---")
+                    opcions_finals.extend(actives_terra)
+                if inactives_terra:
+                    opcions_finals.append("--- ZONES SENSE DISPAR ---")
+                    opcions_finals.extend(inactives_terra)
+                
+                # Afegim el bloc de zones marines al final
+                if tots_els_punts_marins:
+                    opcions_finals.append("--- ZONES MAR EN DINS ---")
+                    opcions_finals.extend(tots_els_punts_marins)
+                # --- FI DE LA NOVA LÒGICA ---
+
+                poble_actual = st.session_state.get('poble_selector', 'Barcelona')
+                idx = 0
+                if poble_actual in opcions_finals:
+                    idx = opcions_finals.index(poble_actual)
+                
+                st.selectbox("Localitat:", options=opcions_finals, key="poble_selector", format_func=format_city_label, index=idx)
 
             with col_dia:
                 now_local = datetime.now(TIMEZONE_CAT)
@@ -2252,13 +2254,17 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
         else: # Zona USA
             col_ciutat, col_dia, col_hora, col_nivell = st.columns(4)
             with col_ciutat:
-                opcions_usa, format_usa = preparar_i_formatejar_llista(USA_CITIES, "CIUTATS ACTIVES", "ALTRES CIUTATS")
+                actives_usa, inactives_usa = preparar_llistes_localitats(USA_CITIES, convergencies)
+                opcions_usa = []
+                if actives_usa: opcions_usa.extend(["--- CIUTATS AMB DISPAR ---"] + actives_usa)
+                if inactives_usa: opcions_usa.extend(["--- CIUTATS SENSE DISPAR ---"] + inactives_usa)
                 
                 poble_actual_usa = st.session_state.get('poble_selector_usa', 'Oklahoma City, OK')
-                idx_usa = opcions_usa.index(poble_actual_usa) if poble_actual_usa in opcions_usa else opcions_usa.index('Oklahoma City, OK') if 'Oklahoma City, OK' in opcions_usa else 0
+                idx_usa = 0
+                if poble_actual_usa in opcions_usa:
+                    idx_usa = opcions_usa.index(poble_actual_usa)
 
-                st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa", format_func=format_usa, index=idx_usa)
-
+                st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa", format_func=format_city_label, index=idx_usa)
             with col_dia:
                 now_usa = datetime.now(TIMEZONE_USA)
                 opcions_dia_usa = (now_usa.strftime('%d/%m/%Y'), (now_usa + timedelta(days=1)).strftime('%d/%m/%Y'), (now_usa + timedelta(days=2)).strftime('%d/%m/%Y'))
@@ -2272,9 +2278,9 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 st.selectbox("Hora (CST):", hores_opcions, key="hora_selector_usa", index=idx)
             with col_nivell:
                 nivells_gfs = sorted(PRESS_LEVELS_GFS, reverse=False)
-                nivell_actual = st.session_state.get('level_usa_main', 850)
-                idx = nivells_gfs.index(nivell_actual) if nivell_actual in nivells_gfs else nivells_gfs.index(850)
-                st.selectbox("Nivell:", nivells_gfs, key="level_usa_main", index=idx, format_func=lambda x: f"{x} hPa ⭐" if x == 850 else f"{x} hPa")
+                nivell_actual = st.session_state.get('level_usa_main', 925)
+                idx = nivells_gfs.index(nivell_actual) if nivell_actual in nivells_gfs else nivells_gfs.index(925)
+                st.selectbox("Nivell:", nivells_gfs, key="level_usa_main", index=idx, format_func=lambda x: f"{x} hPa Recomanat" if x == 925 else f"{x} hPa")
 
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
