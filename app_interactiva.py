@@ -2027,8 +2027,8 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                         idx_nivell = 2
                     # --- NOU FORMAT VISUAL PER ALS NIVELLS ---
                     st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx_nivell, 
-                                 format_func=lambda x: f"{x} hPa (Per tempestes terrestres)" if x == 925 
-                                                       else f"{x} hPa (Per punts marítims)" if x == 1000 
+                                 format_func=lambda x: f"{x} hPa (Bo per tempestes terrestres)" if x == 925 
+                                                       else f"{x} hPa (Bo per punts marítims)" if x == 1000 
                                                        else f"{x} hPa")
                 else:
                     st.session_state.level_cat_main = 925
@@ -2077,8 +2077,8 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     idx_nivell_usa = nivells_gfs_ordenats.index(850) if 850 in nivells_gfs_ordenats else 0
                 # --- NOU FORMAT VISUAL PER ALS NIVELLS ---
                 st.selectbox("Nivell:", nivells_gfs_ordenats, key="level_usa_main", index=idx_nivell_usa, 
-                             format_func=lambda x: f"{x} hPa ⭐ (Nucli tempesta)" if x == 925 
-                                                   else f"{x} hPa 🌊 (Anàlisi Marítima)" if x == 1000 
+                             format_func=lambda x: f"{x} hPa (Bo per tempestes terrestres)" if x == 925 
+                                                   else f"{x} hPa (Bo per punts marítims)" if x == 1000 
                                                    else f"{x} hPa")
                 
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
