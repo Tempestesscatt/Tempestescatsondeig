@@ -514,55 +514,70 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
 
 def diagnosticar_potencial_tempesta(params):
     """
-    Versió Definitiva v6.1 - CORREGIDA i ROBUSTA. Garanteix que el filtre
-    de CAPE funcioni en tots els casos.
+    Sistema de Diagnòstic Meteorològic Expert v7.0.
+    Implementa una classificació de tempestes molt més detallada, incloent
+    subtipus de supercèl·lules i sistemes multicel·lulars basats en DCAPE i PWAT.
     """
     # --- 1. EXTRACCIÓ SEGURA I PRIORITZADA DELS PARÀMETRES ---
-    # Aquesta és la part clau: assegurem que 'cape' tingui sempre el valor correcte.
-    # Prioritzem MLCAPE (més representatiu), però si no existeix, agafem SBCAPE.
     cape = params.get('MLCAPE')
-    if cape is None or pd.isna(cape):
-        cape = params.get('SBCAPE', 0)
-    # Si cap dels dos existeix, ens assegurem que sigui 0.
+    if cape is None or pd.isna(cape): cape = params.get('SBCAPE', 0)
     cape = cape or 0
 
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     srh_1km = params.get('SRH_0-1km', 0) or 0
     lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
     lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
+    dcape = params.get('DCAPE', 0) or 0     # <--- NOU PARÀMETRE CLAU PER A VENTADES
+    pwat = params.get('PWAT', 0) or 0       # <--- NOU PARÀMETRE CLAU PER A PLUGES/TIPUS SPC
 
-    bwd_thresh = THRESHOLDS_GLOBALS['BWD_0-6km'] 
-    srh_thresh = THRESHOLDS_GLOBALS['SRH_0-1km'] 
-    
     # --- 2. LÒGICA DEL TIPUS DE TEMPESTA (ORGANITZACIÓ) ---
     tipus_tempesta = "Cèl·lula Simple"; color_tempesta = "#2ca02c"
 
-    # --- CANVI CLAU: PRIMER VERIFIQUEM EL COMBUSTIBLE ---
-    # Ara, el filtre de CAPE és la PRIMERA condició. Si no es compleix,
-    # no avaluem res més sobre l'organització.
-    if cape >= 700:
-        if bwd_6km >= bwd_thresh[2]: # > 40 nusos
-            tipus_tempesta = "Supercèl·lula"
-            color_tempesta = "#dc3545"
-        elif bwd_6km >= bwd_thresh[1]: # 30-39 nusos
-            tipus_tempesta = "Multicèl·lula Severa (QLCS)"
-            color_tempesta = "#fd7e14"
-        elif bwd_6km >= bwd_thresh[0]: # 20-29 nusos
-            tipus_tempesta = "Línia de Multicèl·lules"
-            color_tempesta = "#ffc107"
-        # Si hi ha CAPE però no prou cisallament, es queda com a Cèl·lula Simple (correcte)
-            
-    # Si cape < 700, la variable 'tipus_tempesta' mai es modifica i
-    # es queda amb el seu valor per defecte: "Cèl·lula Simple".
+    # La primera i més important condició: hi ha prou combustible?
+    if cape < 700:
+        tipus_tempesta = "Cèl·lula Simple (Feble)"; color_tempesta = "#2ca02c"
+    
+    # Si hi ha combustible, avaluem el cisallament per determinar l'estructura
+    # --- DOMINI DE LES SUPERCÈL·LULES (CISALLAMENT MOLT ALT) ---
+    elif bwd_6km >= 35:
+        # Sub-classificació de supercèl·lules basada en la humitat (PWAT)
+        if pwat > 45:
+            tipus_tempesta = "Supercèl·lula HP (Alta Precipitació)"
+        elif pwat < 30:
+            tipus_tempesta = "Supercèl·lula LP (Baixa Precipitació)"
+        else:
+            tipus_tempesta = "Supercèl·lula Clàssica"
+        color_tempesta = "#dc3545"
 
-    # --- 3. LÒGICA DE LA BASE DEL NÚVOL (POTENCIAL DE ROTACIÓ) ---
+    # --- DOMINI DE LES MULTICÈL·LULES ORGANITZADES (CISALLAMENT MODERAT-ALT) ---
+    elif bwd_6km >= 20:
+        # Sub-classificació basada en el potencial de ventades (DCAPE)
+        if dcape > 1000:
+            tipus_tempesta = "Línia de Multicèl·lules (Pot. Esclafits / Bow Echo)"
+            color_tempesta = "#fd7e14" # Taronja per perill de vent
+        else:
+            tipus_tempesta = "Grup Multicel·lular Organitzat"
+            color_tempesta = "#ffc107" # Groc per a multicèl·lules estàndard
+
+    # --- DOMINI DE LES CÈL·LULES SIMPLES (CISALLAMENT BAIX) ---
+    else: # (bwd_6km < 20 i cape >= 700)
+        # Sub-classificació basada en la intensitat del CAPE
+        if cape > 2500:
+            tipus_tempesta = "Cèl·lula de Pols (Calamarsa/Ventada sobtada)"
+            color_tempesta = "#ffc107" # Groc per perill puntual
+        else:
+            tipus_tempesta = "Cèl·lula Simple"
+            color_tempesta = "#2ca02c"
+
+    # --- 3. LÒGICA DE LA BASE DEL NÚVOL (POTENCIAL DE ROTACIÓ A NIVELLS BAIXOS) ---
+    # Aquesta lògica es manté igual, ja que analitza un aspecte diferent de la tempesta.
     base_nuvol = "Plana i Alta"; color_base = "#2ca02c"
     
-    if srh_1km >= srh_thresh[2] and lcl_hgt < 1000 and lfc_hgt < 1500: # SRH > 250, LCL < 1km, LFC < 1.5km
+    if srh_1km >= 250 and lcl_hgt < 1000 and lfc_hgt < 1500:
         base_nuvol = "Tornàdica (Potencial Alt)"; color_base = "#dc3545"
-    elif srh_1km >= srh_thresh[1] and lcl_hgt < 1200: # SRH > 150, LCL < 1.2km
+    elif srh_1km >= 150 and lcl_hgt < 1200:
         base_nuvol = "Rotatòria Forta (Wall Cloud)"; color_base = "#fd7e14"
-    elif srh_1km >= srh_thresh[0]: # SRH > 100
+    elif srh_1km >= 100:
         base_nuvol = "Rotatòria (Inflow)"; color_base = "#ffc107"
         
     return tipus_tempesta, color_tempesta, base_nuvol, color_base
