@@ -199,43 +199,38 @@ def format_time_left(time_delta):
 def inject_custom_css():
     st.markdown("""
     <style>
-    .stSpinner > div {
-        justify-content: center;
-    }
+    /* --- ESTILS GLOBALS I DARK MODE (PER DEFECTE) --- */
+    .stSpinner > div { justify-content: center; }
+    .blinking-alert { animation: blink 1.5s linear infinite; }
+    @keyframes blink { 50% { opacity: 0.6; } }
+    
+    /* Fons de vídeo (només visible a la pàgina de login) */
+    .video-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -2; overflow: hidden; }
+    .video-bg { width: 100%; height: 100%; object-fit: cover; }
+    .overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.65); z-index: -1; }
 
-    .blinking-alert {
-        animation: blink 1.5s linear infinite;
-    }
+    /* --- ESTILS ESPECÍFICS PER AL LIGHT MODE --- */
+    /* Aquests estils NOMÉS s'activen quan el body té la classe 'light-theme-active' */
 
-    @keyframes blink {
-        50% { opacity: 0.6; }
+    /* Fons de l'aplicació principal */
+    .light-theme-active .stApp {
+        background-color: #FFFFFF;
+        color: #0e1117;
     }
     
-    /* Contenidors per al vídeo de fons */
-    .video-container {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        z-index: -2;
-        overflow: hidden;
+    /* Textos generals */
+    .light-theme-active h1, .light-theme-active h2, .light-theme-active h3, .light-theme-active h4, .light-theme-active h5,
+    .light-theme-active .stMarkdown, .light-theme-active p, .light-theme-active .stSubheader, .light-theme-active .stTextInput label {
+        color: #0e1117 !important;
     }
     
-    .video-bg {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
+    /* Fons dels widgets de paràmetres */
+    .light-theme-active .styled-widget-box {
+        background-color: #FFFFFF !important;
+        border: 1px solid #E0E0E0 !important;
     }
-
-    .overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        background-color: rgba(0, 0, 0, 0.65);
-        z-index: -1;
+    .light-theme-active .styled-widget-box span {
+        color: #31333F !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -243,12 +238,10 @@ def inject_custom_css():
 
 
 def show_login_page():
-    # Aquesta funció posa el vídeo i el seu propi CSS per garantir que el text sigui sempre blanc.
-    add_video_background("llamps.mp4")
-
+    # Injecta el CSS específic del login per forçar el text blanc.
     st.markdown("""
         <style>
-        /* CSS específic i de màxima prioritat NOMÉS per a la pàgina de login */
+        /* Aquest CSS assegura que la pàgina de login sempre tingui text blanc, independentment del tema */
         [data-testid="stSubheader"],
         div[data-testid="stTextInput"] label,
         div[data-testid="stMarkdown"] p {
@@ -256,6 +249,8 @@ def show_login_page():
         }
         </style>
     """, unsafe_allow_html=True)
+
+    add_video_background("llamps.mp4")
 
     st.markdown("<h1 style='text-align: center; color: white;'>Tempestes.cat</h1>", unsafe_allow_html=True)
     st.markdown("---")
@@ -302,7 +297,6 @@ def show_login_page():
     if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary", key="guest_login"):
         st.session_state.update({'guest_mode': True, 'logged_in': True})
         st.rerun()
-
 
 
 
