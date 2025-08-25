@@ -2069,34 +2069,67 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             st.rerun()
 
     with st.container(border=True):
-        # --- LÒGICA DE FORMAT SIMPLIFICADA I SEGURA ---
+        
+        # --- NOVA FUNCIÓ AJUDANT PER PREPARAR LES LLISTES ---
+        # Aquesta funció separa les localitats en dos grups: amb i sense convergència.
+        def preparar_llistes_localitats(ciutats_dict, conv_data):
+            actives = {}
+            inactives = []
+            if not conv_data:
+                return [], sorted(list(ciutats_dict.keys()))
+
+            for city, coords in ciutats_dict.items():
+                conv_value = conv_data.get(city)
+                if conv_value and conv_value >= 15:
+                    actives[city] = conv_value
+                else:
+                    inactives.append(city)
+            
+            # Ordena les ciutats actives per convergència (de major a menor)
+            actives_ordenades = sorted(actives.keys(), key=lambda k: actives[k], reverse=True)
+            return actives_ordenades, sorted(inactives)
+
+        # Aquesta funció crea el text bonic que veurà l'usuari
         def format_city_label(city_key):
             if not convergencies or city_key not in convergencies:
                 return city_key
-            conv = convergencies[city_key]
+            conv = convergencies.get(city_key, 0)
             emoji = "🔴" if conv >= 40 else "🟠" if conv >= 30 else "🟡" if conv >= 15 else ""
             return f"{city_key} ({emoji} {conv:.0f})" if emoji else city_key
 
         if zona_activa == 'catalunya':
-            col_terra, col_mar, col_dia, col_hora, col_nivell = st.columns(5)
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             
-            # Combinem els dos diccionaris en un de sol per a un únic selector
-            opcions_cat_combinades = list(POBLACIONS_TERRA.keys()) + list(PUNTS_MAR.keys())
-            
-            # --- CANVI CLAU: UN ÚNIC SELECTOR PER A CATALUNYA ---
-            with col_terra:
+            with col_loc:
+                # --- CANVI CLAU: LÒGICA DE SEPARACIÓ VISUAL ---
+                actives_terra, inactives_terra = preparar_llistes_localitats(POBLACIONS_TERRA, convergencies)
+                actives_mar, inactives_mar = preparar_llistes_localitats(PUNTS_MAR, convergencies)
+
+                # Creem la llista final d'opcions amb separadors
+                opcions_finals = []
+                if actives_terra:
+                    opcions_finals.append("--- POBLACIONS ACTIVES ---")
+                    opcions_finals.extend(actives_terra)
+                if actives_mar:
+                    opcions_finals.append("--- PUNTS MARINS ACTIUS ---")
+                    opcions_finals.extend(actives_mar)
+                
+                opcions_finals.append("--- ALTRES POBLACIONS ---")
+                opcions_finals.extend(inactives_terra)
+                opcions_finals.append("--- ALTRES PUNTS MARINS ---")
+                opcions_finals.extend(inactives_mar)
+
                 st.selectbox(
                     "Localitat:",
-                    options=opcions_cat_combinades,
+                    options=opcions_finals,
                     key="poble_selector",
-                    format_func=format_city_label,
-                    # index=opcions_cat_combinades.index(st.session_state.get('poble_selector', 'Barcelona'))
+                    format_func=lambda x: "────────────────" if "---" in x else format_city_label(x)
                 )
 
             with col_dia:
                 now_local = datetime.now(TIMEZONE_CAT)
                 opcions_dia = (now_local.strftime('%d/%m/%Y'), (now_local + timedelta(days=1)).strftime('%d/%m/%Y'))
-                st.selectbox("Dia:", opcions_dia, key="dia_selector", disabled=is_guest, on_change=on_day_change_cat)
+                st.selectbox("Dia:", opcions_dia, key="dia_selector", disabled=is_guest)
             
             with col_hora:
                 opcions_hora = [f"{h:02d}:00h" for h in range(24)]
@@ -2113,17 +2146,20 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
         else: # Zona USA
             col_ciutat, col_dia, col_hora, col_nivell = st.columns(4)
             with col_ciutat:
-                opcions_usa = list(USA_CITIES.keys())
-                st.selectbox(
-                    "Ciutat:",
-                    options=opcions_usa,
-                    key="poble_selector_usa",
-                    format_func=format_city_label
-                )
+                actives_usa, inactives_usa = preparar_llistes_localitats(USA_CITIES, convergencies)
+                opcions_usa = []
+                if actives_usa:
+                    opcions_usa.append("--- CIUTATS ACTIVES ---")
+                    opcions_usa.extend(actives_usa)
+                opcions_usa.append("--- ALTRES CIUTATS ---")
+                opcions_usa.extend(inactives_usa)
+                
+                st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa", format_func=lambda x: "────────────────" if "---" in x else format_city_label(x))
+
             with col_dia:
                 now_usa = datetime.now(TIMEZONE_USA)
                 opcions_dia_usa = (now_usa.strftime('%d/%m/%Y'), (now_usa + timedelta(days=1)).strftime('%d/%m/%Y'), (now_usa + timedelta(days=2)).strftime('%d/%m/%Y'))
-                st.selectbox("Dia:", opcions_dia_usa, key="dia_selector_usa_widget", on_change=on_day_change_usa)
+                st.selectbox("Dia:", opcions_dia_usa, key="dia_selector_usa_widget")
             with col_hora:
                 dia_sel_str = st.session_state.get('dia_selector_usa_widget', datetime.now(TIMEZONE_USA).strftime('%d/%m/%Y'))
                 target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
@@ -2136,6 +2172,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 nivell_actual = st.session_state.get('level_usa_main', 850)
                 idx = nivells_gfs.index(nivell_actual) if nivell_actual in nivells_gfs else nivells_gfs.index(850)
                 st.selectbox("Nivell:", nivells_gfs, key="level_usa_main", index=idx, format_func=lambda x: f"{x} hPa ⭐" if x == 850 else f"{x} hPa")
+                
 
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
@@ -2343,18 +2380,19 @@ def run_catalunya_app():
     ui_capcalera_selectors(None, None, zona_activa="catalunya", convergencies=pre_convergencies)
 
     # --- PAS 3: LLEGIR L'ESTAT FINAL I CARREGAR DADES ---
-    # Aquesta línia ara és SEGURA perquè st.session_state.poble_selector sempre serà una clau vàlida.
     poble_sel = st.session_state.poble_selector
     
-    if not poble_sel: # Comprovació per si de cas
-        st.info("Selecciona una localitat per començar l'anàlisi.")
+    # --- CANVI CLAU: COMPROVACIÓ DE SEGURETAT ---
+    # Si l'usuari ha seleccionat un separador, no fem res.
+    if "---" in poble_sel:
+        st.info("Selecciona una localitat de la llista per començar l'anàlisi.")
         return
 
     dia_sel_str = st.session_state.dia_selector
     hora_sel_str = st.session_state.hora_selector
     nivell_sel = st.session_state.level_cat_main if not is_guest else 925
     
-    # Aquesta línia ara és SEGURA
+    # Aquesta línia ara és 100% SEGURA
     lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
     
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
