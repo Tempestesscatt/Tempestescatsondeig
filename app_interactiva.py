@@ -1954,19 +1954,15 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
         def formatar_llista_ciutats(ciutats_dict, conv_data):
             if not conv_data:
                 return sorted(list(ciutats_dict.keys()))
-
             ciutats_amb_conv = []
             ciutats_sense_conv = []
-
             for city in sorted(ciutats_dict.keys()):
                 conv = conv_data.get(city)
-                
                 if conv is not None and pd.notna(conv):
                     emoji = ""
                     if conv >= 40:   emoji = "🔴"
                     elif conv >= 30: emoji = "🟠"
                     elif conv >= 15: emoji = "🟡"
-                    
                     if emoji:
                         text_formatat = f"{city} ({emoji} {conv:.0f})"
                     else:
@@ -1974,7 +1970,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     ciutats_amb_conv.append((text_formatat, conv))
                 else:
                     ciutats_sense_conv.append(city)
-            
             ciutats_ordenades = sorted(ciutats_amb_conv, key=lambda item: item[1], reverse=True)
             llista_final = [item[0] for item in ciutats_ordenades]
             return llista_final + ciutats_sense_conv
@@ -1983,17 +1978,14 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             col_terra, col_mar, col_dia, col_hora, col_nivell = st.columns(5)
             PLACEHOLDER_TERRA = "--- Selecciona Població ---"
             PLACEHOLDER_MAR = "--- Selecciona Punt Marí ---"
-            
             tooltip_text = "Mostra els punts amb major convergència ('disparador' de tempestes).\n\nLlegenda:\n- 🟡 (>15): Moderada\n- 🟠 (>30): Alta\n- 🔴 (>40): Molt Alta\n\nEl valor és la força de la convergència."
-
             poble_actual_master = st.session_state.get('poble_selector')
 
             with col_terra:
                 opcions_terra = [PLACEHOLDER_TERRA] + formatar_llista_ciutats(POBLACIONS_TERRA, convergencies)
                 idx_terra = 0
                 if poble_actual_master in POBLACIONS_TERRA:
-                    try:
-                        idx_terra = next(i for i, opt in enumerate(opcions_terra) if opt.startswith(poble_actual_master))
+                    try: idx_terra = next(i for i, opt in enumerate(opcions_terra) if opt.startswith(poble_actual_master))
                     except (ValueError, StopIteration): idx_terra = 0
                 terra_sel = st.selectbox("Població:", opcions_terra, key="selector_terra_widget", index=idx_terra, help=tooltip_text)
 
@@ -2001,8 +1993,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 opcions_mar = [PLACEHOLDER_MAR] + formatar_llista_ciutats(PUNTS_MAR, convergencies)
                 idx_mar = 0
                 if poble_actual_master in PUNTS_MAR:
-                    try:
-                        idx_mar = next(i for i, opt in enumerate(opcions_mar) if opt.startswith(poble_actual_master))
+                    try: idx_mar = next(i for i, opt in enumerate(opcions_mar) if opt.startswith(poble_actual_master))
                     except (ValueError, StopIteration): idx_mar = 0
                 mar_sel = st.selectbox("Punt Marí:", opcions_mar, key="selector_mar_widget", index=idx_mar, help=tooltip_text)
 
@@ -2012,14 +2003,12 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             if terra_sel != PLACEHOLDER_TERRA and terra_sel_net != poble_actual_master:
                 st.session_state.poble_selector = terra_sel_net
                 st.rerun()
-
             elif mar_sel != PLACEHOLDER_MAR and mar_sel_net != poble_actual_master:
                 st.session_state.poble_selector = mar_sel_net
                 st.rerun()
 
             now_local = datetime.now(TIMEZONE_CAT)
             with col_dia:
-                # --- CANVI ---
                 avui_str = now_local.strftime('%d/%m/%Y')
                 dema_str = (now_local + timedelta(days=1)).strftime('%d/%m/%Y')
                 opcions_dia = (avui_str,) if is_guest else (avui_str, dema_str)
@@ -2031,7 +2020,13 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             with col_nivell:
                 if not is_guest:
                     nivells = [1000, 950, 925, 900, 850, 800, 700]
-                    st.selectbox("Nivell:", nivells, key="level_cat_main", index=3, format_func=lambda x: f"{x} hPa")
+                    # --- LÒGICA CORREGIDA ---
+                    nivell_actual = st.session_state.get('level_cat_main', 925)
+                    try:
+                        idx_nivell = nivells.index(nivell_actual)
+                    except ValueError:
+                        idx_nivell = 2 # Per defecte a 925hPa
+                    st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx_nivell, format_func=lambda x: f"{x} hPa")
                 else:
                     st.session_state.level_cat_main = 925
         
@@ -2041,10 +2036,8 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             with col_ciutat:
                 opcions_usa = formatar_llista_ciutats(USA_CITIES, convergencies)
                 poble_sel_net = st.session_state.get('poble_selector_usa', 'Oklahoma City, OK').split(' (')[0]
-                try:
-                    idx = next(i for i, opt in enumerate(opcions_usa) if opt.startswith(poble_sel_net))
-                except (ValueError, StopIteration):
-                    idx = 0
+                try: idx = next(i for i, opt in enumerate(opcions_usa) if opt.startswith(poble_sel_net))
+                except (ValueError, StopIteration): idx = 0
                 poble_seleccionat = st.selectbox("Ciutat:", opcions_usa, key="poble_selector_usa_widget", index=idx)
                 nou_poble_net = poble_seleccionat.split(' (')[0]
                 if st.session_state.get('poble_selector_usa') != nou_poble_net:
@@ -2052,7 +2045,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     st.rerun()
 
             with col_dia:
-                # --- CANVI ---
                 now_usa = datetime.now(TIMEZONE_USA)
                 avui_str = now_usa.strftime('%d/%m/%Y')
                 dema_str = (now_usa + timedelta(days=1)).strftime('%d/%m/%Y')
@@ -2067,7 +2059,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     time_in_spain = now_spain.replace(hour=h, minute=0, second=0, microsecond=0)
                     time_in_usa = time_in_spain.astimezone(TIMEZONE_USA)
                     hores_opcions.append(f"{time_in_usa.hour:02d}:00 (Local: {time_in_spain.hour:02d}:00h)")
-                
                 hora_actual_str = st.session_state.get('hora_selector_usa')
                 idx_hora = 0
                 if hora_actual_str in hores_opcions:
@@ -2075,10 +2066,14 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 st.selectbox("Hora (CST):", hores_opcions, key="hora_selector_usa", index=idx_hora)
 
             with col_nivell:
+                # --- LÒGICA CORREGIDA ---
                 nivells_gfs_ordenats = sorted(PRESS_LEVELS_GFS, reverse=False)
-                default_level_index = nivells_gfs_ordenats.index(850) if 850 in nivells_gfs_ordenats else 0
-                st.selectbox("Nivell:", nivells_gfs_ordenats, key="level_usa_main", index=default_level_index, format_func=lambda x: f"{x} hPa")
-                
+                nivell_actual_usa = st.session_state.get('level_usa_main', 850)
+                try:
+                    idx_nivell_usa = nivells_gfs_ordenats.index(nivell_actual_usa)
+                except ValueError:
+                    idx_nivell_usa = nivells_gfs_ordenats.index(850) if 850 in nivells_gfs_ordenats else 0
+                st.selectbox("Nivell:", nivells_gfs_ordenats, key="level_usa_main", index=idx_nivell_usa, format_func=lambda x: f"{x} hPa")
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
     
