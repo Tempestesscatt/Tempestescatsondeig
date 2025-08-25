@@ -706,6 +706,8 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str, theme='
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol, timestamp_str, theme='dark'):
     text_color = '#31333F' if theme == 'light' else 'white'
     grid_color = '#C5C5C5' if theme == 'light' else '#555555'
+    # --- NOU COLOR DINÀMIC PER AL TEXT DE LES BARBES ---
+    barb_text_color = '#31333F' if theme == 'light' else 'white'
 
     fig = plt.figure(dpi=150, figsize=(8, 8))
     fig.patch.set_alpha(0.0)
@@ -733,8 +735,11 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol, timestamp_str, 
         if not np.isnan(spd_kmh):
             color_index = np.searchsorted(thresholds_barbs, spd_kmh); color = colors_barbs[color_index]
             ax_barbs.barbs(x_pos[i], 0, u_barbs_kt[i], v_barbs_kt[i], length=8, pivot='middle', color=color)
-            ax_barbs.text(x_pos[i], -0.8, f"{spd_kmh:.0f} km/h", ha='center', va='top', fontsize=9, color=color, weight='bold')
-        else: ax_barbs.text(x_pos[i], 0, "N/A", ha='center', va='center', fontsize=9, color='grey')
+            # --- LÍNIA CLAU MODIFICADA ---
+            # Ara el color del text de la velocitat s'adapta al tema
+            ax_barbs.text(x_pos[i], -0.8, f"{spd_kmh:.0f} km/h", ha='center', va='top', fontsize=9, color=barb_text_color, weight='bold')
+        else: 
+            ax_barbs.text(x_pos[i], 0, "N/A", ha='center', va='center', fontsize=9, color='grey')
     ax_barbs.set_xticks(x_pos); ax_barbs.set_xticklabels([f"{h} km" for h in barb_altitudes_km], color=text_color); ax_barbs.set_yticks([]); ax_barbs.spines[:].set_visible(False); ax_barbs.tick_params(axis='x', length=0, pad=5); ax_barbs.set_xlim(-0.5, len(barb_altitudes_km) - 0.5); ax_barbs.set_ylim(-1.5, 1.5)
     
     h = Hodograph(ax_hodo, component_range=80.); h.add_grid(increment=20, color=grid_color, linestyle='--')
