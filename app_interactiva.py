@@ -186,6 +186,35 @@ def count_unread_messages(history):
 
 
 
+
+def generar_html_video_animacio(video_path, height="250px"):
+    """
+    Crea el codi HTML per mostrar un vídeo en bucle com una animació
+    dins d'un contenidor amb cantonades arrodonides.
+    """
+    if not os.path.exists(video_path):
+        return f"<p style='color: red;'>Error: No es troba el vídeo a '{video_path}'</p>"
+
+    with open(video_path, "rb") as f:
+        video_bytes = f.read()
+    video_b64 = base64.b64encode(video_bytes).decode()
+    
+    # Estils per al contenidor i el vídeo
+    container_style = f"width: 100%; height: {height}; border-radius: 10px; overflow: hidden; margin-bottom: 10px;"
+    video_style = "width: 100%; height: 100%; object-fit: cover;"
+
+    html_code = f"""
+    <div style="{container_style}">
+        <video autoplay loop muted playsinline style="{video_style}">
+            <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
+            El teu navegador no suporta vídeos HTML5.
+        </video>
+    </div>
+    """
+    return html_code
+
+
+
 def afegir_video_de_fons():
     """
     Llegeix un arxiu de vídeo local, el codifica en Base64 i l'injecta
@@ -2483,18 +2512,16 @@ def run_valley_halley_app():
         
     elif selected_tab_usa == "Satèl·lit (Temps Real)":
         ui_pestanya_satelit_usa()
+        
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # Camins a les imatges locals
-    path_img_cat = "catalunya.jpeg"
-    path_img_usa = "tornado_alley.jpeg"
-
-    # Comprovem si els arxius existeixen per evitar un error
-    if not os.path.exists(path_img_cat) or not os.path.exists(path_img_usa):
-        st.error(f"Error: No es troben les imatges. Assegura't que els arxius '{path_img_cat}' i '{path_img_usa}' estan al mateix directori que el teu script Python.")
-        return
+    # --- LÍNIES MODIFICADES ---
+    # Camins als nous arxius de vídeo (animacions)
+    path_anim_cat = "catalunya_anim.mp4"
+    path_anim_usa = "tornado_alley_anim.mp4"
+    # ---------------------------
 
     with st.spinner('Carregant entorns geoespacials...'): 
         time.sleep(1) 
@@ -2502,23 +2529,27 @@ def ui_zone_selection():
     col1, col2 = st.columns(2)
     with col1:
         with st.container(border=True):
-            st.image(path_img_cat, caption="Tempestes catalanas tradicionals.")
+            # --- CANVI CLAU: Fem servir la nova funció per a la animació ---
+            html_video_cat = generar_html_video_animacio(path_anim_cat)
+            st.markdown(html_video_cat, unsafe_allow_html=True)
+            # -------------------------------------------------------------
+
             st.subheader("Catalunya")
             st.write("Anàlisi detallada d'alta resolució (Model AROME) per al territori català. Ideal per a seguiment de tempestes locals, fenòmens de costa i muntanya.")
             
-            # --- LÍNIA CORREGIDA ---
-            # S'ha afegit una 'key' única a aquest botó.
             if st.button("Analitzar Catalunya", use_container_width=True, type="primary", key="btn_select_catalunya"):
                 st.session_state['zone_selected'] = 'catalunya'
                 st.rerun()
     with col2:
         with st.container(border=True):
-            st.image(path_img_usa, caption="Supercèl·lula a les planes dels Estats Units.")
+            # --- CANVI CLAU: Fem servir la nova funció per a la animació ---
+            html_video_usa = generar_html_video_animacio(path_anim_usa)
+            st.markdown(html_video_usa, unsafe_allow_html=True)
+            # -------------------------------------------------------------
+            
             st.subheader("Tornado Alley (EUA)")
             st.write("Anàlisi a escala sinòptica (Model GFS) per al 'Corredor de Tornados' dels EUA. Perfecte per a l'estudi de sistemes de gran escala i temps sever organitzat.")
             
-            # --- LÍNIA CORREGIDA ---
-            # S'ha afegit una 'key' única i diferent a aquest altre botó.
             if st.button("Analitzar Tornado Alley", use_container_width=True, key="btn_select_usa"):
                 st.session_state['zone_selected'] = 'valley_halley'
                 st.rerun()
