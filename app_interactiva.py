@@ -9,7 +9,6 @@ import time
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as path_effects
 from matplotlib.colors import ListedColormap, BoundaryNorm
-from matplotlib.colors import LinearSegmentedColormap
 from metpy.plots import SkewT, Hodograph
 from metpy.units import units
 import metpy.calc as mpcalc
@@ -536,37 +535,27 @@ def verificar_datos_entrada(p, T, Td, u, v, heights):
 
 def crear_skewt(p, T, Td, u, v, prof, params_calc, titol):
     """
-    Versió final i estètica. Afegeix un degradat de color per representar
-    el terreny quan l'anàlisi es fa en un punt elevat, donant un aspecte
-    més professional i clar al gràfic.
+    Versió final i millorada. Afegeix un ombrejat a la part inferior per
+    representar visualment el terreny quan l'anàlisi es fa en un punt elevat,
+    millorant la claredat del gràfic.
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
     skew.ax.grid(True, linestyle='-', alpha=0.5)
 
-    # --- NOU BLOC PER A L'OMBREJAT DEL TERRENY AMB DEGRADAT ---
+    # --- NOU BLOC PER A L'OMBREJAT DEL TERRENY ---
+    # Obtenim la pressió de superfície (el primer punt del perfil de pressió)
     pressio_superficie = p[0].m
     
+    # Si la pressió de superfície és inferior a 995 hPa, significa que el terreny
+    # està elevat. Ombregem aquesta zona per a una millor visualització.
     if pressio_superficie < 995:
-        # Defineix els colors del nostre degradat: de marró fosc a verd clar
-        colors = ["#66462F", "#799845"] 
-        # Crea el mapa de colors del degradat
-        cmap_terreny = LinearSegmentedColormap.from_list("terreny_cmap", colors)
-        
-        # Crea una imatge vertical simple que anirà del 0 al 1
-        gradient = np.linspace(0, 1, 256).reshape(-1, 1)
-        
-        # Dibuixa la imatge del degradat estirant-la per tot el gràfic
-        # des del fons (1000hPa) fins a la pressió de superfície
-        xlims = skew.ax.get_xlim()
-        skew.ax.imshow(
-            gradient.T, 
-            aspect='auto', 
-            cmap=cmap_terreny, 
-            origin='lower',
-            extent=(xlims[0], xlims[1], 1000, pressio_superficie),
-            alpha=0.6, # Més opac per a un efecte "més fort"
-            zorder=0
+        skew.ax.axhspan(
+            1000,                      # Des del fons del gràfic (1000 hPa)
+            pressio_superficie,        # Fins a la pressió de superfície real
+            facecolor='#b2b28c',       # Un color verd/marró tipus terra
+            alpha=0.8,                 # Amb una certa transparència
+            zorder=0                   # Dibuixat al fons de tot, darrere de les línies
         )
     # --- FI DEL NOU BLOC ---
     
