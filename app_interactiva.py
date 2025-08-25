@@ -239,25 +239,29 @@ def format_time_left(time_delta):
     return f"{hours}h {minutes}min" if hours > 0 else f"{minutes} min"
 
 def show_login_page():
+    # 1. Posa sempre el vídeo de fons.
     add_video_background("llamps.mp4")
 
-    # --- NOU BLOC DE CSS LOCAL ---
-    # Aquest CSS s'injecta NOMÉS aquí i força els colors blancs
-    # per a una llegibilitat perfecta sobre el vídeo fosc.
+    # 2. Injecta un CSS local i de màxima precisió que força el text a ser blanc.
+    # Aquest codi NOMÉS afecta la pàgina de login.
     st.markdown("""
     <style>
+    /* Títol principal "Inicia Sessió" / "Crea un nou compte" */
     [data-testid="stSubheader"] {
         color: white !important;
     }
+    /* Etiquetes "Nom d'usuari" i "Contrasenya" */
     div[data-testid="stTextInput"] label {
         color: white !important;
     }
+    /* Text "O si ho prefereixes..." */
     div[data-testid="stMarkdown"] p {
         color: white !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
+    # El títol principal ja es força a blanc aquí.
     st.markdown("<h1 style='text-align: center; color: white;'>Tempestes.cat</h1>", unsafe_allow_html=True)
     st.markdown("---")
 
@@ -311,7 +315,6 @@ def show_login_page():
     if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary", key="guest_login"):
         st.session_state.update({'guest_mode': True, 'logged_in': True})
         st.rerun()
-
 def get_theme_from_frontend():
     """
     Component 'espia' que detecta el tema actiu de Streamlit (light/dark)
