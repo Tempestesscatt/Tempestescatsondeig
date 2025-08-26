@@ -2199,6 +2199,9 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             st.rerun()
 
     with st.container(border=True):
+        # --- LÍNIA AFEGIDA ---
+        st.caption("💡 Les alertes (🟡/🟠/🔴) indiquen zones amb 'disparador' (convergència). Cal analitzar la inestabilitat per confirmar el potencial de tempesta.")
+        # --- FI DE LA LÍNIA AFEGIDA ---
         
         def preparar_llistes_localitats(ciutats_dict, conv_data):
             actives, inactives = [], []
@@ -2221,26 +2224,16 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
         if zona_activa == 'catalunya':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc:
-                # --- INICI DE LA NOVA LÒGICA D'AGRUPACIÓ ---
                 actives_terra, inactives_terra = preparar_llistes_localitats(POBLACIONS_TERRA, convergencies)
-                # Obtenim tots els punts marins i els ordenem alfabèticament
                 tots_els_punts_marins = sorted(list(PUNTS_MAR.keys()))
-
-                # Construïm la llista final amb la nova estructura
                 opcions_finals = []
                 if actives_terra:
-                    opcions_finals.append("--- POBLACIONS AMB DISPAR ---")
-                    opcions_finals.extend(actives_terra)
+                    opcions_finals.extend(["--- POBLACIONS AMB DISPAR ---"] + actives_terra)
                 if inactives_terra:
-                    opcions_finals.append("--- ZONES SENSE DISPAR ---")
-                    opcions_finals.extend(inactives_terra)
-                
-                # Afegim el bloc de zones marines al final
+                    opcions_finals.extend(["--- ZONES SENSE DISPAR ---"] + inactives_terra)
                 if tots_els_punts_marins:
-                    opcions_finals.append("--- ZONES MAR EN DINS ---")
-                    opcions_finals.extend(tots_els_punts_marins)
-                # --- FI DE LA NOVA LÒGICA ---
-
+                    opcions_finals.extend(["--- ZONES MAR EN DINS ---"] + tots_els_punts_marins)
+                
                 poble_actual = st.session_state.get('poble_selector', 'Barcelona')
                 idx = 0
                 if poble_actual in opcions_finals:
