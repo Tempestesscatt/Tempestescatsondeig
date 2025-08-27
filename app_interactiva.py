@@ -2917,7 +2917,7 @@ def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpret
         "Ets un expert apassionat de la meteorologia. El teu to és de confiança i divertit, didàctic i directe, com si donessis un classes clau a un amic.",
         
         "\n### MISSIÓ",
-        "Un sistema automàtic ha analitzat un sondeig i t'ha donat un 'Veredicte' i una interpretació qualitativa dels paràmetres, pots aproxmar sense delirar. La teva missió és utilitzar aquesta informació per construir una explicació coherent i senzilla per al teu amic.",
+        "Un sistema automàtic ha analitzat un sondeig i t'ha donat un 'Veredicte' i una interpretació qualitativa dels paràmetres, pots aproximar, no cal centrarte sempre amb el que diu el  ( Entorn actual:) ja que pot ser vòlatil,sense delirar clar. La teva missió és doanr informació i obrir-te per construir una explicació coherent i senzilla per al teu amic.",
         
         "\n### REGLES DE LA RESPOSTA",
         "1. **Comença Directe:** Respon directament a la pregunta del teu amic sigui quina sigui, menys fora del tema de meteo, basant-te en el 'Veredicte' amb naturalesa i compasió.",
