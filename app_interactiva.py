@@ -2856,39 +2856,55 @@ def interpretar_parametres(params, nivell_conv):
     """
     Tradueix els paràmetres numèrics clau a categories qualitatives
     per facilitar la interpretació de l'IA.
+    Utilitza MUCIN i MUCAPE (parcel·la de superfície modificada).
     """
     interpretacions = {}
 
-    # Interpretació del CIN
-    cin = params.get('MLCIN', 0) or 0
-    if cin > -25: interpretacions['Inhibició (CIN)'] = 'Gairebé Inexistent'
-    elif cin > -75: interpretacions['Inhibició (CIN)'] = 'Febla, fàcil de trencar'
-    elif cin > -150: interpretacions['Inhibició (CIN)'] = 'Moderada, cal un bon disparador'
-    else: interpretacions['Inhibició (CIN)'] = 'Molt Forta (Tapa de formigó)'
+    # --- Interpretació del CIN (ara MUCIN) ---
+    mucin = params.get('MUCIN', 0) or 0
+    if mucin > -25:
+        interpretacions['Inhibició (MUCIN)'] = 'Gairebé Inexistent'
+    elif mucin > -75:
+        interpretacions['Inhibició (MUCIN)'] = 'Febla, fàcil de trencar'
+    elif mucin > -150:
+        interpretacions['Inhibició (MUCIN)'] = 'Moderada, cal un bon disparador'
+    else:
+        interpretacions['Inhibició (MUCIN)'] = 'Molt Forta (Tapa de formigó)'
 
-    # Interpretació de la Convergència (Disparador Principal)
+    # --- Interpretació de la Convergència (Disparador Principal) ---
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
-    if conv < 5: interpretacions['Disparador (Convergència)'] = 'Molt Febla o Inexistent'
-    elif conv < 15: interpretacions['Disparador (Convergència)'] = 'Present'
-    elif conv < 30: interpretacions['Disparador (Convergència)'] = 'Moderadament Forta'
-    else: interpretacions['Disparador (Convergència)'] = 'Molt Forta i Decisiva'
+    if conv < 5:
+        interpretacions['Disparador (Convergència)'] = 'Molt Febla o Inexistent'
+    elif conv < 15:
+        interpretacions['Disparador (Convergència)'] = 'Present'
+    elif conv < 30:
+        interpretacions['Disparador (Convergència)'] = 'Moderadament Forta'
+    else:
+        interpretacions['Disparador (Convergència)'] = 'Molt Forta i Decisiva'
     
-    # Interpretació del CAPE (Combustible)
-    mlcape = params.get('MLCAPE', 0) or 0
-    if mlcape < 300: interpretacions['Combustible (MLCAPE)'] = 'Molt Baix'
-    elif mlcape < 1000: interpretacions['Combustible (MLCAPE)'] = 'Moderat'
-    elif mlcape < 2500: interpretacions['Combustible (MLCAPE)'] = 'Alt'
-    else: interpretacions['Combustible (MLCAPE)'] = 'Extremadament Alt'
+    # --- Interpretació del CAPE (Combustible) ara MUCAPE ---
+    mucape = params.get('MUCAPE', 0) or 0
+    if mucape < 300:
+        interpretacions['Combustible (MUCAPE)'] = 'Molt Baix'
+    elif mucape < 1000:
+        interpretacions['Combustible (MUCAPE)'] = 'Moderat'
+    elif mucape < 2500:
+        interpretacions['Combustible (MUCAPE)'] = 'Alt'
+    else:
+        interpretacions['Combustible (MUCAPE)'] = 'Extremadament Alt'
 
-    # Interpretació del Cisallament (Organització)
+    # --- Interpretació del Cisallament (Organització) ---
     bwd_6km = params.get('BWD_0-6km', 0) or 0
-    if bwd_6km < 20: interpretacions['Organització (Cisallament)'] = 'Febla (Tempestes desorganitzades)'
-    elif bwd_6km < 35: interpretacions['Organització (Cisallament)'] = 'Moderada (Potencial per a multicèl·lules)'
-    else: interpretacions['Organització (Cisallament)'] = 'Alta (Potencial per a supercèl·lules)'
+    if bwd_6km < 20:
+        interpretacions['Organització (Cisallament)'] = 'Febla (Tempestes desorganitzades)'
+    elif bwd_6km < 35:
+        interpretacions['Organització (Cisallament)'] = 'Moderada (Potencial per a multicèl·lules)'
+    else:
+        interpretacions['Organització (Cisallament)'] = 'Alta (Potencial per a supercèl·lules)'
 
     return interpretacions
-                
+
 
 def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpretacions):
     """
