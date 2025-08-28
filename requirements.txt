@@ -21,3 +21,4 @@ streamlit-oauth
 Pillow
 streamlit-option-menu
 global-land-mask
+imageio
