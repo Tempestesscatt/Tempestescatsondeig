@@ -33,6 +33,12 @@ from math import radians, sin, cos, sqrt, atan2, degrees
 from scipy.ndimage import gaussian_filter
 import uuid
 from global_land_mask import globe
+from scipy.stats import multivariate_normal
+from matplotlib.colors import ListedColormap, BoundaryNorm
+import imageio
+
+
+
 
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
@@ -2483,6 +2489,232 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     return fig
 
 
+def forcar_regeneracio_animacio():
+    """Incrementa la clau de regeneració per invalidar la memòria cau."""
+    if 'regenerate_key' in st.session_state:
+        st.session_state.regenerate_key += 1
+    else:
+        st.session_state.regenerate_key = 1
+
+# Nova funció contenidora amb memòria cau.
+
+def generar_animacio_cachejada(_params_tuple, hora_inici_str, _regenerate_key):
+    """
+    Crida a la funció de creació de l'animació. El '_regenerate_key'
+    força la re-execució quan l'usuari clica el botó de regenerar.
+    """
+    params = dict(_params_tuple)
+    return crear_animacio_tall_vertical(params, hora_inici_str)
+
+
+
+def _dibuixar_frame_tall_vertical(frame_params):
+    """
+    Placeholder: retorna una imatge simulada per a cada frame.
+    En el teu codi real hauries de substituir per la funció que dibuixa el plot.
+    """
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(5, 4))
+    c = ax.imshow(frame_params['reflectivity_grid'], origin='lower', extent=[frame_params['dist_range'][0],
+                frame_params['dist_range'][-1], frame_params['alt_range'][0], frame_params['alt_range'][-1]],
+                cmap='jet', vmin=0, vmax=75, aspect='auto')
+    ax.set_title(frame_params['timestamp'])
+    plt.close(fig)
+    # Guardem la figura en memòria com a imatge PIL
+    from PIL import Image
+    fig.canvas.draw()
+    image = np.frombuffer(fig.canvas.tostring_rgb(), dtype='uint8')
+    image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    return Image.fromarray(image)
+
+def crear_animacio_tall_vertical(params, hora_inici_str):
+    """
+    Animació vertical del nucli de pluja, amb nucli compacte i anvil.
+    """
+    # --- 1. Extracció de paràmetres ---
+    lcl_hgt_m = params.get('LCL_Hgt', 1000) or 1000
+    el_hgt_m_max = params.get('EL_Hgt', 10000) or 10000
+    cape = params.get('MUCAPE', 0) or 0
+    updraft = params.get('MAX_UPDRAFT', 0) or 0
+    shear = params.get('BWD_0-6km', 0) or 0
+
+    if cape < 100 or el_hgt_m_max <= lcl_hgt_m:
+        return None
+
+    # --- 2. Paràmetres de l'animació ---
+    num_frames = 24
+    total_duration_min = 120
+    growth_factor = np.sin(np.linspace(0, np.pi, num_frames))
+    frames = []
+    hora_inici = datetime.strptime(hora_inici_str.replace('h',''), '%H:%M')
+
+    for i in range(num_frames):
+        current_growth = growth_factor[i]
+        current_el = lcl_hgt_m + (el_hgt_m_max - lcl_hgt_m) * current_growth
+        current_max_dbz = (20 + (np.sqrt(cape) / 10) + (updraft * 0.5)) * current_growth
+        current_max_dbz = min(current_max_dbz, 75)
+
+        # Nucli més compacte
+        current_width_x = (3 + cape / 250) * current_growth
+        dist_range = np.linspace(-20, 20, 100)
+        alt_range = np.linspace(0, el_hgt_m_max + 2000, 100)
+        xx, zz = np.meshgrid(dist_range, alt_range)
+
+        if current_el <= lcl_hgt_m: 
+            continue
+
+        # --- Càlcul de densitats ---
+        tilt_km_per_km_alt = shear * 0.1
+        start_x_km = -10
+        z_relative = np.maximum(0, zz - lcl_hgt_m)
+        x_center = start_x_km + (tilt_km_per_km_alt * (z_relative / 1000))
+        core_alt_center = lcl_hgt_m + (current_el - lcl_hgt_m) * 0.3
+
+        dist_x_sq = ((xx - x_center) / (max(1, current_width_x)))**2
+        dist_z_sq = ((zz - core_alt_center) / ((current_el - lcl_hgt_m) / 4))**2
+
+        density = np.exp(-0.5 * (dist_x_sq + dist_z_sq))
+
+        anvil_factor = 1 + 1.5 * np.clip((zz - (el_hgt_m_max * 0.7)) / (el_hgt_m_max * 0.3), 0, 1)
+        density_anvil = np.exp(-0.5 * (((xx - x_center) / (np.maximum(1, current_width_x * anvil_factor)))**2 + dist_z_sq))
+
+        final_density = np.maximum(density, density_anvil * 0.5)
+
+        reflectivity_grid = final_density * current_max_dbz
+        reflectivity_grid[zz < lcl_hgt_m] = 0
+
+        simulated_time = hora_inici + timedelta(minutes=i * (total_duration_min / num_frames))
+        timestamp_str_frame = f"Temps Simulat: {simulated_time.strftime('%H:%Mh')} (T+{int(i * (total_duration_min / num_frames))} min)"
+
+        frame_params = {
+            'dist_range': dist_range, 'alt_range': alt_range,
+            'reflectivity_grid': reflectivity_grid, 'el_hgt_m': el_hgt_m_max,
+            'timestamp': timestamp_str_frame
+        }
+        frames.append(_dibuixar_frame_tall_vertical(frame_params))
+
+    # --- Creació del GIF ---
+    gif_buf = io.BytesIO()
+    imageio.mimsave(gif_buf, frames, format='gif', fps=4, loop=0)
+    gif_buf.seek(0)
+
+    return gif_buf.getvalue()
+
+
+def ui_guia_tall_vertical(params, nivell_conv):
+    """
+    Crea una guia d'usuari contextual per interpretar el tall vertical,
+    ara encapçalada per un veredicte de "Val la pena anar-hi?".
+    """
+    st.markdown("#### 🔍 Com Interpretar la Simulació")
+    
+    # --- NOU: Cridem la funció d'anàlisi de "caça" ---
+    veredicte_caca = analitzar_potencial_caca(params, nivell_conv)
+
+    # Extreiem els paràmetres per a les altres targetes
+    el_hgt_km = (params.get('EL_Hgt', 0) or 0) / 1000
+    cape = params.get('MUCAPE', 0) or 0
+    shear = params.get('BWD_0-6km', 0) or 0
+
+    # CSS per a les targetes (ara amb una variant per al veredicte)
+    st.markdown("""
+    <style>
+    .guide-card { background-color: #f0f2f6; border: 1px solid #d1d1d1; border-radius: 8px; padding: 15px; margin-bottom: 12px; }
+    .guide-title { font-size: 1.1em; font-weight: bold; color: #1a1a2e; display: flex; align-items: center; margin-bottom: 8px; }
+    .guide-icon { font-size: 1.3em; margin-right: 10px; }
+    .guide-text { font-size: 0.95em; color: #333; line-height: 1.6; }
+    .guide-text strong { color: #d9534f; }
+    .verdict-card { border-left: 5px solid; padding: 16px; margin-bottom: 15px; border-radius: 8px; background-color: #262730; }
+    .verdict-title { font-size: 1.2em; font-weight: bold; color: white; }
+    .verdict-motiu { font-size: 0.9em; color: #b0b0c8; font-style: italic; margin-top: 5px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # --- NOU: Targeta de Veredicte Principal ---
+    st.markdown(f"""
+    <div class="verdict-card" style="border-left-color: {veredicte_caca['color']};">
+        <div class="verdict-title">Val la pena anar-hi? <span style="color: {veredicte_caca['color']};">{veredicte_caca['text']}</span></div>
+        <div class="verdict-motiu">{veredicte_caca['motiu']}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Targeta 1: Alçada
+    st.markdown(f"""
+    <div class="guide-card">
+        <div class="guide-title"><span class="guide-icon">📏</span>Alçada del Cim (Top)</div>
+        <div class="guide-text">El cim de la tempesta simulada arriba fins als <strong>{el_hgt_km:.1f} km</strong>. Cims més alts solen indicar tempestes més potents.</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Targeta 2: Colors (Reflectivitat)
+    st.markdown(f"""
+    <div class="guide-card">
+        <div class="guide-title"><span class="guide-icon">🎨</span>Significat dels Colors</div>
+        <div class="guide-text">Els colors representen la intensitat: vermells/magentes són pluja molt forta o <strong>calamarsa</strong>. Aquesta tempesta té un CAPE de <strong>{cape:.0f} J/kg</strong>.</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Targeta 3: Forma (Inclinació)
+    st.markdown(f"""
+    <div class="guide-card">
+        <div class="guide-title"><span class="guide-icon">📐</span>Forma i Inclinació</div>
+        <div class="guide-text">La tempesta s'inclina a causa d'un cisallament de <strong>{shear:.0f} nusos</strong>, un signe de bona <strong>organització</strong>.</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+
+
+def _dibuixar_frame_tall_vertical(frame_params):
+    """
+    Funció auxiliar que dibuixa UN ÚNIC FOTOGRAMA de l'animació.
+    Rep els paràmetres de la tempesta per a un instant de temps concret.
+    """
+    # Extreure paràmetres del frame actual
+    dist_range = frame_params['dist_range']
+    alt_range = frame_params['alt_range']
+    reflectivity_grid = frame_params['reflectivity_grid']
+    el_hgt_m = frame_params['el_hgt_m']
+    timestamp = frame_params['timestamp']
+
+    plt.style.use('default')
+    fig, ax = plt.subplots(figsize=(10, 6), dpi=100) # DPI més baix per a l'animació
+
+    colors_dbz = ['#f0f8ff', '#b0e0e6', '#87ceeb', '#4682b4', '#32cd32', '#ffff00', '#ffc800', '#ffa500', '#ff4500', '#ff0000', '#d90000', '#ff00ff']
+    dbz_levels = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 75]
+    cmap_dbz = ListedColormap(colors_dbz)
+    norm_dbz = BoundaryNorm(dbz_levels, ncolors=cmap_dbz.N, clip=True)
+
+    xx, zz = np.meshgrid(dist_range, alt_range)
+    ax.contourf(xx, zz, reflectivity_grid, levels=dbz_levels, cmap=cmap_dbz, norm=norm_dbz, extend='max')
+
+    terreny_x = np.linspace(-20, 20, 100)
+    terreny_y = np.sin(terreny_x / 5) * 200 + 400
+    ax.fill_between(terreny_x, 0, terreny_y, color='#a0785a', zorder=2)
+
+    ax.set_xlabel("Distància (km)")
+    ax.set_ylabel("Altitud (m)")
+    ax.grid(True, linestyle=':', alpha=0.6)
+    ax.set_xlim(-20, 20)
+    ax.set_ylim(0, el_hgt_m + 2000)
+
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_dbz, cmap=cmap_dbz), ax=ax, ticks=dbz_levels)
+    cbar.set_label("Reflectivitat (dBZ)")
+    
+    # Títol dinàmic amb l'hora simulada
+    ax.set_title(f"Simulació de Tall Vertical (RHI)\n{timestamp}", weight='bold', fontsize=14)
+    plt.tight_layout()
+    
+    # Guardem el gràfic a la memòria en lloc de mostrar-lo
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png')
+    plt.close(fig)
+    buf.seek(0)
+    return imageio.imread(buf)
+
+
+
+
 def crear_mapa_convergencia_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
     VERSIÓ NETA: Mostra ÚNICAMENT els nuclis de convergència (a partir de 40),
@@ -3616,69 +3848,44 @@ def ui_peu_de_pagina():
 # --- Lògica Principal de l'Aplicació ---
 
 def run_catalunya_app():
-    # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
-    if 'poble_selector' not in st.session_state:
-        st.session_state.poble_selector = "Barcelona"
-    if 'dia_selector' not in st.session_state:
-        st.session_state.dia_selector = datetime.now(TIMEZONE_CAT).strftime('%d/%m/%Y')
-    if 'hora_selector' not in st.session_state:
-        st.session_state.hora_selector = f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h"
-    if 'level_cat_main' not in st.session_state:
-        st.session_state.level_cat_main = 925
-    if 'active_tab_cat' not in st.session_state:
-        st.session_state.active_tab_cat = "Anàlisi de Mapes"
+    # --- PAS 1: INICIALITZACIÓ (es manté igual) ---
+    if 'poble_selector' not in st.session_state: st.session_state.poble_selector = "Barcelona"
+    if 'dia_selector' not in st.session_state: st.session_state.dia_selector = datetime.now(TIMEZONE_CAT).strftime('%d/%m/%Y')
+    if 'hora_selector' not in st.session_state: st.session_state.hora_selector = f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h"
+    if 'level_cat_main' not in st.session_state: st.session_state.level_cat_main = 925
+    if 'active_tab_cat' not in st.session_state: st.session_state.active_tab_cat = "Anàlisi de Mapes"
 
-    # --- PAS 2: CÀLCULS PREVIS I CAPÇALERA ---
+    # --- PAS 2: CÀLCULS PREVIS I CAPÇALERA (es manté igual) ---
     is_guest = st.session_state.get('guest_mode', False)
-    
-    pre_dia_sel = st.session_state.dia_selector
-    pre_hora_sel = st.session_state.hora_selector
+    pre_dia_sel = st.session_state.dia_selector; pre_hora_sel = st.session_state.hora_selector
     pre_target_date = datetime.strptime(pre_dia_sel, '%d/%m/%Y').date()
     pre_local_dt = TIMEZONE_CAT.localize(datetime.combine(pre_target_date, datetime.min.time()).replace(hour=int(pre_hora_sel.split(':')[0])))
     pre_start_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     pre_hourly_index = int((pre_local_dt.astimezone(pytz.utc) - pre_start_utc).total_seconds() / 3600)
-    
-    # AQUESTA ÉS LA NOSTRA "FONT ÚNICA DE LA VERITAT" PER A LA CONVERGÈNCIA
     map_data_conv_header, _ = carregar_dades_mapa_cat(st.session_state.level_cat_main, pre_hourly_index)
     pre_convergencies = calcular_convergencies_per_llista(map_data_conv_header, CIUTATS_CATALUNYA) if map_data_conv_header else {}
-    
     ui_capcalera_selectors(None, None, zona_activa="catalunya", convergencies=pre_convergencies)
 
-    # --- PAS 3: LLEGIR L'ESTAT FINAL I PROCESSAR ---
+    # --- PAS 3: LECTURA D'ESTAT (es manté igual) ---
     poble_sel = st.session_state.poble_selector
-    
-    if "---" in poble_sel:
-        st.info("Selecciona una localitat de la llista per començar l'anàlisi.")
-        return
-
-    dia_sel_str = st.session_state.dia_selector
-    hora_sel_str = st.session_state.hora_selector
+    if "---" in poble_sel: st.info("Selecciona una localitat de la llista per començar l'anàlisi."); return
+    dia_sel_str = st.session_state.dia_selector; hora_sel_str = st.session_state.hora_selector
     nivell_sel = st.session_state.level_cat_main if not is_guest else 925
-    
     lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
-    
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     timestamp_str = f"{dia_sel_str} a les {hora_sel_str} (Hora Local)"
 
-    # --- PAS 4: DIBUIXAR EL MENÚ I MOSTRAR RESULTATS ---
-    menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical", "Anàlisi de Vents"] if is_guest else ["Anàlisi de Mapes", "Anàlisi Vertical", "Anàlisi de Vents", "💬 Assistent IA"]
-    menu_icons = ["map", "graph-up-arrow", "wind"] if is_guest else ["map", "graph-up-arrow", "wind", "chat-quote-fill"]
-
+    # --- PAS 4: MENÚ I PESTANYES (es manté igual) ---
+    menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical", "Anàlisi de Vents", "Tall Vertical Simulat"]
+    menu_icons = ["map", "graph-up-arrow", "wind", "moisture"]
+    if not is_guest:
+        menu_options.append("💬 Assistent IA")
+        menu_icons.append("chat-quote-fill")
     default_idx = menu_options.index(st.session_state.active_tab_cat) if st.session_state.active_tab_cat in menu_options else 0
-    
-    selected_tab = option_menu(
-        menu_title=None, 
-        options=menu_options, 
-        icons=menu_icons,
-        menu_icon="cast", 
-        orientation="horizontal",
-        default_index=default_idx,
-        key="catalunya_nav_selector"
-    )
-
+    selected_tab = option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx, key="catalunya_nav_selector")
     st.session_state.active_tab_cat = selected_tab
 
     if selected_tab == "Anàlisi de Mapes":
@@ -3692,20 +3899,14 @@ def run_catalunya_app():
             adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
             st.warning(f"**Avís:** No hi havia dades per a les {hora_sel_str}. Es mostren les de l'hora més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
 
-        if error_msg:
-            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        if error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
             params_calc = data_tuple[1] if data_tuple else {}
-            
-            # --- LÒGICA D'ARREGLAMENT DEFINITIU I DE CONSISTÈNCIA ---
-            # Injectem el valor de convergència directament des de la nostra font de dades
-            # principal (pre_convergencies), garantint que sigui el mateix que a la llista.
             if poble_sel in pre_convergencies:
                 conv_value = pre_convergencies.get(poble_sel)
                 if isinstance(conv_value, (int, float)) and pd.notna(conv_value):
                     params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
             
-            # Ara cridem a les funcions de les pestanyes amb el diccionari 'params_calc' complet i consistent
             if selected_tab == "Anàlisi Vertical":
                 avis_proximitat = analitzar_amenaça_convergencia_propera(map_data_conv_header, params_calc, lat_sel, lon_sel, nivell_sel)
                 ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, avis_proximitat)
@@ -3713,7 +3914,30 @@ def run_catalunya_app():
             elif selected_tab == "Anàlisi de Vents":
                 ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_sel_str, timestamp_str)
 
-            elif selected_tab == "💬 Assistent IA":
+            # --- BLOC DE LÒGICA CORREGIT PER A LA PESTANYA DE SIMULACIÓ AMB GUIA ---
+            elif selected_tab == "Tall Vertical Simulat":
+                col_esquerra, col_dreta = st.columns([0.7, 0.3])
+
+                with col_esquerra:
+                    st.markdown(f"#### Simulació de Cicle de Vida per a {poble_sel}")
+                    st.caption(timestamp_str)
+                    if 'regenerate_key' not in st.session_state:
+                        st.session_state.regenerate_key = 0
+                    if st.button("🔄 Regenerar Animació", help="Crea una nova versió de l'animació."):
+                        st.session_state.regenerate_key += 1
+                    with st.spinner("Generant animació..."):
+                        params_tuple = tuple(sorted(params_calc.items()))
+                        gif_bytes = generar_animacio_cachejada(params_tuple, hora_sel_str, st.session_state.regenerate_key)
+                    if gif_bytes is None:
+                        st.warning("Les condicions actuals (CAPE < 100) no són suficients per generar una tempesta simulada.")
+                    else:
+                        st.image(gif_bytes, caption="Animació del cicle de vida simulat (2 hores).")
+
+                with col_dreta:
+                    # Cridem la nova funció de la guia
+                    ui_guia_tall_vertical(params_calc, nivell_sel)
+
+            elif selected_tab == "💬 Assistent IA" and not is_guest:
                 analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
                 interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
                 ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia)
