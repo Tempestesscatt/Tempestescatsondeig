@@ -20,3 +20,4 @@ google-generativeai
 streamlit-oauth
 Pillow
 streamlit-option-menu
+global-land-mask
