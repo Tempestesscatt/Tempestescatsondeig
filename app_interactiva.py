@@ -2498,7 +2498,6 @@ def forcar_regeneracio_animacio():
 
 # Nova funció contenidora amb memòria cau.
 
-@st.cache_data(ttl=3600)
 def generar_animacio_cachejada(_params_tuple, hora_inici_str, _regenerate_key):
     """
     Crida a la funció de creació de l'animació. El '_regenerate_key'
