@@ -32,6 +32,7 @@ from streamlit_option_menu import option_menu
 from math import radians, sin, cos, sqrt, atan2, degrees
 from scipy.ndimage import gaussian_filter
 import uuid
+from global_land_mask import globe
 
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
@@ -47,57 +48,196 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 API_URL_CAT = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_CAT = pytz.timezone('Europe/Madrid')
 CIUTATS_CATALUNYA = {
-    # Ciutats amb influència marítima (amb 'sea_dir')
-    'Amposta': {'lat': 40.7093, 'lon': 0.5810, 'sea_dir': (70, 170)},
-    'Banyoles': {'lat': 42.1197, 'lon': 2.7667, 'sea_dir': (80, 170)},
+    # Capitals de província
     'Barcelona': {'lat': 41.3851, 'lon': 2.1734, 'sea_dir': (90, 190)},
-    'El Vendrell': {'lat': 41.2201, 'lon': 1.5348, 'sea_dir': (110, 210)},
-    'Figueres': {'lat': 42.2662, 'lon': 2.9622, 'sea_dir': (70, 160)},
     'Girona': {'lat': 41.9831, 'lon': 2.8249, 'sea_dir': (80, 170)},
-    'Granollers': {'lat': 41.6083, 'lon': 2.2886, 'sea_dir': (90, 180)},
-    'La Bisbal d\'Empordà': {'lat': 41.9602, 'lon': 3.0378, 'sea_dir': (80, 170)},
-    'Mataró': {'lat': 41.5388, 'lon': 2.4449, 'sea_dir': (90, 180)},
-    'Reus': {'lat': 41.1550, 'lon': 1.1075, 'sea_dir': (120, 220)},
-    'Sant Feliu de Llobregat': {'lat': 41.3833, 'lon': 2.0500, 'sea_dir': (100, 200)},
-    'Santa Coloma de Farners': {'lat': 41.8596, 'lon': 2.6703, 'sea_dir': (90, 180)},
-    'Tarragona': {'lat': 41.1189, 'lon': 1.2445, 'sea_dir': (110, 220)},
-    'Terrassa': {'lat': 41.5615, 'lon': 2.0084, 'sea_dir': (100, 200)},
-    'Tortosa': {'lat': 40.8126, 'lon': 0.5211, 'sea_dir': (60, 160)},
-    'Valls': {'lat': 41.2872, 'lon': 1.2505, 'sea_dir': (110, 220)},
-    'Vilafranca del Penedès': {'lat': 41.3453, 'lon': 1.6995, 'sea_dir': (100, 200)},
-    'Vilanova i la Geltrú': {'lat': 41.2241, 'lon': 1.7252, 'sea_dir': (100, 200)},
-
-    # Ciutats d'interior (sea_dir: None)
-    'Balaguer': {'lat': 41.7904, 'lon': 0.8066, 'sea_dir': None},
-    'Berga': {'lat': 42.1051, 'lon': 1.8458, 'sea_dir': None},
-    'Cervera': {'lat': 41.6669, 'lon': 1.2721, 'sea_dir': None},
-    'El Pont de Suert': {'lat': 42.4101, 'lon': 0.7423, 'sea_dir': None},
-    'Falset': {'lat': 41.1499, 'lon': 0.8197, 'sea_dir': None},
-    'Gandesa': {'lat': 41.0526, 'lon': 0.4357, 'sea_dir': None},
-    'Igualada': {'lat': 41.5791, 'lon': 1.6174, 'sea_dir': None},
-    'La Seu d\'Urgell': {'lat': 42.3582, 'lon': 1.4593, 'sea_dir': None},
-    'Les Borges Blanques': {'lat': 41.5226, 'lon': 0.8698, 'sea_dir': None},
     'Lleida': {'lat': 41.6177, 'lon': 0.6200, 'sea_dir': None},
+    'Tarragona': {'lat': 41.1189, 'lon': 1.2445, 'sea_dir': (110, 220)},
+
+    # LLISTA COMPLETA I VERIFICADA
+    'Agramunt': {'lat': 41.7871, 'lon': 1.0967, 'sea_dir': None},
+    'Alcanar': {'lat': 40.5434, 'lon': 0.4820, 'sea_dir': (60, 160)},
+    'Alella': {'lat': 41.4947, 'lon': 2.2955, 'sea_dir': (90, 180)},
+    'Altafulla': {'lat': 41.1417, 'lon': 1.3750, 'sea_dir': (110, 220)},
+    'Amposta': {'lat': 40.7093, 'lon': 0.5810, 'sea_dir': (70, 170)},
+    'Arbúcies': {'lat': 41.8159, 'lon': 2.5152, 'sea_dir': None},
+    'Arenys de Mar': {'lat': 41.5815, 'lon': 2.5504, 'sea_dir': (90, 180)},
+    'Arenys de Munt': {'lat': 41.6094, 'lon': 2.5411, 'sea_dir': None},
+    'Balaguer': {'lat': 41.7904, 'lon': 0.8066, 'sea_dir': None},
+    'Banyoles': {'lat': 42.1197, 'lon': 2.7667, 'sea_dir': (80, 170)},
+    'Begur': {'lat': 41.9542, 'lon': 3.2076, 'sea_dir': (0, 180)},
+    'Bellver de Cerdanya': {'lat': 42.3705, 'lon': 1.7770, 'sea_dir': None},
+    'Berga': {'lat': 42.1051, 'lon': 1.8458, 'sea_dir': None},
+    'Blanes': {'lat': 41.6748, 'lon': 2.7917, 'sea_dir': (80, 180)},
+    'Cabrera de Mar': {'lat': 41.5275, 'lon': 2.3958, 'sea_dir': (90, 180)},
+    'Cadaqués': {'lat': 42.2888, 'lon': 3.2770, 'sea_dir': (0, 180)},
+    'Calaf': {'lat': 41.7311, 'lon': 1.5126, 'sea_dir': None},
+    'Caldes de Montbui': {'lat': 41.6315, 'lon': 2.1678, 'sea_dir': None},
+    'Calella': {'lat': 41.6146, 'lon': 2.6653, 'sea_dir': (90, 180)},
+    'Calonge': {'lat': 41.8601, 'lon': 3.0768, 'sea_dir': (80, 190)},
+    'Camarasa': {'lat': 41.8753, 'lon': 0.8804, 'sea_dir': None},
+    'Cambrils': {'lat': 41.0667, 'lon': 1.0500, 'sea_dir': (110, 220)},
+    'Capellades': {'lat': 41.5312, 'lon': 1.6874, 'sea_dir': None},
+    'Cardedeu': {'lat': 41.6403, 'lon': 2.3582, 'sea_dir': (90, 180)},
+    'Cardona': {'lat': 41.9138, 'lon': 1.6806, 'sea_dir': None},
+    'Cassà de la Selva': {'lat': 41.8893, 'lon': 2.8736, 'sea_dir': (80, 170)},
+    'Castellbisbal': {'lat': 41.4776, 'lon': 1.9866, 'sea_dir': None},
+    'Castellar del Vallès': {'lat': 41.6186, 'lon': 2.0875, 'sea_dir': None},
+    'Castellfollit de la Roca': {'lat': 42.2201, 'lon': 2.5517, 'sea_dir': None},
+    'Castelló d\'Empúries': {'lat': 42.2582, 'lon': 3.0725, 'sea_dir': (70, 160)},
+    'Centelles': {'lat': 41.7963, 'lon': 2.2203, 'sea_dir': None},
+    'Cerdanyola del Vallès': {'lat': 41.4925, 'lon': 2.1415, 'sea_dir': (100, 200)},
+    'Figueres': {'lat': 42.2662, 'lon': 2.9622, 'sea_dir': (70, 160)},
+    'Flaçà': {'lat': 42.0494, 'lon': 2.9559, 'sea_dir': (80, 170)},
+    'Granollers': {'lat': 41.6083, 'lon': 2.2886, 'sea_dir': (90, 180)},
+    'Hostalric': {'lat': 41.7479, 'lon': 2.6360, 'sea_dir': None},
+    'Igualada': {'lat': 41.5791, 'lon': 1.6174, 'sea_dir': None},
+    'L\'Ametlla de Mar': {'lat': 40.8824, 'lon': 0.8016, 'sea_dir': (90, 200)},
+    'L\'Escala': {'lat': 42.1235, 'lon': 3.1311, 'sea_dir': (0, 160)},
+    'L\'Hospitalet de Llobregat': {'lat': 41.3571, 'lon': 2.1030, 'sea_dir': (90, 190)},
+    'La Bisbal d\'Empordà': {'lat': 41.9602, 'lon': 3.0378, 'sea_dir': (80, 170)},
+    'La Jonquera': {'lat': 42.4194, 'lon': 2.8752, 'sea_dir': None},
+    'La Pobla de Segur': {'lat': 42.2472, 'lon': 0.9678, 'sea_dir': None},
+    'La Selva del Camp': {'lat': 41.2131, 'lon': 1.1384, 'sea_dir': (110, 220)},
+    'La Sénia': {'lat': 40.6322, 'lon': 0.2831, 'sea_dir': None},
+    'La Seu d\'Urgell': {'lat': 42.3582, 'lon': 1.4593, 'sea_dir': None},
+    'Llagostera': {'lat': 41.8291, 'lon': 2.8931, 'sea_dir': (80, 180)},
+    'Llançà': {'lat': 42.3625, 'lon': 3.1539, 'sea_dir': (0, 150)},
+    'Lloret de Mar': {'lat': 41.7005, 'lon': 2.8450, 'sea_dir': (80, 180)},
+    'Malgrat de Mar': {'lat': 41.6461, 'lon': 2.7423, 'sea_dir': (90, 180)},
+    'Manlleu': {'lat': 42.0016, 'lon': 2.2844, 'sea_dir': None},
     'Manresa': {'lat': 41.7230, 'lon': 1.8268, 'sea_dir': None},
-    'Moià': {'lat': 41.8106, 'lon': 2.0975, 'sea_dir': None},
-    'Mollerussa': {'lat': 41.6301, 'lon': 0.8958, 'sea_dir': None},
+    'Mataró': {'lat': 41.5388, 'lon': 2.4449, 'sea_dir': (90, 180)},
+    'Mollet del Vallès': {'lat': 41.5385, 'lon': 2.2144, 'sea_dir': (100, 200)},
     'Montblanc': {'lat': 41.3761, 'lon': 1.1610, 'sea_dir': None},
-    'Móra d\'Ebre': {'lat': 41.0945, 'lon': 0.6433, 'sea_dir': None},
+    'Montcada i Reixac': {'lat': 41.4851, 'lon': 2.1884, 'sea_dir': (100, 200)},
+    'Olesa de Montserrat': {'lat': 41.5451, 'lon': 1.8955, 'sea_dir': None},
     'Olot': {'lat': 42.1818, 'lon': 2.4900, 'sea_dir': None},
-    'Prats de Lluçanès': {'lat': 42.0135, 'lon': 2.0305, 'sea_dir': None},
+    'Palamós': {'lat': 41.8465, 'lon': 3.1287, 'sea_dir': (80, 190)},
+    'Pals': {'lat': 41.9688, 'lon': 3.1458, 'sea_dir': (0, 180)},
+    'Pineda de Mar': {'lat': 41.6277, 'lon': 2.6908, 'sea_dir': (90, 180)},
+    'Platja d\'Aro': {'lat': 41.8175, 'lon': 3.0645, 'sea_dir': (80, 190)},
     'Puigcerdà': {'lat': 42.4331, 'lon': 1.9287, 'sea_dir': None},
+    'Reus': {'lat': 41.1550, 'lon': 1.1075, 'sea_dir': (120, 220)},
     'Ripoll': {'lat': 42.2013, 'lon': 2.1903, 'sea_dir': None},
+    'Riudellots de la Selva': {'lat': 41.9080, 'lon': 2.8099, 'sea_dir': (80, 170)},
+    'Roses': {'lat': 42.2619, 'lon': 3.1764, 'sea_dir': (90, 200)},
+    'Rubí': {'lat': 41.4936, 'lon': 2.0323, 'sea_dir': (100, 200)},
+    'Sabadell': {'lat': 41.5483, 'lon': 2.1075, 'sea_dir': (100, 200)},
+    'Salou': {'lat': 41.0763, 'lon': 1.1417, 'sea_dir': (110, 220)},
+    'Sant Cugat del Vallès': {'lat': 41.4727, 'lon': 2.0863, 'sea_dir': (100, 200)},
+    'Sant Feliu de Guíxols': {'lat': 41.7801, 'lon': 3.0278, 'sea_dir': (80, 190)},
+    'Sant Feliu de Llobregat': {'lat': 41.3833, 'lon': 2.0500, 'sea_dir': (100, 200)},
+    'Sant Joan de les Abadesses': {'lat': 42.2355, 'lon': 2.2858, 'sea_dir': None},
+    'Sant Pere de Ribes': {'lat': 41.2599, 'lon': 1.7725, 'sea_dir': (100, 220)},
+    'Sant Quirze del Vallès': {'lat': 41.5303, 'lon': 2.0831, 'sea_dir': None},
+    'Santa Coloma de Farners': {'lat': 41.8596, 'lon': 2.6703, 'sea_dir': None},
+    'Santa Coloma de Gramenet': {'lat': 41.4550, 'lon': 2.2111, 'sea_dir': (90, 190)},
+    'Santa Cristina d\'Aro': {'lat': 41.8130, 'lon': 2.9976, 'sea_dir': (80, 190)},
+    'Santa Pau': {'lat': 42.1448, 'lon': 2.5695, 'sea_dir': None},
+    'Santa Susanna': {'lat': 41.6366, 'lon': 2.7098, 'sea_dir': (90, 180)},
+    'Sarroca de Bellera': {'lat': 42.3957, 'lon': 0.8656, 'sea_dir': None},
+    'Sitges': {'lat': 41.2351, 'lon': 1.8117, 'sea_dir': (100, 220)},
     'Solsona': {'lat': 41.9942, 'lon': 1.5161, 'sea_dir': None},
     'Sort': {'lat': 42.4131, 'lon': 1.1278, 'sea_dir': None},
-    'Tàrrega': {'lat': 41.6468, 'lon': 1.1416, 'sea_dir': None},
+    'Soses': {'lat': 41.5358, 'lon': 0.5186, 'sea_dir': None},
+    'Terrassa': {'lat': 41.5615, 'lon': 2.0084, 'sea_dir': (100, 200)},
+    'Tortosa': {'lat': 40.8126, 'lon': 0.5211, 'sea_dir': (60, 160)},
     'Tremp': {'lat': 42.1664, 'lon': 0.8953, 'sea_dir': None},
+    'Valls': {'lat': 41.2872, 'lon': 1.2505, 'sea_dir': (110, 220)},
     'Vic': {'lat': 41.9301, 'lon': 2.2545, 'sea_dir': None},
+    'Vidrà': {'lat': 42.1226, 'lon': 2.3116, 'sea_dir': None},
+    'Vidreres': {'lat': 41.7876, 'lon': 2.7788, 'sea_dir': (80, 180)},
     'Vielha': {'lat': 42.7027, 'lon': 0.7966, 'sea_dir': None},
+    'Vilafranca del Penedès': {'lat': 41.3453, 'lon': 1.6995, 'sea_dir': (100, 200)},
+    'Vilanova i la Geltrú': {'lat': 41.2241, 'lon': 1.7252, 'sea_dir': (100, 200)},
+    'Viladecans': {'lat': 41.3155, 'lon': 2.0194, 'sea_dir': (100, 200)},
+    'Vilassar de Dalt': {'lat': 41.5167, 'lon': 2.3583, 'sea_dir': None},
+    'Vilassar de Mar': {'lat': 41.5057, 'lon': 2.3920, 'sea_dir': (90, 180)},
     
-    # Punts Marins (el vent sempre és de mar)
+    # Punts Marins
     'Costes de Girona (Mar)':   {'lat': 42.05, 'lon': 3.30, 'sea_dir': (0, 360)},
     'Litoral Barceloní (Mar)': {'lat': 41.40, 'lon': 2.90, 'sea_dir': (0, 360)},
     'Aigües de Tarragona (Mar)': {'lat': 40.90, 'lon': 2.00, 'sea_dir': (0, 360)},
+}
+
+POBLES_MAPA_REFERENCIA = {
+    # Capitals de província (es poden repetir si també vols que surtin sempre al mapa)
+    "Barcelona": {'lat': 41.3851, 'lon': 2.1734}, "Girona": {'lat': 41.9831, 'lon': 2.8249},
+    "Lleida": {'lat': 41.6177, 'lon': 0.6200}, "Tarragona": {'lat': 41.1189, 'lon': 1.2445},
+
+    # Llista de pobles addicionals només per al mapa
+    "Altafulla": {'lat': 41.1417, 'lon': 1.3750}, "Agramunt": {'lat': 41.7871, 'lon': 1.0967},
+    "Alcanar": {'lat': 40.5434, 'lon': 0.4820}, "Alella": {'lat': 41.4947, 'lon': 2.2955},
+    "Arenys de Mar": {'lat': 41.5815, 'lon': 2.5504}, "Arenys de Munt": {'lat': 41.6094, 'lon': 2.5411},
+    "Balaguer": {'lat': 41.7904, 'lon': 0.8066}, "Berga": {'lat': 42.1051, 'lon': 1.8458},
+    "Banyoles": {'lat': 42.1197, 'lon': 2.7667}, "Cabrera de Mar": {'lat': 41.5275, 'lon': 2.3958},
+    "Caldes de Montbui": {'lat': 41.6315, 'lon': 2.1678}, "Calella": {'lat': 41.6146, 'lon': 2.6653},
+    "Calaf": {'lat': 41.7311, 'lon': 1.5126}, "Camarasa": {'lat': 41.8753, 'lon': 0.8804},
+    "Capellades": {'lat': 41.5312, 'lon': 1.6874}, "Cardedeu": {'lat': 41.6403, 'lon': 2.3582},
+    "Cardona": {'lat': 41.9138, 'lon': 1.6806}, "Castellbisbal": {'lat': 41.4776, 'lon': 1.9866},
+    "Castellar del Vallès": {'lat': 41.6186, 'lon': 2.0875}, "Castelló d'Empúries": {'lat': 42.2582, 'lon': 3.0725},
+    "Centelles": {'lat': 41.7963, 'lon': 2.2203}, "Cerdanyola del Vallès": {'lat': 41.4925, 'lon': 2.1415},
+    "Figueres": {'lat': 42.2662, 'lon': 2.9622}, "Flaçà": {'lat': 42.0494, 'lon': 2.9559},
+    "Granollers": {'lat': 41.6083, 'lon': 2.2886}, "Igualada": {'lat': 41.5791, 'lon': 1.6174},
+    "L'Ametlla de Mar": {'lat': 40.8824, 'lon': 0.8016}, "L'Escala": {'lat': 42.1235, 'lon': 3.1311},
+    "L'Hospitalet de Llobregat": {'lat': 41.3571, 'lon': 2.1030}, "La Bisbal d'Empordà": {'lat': 41.9602, 'lon': 3.0378},
+    "La Jonquera": {'lat': 42.4194, 'lon': 2.8752}, "La Seu d'Urgell": {'lat': 42.3582, 'lon': 1.4593},
+    "La Selva del Camp": {'lat': 41.2131, 'lon': 1.1384}, "La Sénia": {'lat': 40.6322, 'lon': 0.2831},
+    "Manresa": {'lat': 41.7230, 'lon': 1.8268}, "Mataró": {'lat': 41.5388, 'lon': 2.4449},
+    "Mollet del Vallès": {'lat': 41.5385, 'lon': 2.2144}, "Montblanc": {'lat': 41.3761, 'lon': 1.1610},
+    "Montcada i Reixac": {'lat': 41.4851, 'lon': 2.1884}, "Olot": {'lat': 42.1818, 'lon': 2.4900},
+    "Olesa de Montserrat": {'lat': 41.5451, 'lon': 1.8955}, "Palamós": {'lat': 41.8465, 'lon': 3.1287},
+    "Pals": {'lat': 41.9688, 'lon': 3.1458}, "Pineda de Mar": {'lat': 41.6277, 'lon': 2.6908},
+    "Reus": {'lat': 41.1550, 'lon': 1.1075}, "Ripoll": {'lat': 42.2013, 'lon': 2.1903},
+    "Roses": {'lat': 42.2619, 'lon': 3.1764}, "Rubí": {'lat': 41.4936, 'lon': 2.0323},
+    "Sabadell": {'lat': 41.5483, 'lon': 2.1075}, "Sant Cugat del Vallès": {'lat': 41.4727, 'lon': 2.0863},
+    "Sant Feliu de Guíxols": {'lat': 41.7801, 'lon': 3.0278}, "Sant Feliu de Llobregat": {'lat': 41.3833, 'lon': 2.0500},
+    "Sant Joan de les Abadesses": {'lat': 42.2355, 'lon': 2.2858}, "Sant Quirze del Vallès": {'lat': 41.5303, 'lon': 2.0831},
+    "Santa Coloma de Farners": {'lat': 41.8596, 'lon': 2.6703}, "Santa Coloma de Gramenet": {'lat': 41.4550, 'lon': 2.2111},
+    "Sarroca de Bellera": {'lat': 42.3957, 'lon': 0.8656}, "Soses": {'lat': 41.5358, 'lon': 0.5186},
+    "Solsona": {'lat': 41.9942, 'lon': 1.5161}, "Sort": {'lat': 42.4131, 'lon': 1.1278},
+    "Terrassa": {'lat': 41.5615, 'lon': 2.0084}, "Tortosa": {'lat': 40.8126, 'lon': 0.5211},
+    "Valls": {'lat': 41.2872, 'lon': 1.2505}, "Vic": {'lat': 41.9301, 'lon': 2.2545},
+    "Vielha": {'lat': 42.7027, 'lon': 0.7966}, "Vilafranca del Penedès": {'lat': 41.3453, 'lon': 1.6995},
+    "Vilanova i la Geltrú": {'lat': 41.2241, 'lon': 1.7252}, "Blanes": {'lat': 41.6748, 'lon': 2.7917},
+    "Llançà": {'lat': 42.3625, 'lon': 3.1539}, "Platja d’Aro": {'lat': 41.8175, 'lon': 3.0645},
+    "Sitges": {'lat': 41.2351, 'lon': 1.8117}, "Cadaqués": {'lat': 42.2888, 'lon': 3.2770},
+    "Cambrils": {'lat': 41.0667, 'lon': 1.0500}, "Salou": {'lat': 41.0763, 'lon': 1.1417},
+    "Vidreres": {'lat': 41.7876, 'lon': 2.7788}, "Begur": {'lat': 41.9542, 'lon': 3.2076},
+    "Castellfollit de la Roca": {'lat': 42.2201, 'lon': 2.5517}, "Santa Pau": {'lat': 42.1448, 'lon': 2.5695},
+    "La Pobla de Segur": {'lat': 42.2472, 'lon': 0.9678}, "Bellver de Cerdanya": {'lat': 42.3705, 'lon': 1.7770},
+    "Puigcerdà": {'lat': 42.4331, 'lon': 1.9287}, "Manlleu": {'lat': 42.0016, 'lon': 2.2844},
+    "Tremp": {'lat': 42.1664, 'lon': 0.8953}, "Arbúcies": {'lat': 41.8159, 'lon': 2.5152},
+    "Viladecans": {'lat': 41.3155, 'lon': 2.0194}, "Vilassar de Mar": {'lat': 41.5057, 'lon': 2.3920},
+    "Vilassar de Dalt": {'lat': 41.5167, 'lon': 2.3583}, "Sant Pere de Ribes": {'lat': 41.2599, 'lon': 1.7725},
+    "Santa Susanna": {'lat': 41.6366, 'lon': 2.7098}, "Malgrat de Mar": {'lat': 41.6461, 'lon': 2.7423},
+    "Calonge": {'lat': 41.8601, 'lon': 3.0768}, "Lloret de Mar": {'lat': 41.7005, 'lon': 2.8450},
+    "Santa Cristina d'Aro": {'lat': 41.8130, 'lon': 2.9976}, "Cassà de la Selva": {'lat': 41.8893, 'lon': 2.8736},
+    "Vidrà": {'lat': 42.1226, 'lon': 2.3116}, "Llagostera": {'lat': 41.8291, 'lon': 2.8931},
+    "Riudellots de la Selva": {'lat': 41.9080, 'lon': 2.8099}, "Hostalric": {'lat': 41.7479, 'lon': 2.6360}
+}
+
+POBLES_IMPORTANTS = {
+    "Barcelona", "Girona", "Lleida", "Tarragona", "Altafulla", "Agramunt", "Alcanar", 
+    "Alella", "Arenys de Mar", "Arenys de Munt", "Balaguer", "Berga", "Banyoles", 
+    "Cabrera de Mar", "Caldes de Montbui", "Calella", "Calaf", "Camarasa", "Capellades", 
+    "Cardedeu", "Cardona", "Castellbisbal", "Castellar del Vallès", "Castelló d'Empúries", 
+    "Centelles", "Cerdanyola del Vallès", "Figueres", "Flaçà", "Granollers", "Igualada", 
+    "L'Ametlla de Mar", "L'Escala", "L'Hospitalet de Llobregat", "La Bisbal d'Empordà", 
+    "La Jonquera", "La Seu d'Urgell", "La Selva del Camp", "La Sénia", "Manresa", "Mataró", 
+    "Mollet del Vallès", "Montblanc", "Montcada i Reixac", "Olot", "Olesa de Montserrat", 
+    "Palamós", "Pals", "Pineda de Mar", "Reus", "Ripoll", "Roses", "Rubí", "Sabadell", 
+    "Sant Cugat del Vallès", "Sant Feliu de Guíxols", "Sant Feliu de Llobregat", 
+    "Sant Joan de les Abadesses", "Sant Quirze del Vallès", "Santa Coloma de Farners", 
+    "Santa Coloma de Gramenet", "Sarroca de Bellera", "Soses", "Solsona", "Sort", 
+    "Terrassa", "Tortosa", "Valls", "Vic", "Vielha", "Vilafranca del Penedès", 
+    "Vilanova i la Geltrú", "Blanes", "Llançà", "Platja d’Aro", "Sitges", "Cadaqués", 
+    "Cambrils", "Salou", "Vidreres", "Begur", "Castellfollit de la Roca", "Santa Pau", 
+    "La Pobla de Segur", "Bellver de Cerdanya", "Puigcerdà", "Manlleu", "Tremp", 
+    "Arbúcies", "Viladecans", "Vilassar de Mar", "Vilassar de Dalt", "Sant Pere de Ribes", 
+    "Santa Susanna", "Malgrat de Mar", "Calonge", "Lloret de Mar", "Santa Cristina d'Aro", 
+    "Cassà de la Selva", "Vidrà", "Llagostera", "Riudellots de la Selva", "Hostalric"
 }
 
 POBLACIONS_TERRA = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' not in k}
@@ -108,7 +248,18 @@ CIUTATS_CONVIDAT = {
 }
 MAP_EXTENT_CAT = [0, 3.5, 40.4, 43]
 PRESS_LEVELS_AROME = sorted([1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
-MAP_ZOOM_LEVELS_CAT = {'Catalunya (Complet)': MAP_EXTENT_CAT, 'Nord-est (Girona)': [1.8, 3.4, 41.7, 42.6], 'Sud (Tarragona i Ebre)': [0.2, 1.8, 40.5, 41.4], 'Ponent i Pirineu (Lleida)': [0.4, 1.9, 41.4, 42.6],'Maresme': [2.3, 2.8, 41.5, 41.7], 'Àrea Metropolitana (BCN)': [1.7, 2.7, 41.2, 41.8]}
+
+MAP_ZOOM_LEVELS_CAT = {
+    'Catalunya (Complet)': MAP_EXTENT_CAT, 
+
+    # Capitals de província amb marge ampliat
+    'Barcelona': [1.8, 2.6, 41.25, 41.65],
+    'Girona': [2.5, 3.4, 41.8, 42.2],
+    'Lleida': [0.3, 0.95, 41.5, 41.75],
+    'Tarragona': [0.9, 1.35, 40.95, 41.3]
+}
+
+
 
 # --- Constants per Tornado Alley ---
 API_URL_USA = "https://api.open-meteo.com/v1/forecast"
@@ -1170,94 +1321,55 @@ def analitzar_component_maritima(sounding_data, poble_sel):
 
 def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
     """
-    Sistema Expert v14.0. Distingeix entre Advecció Marítima Humida (>70% RH) i
-    Seca a la capa 950-900hPa.
+    Sistema Expert v15.0. Diagnostica el règim de vent dominant i retorna
+    un veredicte meteorològic complet amb un color associat.
     """
-    resultat = { 'tipus': 'Calma', 'detall': 'Vent quasi inexistent.',
-                 'veredicte': "Situació de calma absoluta, sense un flux d'aire definit.", 'color': '#808080' }
-
+    resultat = {
+        'tipus': 'Calma', 'detall': 'Vent quasi inexistent.',
+        'veredicte': "Situació de calma absoluta, sense un flux d'aire definit.", 'color': '#808080'
+    }
     if not sounding_data or not params_calc: return resultat
-
     p, T, Td, u, v = sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4]
-
     try:
-        # --- CONSTANTS I CÀLCULS PREVIS ---
         LLINDAR_REGIM_FORT = 20; LLINDAR_CALMA = 3
         hora_num = int(hora_del_sondeig.split(':')[0]); es_horari_diurn = 11 <= hora_num <= 21
-        rh = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
-
         def es_llevant(d): return 45 <= d <= 135
         def es_vent_de_mar(d): return 45 <= d <= 200
         def es_vent_del_nord(d): return d >= 315 or d <= 45
         def es_vent_de_ponent(d): return 225 <= d <= 315
-        def es_vent_de_terra(d): return d >= 225 or d <= 45
-
         vel_sfc = float(mpcalc.wind_speed(u[0], v[0]).to('km/h').m)
         dir_sfc = float(mpcalc.wind_direction(u[0], v[0]).m)
         dir_cardinal_sfc = graus_a_direccio_cardinal(dir_sfc)
-
         if vel_sfc < LLINDAR_CALMA:
             resultat['detall'] = f"Vent variable a {vel_sfc:.0f} km/h"; return resultat
-
-        # --- ANÀLISI PER JERARQUIA ---
-
-        # 1. REBUF
-        # (Lògica sense canvis)
         mask_alts = (p.m <= 700) & (p.m >= 300); mask_baixos = (p.m <= p[0].m) & (p.m >= 900)
-        if np.count_nonzero(mask_alts)>2 and np.count_nonzero(mask_baixos)>2:
+        if np.count_nonzero(mask_alts) > 2 and np.count_nonzero(mask_baixos) > 2:
             vel_alts = float(mpcalc.wind_speed(np.mean(u[mask_alts]), np.mean(v[mask_alts])).to('km/h').m)
             dir_alts = float(mpcalc.wind_direction(np.mean(u[mask_alts]), np.mean(v[mask_alts])).m)
             dir_baixos = float(mpcalc.wind_direction(np.mean(u[mask_baixos]), np.mean(v[mask_baixos])).m)
             if vel_alts > 60 and es_vent_del_nord(dir_alts) and es_vent_de_mar(dir_baixos):
-                resultat.update({'tipus': "Rebuf (Especial)", 'detall': f"Nortada de {vel_alts:.0f} km/h en alçada forçant Llevant a baixos", 'veredicte': "Situació de gran contrast. L'aire fred del nord en alçada xoca amb l'aire humit del mar, un mecanisme de dispar molt potent.", 'color': '#dc3545'}); return resultat
-
-        # 2. RÈGIMS SINÒPTICS
-        # (Lògica sense canvis)
+                resultat.update({'tipus': "Rebuf (Especial)", 'detall': f"Nortada de {vel_alts:.0f} km/h en alçada", 'veredicte': "Gran contrast. L'aire fred xoca amb l'aire humit, un mecanisme de dispar molt potent.", 'color': '#dc3545'}); return resultat
         mask_sinoptic = (p.m <= p[0].m) & (p.m >= 700)
         if np.count_nonzero(mask_sinoptic) > 3:
             vel_sinoptic = float(mpcalc.wind_speed(np.mean(u[mask_sinoptic]), np.mean(v[mask_sinoptic])).to('km/h').m)
             if vel_sinoptic > LLINDAR_REGIM_FORT:
                 dir_sinoptic = float(mpcalc.wind_direction(np.mean(u[mask_sinoptic]), np.mean(v[mask_sinoptic])).m)
                 dir_cardinal = graus_a_direccio_cardinal(dir_sinoptic)
-                mask_low = (p.m <= p[0].m) & (p.m >= 850); mask_mid = (p.m < 850) & (p.m >= 700)
-                if np.count_nonzero(mask_low)>1 and np.count_nonzero(mask_mid)>1 and es_llevant(float(mpcalc.wind_direction(np.mean(u[mask_low]), np.mean(v[mask_low])).m)) and es_llevant(float(mpcalc.wind_direction(np.mean(u[mask_mid]), np.mean(v[mask_mid])).m)):
-                    resultat.update({'tipus': "Llevantada", 'detall': f"Vent del {dir_cardinal} a {vel_sinoptic:.0f} km/h (capa profunda)", 'veredicte': "Entrada d'humitat generalitzada. Potencial de pluges extenses. Amb inestabilitat, risc de tempestes fortes.", 'color': '#28a745'}); return resultat
+                if es_llevant(dir_sinoptic):
+                    resultat.update({'tipus': "Llevantada", 'detall': f"{dir_cardinal} a {vel_sinoptic:.0f} km/h", 'veredicte': "Entrada d'humitat generalitzada. Potencial de pluges extenses i/o tempestes.", 'color': '#28a745'}); return resultat
                 elif es_vent_del_nord(dir_sinoptic):
-                    resultat.update({'tipus': "Nortada", 'detall': f"Vent del {dir_cardinal} a {vel_sinoptic:.0f} km/h (capa profunda)", 'veredicte': "Entrada d'aire fred i sec. Ambient fred i ventós, baix potencial de precipitació excepte al vessant nord del Pirineu.", 'color': '#007bff'}); return resultat
+                    resultat.update({'tipus': "Nortada", 'detall': f"{dir_cardinal} a {vel_sinoptic:.0f} km/h", 'veredicte': "Entrada d'aire fred i sec. Ambient ventós, baix potencial de precipitació.", 'color': '#007bff'}); return resultat
                 elif es_vent_de_ponent(dir_sinoptic):
-                    resultat.update({'tipus': "Ponentada", 'detall': f"Vent del {dir_cardinal} a {vel_sinoptic:.0f} km/h (capa profunda)", 'veredicte': "Vent sec i reescalfat de l'interior. Temperatures altes, humitat molt baixa i risc d'incendi. Inhibeix la convecció.", 'color': '#ffc107'}); return resultat
-
-        # --- 3. NOVA DETECCIÓ D'ADVECCIÓ MARÍTIMA (HUMIDA / SECA) ---
-        mask_adv = (p.m <= 950) & (p.m >= 900)
-        if es_vent_de_terra(dir_sfc) and np.count_nonzero(mask_adv) > 1:
-            dir_adv = float(mpcalc.wind_direction(np.mean(u[mask_adv]), np.mean(v[mask_adv])).m)
-            if es_vent_de_mar(dir_adv):
-                humitat_mitjana_adv = np.mean(rh[mask_adv].m)
-                detall_text = f"Terral a superfície, vent del {graus_a_direccio_cardinal(dir_adv)} a 900-950hPa"
-                
-                if humitat_mitjana_adv >= 70:
-                    resultat.update({'tipus': "Advecció Marítima Humida", 'detall': detall_text, 'veredicte': f"Capa d'aire molt humit ({humitat_mitjana_adv:.0f}% RH) entrant en alçada. Potencial alt de convecció de base elevada (Castellanus).", 'color': '#6f42c1'})
-                else:
-                    resultat.update({'tipus': "Advecció Marítima Seca", 'detall': detall_text, 'veredicte': f"Entrada d'aire marítim poc humit ({humitat_mitjana_adv:.0f}% RH). Pot generar núvols mitjans, però amb menys potencial convectiu.", 'color': '#808080'})
-                return resultat
-
-        # 4. MARINADA FORTA
+                    resultat.update({'tipus': "Ponentada", 'detall': f"{dir_cardinal} a {vel_sinoptic:.0f} km/h", 'veredicte': "Vent sec i reescalfat. Temperatures altes, humitat baixa i risc d'incendi.", 'color': '#fd7e14'}); return resultat
         if vel_sfc > LLINDAR_REGIM_FORT and es_vent_de_mar(dir_sfc) and es_horari_diurn:
-             resultat.update({'tipus': "Marinada", 'detall': f"Vent del {dir_cardinal_sfc} a {vel_sfc:.0f} km/h", 'veredicte': "Brisa marina forta que injecta molta humitat i pot actuar com a línia de convergència (disparador) a l'interior.", 'color': '#17a2b8'}); return resultat
-        
-        # 5. VENTS FEBLES (< 20 km/h)
-        if es_vent_de_terra(dir_sfc):
-            resultat.update({'tipus': "Terral Feble", 'detall': f"Vent del {dir_cardinal_sfc} a {vel_sfc:.0f} km/h", 'veredicte': "Vent fluix de terra. De dia pot reescalfar l'ambient, de nit el refreda. Sense un règim clar.", 'color': '#808080'})
-        elif es_vent_de_mar(dir_sfc):
-            if es_horari_diurn:
-                 resultat.update({'tipus': "Marinada Feble", 'detall': f"Vent del {dir_cardinal_sfc} a {vel_sfc:.0f} km/h", 'veredicte': "Brisa marina feble, típica d'un dia de calma. Ajuda a temperar la costa.", 'color': '#808080'})
-            else:
-                 resultat.update({'tipus': "Vent de Mar Nocturn", 'detall': f"Vent del {dir_cardinal_sfc} a {vel_sfc:.0f} km/h", 'veredicte': "Flux residual de mar durant la nit. No és una marinada tèrmica, indica un lleuger gradient de pressió.", 'color': '#808080'})
+             resultat.update({'tipus': "Marinada Forta", 'detall': f"{dir_cardinal_sfc} a {vel_sfc:.0f} km/h", 'veredicte': "Brisa marina que injecta humitat i pot actuar com a disparador a l'interior.", 'color': '#17a2b8'}); return resultat
+        tipus = "Marinada Feble" if es_horari_diurn and es_vent_de_mar(dir_sfc) else "Terral / Vent Nocturn"
+        veredicte = "Brisa marina feble, típica de calma." if tipus == "Marinada Feble" else "Vent fluix de terra o residual de mar. Sense un règim clar."
+        resultat.update({'tipus': tipus, 'detall': f"{dir_cardinal_sfc} a {vel_sfc:.0f} km/h", 'veredicte': veredicte, 'color': '#808080'})
         return resultat
-
     except Exception:
-        return { 'tipus': 'Error d\'Anàlisi', 'detall': 'No s\'ha pogut determinar.',
-                 'veredicte': "Hi ha hagut un problema analitzant el perfil de vent.", 'color': '#dc3545' }
+        return {'tipus': 'Error d\'Anàlisi', 'detall': 'No s\'ha pogut determinar.', 'veredicte': "Hi ha hagut un problema analitzant el perfil de vent.", 'color': '#dc3545'}
+    
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     TOOLTIPS = {
@@ -1375,9 +1487,9 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
 
         if avis_proximitat:
             background_color = "#fd7e14"
-            title_text = "⚠️ ATENCIÓ: FOCUS PRÒXIM"
-            main_text = "Si es forma anirá cap a tú"
-            sub_text = f"Entorn actual: {emoji} {descripcio}"
+            title_text = "⚠️ATENCIÓ: FOCUS APROP⚠️"
+            main_text = "Anirá cap a tú"
+            sub_text = f"Actual: {emoji} {descripcio}"
             st.markdown(f"""
             <div class="blinking-alert" style="text-align: center; padding: 5px; border-radius: 10px; background-color: {background_color}; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
                 <span style="font-size: 0.8em; color: #FFFFFF; font-weight: bold;">{title_text}</span>
@@ -1419,124 +1531,63 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
 
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
     """
-    Diagnòstic intel·ligent de fenòmens eòlics segons criteris estrictes:
-    - Superfície: Marinada diürna, Terral, Flux local
-    - 925 hPa: Advecció marítima, Rebuf
-    - 700 hPa: Llevant, Arribada d’aire fred, Rebuf, Flux de sud possible canvi de temps
-    - Oest: vent sec/rescalfat
-    Retorna llista de dicts amb 'titol', 'emoji', 'descripcio'
+    Sistema de Diagnòstic v2.0: Analitza els fenòmens eòlics a diferents nivells
+    i retorna una llista de diccionaris preparats per a una UI de targetes.
     """
-    import numpy as np
-    import pandas as pd
-    import metpy.calc as mpcalc
-    from metpy.units import units
-
     diagnostics = []
-
     if not sounding_data:
-        return [{'titol': "Sense Dades",
-                 'descripcio': "No s'ha pogut carregar el perfil de vents.",
-                 'emoji': "❓"}]
+        return [{'titol': "Sense Dades", 'descripcio': "No s'ha pogut carregar el perfil de vents.", 'emoji': "❓"}]
 
     city_data = CIUTATS_CATALUNYA.get(poble_sel)
-    if not city_data or city_data.get('sea_dir') is None:
-        return [{'titol': "Anàlisi no disponible",
-                 'descripcio': f"Localitat d'interior: '{poble_sel}', sense brises locals rellevants.",
-                 'emoji': "📍"}]
+    p, u, v = sounding_data[0], sounding_data[3], sounding_data[4]
 
-    sea_dir_range = city_data.get('sea_dir')  # tuple de graus (min, max)
-
-    p, t, td, u, v = sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4]
-
-    # Auxiliar: convertir graus a direcció cardinal
     def degrees_to_cardinal_ca(deg):
-        dirs = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO']
-        ix = int((deg + 22.5) // 45) % 8
-        return dirs[ix]
+        if pd.isna(deg): return "Variable"
+        dirs = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSO', 'SO', 'OSO', 'O', 'ONO', 'NO', 'NNO']
+        return dirs[int(round(deg / 22.5)) % 16]
 
-    def is_in_range(angle, range_tuple):
-        if not isinstance(range_tuple, tuple) or len(range_tuple) != 2:
-            return False
-        start, end = range_tuple
-        if start <= end:
-            return start <= angle <= end
-        else:
-            return start <= angle or angle <= end
+    def wind_info_at_level(target_hpa):
+        try:
+            idx = np.argmin(np.abs(p.m - target_hpa))
+            if np.abs(p.m[idx] - target_hpa) > 30: return np.nan, np.nan
+            u_comp, v_comp = u[idx], v[idx]
+            spd = mpcalc.wind_speed(u_comp, v_comp).to('km/h').m
+            drct = mpcalc.wind_direction(u_comp, v_comp).m if spd >= 1 else np.nan
+            return drct, spd
+        except Exception: return np.nan, np.nan
 
-    # Extracció de vents i conversió a km/h
-    def wind_info(u_val, v_val):
-        spd = mpcalc.wind_speed(u_val, v_val).to('km/h').m
-        deg = mpcalc.wind_direction(u_val, v_val).m
-        card = degrees_to_cardinal_ca(deg)
-        return deg, card, spd
-
-    deg_sfc, card_sfc, spd_sfc = wind_info(u[0], v[0])
-    u_925 = np.interp(925, p.m[::-1], u.m[::-1]) * units('m/s')
-    v_925 = np.interp(925, p.m[::-1], v.m[::-1]) * units('m/s')
-    deg_925, card_925, spd_925 = wind_info(u_925, v_925)
-
-    u_700 = np.interp(700, p.m[::-1], u.m[::-1]) * units('m/s')
-    v_700 = np.interp(700, p.m[::-1], v.m[::-1]) * units('m/s')
-    deg_700, card_700, spd_700 = wind_info(u_700, v_700)
-
+    drct_sfc, spd_sfc = wind_info_at_level(p.m[0])
+    drct_925, spd_925 = wind_info_at_level(925)
+    drct_700, spd_700 = wind_info_at_level(700)
+    
     hora = int(hora_actual_str.split(':')[0])
+    es_diurn = 9 <= hora <= 20
 
-    # --- Superfície ---
-    if spd_sfc < 1:
-        diagnostics.append({'titol': "Calma",
-                            'emoji': "🛑",
-                            'descripcio': "El vent en superfície és gairebé nul."})
+    # Anàlisi de Superfície
+    if spd_sfc < 3:
+        diagnostics.append({'titol': "Superfície: Calma", 'descripcio': f"Vent pràcticament inexistent a la superfície.", 'emoji': "🧘"})
+    elif city_data and city_data.get('sea_dir') and es_diurn and 45 <= drct_sfc <= 200:
+        diagnostics.append({'titol': f"Superfície: Marinada ({graus_a_direccio_cardinal(drct_sfc)}, {spd_sfc:.0f} km/h)", 'descripcio': "Brisa humida de mar a terra. Modera la temperatura i aporta humitat.", 'emoji': "🌬️"})
     else:
-        if card_sfc in ['E', 'NE', 'SE'] and not (card_925 in ['E', 'NE', 'SE'] or card_700 in ['E', 'NE', 'SE']):
-            diagnostics.append({'titol': "Marinada Diürna",
-                                'emoji': "🌬️",
-                                'descripcio': f"Vents de mar a terra ({card_sfc}, {spd_sfc:.0f} km/h). Afavoreix humitat i moderació de temperatures."})
-        elif card_sfc in ['O', 'SO', 'NO']:
-            diagnostics.append({'titol': "Terral / Vent Sec",
-                                'emoji': "🔥",
-                                'descripcio': f"Vents de terra cap al mar ({card_sfc}, {spd_sfc:.0f} km/h). Solen ser secs i escalfar l'ambient, dispersant núvols."})
-        else:
-            diagnostics.append({'titol': "Flux Local",
-                                'emoji': "🧭",
-                                'descripcio': f"Direcció de vent variable ({card_sfc}, {spd_sfc:.0f} km/h). Pot generar núvols dispersos o flux moderat."})
+        diagnostics.append({'titol': f"Superfície: Terral / Vent Local ({graus_a_direccio_cardinal(drct_sfc)}, {spd_sfc:.0f} km/h)", 'descripcio': "Flux de terra, generalment més sec i reescalfat durant el dia.", 'emoji': "🏜️"})
 
-    # --- 925 hPa ---
-    desc_925 = f"Direcció: {card_925}, Velocitat: {spd_925:.0f} km/h. "
-    if card_925 in ['E', 'NE', 'SE']:
-        desc_925 += "Advecció marítima: porta humitat i núvols baixos."
-    elif card_925 in ['O', 'SO', 'NO']:
-        desc_925 += "Flux sec/rescalfat; núvols baixos poc probables."
-    else:
-        desc_925 += "Flux variable, núvols dispersos."
-    diagnostics.append({'titol': "925 hPa", 'emoji': "☁️", 'descripcio': desc_925})
+    # Anàlisi a 925 hPa
+    if pd.notna(drct_925):
+        desc_925 = "Advecció marítima. Aporta humitat i núvols baixos." if 45 <= drct_925 <= 200 else "Flux de terra/interior. Tendeix a ser més sec."
+        diagnostics.append({'titol': f"925 hPa (~750m): {graus_a_direccio_cardinal(drct_925)}, {spd_925:.0f} km/h", 'descripcio': desc_925, 'emoji': "☁️"})
 
-    # --- 700 hPa ---
-    desc_700 = f"Direcció: {card_700}, Velocitat: {spd_700:.0f} km/h. "
-    if card_700 in ['E', 'NE', 'SE'] and card_925 in ['E', 'NE', 'SE']:
-        desc_700 += "Llevant sinòptic: flux marítim alt, núvols persistents."
-    elif card_700 in ['N', 'NE', 'NO'] and card_925 in ['E', 'NE', 'SE']:
-        desc_700 += "Rebuf costaner: confrontació de vents genera núvols i precipitació possible."
-    elif card_700 in ['S', 'SE', 'SO']:
-        desc_700 += "Flux de sud: possible canvi de temps a hores o dies."
-    elif card_700 in ['O', 'SO', 'NO']:
-        desc_700 += "Flux sec/rescalfat; núvols alts poc probables."
-    else:
-        desc_700 += "Flux alt variable, poc definit per núvols."
-    diagnostics.append({'titol': "700 hPa", 'emoji': "☁️", 'descripcio': desc_700})
-
-    # --- Flux sinòptic dominant ---
-    dirs = [card_sfc, card_925, card_700]
-    if len(set(dirs)) == 1:
-        diagnostics.append({'titol': "Flux Sinòptic Dominant",
-                            'emoji': "🧭",
-                            'descripcio': f"Direcció coherent a tots els nivells ({card_sfc}). Núvols i precipitació depenen de la humitat."})
-    else:
-        diagnostics.append({'titol': "Flux Variable",
-                            'emoji': "🌪️",
-                            'descripcio': "Direccions de vent diferents entre nivells, indicant patrons locals o transicions de temps."})
+    # Anàlisi a 700 hPa
+    if pd.notna(drct_700):
+        desc_700 = "Flux de sud. Pot indicar l'aproximació d'un canvi de temps." if 135 <= drct_700 <= 225 else "Flux a nivells mitjans. Dirigeix el moviment de les tempestes."
+        diagnostics.append({'titol': f"700 hPa (~3000m): {graus_a_direccio_cardinal(drct_700)}, {spd_700:.0f} km/h", 'descripcio': desc_700, 'emoji': "✈️"})
+    
+    # Diagnòstic de Cisallament (Diferència de vent)
+    if pd.notna(drct_sfc) and pd.notna(drct_700):
+        diff = abs(drct_sfc - drct_700)
+        if diff > 90 and diff < 270:
+             diagnostics.append({'titol': "Cisallament Direccional Present", 'descripcio': "El vent canvia de direcció amb l'alçada. Això pot afavorir la rotació de les tempestes si n'hi ha.", 'emoji': "🔄"})
 
     return diagnostics
-
 
 
 def degrees_to_cardinal_ca(d):
@@ -1595,35 +1646,34 @@ def crear_dial_vent_animat(label, wind_dir, wind_spd):
     # Oscil·lació segons velocitat
     if pd.notna(wind_spd):
         if wind_spd <= 21:
-            amplitude = 2
-            duration = 2
+            amplitude = 3
+            duration = 4
 
         elif wind_spd < 30:
+            amplitude = 3
+            duration = 2
+
+        elif wind_spd < 40:
             amplitude = 1
             duration = 1
 
-        elif wind_spd < 40:
-            amplitude = 0.01
-            duration = 0.31
         elif wind_spd < 50:
             amplitude = 0.5
-            duration = 0.91
+            duration = 0.5
 
         elif wind_spd < 60:
-            amplitude = 0.7
-            duration = 1
+            amplitude = 0.2
+            duration = 0.2
 
         elif wind_spd < 80:
-            amplitude = 0.3
-            duration = 0.05
+            amplitude = 0.1
+            duration = 0.1
 
         else:
-            amplitude = 30
-            duration = 1.0
+            amplitude = 0.01
+            duration = 0.01
         
-    else:
-        amplitude = 5
-        duration = 3
+ 
 
     tremble = min(wind_spd / 2, 15) if pd.notna(wind_spd) else 0
     angle_start = base_angle - amplitude - tremble
@@ -1769,9 +1819,8 @@ def crear_grafic_perfil_vent(p, wind_spd, wind_dir):
 
 def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp_str):
     """
-    Versió Final v8.0 - Lògica de Càlcul Directa i Blindada.
-    La solució definitiva que elimina la complexitat i ataca directament
-    l'extracció de dades del perfil del sondeig.
+    VERSIÓ AMB DISSENY DE TARGETES PREMIUM:
+    - Mostra l'anàlisi de vents en un format de targetes visuals i modernes.
     """
     st.markdown(f"#### Anàlisi de Vents per a {poble_sel}")
     st.caption(timestamp_str)
@@ -1780,69 +1829,104 @@ def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp
         st.warning("No hi ha dades de sondeig disponibles per realitzar l'anàlisi de vents.")
         return
 
-    sounding_data, _ = data_tuple
-    p_profile, u_profile, v_profile = sounding_data[0], sounding_data[3], sounding_data[4]
+    diagnostics = analitzar_vents_locals(data_tuple[0], poble_sel, hora_actual_str)
 
-    # Comprovació de seguretat definitiva
-    if not all(hasattr(arr, 'size') and arr.size > 0 for arr in [p_profile, u_profile, v_profile]):
-        st.error("Les dades del sondeig estan incompletes o corruptes. No es pot continuar.")
-        return
-
-    diagnostics = analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str)
-    if len(diagnostics) == 1 and diagnostics[0]['titol'] == "Anàlisi no disponible":
-        st.info(f"📍 {diagnostics[0]['descripcio']}")
-    else:
-        st.markdown("##### Diagnòstic de Fenòmens Eòlics")
-        for diag in diagnostics:
-            with st.expander(f"{diag['emoji']} **{diag['titol']}**", expanded=True):
-                st.write(diag['descripcio'])
+    st.markdown("##### Diagnòstic de Fenòmens Eòlics")
     
-    st.divider()
-    st.markdown("##### Perfil de Vent per Nivells Clau")
+    # CSS per a l'estil de les noves targetes d'informació
+    st.markdown("""
+    <style>
+    .info-card {
+        background-color: #262730; /* Fons fosc de la targeta */
+        border-left: 5px solid #007bff; /* Vora esquerra de color */
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    }
+    .info-icon {
+        font-size: 2em; /* Icona més gran */
+        margin-right: 16px;
+    }
+    .info-content {
+        flex-grow: 1;
+    }
+    .info-title-line {
+        display: flex;
+        justify-content: space-between; /* Títol a l'esquerra, dades a la dreta */
+        align-items: baseline;
+    }
+    .info-title {
+        font-size: 1.15em;
+        font-weight: bold;
+        color: #f0f0f0;
+    }
+    .info-data {
+        font-size: 1.1em;
+        font-weight: bold;
+        color: #ffc107; /* Dades en color groc d'accent */
+        background-color: rgba(255, 193, 7, 0.1);
+        padding: 2px 8px;
+        border-radius: 5px;
+    }
+    .info-desc {
+        font-size: 1em;
+        color: #a0a0b0; /* Descripció en gris clar */
+        margin-top: 4px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-    # --- FUNCIÓ INTERNA ÚNICA I ROBUSTA ---
+    # Canviem el color de la vora segons la icona per a més dinamisme
+    color_map = {"🧘": "#6c757d", "🌬️": "#17a2b8", "🏜️": "#fd7e14", "☁️": "#adb5bd", "✈️": "#6610f2", "🔄": "#ffc107"}
+
+    for diag in diagnostics:
+        border_color = color_map.get(diag['emoji'], "#007bff")
+        st.markdown(f"""
+        <div class="info-card" style="border-left-color: {border_color};">
+            <div class="info-icon">{diag['emoji']}</div>
+            <div class="info-content">
+                <div class="info-title-line">
+                    <span class="info-title">{diag['titol']}</span>
+                    <span class="info-data">{diag['data']}</span>
+                </div>
+                <div class="info-desc">{diag['descripcio']}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.divider()
+    
+    st.markdown("##### Perfil de Vent per Nivells Clau")
+    p, u, v = data_tuple[0][0], data_tuple[0][3], data_tuple[0][4]
+    
     def get_wind_at_level(target_hpa):
         try:
-            # 1. Troba l'índex del nivell de pressió més proper
-            idx = np.argmin(np.abs(p_profile.m - target_hpa))
-            
-            # 2. Comprova si el nivell trobat és raonablement a prop
-            if np.abs(p_profile.m[idx] - target_hpa) > 30:
-                return np.nan, np.nan
-            
-            # 3. Agafa els components U i V directament del sondeig en aquest índex
-            u_comp, v_comp = u_profile[idx], v_profile[idx]
-
-            # 4. Calcula la velocitat. Si falla, retorna NaN
-            spd = mpcalc.wind_speed(u_comp, v_comp).to('km/h').m
-
-            # 5. Calcula la direcció NOMÉS si la velocitat és significativa
+            idx = np.argmin(np.abs(p.m - target_hpa))
+            if np.abs(p.m[idx] - target_hpa) > 30: return np.nan, np.nan
+            u_comp, v_comp = u[idx], v[idx]; spd = mpcalc.wind_speed(u_comp, v_comp).to('km/h').m
             drct = mpcalc.wind_direction(u_comp, v_comp).m if spd >= 1 else np.nan
-            
             return drct, spd
-        except Exception:
-            return np.nan, np.nan
+        except Exception: return np.nan, np.nan
 
-    # --- CÀLCUL PER A CADA NIVELL ---
-    dir_sfc, spd_sfc = get_wind_at_level(p_profile.m[0])
+    dir_sfc, spd_sfc = get_wind_at_level(p.m[0])
     dir_925, spd_925 = get_wind_at_level(925)
     dir_700, spd_700 = get_wind_at_level(700)
     
-    # Dibuixem els 3 dials
     col1, col2, col3 = st.columns(3)
-    with col1:
-        html_sfc = crear_dial_vent_animat("Superfície", dir_sfc, spd_sfc)
-        st.markdown(html_sfc, unsafe_allow_html=True)
-    with col2:
-        html_925 = crear_dial_vent_animat("925 hPa", dir_925, spd_925)
-        st.markdown(html_925, unsafe_allow_html=True)
-    with col3:
-        html_700 = crear_dial_vent_animat("700 hPa", dir_700, spd_700)
-        st.markdown(html_700, unsafe_allow_html=True)
-
-
+    with col1: st.markdown(crear_dial_vent_animat("Superfície", dir_sfc, spd_sfc), unsafe_allow_html=True)
+    with col2: st.markdown(crear_dial_vent_animat("925 hPa", dir_925, spd_925), unsafe_allow_html=True)
+    with col3: st.markdown(crear_dial_vent_animat("700 hPa", dir_700, spd_700), unsafe_allow_html=True)
 
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None):
+    """
+    Versió Final amb Lògica de Context:
+    - Comprova si la zona d'amenaça ja és la zona que s'està analitzant.
+    - Si és així, mostra un botó desactivat amb un missatge informatiu.
+    - Si no, mostra el botó interactiu per "viatjar" a la nova zona.
+    """
     if data_tuple:
         sounding_data, params_calculats = data_tuple
         p, T, Td, u, v, heights, prof = sounding_data
@@ -1850,17 +1934,9 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
         col1, col2 = st.columns(2, gap="large")
         with col1:
             zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 800 hPa)")
-            
-            fig_skewt = crear_skewt(
-                p, T, Td, u, v, prof, params_calculats, 
-                f"Sondeig Vertical - {poble_sel}", 
-                timestamp_str, 
-                zoom_capa_baixa=zoom_capa_baixa
-            )
-            
+            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=zoom_capa_baixa)
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
-            
             with st.container(border=True):
                 ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual, poble_sel, avis_proximitat)
 
@@ -1869,77 +1945,37 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
 
-            if avis_proximitat:
-                st.warning(avis_proximitat)
+            # <<-- NOU BLOC DE LÒGICA AMB COMPROVACIÓ DE CONTEXT -->>
+            if avis_proximitat and isinstance(avis_proximitat, dict):
+                # Sempre mostrem el missatge d'avís primer
+                st.warning(f"⚠️ **AVÍS DE PROXIMITAT:** {avis_proximitat['message']}")
+                
+                # Comprovem si el millor punt d'anàlisi és el que ja estem veient
+                if avis_proximitat['target_city'] == poble_sel:
+                    # Si és així, mostrem un botó desactivat i informatiu
+                    st.button("📍 Ja ets a la millor zona convergent d'anàlisi, mira si hi ha MU/SBCAPE! I poc MU/SBCIN!",
+                              help="El punt d'anàlisi més proper a l'amenaça és la localitat que ja estàs consultant.",
+                              use_container_width=True,
+                              disabled=True)
+                else:
+                    # Si no, mostrem el botó interactiu de sempre
+                    tooltip_text = f"Viatjar a {avis_proximitat['target_city']}, el punt d'anàlisi més proper al nucli de convergència (Força: {avis_proximitat['conv_value']:.0f})."
+                    st.button("🛰️ Analitzar Zona d'Amenaça", 
+                              help=tooltip_text, 
+                              use_container_width=True, 
+                              type="primary",
+                              on_click=canviar_poble_analitzat,
+                              args=(avis_proximitat['target_city'],)
+                             )
+            # <<-- FI DEL NOU BLOC -->>
             
             st.markdown("##### Radar de Precipitació en Temps Real")
-            radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},8&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
+            radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
             html_code = f"""<div style="position: relative; width: 100%; height: 410px; border-radius: 10px; overflow: hidden;"><iframe src="{radar_url}" width="100%" height="410" frameborder="0" style="border:0;"></iframe><div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div></div>"""
             st.components.v1.html(html_code, height=410)
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 
-
-@st.cache_data(ttl=1800, show_spinner="Analitzant zones de convergència...")
-def calcular_convergencies_per_llista(map_data, llista_ciutats):
-    """
-    Versió Definitiva v3.0 - Anàlisi per Àrea.
-    En lloc de comprovar un sol punt, busca el valor màxim de convergència
-    en un radi al voltant de cada ciutat, solucionant la desconnexió
-    entre el mapa visual i la llista de dades.
-    """
-    if not map_data or 'lons' not in map_data or len(map_data['lons']) < 4:
-        return {}
-
-    convergencies = {}
-    try:
-        lons, lats = map_data['lons'], map_data['lats']
-        speed_data, dir_data = map_data['speed_data'], map_data['dir_data']
-
-        # Creem una graella d'alta resolució per a l'anàlisi
-        grid_lon, grid_lat = np.meshgrid(
-            np.linspace(min(lons), max(lons), 200),
-            np.linspace(min(lats), max(lats), 200)
-        )
-        u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
-        grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-        grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-        
-        with np.errstate(invalid='ignore'):
-            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-            divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
-            convergence_scaled = -divergence.to('1/s').magnitude * 1e5
-            convergence_scaled[np.isnan(convergence_scaled)] = 0
-
-        # --- NOVA LÒGICA D'ANÀLISI PER ÀREA ---
-        SEARCH_RADIUS_DEG = 0.15  # Radi de cerca en graus (aprox. 15-20 km)
-
-        for nom_ciutat, coords in llista_ciutats.items():
-            lat_sel, lon_sel = coords['lat'], coords['lon']
-            
-            # Calculem la distància de la ciutat a TOTS els punts de la graella
-            dist_from_city = np.sqrt((grid_lat - lat_sel)**2 + (grid_lon - lon_sel)**2)
-            
-            # Creem una màscara booleana amb els punts que estan dins del radi de cerca
-            nearby_mask = dist_from_city <= SEARCH_RADIUS_DEG
-            
-            # Si hi ha almenys un punt a prop...
-            if np.any(nearby_mask):
-                # ...seleccionem tots els valors de convergència dins d'aquesta àrea...
-                values_in_radius = convergence_scaled[nearby_mask]
-                # ...i ens quedem amb el valor MÀXIM.
-                max_conv_in_area = np.max(values_in_radius)
-                convergencies[nom_ciutat] = max_conv_in_area
-            else:
-                # Si no hi ha cap punt a prop (molt improbable), assignem 0
-                convergencies[nom_ciutat] = 0
-    
-    except Exception:
-        # En cas d'error, retornem un diccionari buit per no bloquejar l'app
-        return {}
-        
-    return convergencies
-    
 def debug_convergence_calculation(map_data, llista_ciutats):
     """
     Funció de depuració per imprimir l'estat dels càlculs de convergència pas a pas.
@@ -1988,10 +2024,132 @@ def debug_convergence_calculation(map_data, llista_ciutats):
         print("="*50 + "\n\n")
         return {}
 
-# ==============================================================================
-# FI DEL BLOC DE REPARACIÓ
-# ==============================================================================
+@st.cache_data(ttl=1800, show_spinner="Analitzant zones de convergència...")
+def calcular_convergencies_per_llista(map_data, llista_ciutats):
+    """
+    Analitza el mapa de dades per trobar el valor MÀXIM de convergència
+    en un radi proper a cada ciutat de la llista. Això assegura que les alertes
+    de la llista coincideixin amb els nuclis visualitzats al mapa.
+    """
+    if not map_data or 'lons' not in map_data or len(map_data['lons']) < 4:
+        return {}
 
+    convergencies = {}
+    try:
+        lons, lats = map_data['lons'], map_data['lats']
+        speed_data, dir_data = map_data['speed_data'], map_data['dir_data']
+
+        # Creem una graella d'alta resolució per a l'anàlisi
+        grid_lon, grid_lat = np.meshgrid(
+            np.linspace(min(lons), max(lons), 200),
+            np.linspace(min(lats), max(lats), 200)
+        )
+        u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+        grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+        grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+        
+        with np.errstate(invalid='ignore'):
+            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+            convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
+            convergence_scaled[np.isnan(convergence_scaled)] = 0
+
+        # Lògica d'anàlisi per àrea
+        SEARCH_RADIUS_DEG = 0.15  # Radi de cerca en graus (aprox. 15-20 km)
+
+        for nom_ciutat, coords in llista_ciutats.items():
+            lat_sel, lon_sel = coords['lat'], coords['lon']
+            
+            dist_from_city = np.sqrt((grid_lat - lat_sel)**2 + (grid_lon - lon_sel)**2)
+            nearby_mask = dist_from_city <= SEARCH_RADIUS_DEG
+            
+            if np.any(nearby_mask):
+                # Ens quedem amb el valor MÀXIM de convergència dins d'aquesta àrea.
+                max_conv_in_area = np.max(convergence_scaled[nearby_mask])
+                convergencies[nom_ciutat] = max_conv_in_area
+            else:
+                convergencies[nom_ciutat] = 0
+    
+    except Exception as e:
+        print(f"Error crític a calcular_convergencies_per_llista: {e}")
+        return {}
+        
+    return convergencies
+
+
+def ui_explicacio_convergencia():
+    """
+    Crea una secció explicativa visualment atractiva sobre els dos tipus
+    principals de convergència, utilitzant un disseny de targetes.
+    """
+    st.divider()
+    st.markdown("##### Com Interpretar els Nuclis de Convergència")
+
+    # CSS per a l'estil de les targetes explicatives
+    st.markdown("""
+    <style>
+    .explanation-card {
+        background-color: #f0f2f6; /* Fons clar per a les targetes */
+        border: 1px solid #d1d1d1;
+        border-radius: 10px;
+        padding: 20px;
+        height: 100%; /* Assegura que les dues targetes tinguin la mateixa alçada */
+        display: flex;
+        flex-direction: column;
+    }
+    .explanation-title {
+        font-size: 1.3em;
+        font-weight: bold;
+        color: #1a1a2e; /* Text fosc */
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+    }
+    .explanation-icon {
+        font-size: 1.5em;
+        margin-right: 12px;
+    }
+    .explanation-text {
+        font-size: 1em;
+        color: #333; /* Text gris fosc */
+        line-height: 1.6;
+    }
+    .explanation-text strong {
+        color: #0056b3; /* Ressalta paraules clau en blau */
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("""
+        <div class="explanation-card">
+            <div class="explanation-title">
+                <span class="explanation-icon">💥</span>
+                Convergència Frontal (Xoc)
+            </div>
+            <div class="explanation-text">
+                Passa quan <strong>dues masses d'aire de direccions diferents xoquen</strong>. L'aire no pot anar cap als costats i es veu forçat a ascendir bruscament.
+                <br><br>
+                <strong>Al mapa:</strong> Busca línies on les <i>streamlines</i> (línies de vent) es troben de cara, com en un "xoc de trens". Són mecanismes de dispar molt eficients i solen generar tempestes organitzades.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("""
+        <div class="explanation-card">
+            <div class="explanation-title">
+                <span class="explanation-icon">⛰️</span>
+                Convergència per Acumulació
+            </div>
+            <div class="explanation-text">
+                Ocorre quan el vent es troba amb un <strong>obstacle (com una muntanya) o es desaccelera</strong>, fent que l'aire "s'amuntegui". L'única sortida per a aquesta acumulació de massa és cap amunt.
+                <br><br>
+                <strong>Al mapa:</strong> Busca zones on les <i>streamlines</i> s'ajunten i la velocitat del vent (color de fons) disminueix. És com un "embús a l'autopista": els cotxes s'acumulen i s'aturen.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 @st.cache_data(ttl=3600)
@@ -2053,30 +2211,31 @@ def carregar_dades_mapa_cat(nivell, hourly_index):
     
 def afegir_etiquetes_ciutats(ax, map_extent):
     """
-    Versió corregida i robusta. Afegeix etiquetes amb els noms de les ciutats
-    si la vista del mapa actual NO és la vista completa de Catalunya.
+    Versió amb etiquetes més petites per a una millor claredat visual en fer zoom.
     """
-    # --- LÒGICA DE ZOOM CORREGIDA I SIMPLIFICADA ---
-    # Comprovem si l'extensió del mapa actual és diferent de l'extensió per defecte
-    # (la de Catalunya completa). Si ho és, significa que l'usuari ha fet zoom.
-    
-    # Perquè la comparació funcioni, convertim les llistes a tuples
     is_zoomed_in = (tuple(map_extent) != tuple(MAP_EXTENT_CAT))
 
     if is_zoomed_in:
-        # Iterem sobre les ciutats del diccionari
-        for ciutat, coords in CIUTATS_CATALUNYA.items():
+        # Itera sobre el diccionari de referència per als mapes
+        for ciutat, coords in POBLES_MAPA_REFERENCIA.items():
             lon, lat = coords['lon'], coords['lat']
             
-            # Comprovem si la ciutat està dins dels límits del mapa actual
+            # Comprovem si el punt de referència està dins dels límits del mapa visible
             if map_extent[0] < lon < map_extent[1] and map_extent[2] < lat < map_extent[3]:
-                # Dibuixem el text de l'etiqueta
+                
+                # Dibuixem el punt de referència
+                ax.plot(lon, lat, 'o', color='black', markersize=1,
+                        markeredgecolor='black', markeredgewidth=1.5,
+                        transform=ccrs.PlateCarree(), zorder=19)
+
+                # Dibuixem l'etiqueta de text al costat del punt
+                # <<-- CANVI CLAU: Hem reduït el 'fontsize' de 8 a 6 -->>
                 ax.text(lon + 0.02, lat, ciutat, 
-                        fontsize=8, 
-                        color='black',
+                        fontsize= 5, # <-- AQUÍ ESTÀ EL CANVI
+                        color='white',
                         transform=ccrs.PlateCarree(), 
-                        zorder=20,
-                        path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')])
+                        zorder=2,
+                        path_effects=[path_effects.withStroke(linewidth=2.5, foreground='gray')])
                 
         
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -2241,115 +2400,138 @@ def precache_datos_iniciales():
         return False
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
+    """
+    VERSIÓ FINAL AMB ESCALA AJUSTADA (30-150):
+    - Detecció i visualització de la convergència a partir de 30.
+    - Paleta de colors i línies de contorn optimitzades per al rang 30-150.
+    - Manté l'estil net, sense llegendes i amb isos negres.
+    """
+    # Tornem a l'estil per defecte (fons clar)
+    plt.style.use('default')
+
     fig, ax = crear_mapa_base(map_extent)
     
-    if not lons or len(lons) < 4:
-        ax.set_title(f"Dades insuficients per generar el mapa\n{timestamp_str}", weight='bold', fontsize=16)
-        return fig
-
+    # --- 1. INTERPOLACIÓ ---
     grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 300), np.linspace(map_extent[2], map_extent[3], 300))
-    
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'linear')
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'linear')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     
-    colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
-    speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]; 
+    # --- 2. MAPA DE VELOCITAT DEL VENT ---
+    colors_wind = [
+        '#d2d2f0', '#b4b4e6', '#78c8c8', '#50b48c', '#32cd32', '#64ff64',
+        '#ffff00', '#f5d264', '#e6b478', '#d7788c', '#ff69b4', '#9f78dc',
+        '#8c64c8', '#8296d7', '#96b4d7', '#d2b4e6', '#e6dcc8', '#f5e6b4'
+    ]
+    speed_levels = [0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104, 130, 166, 184, 200]
     custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
-    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree(), alpha=0.5)
-    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
-    cbar.set_label(f"Velocitat del Vent a {nivell}hPa (km/h)")
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.2, density=6.5, arrowsize=0.3, zorder=2, transform=ccrs.PlateCarree())
     
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree(), alpha=0.7)
+    
+    # --- STREAMLINES DEL VENT ---
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.5, density=6.5, arrowsize=0.3, zorder=4, transform=ccrs.PlateCarree())
+    
+    # --- 3. CÀLCUL I FILTRATGE DE CONVERGÈNCIA (LLINDAR A 30) ---
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-        grid_u_units, grid_v_units = grid_u * units('m/s'), grid_v * units('m/s')
-        
-        dudx = mpcalc.first_derivative(grid_u_units, delta=dx, axis=1)
-        dvdy = mpcalc.first_derivative(grid_v_units, delta=dy, axis=0)
-        dvdx = mpcalc.first_derivative(grid_v_units, delta=dx, axis=1)
-        dudy = mpcalc.first_derivative(grid_u_units, delta=dy, axis=0)
-        
-        convergence = (-(dudx + dvdy).to('1/s')).magnitude * 1e5
-        shear = ((dvdx + dudy).to('1/s')).magnitude * 1e5
+        convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
         convergence[np.isnan(convergence)] = 0
-        shear[np.isnan(shear)] = 0
-
-        # --- TORNEM A ACTIVAR EL FILTRE D'HUMITAT, JA QUE ERA CORRECTE ---
         DEWPOINT_THRESHOLD = 14 if nivell >= 950 else 12
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
-        effective_mask = (convergence >= 15) & (np.abs(convergence) > np.abs(shear) * 1.5)
-        final_mask = humid_mask & effective_mask
         
-        effective_convergence = np.where(final_mask, convergence, 0)
+        # <<-- CANVI CLAU: El llindar ara és 30 -->>
+        effective_convergence = np.where((convergence >= 30) & humid_mask, convergence, 0)
 
-    smoothed_convergence = gaussian_filter(effective_convergence, sigma=3.0)
-
-    colors_conv = ['#ffc107', '#ff9800', '#f44336', '#d32f2f', '#880e4f']
-    cmap_conv = LinearSegmentedColormap.from_list("conv_cmap", colors_conv)
-    fill_levels = np.linspace(15, 100, 100)
-    ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels, cmap=cmap_conv, alpha=0.7, zorder=5, transform=ccrs.PlateCarree())
-
-    line_levels = [15, 25, 40, 60]; 
-    line_colors = ['#e65100', '#bf360c', '#b71c1c', '#4a148c']
-    contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors=line_colors, linestyles='--', linewidths=1.2, zorder=6, transform=ccrs.PlateCarree())
-    labels = ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
-    for label in labels: label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.6))
+    smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
     
-    ax.set_title(f"Vent i Nuclis de Convergència EFECTIVA a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    # <<-- CANVI CLAU: El filtre post-suavitzat també és 30 -->>
+    smoothed_convergence[smoothed_convergence < 30] = 0
+    
+    # --- 4. DIBUIX DE LA CONVERGÈNCIA (NOVA ESCALA 30-150) ---
+    if np.any(smoothed_convergence > 0):
+        colors_conv = [
+            '#5BC0DE', "#FBFF00", "#DC6D05", "#EC8383", "#F03D3D", 
+            "#FF0000", "#7C7EF0", "#0408EAFF", "#000070"
+        ]
+        cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_personalitzada", colors_conv)
+        
+        # <<-- CANVI CLAU: El farciment comença a 30 i acaba a 151 -->>
+        fill_levels = np.arange(30, 151, 5)
+        ax.contourf(grid_lon, grid_lat, smoothed_convergence,
+                    levels=fill_levels, cmap=cmap_conv, alpha=0.99,
+                    zorder=3, transform=ccrs.PlateCarree(), extend='max')
+
+        # <<-- CANVI CLAU: Nous nivells per a les línies de contorn -->>
+        line_levels = [30, 50, 70, 90, 120]
+        contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
+                              levels=line_levels, 
+                              colors='black',
+                              linestyles='--', linewidths=1, zorder=3,
+                              transform=ccrs.PlateCarree())
+        
+        labels = ax.clabel(contours, inline=True, fontsize=5, fmt='%1.0f')
+        for label in labels:
+            label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.5))
+
+    # Ajustos finals del títol
+    ax.set_title(f"Vent i Nuclis de Convergència EFECTIVA a {nivell}hPa\n{timestamp_str}",
+                 weight='bold', fontsize=16)
+    afegir_etiquetes_ciutats(ax, map_extent)
+    
     return fig
+
 
 def crear_mapa_convergencia_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    Crea un mapa optimitzat que mostra ÚNICAMENT els nuclis de convergència
-    en zones humides, i ara afegeix etiquetes de ciutats quan es fa zoom.
+    VERSIÓ NETA: Mostra ÚNICAMENT els nuclis de convergència (a partir de 40),
+    eliminant llegendes i línies per a una visualització clara i directa.
     """
+    plt.style.use('dark_background')
     fig, ax = crear_mapa_base(map_extent)
-    
+    ax.patch.set_facecolor('black')
+    fig.patch.set_facecolor('black')
+
     grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 150), np.linspace(map_extent[2], map_extent[3], 150))
     
-    # Interpolació ràpida
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'linear')
 
-    # Càlcul de la convergència
     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-    dudx = mpcalc.first_derivative(grid_u * units('m/s'), delta=dx, axis=1)
-    dvdy = mpcalc.first_derivative(grid_v * units('m/s'), delta=dy, axis=0)
-    convergence_scaled = -(dudx + dvdy).to('1/s').magnitude * 1e5
+    convergence_scaled = -(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s').magnitude * 1e5
     
     DEWPOINT_THRESHOLD = 14 if nivell >= 950 else 12
     convergence_in_humid_areas = np.where(grid_dewpoint >= DEWPOINT_THRESHOLD, convergence_scaled, 0)
     
-    # Dibuix dels contorns
-    fill_levels = [15, 25, 40, 60]; fill_colors = ['#ffc107', '#ff9800', '#f44336', '#d32f2f']
-    line_levels = [15, 25, 40, 60]; line_colors = ['#e65100', '#bf360c', '#b71c1c', '#880e4f']
-    
-    ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=fill_colors, alpha=0.6, zorder=5, transform=ccrs.PlateCarree())
-    contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors=line_colors, linestyles='--', linewidths=1.2, zorder=6, transform=ccrs.PlateCarree())
-    
-    labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
-    for label in labels:
-        label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.7))
+    # Filtrem estrictament a partir de 40
+    convergence_in_humid_areas[convergence_in_humid_areas < 40] = 0
 
-    ax.set_title(f"Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
-    
-    from matplotlib.patches import Patch
-    legend_elements = [Patch(facecolor=fill_colors[2], alpha=0.6, label='Convergència Alta (>40)'),
-                       Patch(facecolor=fill_colors[1], alpha=0.6, label='Convergència Moderada (>25)'),
-                       Patch(facecolor=fill_colors[0], alpha=0.6, label='Convergència Feble (>15)')]
-    ax.legend(handles=legend_elements, loc='upper left')
+    # Dibuixem només el farciment de color
+    if np.any(convergence_in_humid_areas > 0):
+        fill_levels = [40, 60, 80, 100]; 
+        fill_colors = ['#FF9800', '#F44336', '#D32F2F', '#B71C1C']
+        
+        ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, 
+                    levels=fill_levels, colors=fill_colors, alpha=0.65, 
+                    zorder=5, transform=ccrs.PlateCarree(), extend='max')
 
-    # AFEGIM LES ETIQUETES DE CIUTATS
+    ax.set_title(f"Focus de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16, color='white')
     afegir_etiquetes_ciutats(ax, map_extent)
 
     return fig
-
 # --- Funcions Específiques per a Tornado Alley ---
+
+
+def canviar_poble_analitzat(nom_poble):
+    """
+    Funció de callback per canviar la selecció del poble a l'estat de la sessió.
+    Això s'executa abans de redibuixar, evitant l'error de Streamlit de
+    modificar un widget que ja ha estat creat.
+    """
+    st.session_state.poble_selector = nom_poble
 
 def mostrar_carga_avanzada(mensaje, funcion_a_ejecutar, *args, **kwargs):
     """
@@ -2591,75 +2773,84 @@ def angular_difference(angle1, angle2):
     diff = abs(angle1 - angle2) % 360
     return diff if diff <= 180 else 360 - diff
 
-def analitzar_amenaça_convergencia_propera(map_data, params_calc, lat_sel, lon_sel):
+def analitzar_amenaça_convergencia_propera(map_data, params_calc, lat_sel, lon_sel, nivell):
     """
-    Analitza si hi ha nuclis de convergència forts i propers que representin
-    una amenaça directa per a la ubicació seleccionada.
+    Versió Interactiva v3.0:
+    - Si troba una amenaça, no retorna un text, sinó un diccionari amb:
+      - 'message': El text de l'avís.
+      - 'target_city': El nom del punt d'anàlisi més proper a l'amenaça.
+      - 'conv_value': La força exacta de la convergència detectada.
     """
     if not map_data or not params_calc or 'lons' not in map_data or len(map_data['lons']) < 4:
         return None
 
-    # Extreu el moviment de la tempesta (prioritzem el Right-Mover)
     moviment_vector = params_calc.get('RM') or params_calc.get('Mean_Wind')
-    if not moviment_vector or pd.isna(moviment_vector[0]):
-        return None
+    if not moviment_vector or pd.isna(moviment_vector[0]): return None
 
     u_storm, v_storm = moviment_vector[0] * units('m/s'), moviment_vector[1] * units('m/s')
     storm_speed_kmh = mpcalc.wind_speed(u_storm, v_storm).to('km/h').m
     storm_dir_to = mpcalc.wind_direction(u_storm, v_storm, convention='to').m
 
-    # Llindars per a l'avís
-    CONV_THRESHOLD = 25
-    MAX_DIST_KM = 50
-    MIN_STORM_SPEED_KMH = 15
-    ANGLE_TOLERANCE = 45 # Marge de +/- 45 graus
+    CONV_THRESHOLD = 30; MAX_DIST_KM = 25; MIN_STORM_SPEED_KMH = 30; ANGLE_TOLERANCE = 45
 
-    if storm_speed_kmh < MIN_STORM_SPEED_KMH:
-        return None
+    if storm_speed_kmh < MIN_STORM_SPEED_KMH: return None
 
     try:
-        # Interpola les dades de convergència a una graella fina
         lons, lats, speed_data, dir_data = map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data']
         grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100))
+        
         u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
         grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
         grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
         
+        dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         with np.errstate(invalid='ignore'):
-            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
             convergence = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
         
-        # Troba tots els punts que superen el llindar de convergència
         punts_forts_idx = np.argwhere(convergence > CONV_THRESHOLD)
         if len(punts_forts_idx) == 0: return None
 
         amenaces_potencials = []
         for idx in punts_forts_idx:
             lat_conv, lon_conv = grid_lat[idx[0], idx[1]], grid_lon[idx[0], idx[1]]
-            dist = haversine_distance(lat_sel, lon_sel, lat_conv, lon_conv)
-
-            if dist <= MAX_DIST_KM:
-                # Calcula la direcció des del nucli de convergència cap a nosaltres
-                bearing_to_target = get_bearing(lat_conv, lon_conv, lat_sel, lon_sel)
-                # Compara si la tempesta es mou en aquesta direcció
-                if angular_difference(storm_dir_to, bearing_to_target) <= ANGLE_TOLERANCE:
-                    amenaces_potencials.append({'dist': dist, 'lat': lat_conv, 'lon': lon_conv})
+            es_punt_valid = True
+            if nivell == 1000: es_punt_valid = globe.is_ocean(lat_conv, lon_conv)
+            
+            if es_punt_valid:
+                dist = haversine_distance(lat_sel, lon_sel, lat_conv, lon_conv)
+                if dist <= MAX_DIST_KM:
+                    bearing_to_target = get_bearing(lat_conv, lon_conv, lat_sel, lon_sel)
+                    if angular_difference(storm_dir_to, bearing_to_target) <= ANGLE_TOLERANCE:
+                        # Guardem també el valor de la convergència
+                        amenaces_potencials.append({'dist': dist, 'lat': lat_conv, 'lon': lon_conv, 'conv': convergence[idx[0], idx[1]]})
         
         if not amenaces_potencials: return None
 
-        # Tria l'amenaça més propera
+        # Tria l'amenaça més propera (la que té la distància mínima)
         amenaça_principal = min(amenaces_potencials, key=lambda x: x['dist'])
         dist_final = amenaça_principal['dist']
+        conv_final = amenaça_principal['conv']
         
-        # Calcula la direcció cardinal des de la nostra posició
+        # <<-- NOU: Busca el punt d'anàlisi més proper a l'amenaça -->>
+        ciutat_mes_propera = min(CIUTATS_CATALUNYA.keys(), 
+                                key=lambda ciutat: haversine_distance(amenaça_principal['lat'], amenaça_principal['lon'], 
+                                                                    CIUTATS_CATALUNYA[ciutat]['lat'], CIUTATS_CATALUNYA[ciutat]['lon']))
+
         bearing_from_target = get_bearing(lat_sel, lon_sel, amenaça_principal['lat'], amenaça_principal['lon'])
         dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"]
         direccio_cardinal = dirs[int(round(bearing_from_target / 22.5)) % 16]
 
-        return f"⚠️ **AVÍS DE PROXIMITAT:** S'ha detectat un nucli de forta convergència a **{dist_final:.0f} km** al **{direccio_cardinal}**. Les tempestes que es formin allà podrien desplaçar-se cap a la teva posició a uns **{storm_speed_kmh:.0f} km/h**."
+        missatge = f"S'ha detectat un nucli de forta convergència a **{dist_final:.0f} km** al **{direccio_cardinal}**. Les tempestes que es formin allà podrien desplaçar-se cap a la teva posició a uns **{storm_speed_kmh:.0f} km/h**."
+        
+        # <<-- NOU: Retorna un paquet d'informació complet -->>
+        return {
+            'message': missatge,
+            'target_city': ciutat_mes_propera,
+            'conv_value': conv_final
+        }
 
     except Exception:
-        return None # Evita que un error en aquest càlcul bloquegi l'app
+        return None
 
 
         
@@ -3015,6 +3206,11 @@ def on_city_change(source_widget_key, other_widget_key, placeholder_text, city_d
 
 
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya", convergencies=None):
+    """
+    VERSIÓ SINCRONITZADA:
+    - La lògica per mostrar alertes a la llista de ciutats ara comença a 30.
+    - Nova escala d'emojis per a les alertes: 🟡 (30-49), 🟠 (50-79), 🔴 (80+).
+    """
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
@@ -3022,7 +3218,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     with col_text:
         if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username')}**!")
     with col_change:
-        if st.button("Canviar Anàlisi", use_container_width=True):
+        if st.button("Canviar a EEUU?", use_container_width=True):
             keys_to_delete = ['poble_selector', 'poble_selector_usa', 'zone_selected', 'active_tab_cat', 'active_tab_usa', 'dia_selector', 'hora_selector', 'dia_selector_usa_widget', 'hora_selector_usa']
             for key in keys_to_delete:
                 if key in st.session_state: del st.session_state[key]
@@ -3033,69 +3229,53 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             st.rerun()
 
     with st.container(border=True):
-        # --- NOU TEXT EXPLICATIU ---
-        st.caption("💡 Les alertes (🟡/🟠/🔴) indiquen localitats amb 'disparador' (convergència). La llista s'ordena per potencial.")
+        st.caption("💡 Les alertes (🟡/🟠/🔴) indiquen localitats amb 'disparador' (convergència ≥ 30). La llista s'ordena per potencial.")
         
         def format_city_label(city_key):
             if "---" in city_key: return "────────────────"
             if not convergencies or city_key not in convergencies: return city_key
             conv = convergencies.get(city_key)
             if isinstance(conv, (int, float)):
-                emoji = "🔴" if conv >= 40 else "🟠" if conv >= 25 else "🟡" if conv >= 15 else ""
+                # <<-- CANVI CLAU: Nova escala d'emojis a partir de 30 -->>
+                emoji = "🔴" if conv >= 80 else "🟠" if conv >= 50 else "🟡" if conv >= 30 else ""
                 return f"{city_key} ({emoji} {conv:.0f})" if emoji else city_key
             return city_key
 
         if zona_activa == 'catalunya':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc:
-                # --- NOVA LÒGICA DE LA LLISTA: MOSTRAR TOT, PERÒ ORDENAT ---
                 actives_terra, inactives_terra = [], []
                 actives_mar, inactives_mar = [], []
 
                 if convergencies:
                     for city, conv in convergencies.items():
                         is_numeric = isinstance(conv, (int, float))
+                        # <<-- CANVI CLAU: El llindar per ser "actiu" ara és 30 -->>
+                        llindar_actiu = 30
                         if city in POBLACIONS_TERRA:
-                            if is_numeric and conv >= 15:
-                                actives_terra.append(city)
-                            else:
-                                inactives_terra.append(city)
+                            (actives_terra if is_numeric and conv >= llindar_actiu else inactives_terra).append(city)
                         elif city in PUNTS_MAR:
-                            if is_numeric and conv >= 15:
-                                actives_mar.append(city)
-                            else:
-                                inactives_mar.append(city)
+                            (actives_mar if is_numeric and conv >= llindar_actiu else inactives_mar).append(city)
                     
-                    # Ordenem les actives per valor de convergència
                     actives_terra.sort(key=lambda k: convergencies[k], reverse=True)
                     actives_mar.sort(key=lambda k: convergencies[k], reverse=True)
-                
-                # Si no hi ha convergències, omplim les llistes d'inactives
                 else:
                     inactives_terra = sorted(list(POBLACIONS_TERRA.keys()))
                     inactives_mar = sorted(list(PUNTS_MAR.keys()))
 
-                # Construïm la llista final
                 opcions_finals = []
-                if actives_terra:
-                    opcions_finals.extend(["--- FOCUS DE CONVERGÈNCIA ---"] + actives_terra)
-                if inactives_terra:
-                    opcions_finals.extend(["--- POBLACIONS SENSE DISPAR ---"] + sorted(inactives_terra))
-                if actives_mar:
-                    opcions_finals.extend(["--- FOCUS MARINS ---"] + actives_mar)
-                if inactives_mar:
-                     opcions_finals.extend(["--- ZONES MARINES SENSE DISPAR ---"] + sorted(inactives_mar))
+                if actives_terra: opcions_finals.extend(["--- FOCUS DE CONVERGÈNCIA ---"] + actives_terra)
+                if inactives_terra: opcions_finals.extend(["--- POBLACIONS SENSE DISPAR ---"] + sorted(inactives_terra))
+                if actives_mar: opcions_finals.extend(["--- FOCUS MARINS ---"] + actives_mar)
+                if inactives_mar: opcions_finals.extend(["--- ZONES MARINES SENSE DISPAR ---"] + sorted(inactives_mar))
                 
                 poble_actual = st.session_state.get('poble_selector', 'Barcelona')
-                idx = 0
-                if poble_actual in opcions_finals:
-                    idx = opcions_finals.index(poble_actual)
-                
+                idx = opcions_finals.index(poble_actual) if poble_actual in opcions_finals else 0
                 st.selectbox("Localitat:", options=opcions_finals, key="poble_selector", format_func=format_city_label, index=idx)
 
             with col_dia:
                 now_local = datetime.now(TIMEZONE_CAT)
-                opcions_dia = (now_local.strftime('%d/%m/%Y'), (now_local + timedelta(days=1)).strftime('%d/%m/%Y'))
+                opcions_dia = [(now_local + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)]
                 st.selectbox("Dia:", opcions_dia, key="dia_selector", disabled=is_guest)
             with col_hora:
                 opcions_hora = [f"{h:02d}:00h" for h in range(24)]
@@ -3106,11 +3286,97 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 if not is_guest:
                     nivells = [1000, 950, 925, 900, 850, 800, 700]; nivell_actual = st.session_state.get('level_cat_main', 925)
                     idx = nivells.index(nivell_actual) if nivell_actual in nivells else 2
-                    st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx, format_func=lambda x: f"{x} hPa (Terrestre)" if x == 925 else f"{x} hPa (Marítim)" if x == 1000 else f"{x} hPa")
+                    st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx, format_func=lambda x: f"{x} hPa")
         
-        else: # Zona USA (la mantenim igual, ja que funcionava bé)
-             # ... (el codi de la zona USA es queda com estava)
-             pass
+        else: # Zona USA
+            # (La lògica per a USA es manté, ja que té llindars diferents)
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc:
+                actives, inactives = [], []
+                if convergencies:
+                    for city, conv in convergencies.items():
+                        is_numeric = isinstance(conv, (int, float))
+                        (actives if is_numeric and conv >= 5 else inactives).append(city)
+                    actives.sort(key=lambda k: convergencies[k], reverse=True)
+                else:
+                    inactives = sorted(list(USA_CITIES.keys()))
+                
+                opcions_finals_usa = []
+                if actives: opcions_finals_usa.extend(["--- FOCUS DE CONVERGÈNCIA ---"] + actives)
+                if inactives: opcions_finals_usa.extend(["--- ALTRES CIUTATS ---"] + sorted(inactives))
+                
+                poble_actual = st.session_state.get('poble_selector_usa', "Oklahoma City, OK")
+                idx = opcions_finals_usa.index(poble_actual) if poble_actual in opcions_finals_usa else 0
+                st.selectbox("Ciutat:", options=opcions_finals_usa, key="poble_selector_usa", format_func=format_city_label, index=idx)
+            
+            with col_dia:
+                now_usa = datetime.now(TIMEZONE_USA)
+                opcions_dia = [(now_usa + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(3)]
+                st.selectbox("Dia:", opcions_dia, key="dia_selector_usa_widget", on_change=on_day_change_usa)
+            
+            with col_hora:
+                now_spain = datetime.now(TIMEZONE_CAT)
+                opcions_hora = []
+                for h in range(24):
+                    time_in_usa = TIMEZONE_USA.localize(datetime.now().replace(hour=h, minute=0, second=0, microsecond=0))
+                    time_in_spain_equivalent = time_in_usa.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00 (Local: {time_in_spain_equivalent.hour:02d}:00h)")
+                
+                hora_actual_usa = st.session_state.get('hora_selector_usa', f"{now_spain.astimezone(TIMEZONE_USA).hour:02d}:00 (Local: {now_spain.hour:02d}:00h)")
+                idx = opcions_hora.index(hora_actual_usa) if hora_actual_usa in opcions_hora else 0
+                st.selectbox("Hora (Central Time):", opcions_hora, key="hora_selector_usa", index=idx)
+                
+            with col_nivell:
+                nivells_usa = [925, 850, 700, 500, 300]
+                nivell_actual = st.session_state.get('level_usa_main', 850)
+                idx = nivells_usa.index(nivell_actual) if nivell_actual in nivells_usa else 1
+                st.selectbox("Nivell:", nivells_usa, key="level_usa_main", index=idx, format_func=lambda x: f"{x} hPa")
+
+
+
+
+@st.cache_resource(ttl=1800, show_spinner=False)
+def generar_mapa_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
+    """
+    Funció generadora que crea i desa a la memòria cau el mapa de convergència.
+    Només s'executa si els paràmetres (hora, nivell, zoom) canvien.
+    """
+    map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
+    if error or not map_data:
+        # Retorna None si no es poden carregar les dades
+        return None
+    
+    # El tuple es converteix de nou a llista per a la funció de dibuix
+    map_extent_list = list(map_extent_tuple)
+    
+    fig = crear_mapa_forecast_combinat_cat(
+        map_data['lons'], map_data['lats'], 
+        map_data['speed_data'], map_data['dir_data'], 
+        map_data['dewpoint_data'], nivell, 
+        timestamp_str, map_extent_list
+    )
+    return fig
+
+@st.cache_resource(ttl=1800, show_spinner=False)
+def generar_mapa_vents_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
+    """
+    Funció generadora que crea i desa a la memòria cau els mapes de vent (700/300hPa).
+    """
+    variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+    map_data, error = carregar_dades_mapa_base_cat(variables, hourly_index)
+    
+    if error or not map_data:
+        return None
+        
+    map_extent_list = list(map_extent_tuple)
+    
+    fig = crear_mapa_vents_cat(
+        map_data['lons'], map_data['lats'], 
+        map_data[variables[0]], map_data[variables[1]], 
+        nivell, timestamp_str, map_extent_list
+    )
+    return fig
+
 
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
@@ -3127,41 +3393,25 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     
     selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
     
-    if "Convergència" in mapa_sel:
-        # AQUEST BLOC ARA CARREGA LES SEVES DADES I MOSTRA EL SEU SPINNER
-        with st.spinner(f"Carregant dades i generant mapa de convergència a {nivell_sel}hPa..."):
-            map_data, error_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
-
-            if error_map: 
-                st.error(f"Error en carregar el mapa: {error_map}")
-            elif map_data:
-                fig = crear_mapa_forecast_combinat_cat(
-                    map_data['lons'], map_data['lats'], 
-                    map_data['speed_data'], map_data['dir_data'], 
-                    map_data['dewpoint_data'], nivell_sel, 
-                    timestamp_str, selected_extent
-                )
+    with st.spinner(f"Carregant i generant mapa... (només la primera vegada)"):
+        if "Convergència" in mapa_sel:
+            fig = generar_mapa_cachejat_cat(hourly_index_sel, nivell_sel, timestamp_str, tuple(selected_extent))
+            if fig is None:
+                st.error(f"Error en carregar les dades per al mapa de convergència.")
+            else:
                 st.pyplot(fig, use_container_width=True)
-                plt.close(fig)
-    
-    else:
-        # AQUEST BLOC JA HO FEIA BÉ
-        nivell = 700 if "700" in mapa_sel else 300
-        variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
         
-        with st.spinner(f"Carregant vent a {nivell}hPa..."):
-            map_data, error_map = carregar_dades_mapa_base_cat(variables, hourly_index_sel)
-        
-        if error_map: 
-            st.error(f"Error: {error_map}")
-        elif map_data: 
-            fig = crear_mapa_vents_cat(
-                map_data['lons'], map_data['lats'], 
-                map_data[variables[0]], map_data[variables[1]], 
-                nivell, timestamp_str, selected_extent
-            )
-            st.pyplot(fig, use_container_width=True)
-            plt.close(fig)
+        else:
+            nivell_vent = 700 if "700" in mapa_sel else 300
+            fig = generar_mapa_vents_cachejat_cat(hourly_index_sel, nivell_vent, timestamp_str, tuple(selected_extent))
+            if fig is None:
+                st.error(f"Error en carregar les dades per al mapa de vent a {nivell_vent}hPa.")
+            else:
+                st.pyplot(fig, use_container_width=True)
+
+    # <<-- LÍNIA CLAU AFEGIDA: Crida a la funció que dibuixa l'explicació -->>
+    if "Convergència" in mapa_sel:
+        ui_explicacio_convergencia()
             
 def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp_str):
     """
@@ -3457,7 +3707,7 @@ def run_catalunya_app():
             
             # Ara cridem a les funcions de les pestanyes amb el diccionari 'params_calc' complet i consistent
             if selected_tab == "Anàlisi Vertical":
-                avis_proximitat = analitzar_amenaça_convergencia_propera(map_data_conv_header, params_calc, lat_sel, lon_sel)
+                avis_proximitat = analitzar_amenaça_convergencia_propera(map_data_conv_header, params_calc, lat_sel, lon_sel, nivell_sel)
                 ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, avis_proximitat)
             
             elif selected_tab == "Anàlisi de Vents":
@@ -3480,7 +3730,6 @@ def run_valley_halley_app():
         st.session_state.hora_selector_usa = f"{time_in_usa.hour:02d}:00 (Local: {now_spain.hour:02d}:00h)"
     if 'level_usa_main' not in st.session_state:
         st.session_state.level_usa_main = 850
-    # --- NOU ESTAT PER A LA PESTANYA ACTIVA ---
     if 'active_tab_usa' not in st.session_state:
         st.session_state.active_tab_usa = "Anàlisi de Mapes"
 
@@ -3517,10 +3766,9 @@ def run_valley_halley_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     timestamp_str = f"{dia_sel_str} a les {hora_sel_cst_only} (Central Time)"
 
-    # --- PAS 4: DIBUIXAR MENÚ I RESULTATS (LÒGICA CORREGIDA) ---
+    # --- PAS 4: DIBUIXAR MENÚ I RESULTATS ---
     menu_options_usa = ["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"]
     menu_icons_usa = ["map-fill", "graph-up-arrow", "globe-americas"]
-
     default_idx_usa = menu_options_usa.index(st.session_state.active_tab_usa) if st.session_state.active_tab_usa in menu_options_usa else 0
 
     selected_tab_usa = option_menu(
@@ -3536,7 +3784,6 @@ def run_valley_halley_app():
     st.session_state.active_tab_usa = selected_tab_usa
 
     if selected_tab_usa == "Anàlisi de Mapes":
-        # ... (la resta de la lògica es manté exactament igual)
         with st.spinner(f"Carregant mapa GFS a {nivell_sel}hPa..."):
             map_data_final, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
         if map_data_final:
@@ -3565,7 +3812,9 @@ def run_valley_halley_app():
                     if map_data_nivell_sel:
                         params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_nivell_sel, lat_sel, lon_sel)
             
-            avis_proximitat_usa = analitzar_amenaça_convergencia_propera(pre_map_data, params_calc, lat_sel, lon_sel)
+            # <<-- LÍNIA CORREGIDA: Hem afegit 'nivell_sel' al final -->>
+            avis_proximitat_usa = analitzar_amenaça_convergencia_propera(pre_map_data, params_calc, lat_sel, lon_sel, nivell_sel)
+            
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_cst_only, timestamp_str, avis_proximitat_usa)
         
     elif selected_tab_usa == "Satèl·lit (Temps Real)":
@@ -3644,113 +3893,78 @@ def main():
             run_valley_halley_app()
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
-    """
-    Sistema de Diagnòstic v27.0 - Detecció de Saturació Profunda.
-    Afegeix una comprovació d'alta prioritat per a perfils amb >70% d'humitat
-    a totes les capes, indicatiu de pluja estratiforme generalitzada.
-    """
-    # --- 1. EXTRACCIÓ ROBUSTA DE PARÀMETRES ---
-    mlcape = params.get('MLCAPE', 0) or 0; mucape = params.get('MUCAPE', 0) or 0
-    sbcape = params.get('SBCAPE', 0) or 0
-    cin = params.get('MUCIN', params.get('SBCIN', 0)) or 0
-    li = params.get('LI', 5) or 5
-    bwd_6km = params.get('BWD_0-6km', 0) or 0
-    srh_1km = params.get('SRH_0-1km', 0) or 0; srh_3km = params.get('SRH_0-3km', 0) or 0
-    lcl_hgt = params.get('LCL_Hgt', 9999) or 9999; lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
-    rh_capes = params.get('RH_CAPES', {'baixa': 0, 'mitjana': 0, 'alta': 0})
-    max_updraft = params.get('MAX_UPDRAFT', 0) or 0
-    freezing_lvl_hgt = params.get('FREEZING_LVL_HGT', 9999) or 9999
-    dcape = params.get('DCAPE', 0) or 0; pwat = params.get('PWAT', 0) or 0
-    
-    # --- BLOC DE DEFENSA ANTI-ERRORS (CORRECCIÓ FINAL) ---
+    import numpy as np
+
+    # --- Extracció de paràmetres ---
+    mucape = params.get('MUCAPE',0) or 0
+    mucin = params.get('MUCIN',0) or 0
+    lcl_hgt = params.get('LCL_Hgt',9999) or 9999
+    lfc_hgt = params.get('LFC_Hgt',9999) or 9999
+    rh_capes = params.get('RH_CAPES', {'baixa':0,'mitjana':0,'alta':0})
+    rh_baixa = rh_capes.get('baixa',0)
+    rh_mitjana = rh_capes.get('mitjana',0)
+    rh_alta = rh_capes.get('alta',0)
+
     conv_key = f'CONV_{nivell_conv}hPa'
-    raw_conv_value = params.get(conv_key, 0)
-    conv = raw_conv_value if isinstance(raw_conv_value, (int, float, np.number)) else 0
-    # ----------------------------------------------------
+    conv = params.get(conv_key,0) or 0
 
-    # --- BLOCS DE DETECCIÓ DE PLUJA ESTABLE (MÀXIMA PRIORITAT) ---
-    rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
-    rh_mitjana = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0
-    rh_alta = rh_capes.get('alta', 0) if pd.notna(rh_capes.get('alta')) else 0
+    # --- Núvols prohibits si convergència < 20 ---
+    if conv < 20:
+        if rh_baixa > 75:
+            desc = "Cel Cobert (Estratus)" if lcl_hgt < 800 else "Cel Cobert (Estratocúmulus)"
+            return {'emoji':"☁️",'descripcio':desc,'veredicte':"Cel baix sense formació vertical significativa.",
+                    'factor_clau':"Convergència < 20, CAPE baix."}
+        if rh_mitjana > 70:
+            return {'emoji':"🌥️",'descripcio':"Núvols Mitjans (Altocúmulus)",
+                    'veredicte':"Cel variable sense formació vertical important.",
+                    'factor_clau':"Convergència < 20."}
+        if rh_alta > 70:
+            return {'emoji':"🌤️",'descripcio':"Núvols Alts (Cirrus)",
+                    'veredicte':"Cel poc ennuvolat amb núvols alts.",
+                    'factor_clau':"Convergència < 20."}
+        return {'emoji':"☀️",'descripcio':"Cel Serè",
+                'veredicte':"Temps estable sense núvols verticals.",
+                'factor_clau':"Convergència < 20 i CAPE baix."}
 
-    if rh_baixa >= 70 and rh_mitjana >= 70 and rh_alta >= 70 and max(sbcape, mucape) < 100:
-        return {'emoji': "🌧️", 'descripcio': "Pluja Estable (Saturació Profunda)",
-                'veredicte': "Precipitació generalitzada a causa d'una atmosfera saturada de dalt a baix. No s'espera activitat convectiva.",
-                'factor_clau': "Humitat > 70% a totes les capes i CAPE inexistent."}
+    # --- Convergència superficial estricta ---
+    if nivell_conv == 1000:  # superfície
+        if mucin <= -70:  # inhibició moderada o alta
+            return {'emoji':"⛔",'descripcio':"Inhibició a superfície",
+                    'veredicte':"Convecció bloquejada malgrat CAPE.",
+                    'factor_clau':f"MUCAPE={mucape}, MUCIN={mucin}, Convergència={conv}"}
 
-    if rh_baixa > 85 and rh_mitjana > 80 and max(sbcape, mucape) < 100:
-        return {'emoji': "🌧️", 'descripcio': "Pluja Estable (Nimboestratus)",
-                'veredicte': "Precipitació contínua a causa d'una capa d'humitat molt profunda i saturada. No s'espera activitat convectiva.",
-                'factor_clau': "Perfil atmosfèric saturat i sense inestabilitat (CAPE)."}
-    
-    # Detecció de Castellanus
-    castellanus_score = 0
-    if cin < -75: castellanus_score += 2
-    if lfc_hgt > 2500: castellanus_score += 2
-    elif lfc_hgt > 2000: castellanus_score += 1
-    if mucape > 400: castellanus_score += 1
-    if rh_mitjana is not None and rh_mitjana >= 50: castellanus_score += 1
-    if castellanus_score >= 4:
-        descripcio = "Castellanus (Convecció Elevada)"
-        if rh_baixa is not None and rh_baixa < 50: descripcio = "Castellanus amb Virga"
-        return {'emoji': "🌥️", 'descripcio': descripcio, 'veredicte': "Potencial per a Altocumulus Castellanus.", 'factor_clau': "Inhibició, LFC elevat, energia i humitat en alçada."}
+    # --- Escala de convergència 15-120 ---
+    conv_scaled = min(max((conv-15)/105,0),1)
 
-    # --- AVALUACIÓ DEL POTENCIAL CONVECTIU ---
-    hi_ha_inestabilitat_latent = (max(sbcape, mucape) > 150 or li < -1)
-    trigger_potential = 'Nul'
-    if hi_ha_inestabilitat_latent:
-        cin_efectiu = abs(min(0, cin))
-        # Aquesta línia ara és segura gràcies a la comprovació anterior
-        forçament_net = (conv * 5.0) - cin_efectiu
-        if conv >= 40 and forçament_net > -100: trigger_potential = 'Extrem'
-        elif conv >= 30 and forçament_net > -75: trigger_potential = 'Fort'
-        elif conv >= 15 and forçament_net > -40: trigger_potential = 'Moderat'
-        elif conv >= 5 and forçament_net > -20: trigger_potential = 'Feble'
-        elif cin_efectiu < 15: trigger_potential = 'Feble'
+    # --- Rang de núvols segons MUCAPE i MUCIN ---
+    if mucape < 500 and mucin > -50:
+        nivel_nube = "Cúmuls Humilis/Mediocris"
+        emoji = "🌤️"
+    elif 500 <= mucape < 1000 and mucin > -50:
+        nivel_nube = "Cúmuls Congestus"
+        emoji = "☁️"
+    elif mucape >= 1000 and mucin > -50:
+        nivel_nube = "Cumulonimbus"
+        emoji = "⛈️"
+    else:
+        nivel_nube = "Núvols petits"
+        emoji = "🌤️"
 
-    if trigger_potential == 'Extrem' and mlcape > 500:
-        desc_amenaces = ""
-        if max_updraft > 30: desc_amenaces += " amb Risc de Calamarsa"
-        if dcape > 1000: desc_amenaces += " i Fortes Ventades"
-        return {'emoji': "⛈️", 'descripcio': "Tempestes Forçades" + desc_amenaces, 'veredicte': f"Potencial de tempestes severes forçades per una línia de convergència molt intensa{desc_amenaces}.", 'factor_clau': "Convergència extrema (>40)."}
+    # --- Intensitat segons convergència ---
+    if nivel_nube == "Cumulonimbus":
+        intensidad_desc = f"Intensitat estimada {int(conv_scaled*100)}%"
+    elif nivel_nube == "Cúmuls Congestus":
+        intensidad_desc = f"Creixement vertical moderat {int(conv_scaled*100)}%"
+    else:
+        intensidad_desc = f"Núvols baixos {int(conv_scaled*100)}%"
 
-    if trigger_potential in ['Fort', 'Moderat'] and mlcape > 1000 and bwd_6km > 20 and lfc_hgt < 3000:
-        desc_amenaces = []
-        if max_updraft > 35 and freezing_lvl_hgt < 4000:
-            desc_amenaces.append("Calamarsa Severa" if max_updraft > 50 else "Risc de Calamarsa")
-        if dcape > 1000: desc_amenaces.append("Fortes Ventades")
-        if pwat > 45: desc_amenaces.append("Pluges Torrencials")
-        amenaces_str = f" ({', '.join(desc_amenaces)})" if desc_amenaces else ""
-        
-        if bwd_6km >= 35 and srh_3km > 150:
-            desc = "Supercèl·lula"
-            if srh_1km > 150 and lcl_hgt < 1200: desc += " (Pot. Tornàdic)"
-            return {'emoji': "🌪️", 'descripcio': desc + amenaces_str, 'veredicte': f"Potencial de {desc} amb risc de {', '.join(desc_amenaces)}.", 'factor_clau': "Energia, cisallament i helicitat."}
-        if bwd_6km >= 20:
-            return {'emoji': "⛈️", 'descripcio': "Grup de tempestes" + amenaces_str, 'veredicte': f"Potencial per a un grup de tempestes organitzades.", 'factor_clau': "Energia i cisallament."}
+    return {'emoji':emoji,
+            'descripcio':nivel_nube,
+            'veredicte':f"Formació de núvols segons MUCAPE i convergència. {intensidad_desc}",
+            'factor_clau':f"MUCAPE={mucape}, MUCIN={mucin}, Convergència={conv}"}
 
-    if trigger_potential != 'Nul' and mucape > 700:
-        desc_calamarsa = " amb Risc de Calamarsa" if max_updraft > 25 and freezing_lvl_hgt < 4200 else ""
-        if mlcape < 300 and mucape > 800:
-            return {'emoji': "🌩️", 'descripcio': "Tempesta de Base Alta" + desc_calamarsa, 'veredicte': f"Tempestes que es formen a nivells mitjans.", 'factor_clau': "Forta inestabilitat elevada (MUCAPE)."}
-        if mlcape > 500:
-            return {'emoji': "🌩️", 'descripcio': "Tempesta Aïllada" + desc_calamarsa, 'veredicte': f"Potencial de tempestes aïllades.", 'factor_clau': "Inestabilitat suficient i disparador efectiu."}
 
-    if trigger_potential != 'Nul':
-        if 300 < mlcape <= 700 and cin > -50 and lfc_hgt < 2500:
-            return {'emoji': "☁️", 'descripcio': "Desenvolupament Vertical (Congestus)", 'veredicte': "Núvols de gran creixement.", 'factor_clau': "Inestabilitat moderada i LFC baix."}
-        if 50 < mlcape <= 300 and cin > -25:
-            return {'emoji': "🌤️", 'descripcio': "Núvols de Bon Temps (Humilis)", 'veredicte': "Petits cúmuls de bon temps.", 'factor_clau': "Molt poca inestabilitat."}
 
-    # Aquesta secció ara només s'executa si no s'han complert les condicions anteriors.
-    if lcl_hgt < 150 and rh_baixa > 95: return {'emoji': "🌫️", 'descripcio': "Boira o Boirina", 'veredicte': "Visibilitat reduïda.", 'factor_clau': "Saturació a la superfície."}
-    if rh_baixa > 75:
-        desc = "Cel Cobert (Estratus)" if lcl_hgt < 800 else "Cel Cobert (Estratocúmulus)"
-        return {'emoji': "☁️", 'descripcio': desc, 'veredicte': "Cel tapat amb núvols baixos.", 'factor_clau': "Capa d'humitat a nivells baixos."}
-    if rh_mitjana > 70: return {'emoji': "🌥️", 'descripcio': "Núvols Mitjans (Altocúmulus)", 'veredicte': "Cel variable amb núvols mitjans.", 'factor_clau': "Capa d'humitat a nivells mitjans."}
-    if rh_alta > 60: return {'emoji': "🌤️", 'descripcio': "Núvols Alts (Cirrus)", 'veredicte': "Cel poc ennuvolat amb núvols alts.", 'factor_clau': "Humitat només a nivells molt alts."}
-
-    return {'emoji': "☀️", 'descripcio': "Cel Serè", 'veredicte': "Temps estable i sense nuvolositat.", 'factor_clau': "Atmosfera seca."}
     
 if __name__ == "__main__":
     main()
