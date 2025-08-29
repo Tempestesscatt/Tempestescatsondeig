@@ -3946,8 +3946,11 @@ def run_valley_halley_app():
     # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
     if 'poble_selector_usa' not in st.session_state:
         st.session_state.poble_selector_usa = "Oklahoma City, OK"
+    
+    # <<-- LÍNIA CLAU AFEGIDA: Inicialitzem la variable que faltava -->>
     if 'dia_selector_usa_widget' not in st.session_state:
         st.session_state.dia_selector_usa_widget = datetime.now(TIMEZONE_USA).strftime('%d/%m/%Y')
+        
     if 'hora_selector_usa' not in st.session_state:
         now_spain = datetime.now(TIMEZONE_CAT)
         time_in_usa = now_spain.astimezone(TIMEZONE_USA)
@@ -4036,9 +4039,7 @@ def run_valley_halley_app():
                     if map_data_nivell_sel:
                         params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_nivell_sel, lat_sel, lon_sel)
             
-            # <<-- LÍNIA CORREGIDA: Hem afegit 'nivell_sel' al final -->>
             avis_proximitat_usa = analitzar_amenaça_convergencia_propera(pre_map_data, params_calc, lat_sel, lon_sel, nivell_sel)
-            
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_cst_only, timestamp_str, avis_proximitat_usa)
         
     elif selected_tab_usa == "Satèl·lit (Temps Real)":
