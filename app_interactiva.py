@@ -1893,8 +1893,8 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
 @st.cache_data(ttl=1800, show_spinner=False)
 def carregar_perfil_basic_sondeig_cat(lat, lon, hourly_index):
     """
-    Versió LLEUGERA que només carrega el perfil P, T, Td sense càlculs pesats.
-    Ideal i segura per a l'anàlisi de tèrmiques.
+    Versió LLEUGERA v2.0 (Corregida) que construeix correctament els perfils
+    de P, T, Td per a una anàlisi de tèrmiques fiable.
     """
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
@@ -1903,10 +1903,9 @@ def carregar_perfil_basic_sondeig_cat(lat, lon, hourly_index):
         response = openmeteo.weather_api(API_URL_CAT, params=params)[0]
         hourly = response.Hourly()
 
-        # Lògica per trobar l'hora més propera amb dades vàlides
         valid_index = None
         total_hours = len(hourly.Variables(0).ValuesAsNumpy())
-        for offset in range(4): # Busca fins a +/- 3 hores
+        for offset in range(4):
             h_idx = hourly_index + (offset // 2) * (1 if offset % 2 == 0 else -1)
             if 0 <= h_idx < total_hours:
                 sfc_check = [hourly.Variables(i).ValuesAsNumpy()[h_idx] for i in range(len(h_base))]
@@ -1916,25 +1915,32 @@ def carregar_perfil_basic_sondeig_cat(lat, lon, hourly_index):
         
         if valid_index is None: return None, "No s'han trobat dades vàlides per a la construcció del perfil."
 
-        # Construcció del perfil bàsic
         sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[valid_index] for i, v in enumerate(h_base)}
         p_data = {
             "T": [hourly.Variables(len(h_base) + j).ValuesAsNumpy()[valid_index] for j in range(len(PRESS_LEVELS_AROME))],
             "RH": [hourly.Variables(len(h_base) + len(PRESS_LEVELS_AROME) + j).ValuesAsNumpy()[valid_index] for j in range(len(PRESS_LEVELS_AROME))]
         }
         
-        p = [sfc_data["surface_pressure"]] * units.hPa
-        T = [sfc_data["temperature_2m"]] * units.degC
-        Td = [sfc_data["dew_point_2m"]] * units.degC
+        # --- LÒGICA DE CONSTRUCCIÓ DEL PERFIL CORREGIDA ---
+        # 1. Creem llistes de Python normals
+        p_profile = [sfc_data["surface_pressure"]]
+        T_profile = [sfc_data["temperature_2m"]]
+        Td_profile = [sfc_data["dew_point_2m"]]
         
+        # 2. Afegim dades a les llistes
         for i, p_val in enumerate(PRESS_LEVELS_AROME):
-            if p_val < p[-1].m and all(not np.isnan(p_data[v][i]) for v in ["T", "RH"]):
-                p = np.append(p, p_val * units.hPa)
-                T = np.append(T, p_data["T"][i] * units.degC)
+            if p_val < p_profile[-1] and all(not np.isnan(p_data[v][i]) for v in ["T", "RH"]):
+                p_profile.append(p_val)
+                T_profile.append(p_data["T"][i])
                 Td_val = mpcalc.dewpoint_from_relative_humidity(p_data["T"][i] * units.degC, p_data["RH"][i] * units.percent)
-                Td = np.append(Td, Td_val)
+                Td_profile.append(Td_val.m)
         
-        # Retorna el perfil brut, sense processar
+        # 3. Un cop les llistes estan completes, les convertim a arrays amb unitats
+        p = np.array(p_profile) * units.hPa
+        T = np.array(T_profile) * units.degC
+        Td = np.array(Td_profile) * units.degC
+        # --- FI DE LA CORRECCIÓ ---
+        
         return (p, T, Td), None
     except Exception as e:
         return None, f"Error en carregar el perfil bàsic: {e}"
