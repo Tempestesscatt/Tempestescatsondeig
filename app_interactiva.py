@@ -1797,9 +1797,8 @@ def crear_dial_vent_animat(label, wind_dir, wind_spd):
 
 def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
     """
-    Sistema Expert v3.0 (Simulació Dinàmica) per a Tèrmiques Diürnes.
-    Simula l'escalfament solar a partir del perfil de l'hora seleccionada
-    per determinar de manera precisa el dispar, la força i el sostre de les tèrmiques.
+    Sistema Expert v3.1 (Corregit) per a Tèrmiques Diürnes.
+    Corregeix l'accés a les dades del tuple del sondeig per evitar errors de tipus.
     """
     resultats = {
         'veredicte_text': 'Anàlisi no disponible', 'veredicte_color': '#808080',
@@ -1813,7 +1812,11 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
     if not sounding_data: return resultats
 
     try:
-        p, T, Td = sounding_data[0][:3]
+        # --- LÍNIA CORREGIDA ---
+        # Accedim directament al tuple, sense índexs addicionals
+        p, T, Td = sounding_data
+        # --- FI DE LA CORRECCIÓ ---
+        
         p_sfc, t_sfc, td_sfc = p[0], T[0], Td[0]
         resultats['temperatura_actual'] = t_sfc.m
 
@@ -1825,26 +1828,19 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
             })
             return resultats
 
-        # Bucle de simulació d'escalfament solar
         triggered = False
         for temp_increment in np.arange(0, 15, 0.5):
             current_t = t_sfc + temp_increment * units.degC
             parcel_profile = mpcalc.parcel_profile(p, current_t, td_sfc)
             cape, cin = mpcalc.cape_cin(p, T, Td, parcel_profile)
             
-            # Condició de dispar: CAPE positiu i CIN negligible
             if cape.m > 10 and cin.m > -50:
                 resultats['temperatura_dispar'] = current_t.m
-                
-                # Càlculs un cop es dispara la tèrmica
                 altures = mpcalc.pressure_to_height_std(p)
-                
                 lcl_p, _ = mpcalc.lcl(p_sfc, current_t, td_sfc)
                 resultats['base_nuvols_m'] = float(np.interp(lcl_p.m, p.m[::-1], altures.m[::-1]))
-
                 el_p, _ = mpcalc.el(p, T, parcel_profile)
                 resultats['sostre_termiques_m'] = float(np.interp(el_p.m, p.m[::-1], altures.m[::-1]))
-                
                 resultats['forca_ascensos_ms'] = float(np.sqrt(2 * cape.m))
                 resultats['triggered_profile'] = parcel_profile.to('degC')
                 triggered = True
@@ -1857,7 +1853,6 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
             })
             return resultats
 
-        # Veredicte final basat en la potència
         sostre_km = resultats['sostre_termiques_m'] / 1000
         forca_ms = resultats['forca_ascensos_ms']
 
@@ -1975,7 +1970,10 @@ def crear_grafic_termiques(sounding_data, triggered_profile=None):
     Crea un gràfic simplificat per visualitzar el potencial de tèrmiques,
     incloent la trajectòria de la parcel·la si s'ha disparat.
     """
-    p, T = sounding_data[0][:2]
+    # --- LÍNIA CORREGIDA ---
+    # Accedim correctament al tuple per obtenir els perfils complets
+    p, T = sounding_data[:2]
+    # --- FI DE LA CORRECCIÓ ---
 
     fig = plt.figure(figsize=(8, 8), dpi=100)
     ax = fig.add_subplot(1, 1, 1)
@@ -1983,7 +1981,6 @@ def crear_grafic_termiques(sounding_data, triggered_profile=None):
     altures = mpcalc.pressure_to_height_std(p)
     ax.plot(T.m, altures.m, label='Perfil de Temperatura Ambient', color='red', linewidth=2.5)
     
-    # Dibuixa la trajectòria de la bombolla d'aire si l'anàlisi l'ha calculat
     if triggered_profile is not None:
         ax.plot(triggered_profile, altures.m, ':', color='orange', linewidth=2, label=f'Trajectòria de la Tèrmica')
 
@@ -1992,10 +1989,11 @@ def crear_grafic_termiques(sounding_data, triggered_profile=None):
     ax.set_title("Anàlisi del Potencial de Tèrmiques Diürnes", weight='bold')
     ax.grid(True, linestyle=':', alpha=0.7)
     ax.legend()
-    ax.set_ylim(bottom=0, top=max(altures.m) + 500) # Marge superior
-    ax.set_xlim(left=min(T.m) - 5, right=max(T.m) + 5) # Marge lateral
+    ax.set_ylim(bottom=0, top=max(altures.m) + 500)
+    ax.set_xlim(left=min(T.m) - 5, right=max(T.m) + 5)
     
     return fig
+    
 def ui_pestanya_termiques_diurnes(sounding_data, poble_sel, hora_sel_str, timestamp_str):
     """Mostra la interfície d'usuari per a l'anàlisi DINÀMICA de tèrmiques."""
     st.markdown(f"#### Anàlisi Dinàmica de Tèrmiques per a {poble_sel}")
