@@ -1797,9 +1797,8 @@ def crear_dial_vent_animat(label, wind_dir, wind_spd):
 
 def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
     """
-    Sistema Expert v4.0 (Humitat Superficial Realista) per a Tèrmiques Diürnes.
-    Calcula la humitat mitjana de la capa límit per a un LCL realista,
-    evitant el valor incorrecte de "2m".
+    Sistema Expert v4.1 (Correcció d'Unitats) per a Tèrmiques Diürnes.
+    Corregeix l'ordre dels arguments a la crida de 'mixing_ratio_from_relative_humidity'.
     """
     resultats = {
         'veredicte_text': 'Anàlisi no disponible', 'veredicte_color': '#808080',
@@ -1825,23 +1824,25 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
             })
             return resultats
         
-        # --- NOU CÀLCUL DE LA HUMITAT SUPERFICIAL REALISTA ---
-        # Agafem la capa més baixa (primers 50hPa) per calcular la ratio de barreja mitjana.
         capa_limit = p_sfc.m - 50
         mask_capa_limit = p.m >= capa_limit
         if np.count_nonzero(mask_capa_limit) > 1:
-            mixing_ratio_sfc = np.mean(mpcalc.mixing_ratio_from_relative_humidity(p[mask_capa_limit], np.ones_like(p[mask_capa_limit])*100*units.percent, Td[mask_capa_limit]))
+            # --- LÍNIA CORREGIDA 1 ---
+            # L'ordre correcte és: pressió, temperatura, humitat
+            mixing_ratio_sfc = np.mean(mpcalc.mixing_ratio_from_relative_humidity(
+                p[mask_capa_limit], Td[mask_capa_limit], np.ones_like(p[mask_capa_limit])*100*units.percent
+            ))
+            # --- FI DE LA CORRECCIÓ ---
         else:
-            mixing_ratio_sfc = mpcalc.mixing_ratio_from_relative_humidity(p_sfc, 100*units.percent, td_sfc)
-        # Obtenim el punt de rosada representatiu a la pressió superficial
+            # --- LÍNIA CORREGIDA 2 ---
+            mixing_ratio_sfc = mpcalc.mixing_ratio_from_relative_humidity(p_sfc, td_sfc, 100*units.percent)
+            # --- FI DE LA CORRECCIÓ ---
+            
         td_representativa_sfc = mpcalc.dewpoint_from_mixing_ratio(p_sfc, mixing_ratio_sfc)
-        # --- FI DEL NOU CÀLCUL ---
 
         triggered = False
         for temp_increment in np.arange(0, 15, 0.5):
             current_t = t_sfc + temp_increment * units.delta_degC
-            
-            # Utilitzem la nova humitat representativa per llançar la parcel·la
             parcel_profile = mpcalc.parcel_profile(p, current_t, td_representativa_sfc)
             cape, cin = mpcalc.cape_cin(p, T, Td, parcel_profile)
             
@@ -1849,7 +1850,6 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
                 resultats['temperatura_dispar'] = current_t.m
                 altures = mpcalc.pressure_to_height_std(p)
                 
-                # El LCL també es calcula amb la humitat correcta
                 lcl_p, _ = mpcalc.lcl(p_sfc, current_t, td_representativa_sfc)
                 resultats['base_nuvols_m'] = float(np.interp(lcl_p.m, p.m[::-1], altures.m[::-1]))
 
@@ -1880,7 +1880,6 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
         else:
             resultats.update({'veredicte_text': 'Febles', 'veredicte_color': '#17a2b8'})
         
-        # El text del resum ara també serà correcte
         resultats['explicacio'] = f"A partir de {resultats['temperatura_dispar']:.1f}°C a la superfície, es dispararan tèrmiques. S'espera que formin núvols a {resultats['base_nuvols_m']:.0f} m, amb un sostre útil fins als {resultats['sostre_termiques_m']:.0f} m i ascensos de fins a {resultats['forca_ascensos_ms']:.1f} m/s."
 
     except Exception as e:
@@ -1888,7 +1887,6 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
         resultats['veredicte_text'] = 'Error de Càlcul'
         
     return resultats
-
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def carregar_perfil_basic_sondeig_cat(lat, lon, hourly_index):
