@@ -1882,7 +1882,13 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
         else:
             resultats.update({'veredicte_text': 'Febles', 'veredicte_color': '#17a2b8'})
         
-        resultats['explicacio'] = f"A partir de {resultats['temperatur
+        resultats['explicacio'] = f"A partir de {resultats['temperatura_dispar']:.1f}°C a la superfície, es dispararan tèrmiques. La base dels cúmuls se situarà a uns {resultats['base_nuvols_m']:.0f} m, amb un sostre útil fins als {resultats['sostre_termiques_m']:.0f} m i ascensos de fins a {resultats['forca_ascensos_ms']:.1f} m/s."
+
+    except Exception as e:
+        resultats['explicacio'] = f"S'ha produït un error durant l'anàlisi: {e}"
+        resultats['veredicte_text'] = 'Error de Càlcul'
+        
+    return resultats
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def carregar_perfil_basic_sondeig_cat(lat, lon, hourly_index):
