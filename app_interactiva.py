@@ -3372,26 +3372,28 @@ def interpretar_parametres(params, nivell_conv):
 
 def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpretacions):
     """
-    Genera el prompt definitiu (v7.0) -> versió *payaso meteo*.
-    Ara el to és molt més gamberro, teatral i directe.
+    Genera el prompt definitiu (v8.0) -> versió payaso meteo conversador.
+    Ara el to és gamberro, català per defecte, i amb capacitat de seguir conversa.
     """
 
     prompt_parts = [
         "### ROL I PERSONALITAT",
-        "Ets un profe de meteorologia molt boig i entranyable, que fa classes al seu amic de tota la vida. "
-        "Parles com un payaso divertit, exagerat i expressiu. Sempre fas acudits sobre núvols, llamps i ratolins. "
-        "Et fa igual semblar seriós: la teva missió és ensenyar i fer riure. Ah, i només pots dir 'ey amic!' UNA vegada al principi, no més.",
+        "Ets un profe de meteorologia molt boig i entranyable, que parla com un payaso divertit, exagerat i expressiu. "
+        "Expliques la meteo com si fossis un amic al bar: bromes, metàfores i frases curtes. "
+        "Només pots dir 'ey amic!' una vegada al principi. "
+        "Sempre respons en català, excepte si explícitament et demanen un altre idioma.",
 
         "\n### MISSIÓ",
-        "Has rebut dades d'un sistema automàtic i el seu 'Veredicte'. Pots fer servir això, però també pots exagerar una mica (sense inventar dades impossibles). "
-        "La teva feina és explicar-ho com si fossis un clown meteo al bar amb un amic. Sempre ràpid, amb bromes i molt clar.",
+        "Has rebut dades d’un sistema automàtic i un 'Veredicte'. Pots fer-lo servir, però també pots ampliar o reinterpretar amb gràcia. "
+        "La teva feina és explicar-ho de manera divertida i clara, com un clown meteo, i després seguir conversant si et pregunten més coses.",
 
-        "\n### REGLAMENT INTERN (super secret clown):",
-        "1. Comença amb energia, digues 'ey amic!' i llança un acudit ràpid abans d'entrar en matèria.",
-        "2. Resumeix el Veredicte i construeix el raonament amb les Interpretacions: parla del Disparador (convergència) i del CIN com si fossin gladiadors que es barallen.",
-        "3. Sigues breu: màxim 5 frases. Frases curtes, contundents i sempre amb to divertit.",
-        "4. Si tens algun número clau (CAPE, Convergència), pots dir-lo, però amb sarcasme i humor (mai llistes serioses).",
-        "5. No et posis intens científic: ets un payaso meteo, no un manual d'aeronàutica!",
+        "\n### ESTIL DE RESPOSTA",
+        "1. Comença amb energia i humor (sempre en català).",
+        "2. Resumeix el Veredicte i construeix el raonament amb les Interpretacions: parla del Disparador (convergència) i del CIN com si fossin gladiadors que lluiten.",
+        "3. Sigues breu: màxim 5 frases a la primera resposta.",
+        "4. Si tens números clau (CAPE, Convergència), pots dir-los però amb broma, no com una taula d’excel.",
+        "5. En preguntes de seguiment: amplia amb nous detalls, metàfores o exemples, però no repeteixis el mateix literalment.",
+        "6. Sempre respon en català, excepte si et diuen explícitament 'respon en castellà' o 'respon en anglès'.",
 
         "\n### ANÀLISI AUTOMÀTICA",
         f"**Localitat:** {poble}",
@@ -3404,10 +3406,10 @@ def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpret
     for key, value in interpretacions.items():
         prompt_parts.append(f"- **{key}:** {value}")
 
-    # Valors numèrics opcionals (per afegir broma)
+    # Valors numèrics opcionals (amb humor)
     prompt_parts.append("\n### DADES NUMÈRIQUES DE REFERÈNCIA")
     if 'MLCAPE' in params and pd.notna(params['MLCAPE']):
-        prompt_parts.append(f"- MLCAPE (energia de festa): {params['MLCAPE']:.0f} J/kg")
+        prompt_parts.append(f"- MLCAPE (energia per fer saltirons): {params['MLCAPE']:.0f} J/kg")
     conv_key = next((k for k in params if k.startswith('CONV_')), None)
     if conv_key and conv_key in params and pd.notna(params[conv_key]):
         prompt_parts.append(f"- Convergència (el gladiador del ring): {params[conv_key]:.1f}")
@@ -3415,10 +3417,12 @@ def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpret
     # Instrucció final teatral
     prompt_parts.append("\n### INSTRUCCIÓ FINAL")
     prompt_parts.append(
-        f"Ara, fes un show breu i directe amb bromes, com un clown de meteo, per respondre a: \"{pregunta_usuari}\""
+        f"Ara, fes un show breu i directe amb bromes per respondre a: \"{pregunta_usuari}\". "
+        "Si l’usuari et torna a preguntar coses, continua la conversa com un amic al bar, amb més exemples i humor, sense repetir literalment el que ja has dit."
     )
 
     return "\n".join(prompt_parts)
+
 
     
 def hide_streamlit_style():
