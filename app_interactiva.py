@@ -1795,11 +1795,12 @@ def crear_dial_vent_animat(label, wind_dir, wind_spd):
 
 
 
+# REEMPLAÇA LA TEVA FUNCIÓ SENCERA PER AQUESTA VERSIÓ CORREGIDA
+
 def analitzar_potencial_termiques_diurnes(sounding_data, daily_data):
     """
-    Sistema Expert v2.0 (Robust) per a Tèrmiques Diürnes.
-    Calcula paràmetres de manera defensiva per no fallar mai,
-    fins i tot amb perfils atmosfèrics molt estables o secs.
+    Sistema Expert v2.1 (Corregit) per a Tèrmiques Diürnes.
+    Utilitza el nom correcte de la funció 'convective_temp'.
     """
     resultats = {
         'veredicte_text': 'Anàlisi no disponible', 'veredicte_color': '#808080',
@@ -1809,7 +1810,6 @@ def analitzar_potencial_termiques_diurnes(sounding_data, daily_data):
         'explicacio': "No hi ha prou dades per realitzar l'anàlisi de tèrmiques."
     }
 
-    # --- 1. Validació robusta de les dades d'entrada ---
     if not sounding_data or not daily_data:
         return resultats
     if 'temperature_2m_max' not in daily_data or not daily_data['temperature_2m_max']:
@@ -1824,14 +1824,17 @@ def analitzar_potencial_termiques_diurnes(sounding_data, daily_data):
 
     try:
         p, T, Td = sounding_data[0][:3]
-
-        # --- 2. Càlculs crítics fets de manera segura (un per un) ---
         t_convectiva_c = np.nan
+        
         try:
-            t_convectiva_pint = mpcalc.convective_temperature(p, T, Td, height_basis=p[0])
+            # --- LÍNIA CORREGIDA ---
+            # El nom correcte de la funció és 'convective_temp'
+            t_convectiva_pint = mpcalc.convective_temp(p, T[0], Td[0])
+            # --- FI DE LA CORRECCIÓ ---
+            
             t_convectiva_c = t_convectiva_pint.to('degC').m
             resultats['temperatura_dispar'] = t_convectiva_c
-        except (ValueError, IndexError):
+        except Exception:
             resultats.update({
                 'veredicte_text': 'Inexistents (Molt Estable)', 'veredicte_color': '#007bff',
                 'explicacio': "L'atmosfera és tan seca o estable que és impossible calcular una temperatura de dispar. No es formaran tèrmiques significatives."
@@ -1845,41 +1848,32 @@ def analitzar_potencial_termiques_diurnes(sounding_data, daily_data):
             })
             return resultats
 
-        # --- 3. Si es dispara, la resta de càlculs també es fan de forma segura ---
         base_nuvols_m, sostre_termiques_m, forca_ascensos_ms = np.nan, np.nan, np.nan
         
         try:
             perfil_convectiu = mpcalc.parcel_profile(p, units.Quantity(t_convectiva_c, 'degC'), Td[0])
-            
-            # Base dels núvols (CCL)
             try:
                 ccl_p, _ = mpcalc.ccl(p, T, Td)
                 altures = mpcalc.pressure_to_height_std(p)
                 base_nuvols_m = float(np.interp(ccl_p.m, p.m[::-1], altures.m[::-1]))
-            except (ValueError, IndexError): pass # Si falla, es quedarà com a NaN
-
-            # Sostre de les tèrmiques (EL)
+            except Exception: pass
             try:
                 el_p, _ = mpcalc.el(p, T, perfil_convectiu)
                 altures = mpcalc.pressure_to_height_std(p)
                 sostre_termiques_m = float(np.interp(el_p.m, p.m[::-1], altures.m[::-1]))
-            except (ValueError, IndexError):
-                sostre_termiques_m = base_nuvols_m # Si no hi ha EL, el sostre és la base del núvol
-            
-            # Força dels ascensos (Updraft)
+            except Exception:
+                sostre_termiques_m = base_nuvols_m
             try:
                 cape, _ = mpcalc.cape_cin(p, T, Td, parcel_profile=perfil_convectiu)
                 forca_ascensos_ms = float(np.sqrt(2 * cape.m) if cape.m > 0 else 0)
-            except (ValueError, IndexError): pass # Si falla, es quedarà com a NaN
-
-        except Exception: pass # Si el perfil inicial falla, no es pot calcular res més
+            except Exception: pass
+        except Exception: pass
 
         resultats.update({
             'base_nuvols_m': base_nuvols_m, 'sostre_termiques_m': sostre_termiques_m,
             'forca_ascensos_ms': forca_ascensos_ms
         })
 
-        # --- 4. Veredicte final (ara gestiona valors NaN) ---
         sostre_km = sostre_termiques_m / 1000 if pd.notna(sostre_termiques_m) else 0
         forca_ms = forca_ascensos_ms if pd.notna(forca_ascensos_ms) else 0
 
