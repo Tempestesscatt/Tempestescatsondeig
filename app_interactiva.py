@@ -501,7 +501,6 @@ def show_login_page():
     if 'view' not in st.session_state:
         st.session_state.view = 'login'
 
-    # --- Bloc de Login/Registre (es manté igual) ---
     if st.session_state.view == 'login':
         st.subheader("Inicia Sessió")
         with st.form("login_form"):
@@ -510,14 +509,12 @@ def show_login_page():
             
             if st.form_submit_button("Entra", use_container_width=True, type="primary"):
                 users = load_json_file(USERS_FILE)
-                user_data = users.get(username)
-                if user_data and isinstance(user_data, dict) and user_data.get('password') == get_hashed_password(password):
+                if username in users and users[username] == get_hashed_password(password):
+                    # --- LÍNIA CLAU AFEGIDA ---
+                    # Assegurem que la selecció de zona estigui neta abans de continuar.
                     st.session_state['zone_selected'] = None
-                    role = user_data.get('role', 'user')
-                    st.session_state.update({
-                        'logged_in': True, 'username': username, 'guest_mode': False,
-                        'is_moderator': (role == 'moderator')
-                    })
+                    # ---------------------------
+                    st.session_state.update({'logged_in': True, 'username': username, 'guest_mode': False})
                     st.rerun()
                 else:
                     st.error("Nom d'usuari o contrasenya incorrectes.")
@@ -531,8 +528,7 @@ def show_login_page():
         with st.form("register_form"):
             new_username = st.text_input("Tria un nom d'usuari", key="reg_user")
             new_password = st.text_input("Tria una contrasenya", type="password", key="reg_pass")
-            moderator_code = st.text_input("Codi de Moderador (opcional)", type="password", key="mod_code")
-
+            
             if st.form_submit_button("Registra'm", use_container_width=True):
                 users = load_json_file(USERS_FILE)
                 if not new_username or not new_password:
@@ -542,18 +538,9 @@ def show_login_page():
                 elif len(new_password) < 6:
                     st.error("La contrasenya ha de tenir com a mínim 6 caràcters.")
                 else:
-                    user_role = 'user'
-                    if moderator_code and moderator_code == st.secrets["app_secrets"]["moderator_password"]:
-                        user_role = 'moderator'
-                        st.success("Codi de moderador correcte! Compte creat amb privilegis elevats.")
-                    
-                    users[new_username] = {
-                        'password': get_hashed_password(new_password),
-                        'role': user_role
-                    }
+                    users[new_username] = get_hashed_password(new_password)
                     save_json_file(users, USERS_FILE)
-                    if user_role == 'user':
-                        st.success("Compte creat amb èxit! Ara pots iniciar sessió.")
+                    st.success("Compte creat amb èxit! Ara pots iniciar sessió.")
         
         if st.button("Ja tens un compte? Inicia sessió"):
             st.session_state.view = 'login'
@@ -563,30 +550,12 @@ def show_login_page():
     st.markdown("<p style='text-align: center;'>O si ho prefereixes...</p>", unsafe_allow_html=True)
 
     if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary"):
+        # --- LÍNIA CLAU AFEGIDA (També per al mode convidat) ---
         st.session_state['zone_selected'] = None
-        st.session_state.update({
-            'guest_mode': True, 'logged_in': True, 'is_moderator': False
-        })
+        # ----------------------------------------------------
+        st.session_state.update({'guest_mode': True, 'logged_in': True})
         st.rerun()
-
-    # --- NOU BLOC: ACCÉS DIRECTE PER A MODERADORS ---
-    st.divider()
-    with st.expander("🔑 Accés per a Moderadors"):
-        with st.form("moderator_login_form"):
-            moderator_password = st.text_input("Contrasenya de Moderador", type="password", key="mod_pass")
-            if st.form_submit_button("Entrar com a Moderador", use_container_width=True):
-                # Comprovem la contrasenya contra la que tenim guardada a secrets.toml
-                if moderator_password == st.secrets["app_secrets"]["moderator_password"]:
-                    st.session_state['zone_selected'] = None
-                    st.session_state.update({
-                        'logged_in': True,
-                        'username': "Moderador", # Assignem un nom d'usuari genèric
-                        'guest_mode': False,
-                        'is_moderator': True # Activem els privilegis
-                    })
-                    st.rerun()
-                else:
-                    st.error("Contrasenya de moderador incorrecta.")
+        
 
 def calcular_mlcape_robusta(p, T, Td):
     """
@@ -1792,282 +1761,6 @@ def crear_dial_vent_animat(label, wind_dir, wind_spd):
     """
     return html
 
-
-
-
-def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
-    """
-    Sistema Expert v6.0 (Lògica Meteorològica Correcta) per a Tèrmiques Diürnes.
-    1. Calcula el LCL de l'ambient com a objectiu.
-    2. Simula l'escalfament per trobar la temperatura de dispar.
-    3. Calcula el sostre i la força de la parcel·la que es dispara.
-    """
-    resultats = {
-        'veredicte_text': 'Anàlisi no disponible', 'veredicte_color': '#808080',
-        'temperatura_dispar': np.nan, 'temperatura_actual': np.nan,
-        'base_nuvols_m': np.nan, 'sostre_termiques_m': np.nan,
-        'forca_ascensos_ms': np.nan,
-        'triggered_profile': None,
-        'explicacio': "No hi ha prou dades per a l'anàlisi."
-    }
-    
-    if not sounding_data: return resultats
-
-    try:
-        p, T, Td = sounding_data
-        p_sfc, t_sfc, td_sfc = p[0], T[0], Td[0]
-        resultats['temperatura_actual'] = t_sfc.m
-        altures = mpcalc.pressure_to_height_std(p)
-
-        hora_num = int(hora_sel_str.split(':')[0])
-        if not (10 <= hora_num <= 18):
-            resultats.update({
-                'veredicte_text': 'Fora d\'hores', 'veredicte_color': '#6c757d',
-                'explicacio': "L'anàlisi de tèrmiques només és rellevant durant les hores centrals del dia (10h-18h)."
-            })
-            return resultats
-        
-        # --- PAS 1: CALCULAR LA BASE DE NÚVOLS POTENCIAL DE L'AMBIENT ---
-        try:
-            ambient_lcl_p, _ = mpcalc.lcl(p_sfc, t_sfc, td_sfc)
-            ambient_lcl_m = float(np.interp(ambient_lcl_p.m, p.m[::-1], altures.m[::-1]))
-            resultats['base_nuvols_m'] = ambient_lcl_m
-        except Exception:
-            resultats.update({
-                'veredicte_text': 'Tèrmiques Blaves', 'veredicte_color': '#17a2b8',
-                'explicacio': "L'atmosfera és massa seca per formar núvols. Es poden generar tèrmiques sense núvol (blaves), però no es pot determinar un sostre clar."
-            })
-            return resultats
-
-        # --- PAS 2: SIMULAR L'ESCALFAMENT PER TROBAR LA TEMPERATURA DE DISPAR ---
-        triggered = False
-        for temp_increment in np.arange(0, 15, 0.5):
-            current_t = t_sfc + temp_increment * units.delta_degC
-            parcel_profile = mpcalc.parcel_profile(p, current_t, td_sfc)
-            cape, cin = mpcalc.cape_cin(p, T, Td, parcel_profile)
-            
-            if cape.m > 25 and cin.m > -40:
-                resultats['temperatura_dispar'] = current_t.m
-                
-                # --- PAS 3: CALCULAR SOSTRE I FORÇA DE LA PARCEL·LA DISPARADA ---
-                try:
-                    el_p, _ = mpcalc.el(p, T, parcel_profile)
-                    resultats['sostre_termiques_m'] = float(np.interp(el_p.m, p.m[::-1], altures.m[::-1]))
-                except ValueError:
-                    # Si la tèrmica és feble i no té EL, el sostre és la base del núvol
-                    resultats['sostre_termiques_m'] = ambient_lcl_m
-
-                resultats['forca_ascensos_ms'] = float(np.sqrt(2 * cape.m) if cape.m > 0 else 0)
-                resultats['triggered_profile'] = parcel_profile.to('degC')
-                triggered = True
-                break
-        
-        if not triggered:
-            resultats.update({
-                'veredicte_text': 'Inexistents (Estable)', 'veredicte_color': '#007bff',
-                'explicacio': "L'atmosfera és massa estable. Fins i tot amb un fort escalfament diürn, no s'espera que es disparin tèrmiques organitzades."
-            })
-            return resultats
-
-        # Veredicte final basat en la potència
-        sostre_km = resultats['sostre_termiques_m'] / 1000 if pd.notna(resultats['sostre_termiques_m']) else 0
-        forca_ms = resultats['forca_ascensos_ms'] if pd.notna(resultats['forca_ascensos_ms']) else 0
-
-        if sostre_km > 4.0 and forca_ms > 3.0:
-            resultats.update({'veredicte_text': 'Excel·lents', 'veredicte_color': '#dc3545'})
-        elif sostre_km > 2.8 and forca_ms > 2.0:
-            resultats.update({'veredicte_text': 'Bones', 'veredicte_color': '#28a745'})
-        elif sostre_km > 1.8:
-            resultats.update({'veredicte_text': 'Moderades', 'veredicte_color': '#ffc107'})
-        else:
-            resultats.update({'veredicte_text': 'Febles', 'veredicte_color': '#17a2b8'})
-        
-        resultats['explicacio'] = f"A partir de {resultats['temperatura_dispar']:.1f}°C a la superfície, es dispararan tèrmiques. La base dels cúmuls se situarà a uns {resultats['base_nuvols_m']:.0f} m, amb un sostre útil fins als {resultats['sostre_termiques_m']:.0f} m i ascensos de fins a {resultats['forca_ascensos_ms']:.1f} m/s."
-
-    except Exception as e:
-        resultats['explicacio'] = f"S'ha produït un error durant l'anàlisi: {e}"
-        resultats['veredicte_text'] = 'Error de Càlcul'
-        
-    return resultats
-
-@st.cache_data(ttl=1800, show_spinner=False)
-def carregar_perfil_basic_sondeig_cat(lat, lon, hourly_index):
-    """
-    Versió LLEUGERA v2.0 (Corregida) que construeix correctament els perfils
-    de P, T, Td per a una anàlisi de tèrmiques fiable.
-    """
-    try:
-        h_base = ["temperature_2m", "dew_point_2m", "surface_pressure"]
-        h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity"] for p in PRESS_LEVELS_AROME]
-        params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_seamless", "forecast_days": 4}
-        response = openmeteo.weather_api(API_URL_CAT, params=params)[0]
-        hourly = response.Hourly()
-
-        valid_index = None
-        total_hours = len(hourly.Variables(0).ValuesAsNumpy())
-        for offset in range(4):
-            h_idx = hourly_index + (offset // 2) * (1 if offset % 2 == 0 else -1)
-            if 0 <= h_idx < total_hours:
-                sfc_check = [hourly.Variables(i).ValuesAsNumpy()[h_idx] for i in range(len(h_base))]
-                if not any(np.isnan(val) for val in sfc_check):
-                    valid_index = h_idx
-                    break
-        
-        if valid_index is None: return None, "No s'han trobat dades vàlides per a la construcció del perfil."
-
-        sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[valid_index] for i, v in enumerate(h_base)}
-        p_data = {
-            "T": [hourly.Variables(len(h_base) + j).ValuesAsNumpy()[valid_index] for j in range(len(PRESS_LEVELS_AROME))],
-            "RH": [hourly.Variables(len(h_base) + len(PRESS_LEVELS_AROME) + j).ValuesAsNumpy()[valid_index] for j in range(len(PRESS_LEVELS_AROME))]
-        }
-        
-        # --- LÒGICA DE CONSTRUCCIÓ DEL PERFIL CORREGIDA ---
-        # 1. Creem llistes de Python normals
-        p_profile = [sfc_data["surface_pressure"]]
-        T_profile = [sfc_data["temperature_2m"]]
-        Td_profile = [sfc_data["dew_point_2m"]]
-        
-        # 2. Afegim dades a les llistes
-        for i, p_val in enumerate(PRESS_LEVELS_AROME):
-            if p_val < p_profile[-1] and all(not np.isnan(p_data[v][i]) for v in ["T", "RH"]):
-                p_profile.append(p_val)
-                T_profile.append(p_data["T"][i])
-                Td_val = mpcalc.dewpoint_from_relative_humidity(p_data["T"][i] * units.degC, p_data["RH"][i] * units.percent)
-                Td_profile.append(Td_val.m)
-        
-        # 3. Un cop les llistes estan completes, les convertim a arrays amb unitats
-        p = np.array(p_profile) * units.hPa
-        T = np.array(T_profile) * units.degC
-        Td = np.array(Td_profile) * units.degC
-        # --- FI DE LA CORRECCIÓ ---
-        
-        return (p, T, Td), None
-    except Exception as e:
-        return None, f"Error en carregar el perfil bàsic: {e}"
-
-
-@st.cache_data(ttl=3600)
-def carregar_dades_diaries_cat(lat, lon, dia_sel_str):
-    """Carrega variables diàries (com la Tº màxima) per a un punt i dia concrets."""
-    try:
-        params = {
-            "latitude": lat,
-            "longitude": lon,
-            "daily": ["temperature_2m_max"],
-            "models": "arome_seamless",
-            "forecast_days": 4,
-            "timezone": "Europe/Madrid"
-        }
-        
-        today = datetime.now(TIMEZONE_CAT).date()
-        target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
-        day_index = (target_date - today).days
-
-        # Comprovació inicial per si demanem un dia massa llunyà
-        if not (0 <= day_index < 4):
-            return None, "La data seleccionada està fora del rang de pronòstic."
-
-        response = openmeteo.weather_api(API_URL_CAT, params=params)[0]
-        daily = response.Daily()
-        
-        # --- LÍNIES MODIFICADES (AQUÍ ESTÀ LA CORRECCIÓ) ---
-        # 1. Obtenim TOTES les dades diàries disponibles
-        dades_diaries_disponibles = daily.Variables(0).ValuesAsNumpy()
-        
-        # 2. Comprovem si l'índex que volem és vàlid per a les dades rebudes
-        if day_index < len(dades_diaries_disponibles):
-            t_max = dades_diaries_disponibles[day_index]
-            # Només retornem les dades si tot és correcte
-            return {'temperature_2m_max': [t_max]}, None
-        else:
-            # Si l'índex no és vàlid, retornem un error controlat
-            return None, f"Les dades per al dia seleccionat ({dia_sel_str}) encara no estan disponibles a l'API. Prova una hora anterior."
-        # --- FI DE LA CORRECCIÓ ---
-
-    except Exception as e:
-        return None, f"Error crític en carregar les dades diàries: {e}"
-
-def crear_grafic_skewt_termiques(sounding_data, triggered_profile=None):
-    """
-    Crea un diagrama Skew-T complet i professional per a l'anàlisi de tèrmiques.
-    Mostra el perfil ambiental i la trajectòria de la parcel·la tèrmica disparada.
-    """
-    p, T, Td = sounding_data
-    
-    # --- 1. Configuració del Gràfic Skew-T ---
-    fig = plt.figure(figsize=(9, 9), dpi=100)
-    skew = SkewT(fig, rotation=45)
-    ax = skew.ax
-    
-    # Zoom a la part rellevant de l'atmosfera per a tèrmiques (superfície a 600 hPa)
-    ax.set_ylim(max(p.m) + 10, 600)
-    ax.set_xlim(-10, 35)
-
-    # Dibuixar línies de fons (adiabàtiques, etc.)
-    skew.plot_dry_adiabats(color='brown', linestyle='--', linewidth=1, alpha=0.5)
-    skew.plot_moist_adiabats(color='blue', linestyle='--', linewidth=1, alpha=0.5)
-    skew.plot_mixing_lines(color='green', linestyle='--', linewidth=1, alpha=0.3)
-    ax.grid(True, linestyle=':', alpha=0.7)
-
-    # --- 2. Dibuixar el Sondeig Ambiental ---
-    skew.plot(p, T, 'red', linewidth=2.5, label='Temperatura Ambient')
-    skew.plot(p, Td, 'green', linewidth=2.5, label='Punt de Rosada Ambient')
-
-    # --- 3. Dibuixar la Tèrmica (si s'ha disparat) ---
-    if triggered_profile is not None:
-        # Omplir les àrees de CAPE (energia) i CIN (inhibició)
-        skew.shade_cape(p, T, triggered_profile, color='red', alpha=0.25)
-        skew.shade_cin(p, T, triggered_profile, color='blue', alpha=0.25)
-        
-        # Dibuixar la trajectòria de la bombolla d'aire
-        skew.plot(p, triggered_profile, 'orange', linewidth=3, linestyle='--', label='Trajectòria de la Tèrmica')
-
-    # --- 4. detalls finals ---
-    ax.set_xlabel("Temperatura (°C)")
-    ax.set_ylabel("Pressió (hPa)")
-    ax.set_title("Diagrama Termodinàmic (Skew-T) per a Tèrmiques", weight='bold')
-    ax.legend()
-    
-    return fig
-    
-def ui_pestanya_termiques_diurnes(sounding_data, poble_sel, hora_sel_str, timestamp_str):
-    """Mostra la interfície d'usuari per a l'anàlisi DINÀMICA de tèrmiques."""
-    st.markdown(f"#### Anàlisi Dinàmica de Tèrmiques per a {poble_sel}")
-    st.caption(f"Basat en el perfil atmosfèric de les {hora_sel_str}")
-
-    analisi = analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str)
-    
-    st.markdown(f"""
-    <div style="background-color: {analisi['veredicte_color']}; padding: 10px; border-radius: 5px; text-align: center; margin-bottom: 15px;">
-        <h3 style="color: white; margin: 0;">Potencial de Tèrmiques: {analisi['veredicte_text']}</h3>
-    </div>
-    """, unsafe_allow_html=True)
-
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("##### 🌡️ Temperatures Clau")
-        c1, c2 = st.columns(2)
-        c1.metric("Temperatura Actual (SFC)", f"{analisi['temperatura_actual']:.1f} °C" if pd.notna(analisi['temperatura_actual']) else "---", help="Temperatura a la superfície a l'hora del sondeig.")
-        c2.metric("Temperatura de Dispar", f"{analisi['temperatura_dispar']:.1f} °C" if pd.notna(analisi['temperatura_dispar']) else "---", help="Temperatura que ha d'assolir el terra per iniciar la convecció.")
-
-        st.markdown("##### ☁️ Característiques de les Tèrmiques (si es disparen)")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Base dels núvols (LCL)", f"{analisi['base_nuvols_m']:.0f} m" if pd.notna(analisi['base_nuvols_m']) else "---")
-        c2.metric("Sostre útil (EL)", f"{analisi['sostre_termiques_m']:.0f} m" if pd.notna(analisi['sostre_termiques_m']) else "---")
-        c3.metric("Força ascensos (max)", f"{analisi['forca_ascensos_ms']:.1f} m/s" if pd.notna(analisi['forca_ascensos_ms']) else "---")
-
-        st.markdown("##### 📝 Resum de l'Anàlisi")
-        st.info(analisi['explicacio'])
-
-    with col2:
-        # --- LÍNIA CORREGIDA ---
-        # Assegurem que el nom de la funció cridada és el correcte.
-        fig = crear_grafic_skewt_termiques(sounding_data, analisi['triggered_profile'])
-        # --- FI DE LA CORRECCIÓ ---
-        
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
 
 def get_wind_at_level(p_profile, u_profile, v_profile, target_level):
     """
@@ -3532,12 +3225,9 @@ def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi, interpretacion
     st.markdown("#### Assistent d'Anàlisi (IA Gemini)")
     
     is_guest = st.session_state.get('guest_mode', False)
-    is_moderator = st.session_state.get('is_moderator', False)
     current_user = st.session_state.get('username')
 
-    if is_moderator:
-        st.info("👑 **Mode Moderador:** Consultes d'IA il·limitades.")
-    elif not is_guest:
+    if not is_guest:
         st.info(f"ℹ️ Recorda que tens un límit de **{MAX_IA_REQUESTS} consultes cada 3 hores**.")
     else:
         st.info("ℹ️ Fes una pregunta en llenguatge natural sobre les dades del sondeig.")
@@ -3548,7 +3238,7 @@ def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi, interpretacion
 
     if prompt := st.chat_input("Fes una pregunta sobre el sondeig..."):
         limit_excedit = False
-        if not is_guest and not is_moderator and current_user:
+        if not is_guest and current_user:
             now_ts = time.time()
             rate_limits = load_json_file(RATE_LIMIT_FILE)
             user_timestamps = rate_limits.get(current_user, [])
@@ -3647,15 +3337,15 @@ def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpret
     # --- ROL I PERSONALITAT ---
     prompt_parts = [
         "### ROL I PERSONALITAT",
-        "Ets un expert apassionat de la meteorologia. El teu to és de confiança i divertit, didàctic i directe, com si donessis un classes clau a un amic.",
+        "Ets un expert apassionat de la meteorologia super expressiu i obert. El teu to és molt divertit i bromista, pero cinfiat i directe, com si donessis un classes a un amic de tot la vida.",
         
         "\n### MISSIÓ",
         "Un sistema automàtic ha analitzat un sondeig i t'ha donat un 'Veredicte' i una interpretació qualitativa dels paràmetres, pots aproximar, no cal centrarte sempre amb el que diu el  ( Entorn actual:) ja que pot ser vòlatil,sense delirar clar. La teva missió és doanr informació i obrir-te per construir una explicació coherent i senzilla per al teu amic.",
         
         "\n### REGLES DE LA RESPOSTA",
-        "1. **Comença Directe:** Respon directament a la pregunta del teu amic sigui quina sigui, menys fora del tema de meteo, basant-te en el 'Veredicte' amb naturalesa i compasió.",
+        "1. **Comença :** Respon  a la pregunta del teu amic sigui quina sigui, amb la meteo basant-te en el 'Veredicte' amb naturalesa i compasió, nomès digues les xifres si et pregunta..",
         "2. **Construeix el Raonament:** Utilitza les 'Interpretacions' per explicar el perquè del veredicte. Centra't primer en el 'Disparador (Convergència)' i després en la 'Inhibició (CIN) de 0 a -30 es poc CIN si hi ha una convergencia moderada, peró de 60 a 100 comença a ser algo dificil, de 100 a més es molt dificil superar-la'. Aquesta és la lluita principal.",
-        "3. **Sigues Breu i Contundent:** La teva resposta ha de ser curta i anar al gra. Màxim 4 frases.",
+        "3. **Sigues Breu i Contundent:** La teva resposta ha de ser curta i anar al gra de forma divertida. Màxim 5 frases.",
 
         "\n### ANÀLISI AUTOMÀTICA",
         f"**Localitat:** {poble}",
@@ -3755,15 +3445,10 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     """
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
-    is_moderator = st.session_state.get('is_moderator', False)
     
     col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
     with col_text:
-        if not is_guest:
-            welcome_msg = f"Benvingut/da, **{st.session_state.get('username')}**!"
-            if is_moderator:
-                welcome_msg += " 👑"
-            st.markdown(welcome_msg)
+        if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username')}**!")
     with col_change:
         if st.button("Canviar a EEUU?", use_container_width=True):
             keys_to_delete = ['poble_selector', 'poble_selector_usa', 'zone_selected', 'active_tab_cat', 'active_tab_usa', 'dia_selector', 'hora_selector', 'dia_selector_usa_widget', 'hora_selector_usa']
@@ -3878,6 +3563,8 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 nivell_actual = st.session_state.get('level_usa_main', 850)
                 idx = nivells_usa.index(nivell_actual) if nivell_actual in nivells_usa else 1
                 st.selectbox("Nivell:", nivells_usa, key="level_usa_main", index=idx, format_func=lambda x: f"{x} hPa")
+
+
 
 
 @st.cache_resource(ttl=1800, show_spinner=False)
@@ -4191,10 +3878,9 @@ def run_catalunya_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     timestamp_str = f"{dia_sel_str} a les {hora_sel_str} (Hora Local)"
 
-    # --- PAS 4: MENÚ I PESTANYES (MODIFICAT) ---
-    menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical", "Tèrmiques Diürnes", "Anàlisi de Vents", "Tall Vertical Simulat"]
-    menu_icons = ["map", "graph-up-arrow", "sun-fill", "wind", "moisture"]
-    
+    # --- PAS 4: MENÚ I PESTANYES (es manté igual) ---
+    menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical", "Anàlisi de Vents", "Tall Vertical Simulat"]
+    menu_icons = ["map", "graph-up-arrow", "wind", "moisture"]
     if not is_guest:
         menu_options.append("💬 Assistent IA")
         menu_icons.append("chat-quote-fill")
@@ -4204,16 +3890,6 @@ def run_catalunya_app():
 
     if selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
-    
-    elif selected_tab == "Tèrmiques Diürnes":
-        with st.spinner(f"Carregant perfil tèrmic i dades diàries per a {poble_sel}..."):
-            perfil_basic_tuple, error_sounding = carregar_perfil_basic_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
-
-        if error_sounding:
-            st.error(f"Error en les dades del perfil atmosfèric: {error_sounding}")
-        else:
-            ui_pestanya_termiques_diurnes(perfil_basic_tuple, poble_sel, hora_sel_str, timestamp_str)
-
     else:
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
@@ -4238,6 +3914,7 @@ def run_catalunya_app():
             elif selected_tab == "Anàlisi de Vents":
                 ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_sel_str, timestamp_str)
 
+            # --- BLOC DE LÒGICA CORREGIT PER A LA PESTANYA DE SIMULACIÓ AMB GUIA ---
             elif selected_tab == "Tall Vertical Simulat":
                 col_esquerra, col_dreta = st.columns([0.7, 0.3])
 
@@ -4257,6 +3934,7 @@ def run_catalunya_app():
                         st.image(gif_bytes, caption="Animació del cicle de vida simulat (2 hores).")
 
                 with col_dreta:
+                    # Cridem la nova funció de la guia
                     ui_guia_tall_vertical(params_calc, nivell_sel)
 
             elif selected_tab == "💬 Assistent IA" and not is_guest:
