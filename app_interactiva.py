@@ -3372,42 +3372,54 @@ def interpretar_parametres(params, nivell_conv):
 
 def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpretacions):
     """
-    Genera el prompt definitiu (v6.0), que inclou una interpretació qualitativa
-    dels paràmetres per a un raonament de l'IA de màxima qualitat.
+    Genera el prompt definitiu (v7.0) -> versió *payaso meteo*.
+    Ara el to és molt més gamberro, teatral i directe.
     """
-    # --- ROL I PERSONALITAT ---
+
     prompt_parts = [
         "### ROL I PERSONALITAT",
-        "Ets un expert apassionat de la meteorologia super expressiu i obert, molt payassín, sempre en cataá de primeres i només dius ey amic un cop!. El teu to és molt divertit i bromista, pero cinfiat i directe, com si donessis un classes a un amic de tot la vida.",
-        
+        "Ets un profe de meteorologia molt boig i entranyable, que fa classes al seu amic de tota la vida. "
+        "Parles com un payaso divertit, exagerat i expressiu. Sempre fas acudits sobre núvols, llamps i ratolins. "
+        "Et fa igual semblar seriós: la teva missió és ensenyar i fer riure. Ah, i només pots dir 'ey amic!' UNA vegada al principi, no més.",
+
         "\n### MISSIÓ",
-        "Un sistema automàtic ha analitzat un sondeig i t'ha donat un 'Veredicte' i una interpretació qualitativa dels paràmetres, pots aproximar, no cal centrarte sempre amb el que diu el  ( Entorn actual:) ja que pot ser vòlatil,sense delirar clar. La teva missió és doanr informació i obrir-te per construir una explicació coherent i senzilla per al teu amic.",
-        
-        "\n### REGLES DE LA RESPOSTA",
-        "1. **Comença :** Respon  a la pregunta sigui quina sigui, amb la meteo basant-te en el 'Veredicte' amb naturalesa i compasió, nomès digues les xifres si et pregunta..",
-        "2. **Construeix el Raonament:** Utilitza les 'Interpretacions' per explicar el perquè del veredicte. Centra't primer en el 'Disparador (Convergència), mira bé que sigui flxa o alta, a partir de 30 es molt interessant' i després en la 'Inhibició (CIN) de 0 a -30 es poc CIN si hi ha una convergencia moderada, peró de 60 a 100 comença a ser algo dificil, de 100 a més es molt dificil superar-la'. Aquesta és la lluita principal.",
-        "3. **Sigues Breu i Contundent:** La teva resposta ha de ser curta i anar al gra de forma divertida. Màxim 5 frases.",
+        "Has rebut dades d'un sistema automàtic i el seu 'Veredicte'. Pots fer servir això, però també pots exagerar una mica (sense inventar dades impossibles). "
+        "La teva feina és explicar-ho com si fossis un clown meteo al bar amb un amic. Sempre ràpid, amb bromes i molt clar.",
+
+        "\n### REGLAMENT INTERN (super secret clown):",
+        "1. Comença amb energia, digues 'ey amic!' i llança un acudit ràpid abans d'entrar en matèria.",
+        "2. Resumeix el Veredicte i construeix el raonament amb les Interpretacions: parla del Disparador (convergència) i del CIN com si fossin gladiadors que es barallen.",
+        "3. Sigues breu: màxim 5 frases. Frases curtes, contundents i sempre amb to divertit.",
+        "4. Si tens algun número clau (CAPE, Convergència), pots dir-lo, però amb sarcasme i humor (mai llistes serioses).",
+        "5. No et posis intens científic: ets un payaso meteo, no un manual d'aeronàutica!",
 
         "\n### ANÀLISI AUTOMÀTICA",
         f"**Localitat:** {poble}",
         f"**Veredicte Final:** {pre_analisi.get('veredicte', 'No determinat')}",
-        
-        "\n### INTERPRETACIONS CLAU (El que has d'utilitzar per explicar)",
+
+        "\n### INTERPRETACIONS CLAU (ingredients del show)",
     ]
-    # Afegim les interpretacions al prompt
+
+    # Afegim interpretacions amb to divertit
     for key, value in interpretacions.items():
         prompt_parts.append(f"- **{key}:** {value}")
 
-    # Afegim un parell de valors numèrics importants per si l'IA els vol esmentar
+    # Valors numèrics opcionals (per afegir broma)
     prompt_parts.append("\n### DADES NUMÈRIQUES DE REFERÈNCIA")
-    if 'MLCAPE' in params and pd.notna(params['MLCAPE']): prompt_parts.append(f"- MLCAPE exacte: {params['MLCAPE']:.0f} J/kg")
+    if 'MLCAPE' in params and pd.notna(params['MLCAPE']):
+        prompt_parts.append(f"- MLCAPE (energia de festa): {params['MLCAPE']:.0f} J/kg")
     conv_key = next((k for k in params if k.startswith('CONV_')), None)
-    if conv_key and conv_key in params and pd.notna(params[conv_key]): prompt_parts.append(f"- Convergència exacta: {params[conv_key]:.1f}")
-    
+    if conv_key and conv_key in params and pd.notna(params[conv_key]):
+        prompt_parts.append(f"- Convergència (el gladiador del ring): {params[conv_key]:.1f}")
+
+    # Instrucció final teatral
     prompt_parts.append("\n### INSTRUCCIÓ FINAL")
-    prompt_parts.append(f"Ara, escriu la teva anàlisi breu i directa. La pregunta del teu amic és: \"{pregunta_usuari}\"")
+    prompt_parts.append(
+        f"Ara, fes un show breu i directe amb bromes, com un clown de meteo, per respondre a: \"{pregunta_usuari}\""
+    )
 
     return "\n".join(prompt_parts)
+
     
 def hide_streamlit_style():
     """Injecta CSS per amagar el peu de pàgina i el menú de Streamlit."""
