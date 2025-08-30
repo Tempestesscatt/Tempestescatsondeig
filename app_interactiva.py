@@ -510,10 +510,8 @@ def show_login_page():
             if st.form_submit_button("Entra", use_container_width=True, type="primary"):
                 users = load_json_file(USERS_FILE)
                 if username in users and users[username] == get_hashed_password(password):
-                    # --- LÍNIA CLAU AFEGIDA ---
                     # Assegurem que la selecció de zona estigui neta abans de continuar.
                     st.session_state['zone_selected'] = None
-                    # ---------------------------
                     st.session_state.update({'logged_in': True, 'username': username, 'guest_mode': False})
                     st.rerun()
                 else:
@@ -549,13 +547,34 @@ def show_login_page():
     st.divider()
     st.markdown("<p style='text-align: center;'>O si ho prefereixes...</p>", unsafe_allow_html=True)
 
+    # Botón para entrar como convidat
     if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary"):
-        # --- LÍNIA CLAU AFEGIDA (També per al mode convidat) ---
         st.session_state['zone_selected'] = None
-        # ----------------------------------------------------
         st.session_state.update({'guest_mode': True, 'logged_in': True})
         st.rerun()
+    
+    # Separador para el modo desarrollador
+    st.divider()
+    st.markdown("<p style='text-align: center;'>Accés per a desenvolupadors</p>", unsafe_allow_html=True)
+    
+    # Formulario para modo desarrollador
+    with st.form("developer_form"):
+        dev_password = st.text_input("Contrasenya de desenvolupador", type="password", key="dev_pass")
         
+        if st.form_submit_button("🚀 Accés Mode Desenvolupador", use_container_width=True):
+            if dev_password == st.secrets["app_secrets"]["moderator_password"]:
+                st.session_state['zone_selected'] = None
+                st.session_state.update({
+                    'logged_in': True, 
+                    'developer_mode': True,
+                    'username': 'Desenvolupador',
+                    'guest_mode': False
+                })
+                st.success("Mode desenvolupador activat! Preguntes il·limitades a la IA.")
+                time.sleep(1)  # Pequeña pausa para mostrar el mensaje
+                st.rerun()
+            else:
+                st.error("Contrasenya de desenvolupador incorrecta.")
 
 def calcular_mlcape_robusta(p, T, Td):
     """
@@ -3468,30 +3487,44 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     """
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
+    is_developer = st.session_state.get('developer_mode', False)
     
-    col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
+    # Crear columnas según el modo
+    if is_developer:
+        col_text, col_change, col_dev, col_logout = st.columns([0.5, 0.15, 0.15, 0.15])
+    else:
+        col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
+    
     with col_text:
         if not is_guest: 
-            st.markdown(f"Benvingut/da, **{st.session_state.get('username')}**!")
-            if st.session_state.get('developer_mode', False):
-                st.success("🔓 **MODO DESARROLLADOR ACTIVADO**")
+            username = st.session_state.get('username', 'Usuari')
+            if is_developer:
+                st.markdown(f"👨‍💻 **{username}** (Mode Desenvolupador)")
+            else:
+                st.markdown(f"Benvingut/da, **{username}**!")
+    
     with col_change:
         if st.button("Canviar a EEUU?", use_container_width=True):
             keys_to_delete = ['poble_selector', 'poble_selector_usa', 'zone_selected', 'active_tab_cat', 'active_tab_usa', 'dia_selector', 'hora_selector', 'dia_selector_usa_widget', 'hora_selector_usa']
             for key in keys_to_delete:
                 if key in st.session_state: del st.session_state[key]
             st.rerun()
+    
+    # Columna específica para desarrolladores
+    if is_developer:
+        with col_dev:
+            if st.button("🚫 Sortir Mode Dev", use_container_width=True, type="secondary"):
+                st.session_state.developer_mode = False
+                st.session_state.logged_in = False
+                st.rerun()
+    
     with col_logout:
         if st.button("Sortir" if is_guest else "Tanca Sessió", use_container_width=True):
-            for key in list(st.session_state.keys()): del st.session_state[key]
+            for key in list(st.session_state.keys()): 
+                del st.session_state[key]
             st.rerun()
 
-    # Botón para desactivar modo desarrollador si está activo
-    if st.session_state.get('developer_mode', False):
-        if st.button("🚫 Desactivar modo desarrollador", use_container_width=True):
-            st.session_state.developer_mode = False
-            st.rerun()
-
+    # Resto de la función sin cambios...
     with st.container(border=True):
         st.caption("💡 Les alertes (🟡/🟠/🔴) indiquen localitats amb 'disparador' (convergència ≥ 30). La llista s'ordena per potencial.")
         
@@ -3500,7 +3533,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             if not convergencies or city_key not in convergencies: return city_key
             conv = convergencies.get(city_key)
             if isinstance(conv, (int, float)):
-                # <<-- CANVI CLAU: Nova escala d'emojis a partir de 30 -->>
                 emoji = "🔴" if conv >= 80 else "🟠" if conv >= 50 else "🟡" if conv >= 30 else ""
                 return f"{city_key} ({emoji} {conv:.0f})" if emoji else city_key
             return city_key
@@ -3514,7 +3546,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 if convergencies:
                     for city, conv in convergencies.items():
                         is_numeric = isinstance(conv, (int, float))
-                        # <<-- CANVI CLAU: El llindar per ser "actiu" ara és 30 -->>
                         llindar_actiu = 30
                         if city in POBLACIONS_TERRA:
                             (actives_terra if is_numeric and conv >= llindar_actiu else inactives_terra).append(city)
@@ -3553,7 +3584,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx, format_func=lambda x: f"{x} hPa")
         
         else: # Zona USA
-            # (La lògica per a USA es manté, ja que té llindars diferents)
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc:
                 actives, inactives = [], []
@@ -3595,7 +3625,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 nivell_actual = st.session_state.get('level_usa_main', 850)
                 idx = nivells_usa.index(nivell_actual) if nivell_actual in nivells_usa else 1
                 st.selectbox("Nivell:", nivells_usa, key="level_usa_main", index=idx, format_func=lambda x: f"{x} hPa")
-
 
 
 
@@ -4150,10 +4179,6 @@ def main():
     elif st.session_state.zone_selected == 'valley_halley':
         with st.spinner("Preparant l'entorn d'anàlisi de Tornado Alley..."):
             run_valley_halley_app()
-
-# ==============================================================================
-# REEMPLAÇA LA TEVA FUNCIÓ SENCERA PER AQUESTA NOVA VERSIÓ
-# ==============================================================================
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
