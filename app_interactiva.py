@@ -1987,32 +1987,46 @@ def carregar_dades_diaries_cat(lat, lon, dia_sel_str):
     except Exception as e:
         return None, f"Error crític en carregar les dades diàries: {e}"
 
-def crear_grafic_termiques(sounding_data, triggered_profile=None):
+def crear_grafic_skewt_termiques(sounding_data, triggered_profile=None):
     """
-    Crea un gràfic simplificat per visualitzar el potencial de tèrmiques,
-    incloent la trajectòria de la parcel·la si s'ha disparat.
+    Crea un diagrama Skew-T complet i professional per a l'anàlisi de tèrmiques.
+    Mostra el perfil ambiental i la trajectòria de la parcel·la tèrmica disparada.
     """
-    # --- LÍNIA CORREGIDA ---
-    # Accedim correctament al tuple per obtenir els perfils complets
-    p, T = sounding_data[:2]
-    # --- FI DE LA CORRECCIÓ ---
-
-    fig = plt.figure(figsize=(8, 8), dpi=100)
-    ax = fig.add_subplot(1, 1, 1)
-
-    altures = mpcalc.pressure_to_height_std(p)
-    ax.plot(T.m, altures.m, label='Perfil de Temperatura Ambient', color='red', linewidth=2.5)
+    p, T, Td = sounding_data
     
-    if triggered_profile is not None:
-        ax.plot(triggered_profile, altures.m, ':', color='orange', linewidth=2, label=f'Trajectòria de la Tèrmica')
+    # --- 1. Configuració del Gràfic Skew-T ---
+    fig = plt.figure(figsize=(9, 9), dpi=100)
+    skew = SkewT(fig, rotation=45)
+    ax = skew.ax
+    
+    # Zoom a la part rellevant de l'atmosfera per a tèrmiques (superfície a 600 hPa)
+    ax.set_ylim(max(p.m) + 10, 600)
+    ax.set_xlim(-10, 35)
 
-    ax.set_xlabel("Temperatura (°C)")
-    ax.set_ylabel("Altitud (m)")
-    ax.set_title("Anàlisi del Potencial de Tèrmiques Diürnes", weight='bold')
+    # Dibuixar línies de fons (adiabàtiques, etc.)
+    skew.plot_dry_adiabats(color='brown', linestyle='--', linewidth=1, alpha=0.5)
+    skew.plot_moist_adiabats(color='blue', linestyle='--', linewidth=1, alpha=0.5)
+    skew.plot_mixing_lines(color='green', linestyle='--', linewidth=1, alpha=0.3)
     ax.grid(True, linestyle=':', alpha=0.7)
+
+    # --- 2. Dibuixar el Sondeig Ambiental ---
+    skew.plot(p, T, 'red', linewidth=2.5, label='Temperatura Ambient')
+    skew.plot(p, Td, 'green', linewidth=2.5, label='Punt de Rosada Ambient')
+
+    # --- 3. Dibuixar la Tèrmica (si s'ha disparat) ---
+    if triggered_profile is not None:
+        # Omplir les àrees de CAPE (energia) i CIN (inhibició)
+        skew.shade_cape(p, T, triggered_profile, color='red', alpha=0.25)
+        skew.shade_cin(p, T, triggered_profile, color='blue', alpha=0.25)
+        
+        # Dibuixar la trajectòria de la bombolla d'aire
+        skew.plot(p, triggered_profile, 'orange', linewidth=3, linestyle='--', label='Trajectòria de la Tèrmica')
+
+    # --- 4. detalls finals ---
+    ax.set_xlabel("Temperatura (°C)")
+    ax.set_ylabel("Pressió (hPa)")
+    ax.set_title("Diagrama Termodinàmic (Skew-T) per a Tèrmiques", weight='bold')
     ax.legend()
-    ax.set_ylim(bottom=0, top=max(altures.m) + 500)
-    ax.set_xlim(left=min(T.m) - 5, right=max(T.m) + 5)
     
     return fig
     
@@ -2050,6 +2064,7 @@ def ui_pestanya_termiques_diurnes(sounding_data, poble_sel, hora_sel_str, timest
     with col2:
         # Passem el perfil de la parcel·la disparada al gràfic per a una visualització precisa
         fig = crear_grafic_termiques(sounding_data, analisi['triggered_profile'])
+        fig = crear_grafic_skewt_termiques(sounding_data, analisi['triggered_profile'])
         st.pyplot(fig, use_container_width=True)
         plt.close(fig)
 
