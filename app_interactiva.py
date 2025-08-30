@@ -2035,7 +2035,6 @@ def ui_pestanya_termiques_diurnes(sounding_data, poble_sel, hora_sel_str, timest
     st.markdown(f"#### Anàlisi Dinàmica de Tèrmiques per a {poble_sel}")
     st.caption(f"Basat en el perfil atmosfèric de les {hora_sel_str}")
 
-    # Cridem la nova funció d'anàlisi
     analisi = analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str)
     
     st.markdown(f"""
@@ -2062,9 +2061,11 @@ def ui_pestanya_termiques_diurnes(sounding_data, poble_sel, hora_sel_str, timest
         st.info(analisi['explicacio'])
 
     with col2:
-        # Passem el perfil de la parcel·la disparada al gràfic per a una visualització precisa
-        fig = crear_grafic_termiques(sounding_data, analisi['triggered_profile'])
+        # --- LÍNIA CORREGIDA ---
+        # Assegurem que el nom de la funció cridada és el correcte.
         fig = crear_grafic_skewt_termiques(sounding_data, analisi['triggered_profile'])
+        # --- FI DE LA CORRECCIÓ ---
+        
         st.pyplot(fig, use_container_width=True)
         plt.close(fig)
 
