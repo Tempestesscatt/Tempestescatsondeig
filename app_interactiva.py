@@ -1795,109 +1795,90 @@ def crear_dial_vent_animat(label, wind_dir, wind_spd):
 
 
 
-# REEMPLAÇA LA TEVA FUNCIÓ SENCERA PER AQUESTA VERSIÓ CORREGIDA
-
-def analitzar_potencial_termiques_diurnes(sounding_data, daily_data):
+def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
     """
-    Sistema Expert v2.1 (Corregit) per a Tèrmiques Diürnes.
-    Utilitza el nom correcte de la funció 'convective_temp'.
+    Sistema Expert v3.0 (Simulació Dinàmica) per a Tèrmiques Diürnes.
+    Simula l'escalfament solar a partir del perfil de l'hora seleccionada
+    per determinar de manera precisa el dispar, la força i el sostre de les tèrmiques.
     """
     resultats = {
         'veredicte_text': 'Anàlisi no disponible', 'veredicte_color': '#808080',
-        'temperatura_dispar': np.nan, 'temperatura_max_prevista': np.nan,
+        'temperatura_dispar': np.nan, 'temperatura_actual': np.nan,
         'base_nuvols_m': np.nan, 'sostre_termiques_m': np.nan,
         'forca_ascensos_ms': np.nan,
-        'explicacio': "No hi ha prou dades per realitzar l'anàlisi de tèrmiques."
+        'triggered_profile': None,
+        'explicacio': "No hi ha prou dades per a l'anàlisi."
     }
-
-    if not sounding_data or not daily_data:
-        return resultats
-    if 'temperature_2m_max' not in daily_data or not daily_data['temperature_2m_max']:
-        resultats['explicacio'] = "Les dades diàries (Tº màx) no s'han pogut carregar."
-        return resultats
-        
-    t_max_prevista = daily_data['temperature_2m_max'][0]
-    if pd.isna(t_max_prevista):
-        resultats['explicacio'] = "La temperatura màxima prevista rebuda no és un valor vàlid."
-        return resultats
-    resultats['temperatura_max_prevista'] = t_max_prevista
+    
+    if not sounding_data: return resultats
 
     try:
         p, T, Td = sounding_data[0][:3]
-        t_convectiva_c = np.nan
-        
-        try:
-            # --- LÍNIA CORREGIDA ---
-            # El nom correcte de la funció és 'convective_temp'
-            t_convectiva_pint = mpcalc.convective_temp(p, T[0], Td[0])
-            # --- FI DE LA CORRECCIÓ ---
+        p_sfc, t_sfc, td_sfc = p[0], T[0], Td[0]
+        resultats['temperatura_actual'] = t_sfc.m
+
+        hora_num = int(hora_sel_str.split(':')[0])
+        if not (10 <= hora_num <= 18):
+            resultats.update({
+                'veredicte_text': 'Fora d\'hores', 'veredicte_color': '#6c757d',
+                'explicacio': "L'anàlisi de tèrmiques només és rellevant durant les hores centrals del dia (10h-18h), quan l'escalfament solar és significatiu."
+            })
+            return resultats
+
+        # Bucle de simulació d'escalfament solar
+        triggered = False
+        for temp_increment in np.arange(0, 15, 0.5):
+            current_t = t_sfc + temp_increment * units.degC
+            parcel_profile = mpcalc.parcel_profile(p, current_t, td_sfc)
+            cape, cin = mpcalc.cape_cin(p, T, Td, parcel_profile)
             
-            t_convectiva_c = t_convectiva_pint.to('degC').m
-            resultats['temperatura_dispar'] = t_convectiva_c
-        except Exception:
-            resultats.update({
-                'veredicte_text': 'Inexistents (Molt Estable)', 'veredicte_color': '#007bff',
-                'explicacio': "L'atmosfera és tan seca o estable que és impossible calcular una temperatura de dispar. No es formaran tèrmiques significatives."
-            })
-            return resultats
+            # Condició de dispar: CAPE positiu i CIN negligible
+            if cape.m > 10 and cin.m > -50:
+                resultats['temperatura_dispar'] = current_t.m
+                
+                # Càlculs un cop es dispara la tèrmica
+                altures = mpcalc.pressure_to_height_std(p)
+                
+                lcl_p, _ = mpcalc.lcl(p_sfc, current_t, td_sfc)
+                resultats['base_nuvols_m'] = float(np.interp(lcl_p.m, p.m[::-1], altures.m[::-1]))
 
-        if t_max_prevista < t_convectiva_c:
-            resultats.update({
-                'veredicte_text': 'Inexistents o molt febles', 'veredicte_color': '#007bff',
-                'explicacio': f"La temperatura màxima prevista ({t_max_prevista:.1f}°C) no arribarà a la temperatura necessària per disparar la convecció ({t_convectiva_c:.1f}°C). L'atmosfera romandrà estable."
-            })
-            return resultats
-
-        base_nuvols_m, sostre_termiques_m, forca_ascensos_ms = np.nan, np.nan, np.nan
+                el_p, _ = mpcalc.el(p, T, parcel_profile)
+                resultats['sostre_termiques_m'] = float(np.interp(el_p.m, p.m[::-1], altures.m[::-1]))
+                
+                resultats['forca_ascensos_ms'] = float(np.sqrt(2 * cape.m))
+                resultats['triggered_profile'] = parcel_profile.to('degC')
+                triggered = True
+                break
         
-        try:
-            perfil_convectiu = mpcalc.parcel_profile(p, units.Quantity(t_convectiva_c, 'degC'), Td[0])
-            try:
-                ccl_p, _ = mpcalc.ccl(p, T, Td)
-                altures = mpcalc.pressure_to_height_std(p)
-                base_nuvols_m = float(np.interp(ccl_p.m, p.m[::-1], altures.m[::-1]))
-            except Exception: pass
-            try:
-                el_p, _ = mpcalc.el(p, T, perfil_convectiu)
-                altures = mpcalc.pressure_to_height_std(p)
-                sostre_termiques_m = float(np.interp(el_p.m, p.m[::-1], altures.m[::-1]))
-            except Exception:
-                sostre_termiques_m = base_nuvols_m
-            try:
-                cape, _ = mpcalc.cape_cin(p, T, Td, parcel_profile=perfil_convectiu)
-                forca_ascensos_ms = float(np.sqrt(2 * cape.m) if cape.m > 0 else 0)
-            except Exception: pass
-        except Exception: pass
+        if not triggered:
+            resultats.update({
+                'veredicte_text': 'Inexistents (Estable)', 'veredicte_color': '#007bff',
+                'explicacio': "L'atmosfera és massa estable. Fins i tot amb un fort escalfament diürn, no s'espera que es disparin tèrmiques organitzades."
+            })
+            return resultats
 
-        resultats.update({
-            'base_nuvols_m': base_nuvols_m, 'sostre_termiques_m': sostre_termiques_m,
-            'forca_ascensos_ms': forca_ascensos_ms
-        })
+        # Veredicte final basat en la potència
+        sostre_km = resultats['sostre_termiques_m'] / 1000
+        forca_ms = resultats['forca_ascensos_ms']
 
-        sostre_km = sostre_termiques_m / 1000 if pd.notna(sostre_termiques_m) else 0
-        forca_ms = forca_ascensos_ms if pd.notna(forca_ascensos_ms) else 0
-
-        if sostre_km > 3.5 and forca_ms > 2.5:
+        if sostre_km > 4.0 and forca_ms > 3.0:
             resultats.update({'veredicte_text': 'Excel·lents', 'veredicte_color': '#dc3545'})
-        elif sostre_km > 2.5 and forca_ms > 1.5:
+        elif sostre_km > 2.8 and forca_ms > 2.0:
             resultats.update({'veredicte_text': 'Bones', 'veredicte_color': '#28a745'})
-        elif sostre_km > 1.5:
+        elif sostre_km > 1.8:
             resultats.update({'veredicte_text': 'Moderades', 'veredicte_color': '#ffc107'})
         else:
             resultats.update({'veredicte_text': 'Febles', 'veredicte_color': '#17a2b8'})
         
-        if pd.notna(sostre_termiques_m):
-             resultats['explicacio'] = f"Un cop s'arribi a {t_convectiva_c:.1f}°C, es dispararan tèrmiques. S'espera que formin núvols a uns {base_nuvols_m:.0f} m, amb un sostre de vol útil fins als {sostre_termiques_m:.0f} m i ascensos de fins a {forca_ms:.1f} m/s."
-        else:
-             resultats['explicacio'] = f"S'espera que la temperatura superi la de dispar ({t_convectiva_c:.1f}°C), però l'entorn és massa sec per a una anàlisi detallada de l'alçada dels núvols. Hi haurà tèrmiques 'blaves' (sense núvol)."
+        resultats['explicacio'] = f"A partir de {resultats['temperatura_dispar']:.1f}°C a la superfície, es dispararan tèrmiques. S'espera que formin núvols a {resultats['base_nuvols_m']:.0f} m, amb un sostre útil fins als {resultats['sostre_termiques_m']:.0f} m i ascensos de fins a {resultats['forca_ascensos_ms']:.1f} m/s."
 
     except Exception as e:
-        resultats['explicacio'] = f"S'ha produït un error general durant l'anàlisi: {e}"
-
+        resultats['explicacio'] = f"S'ha produït un error durant l'anàlisi: {e}"
+        resultats['veredicte_text'] = 'Error de Càlcul'
+        
     return resultats
 
 
-# AFEGEIX AQUESTA NOVA FUNCIó
 @st.cache_data(ttl=1800, show_spinner=False)
 def carregar_perfil_basic_sondeig_cat(lat, lon, hourly_index):
     """
@@ -1989,48 +1970,40 @@ def carregar_dades_diaries_cat(lat, lon, dia_sel_str):
     except Exception as e:
         return None, f"Error crític en carregar les dades diàries: {e}"
 
-def crear_grafic_termiques(sounding_data, analisis):
-    """Crea un gràfic simplificat per visualitzar el potencial de tèrmiques."""
+def crear_grafic_termiques(sounding_data, triggered_profile=None):
+    """
+    Crea un gràfic simplificat per visualitzar el potencial de tèrmiques,
+    incloent la trajectòria de la parcel·la si s'ha disparat.
+    """
     p, T = sounding_data[0][:2]
-    t_dispar = analisis['temperatura_dispar']
-    base_nuvols_m = analisis['base_nuvols_m']
-    sostre_termiques_m = analisis['sostre_termiques_m']
 
     fig = plt.figure(figsize=(8, 8), dpi=100)
     ax = fig.add_subplot(1, 1, 1)
 
     altures = mpcalc.pressure_to_height_std(p)
-    ax.plot(T, altures, label='Perfil de Temperatura Ambient', color='red', linewidth=2)
+    ax.plot(T.m, altures.m, label='Perfil de Temperatura Ambient', color='red', linewidth=2.5)
     
-    if pd.notna(t_dispar):
-        # Dibuixa la línia adiabàtica seca des de la Tº de dispar
-        p_sfc = p[0]
-        t_dispar_kelvin = units.Quantity(t_dispar, 'degC').to('K')
-        dry_adiabat_temps = mpcalc.dry_lapse(p, t_dispar_kelvin).to('degC')
-        ax.plot(dry_adiabat_temps, altures, ':', color='orange', label=f'Adiabàtica Seca ({t_dispar:.1f}°C)')
-
-    if pd.notna(base_nuvols_m):
-        ax.axhline(base_nuvols_m, color='blue', linestyle='--', label=f'Base Núvols (~{base_nuvols_m:.0f} m)')
-    if pd.notna(sostre_termiques_m):
-        ax.axhline(sostre_termiques_m, color='green', linestyle='--', label=f'Sostre Tèrmiques (~{sostre_termiques_m:.0f} m)')
+    # Dibuixa la trajectòria de la bombolla d'aire si l'anàlisi l'ha calculat
+    if triggered_profile is not None:
+        ax.plot(triggered_profile, altures.m, ':', color='orange', linewidth=2, label=f'Trajectòria de la Tèrmica')
 
     ax.set_xlabel("Temperatura (°C)")
     ax.set_ylabel("Altitud (m)")
     ax.set_title("Anàlisi del Potencial de Tèrmiques Diürnes", weight='bold')
     ax.grid(True, linestyle=':', alpha=0.7)
     ax.legend()
-    ax.set_ylim(bottom=0)
+    ax.set_ylim(bottom=0, top=max(altures.m) + 500) # Marge superior
+    ax.set_xlim(left=min(T.m) - 5, right=max(T.m) + 5) # Marge lateral
     
     return fig
+def ui_pestanya_termiques_diurnes(sounding_data, poble_sel, hora_sel_str, timestamp_str):
+    """Mostra la interfície d'usuari per a l'anàlisi DINÀMICA de tèrmiques."""
+    st.markdown(f"#### Anàlisi Dinàmica de Tèrmiques per a {poble_sel}")
+    st.caption(f"Basat en el perfil atmosfèric de les {hora_sel_str}")
 
-def ui_pestanya_termiques_diurnes(sounding_data, daily_data, poble_sel, timestamp_str):
-    """Mostra la interfície d'usuari per a l'anàlisi de tèrmiques."""
-    st.markdown(f"#### Anàlisi de Tèrmiques Diürnes per a {poble_sel}")
-    st.caption(timestamp_str.split(' a les ')[0]) # Mostrem només el dia
-
-    analisi = analitzar_potencial_termiques_diurnes(sounding_data, daily_data)
+    # Cridem la nova funció d'anàlisi
+    analisi = analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str)
     
-    # Veredicte principal
     st.markdown(f"""
     <div style="background-color: {analisi['veredicte_color']}; padding: 10px; border-radius: 5px; text-align: center; margin-bottom: 15px;">
         <h3 style="color: white; margin: 0;">Potencial de Tèrmiques: {analisi['veredicte_text']}</h3>
@@ -2042,23 +2015,23 @@ def ui_pestanya_termiques_diurnes(sounding_data, daily_data, poble_sel, timestam
     with col1:
         st.markdown("##### 🌡️ Temperatures Clau")
         c1, c2 = st.columns(2)
-        c1.metric("Temperatura de Dispar", f"{analisi['temperatura_dispar']:.1f} °C" if pd.notna(analisi['temperatura_dispar']) else "---", help="Temperatura que ha d'assolir el terra per iniciar la convecció.")
-        c2.metric("Màxima Prevista", f"{analisi['temperatura_max_prevista']:.1f} °C" if pd.notna(analisi['temperatura_max_prevista']) else "---", help="Temperatura màxima que s'espera avui segons el pronòstic.")
+        c1.metric("Temperatura Actual (SFC)", f"{analisi['temperatura_actual']:.1f} °C" if pd.notna(analisi['temperatura_actual']) else "---", help="Temperatura a la superfície a l'hora del sondeig.")
+        c2.metric("Temperatura de Dispar", f"{analisi['temperatura_dispar']:.1f} °C" if pd.notna(analisi['temperatura_dispar']) else "---", help="Temperatura que ha d'assolir el terra per iniciar la convecció.")
 
-        st.markdown("##### ☁️ Característiques de les Tèrmiques")
+        st.markdown("##### ☁️ Característiques de les Tèrmiques (si es disparen)")
         c1, c2, c3 = st.columns(3)
-        c1.metric("Base dels núvols", f"{analisi['base_nuvols_m']:.0f} m" if pd.notna(analisi['base_nuvols_m']) else "---")
-        c2.metric("Sostre útil", f"{analisi['sostre_termiques_m']:.0f} m" if pd.notna(analisi['sostre_termiques_m']) else "---")
-        c3.metric("Força ascensos", f"{analisi['forca_ascensos_ms']:.1f} m/s" if pd.notna(analisi['forca_ascensos_ms']) else "---")
+        c1.metric("Base dels núvols (LCL)", f"{analisi['base_nuvols_m']:.0f} m" if pd.notna(analisi['base_nuvols_m']) else "---")
+        c2.metric("Sostre útil (EL)", f"{analisi['sostre_termiques_m']:.0f} m" if pd.notna(analisi['sostre_termiques_m']) else "---")
+        c3.metric("Força ascensos (max)", f"{analisi['forca_ascensos_ms']:.1f} m/s" if pd.notna(analisi['forca_ascensos_ms']) else "---")
 
         st.markdown("##### 📝 Resum de l'Anàlisi")
         st.info(analisi['explicacio'])
 
     with col2:
-        fig = crear_grafic_termiques(sounding_data, analisi)
+        # Passem el perfil de la parcel·la disparada al gràfic per a una visualització precisa
+        fig = crear_grafic_termiques(sounding_data, analisi['triggered_profile'])
         st.pyplot(fig, use_container_width=True)
         plt.close(fig)
-
 
 def get_wind_at_level(p_profile, u_profile, v_profile, target_level):
     """
@@ -4183,7 +4156,6 @@ def run_catalunya_app():
     timestamp_str = f"{dia_sel_str} a les {hora_sel_str} (Hora Local)"
 
     # --- PAS 4: MENÚ I PESTANYES (MODIFICAT) ---
-    # S'han afegit les noves opcions al menú
     menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical", "Tèrmiques Diürnes", "Anàlisi de Vents", "Tall Vertical Simulat"]
     menu_icons = ["map", "graph-up-arrow", "sun-fill", "wind", "moisture"]
     
@@ -4197,20 +4169,16 @@ def run_catalunya_app():
     if selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
     
-    # NOU BLOC DE LÒGICA PER A LA PESTANYA DE TÈRMIQUES
     elif selected_tab == "Tèrmiques Diürnes":
-        with st.spinner(f"Carregant dades del sondeig i diàries per a {poble_sel}..."):
-            sounding_data_tuple, _, error_sounding = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
-            daily_data, error_daily = carregar_dades_diaries_cat(lat_sel, lon_sel, dia_sel_str)
+        with st.spinner(f"Carregant perfil tèrmic i dades diàries per a {poble_sel}..."):
+            perfil_basic_tuple, error_sounding = carregar_perfil_basic_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
 
         if error_sounding:
-            st.error(f"Error en les dades del sondeig: {error_sounding}")
-        elif error_daily:
-            st.error(f"Error en les dades diàries: {error_daily}")
+            st.error(f"Error en les dades del perfil atmosfèric: {error_sounding}")
         else:
-            ui_pestanya_termiques_diurnes(sounding_data_tuple, daily_data, poble_sel, timestamp_str)
+            ui_pestanya_termiques_diurnes(perfil_basic_tuple, poble_sel, hora_sel_str, timestamp_str)
 
-    else: # Conté la resta de pestanyes que només necessiten el sondeig
+    else:
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
         
