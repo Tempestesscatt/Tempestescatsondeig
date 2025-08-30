@@ -1797,9 +1797,10 @@ def crear_dial_vent_animat(label, wind_dir, wind_spd):
 
 def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
     """
-    Sistema Expert v5.0 (Lògica Directa i Robusta) per a Tèrmiques Diürnes.
-    Utilitza directament el punt de rosada superficial (td_sfc) per a l'anàlisi,
-    eliminant funcions inestables i errors d'arguments.
+    Sistema Expert v6.0 (Lògica Meteorològica Correcta) per a Tèrmiques Diürnes.
+    1. Calcula el LCL de l'ambient com a objectiu.
+    2. Simula l'escalfament per trobar la temperatura de dispar.
+    3. Calcula el sostre i la força de la parcel·la que es dispara.
     """
     resultats = {
         'veredicte_text': 'Anàlisi no disponible', 'veredicte_color': '#808080',
@@ -1816,6 +1817,7 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
         p, T, Td = sounding_data
         p_sfc, t_sfc, td_sfc = p[0], T[0], Td[0]
         resultats['temperatura_actual'] = t_sfc.m
+        altures = mpcalc.pressure_to_height_std(p)
 
         hora_num = int(hora_sel_str.split(':')[0])
         if not (10 <= hora_num <= 18):
@@ -1825,28 +1827,36 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
             })
             return resultats
         
+        # --- PAS 1: CALCULAR LA BASE DE NÚVOLS POTENCIAL DE L'AMBIENT ---
+        try:
+            ambient_lcl_p, _ = mpcalc.lcl(p_sfc, t_sfc, td_sfc)
+            ambient_lcl_m = float(np.interp(ambient_lcl_p.m, p.m[::-1], altures.m[::-1]))
+            resultats['base_nuvols_m'] = ambient_lcl_m
+        except Exception:
+            resultats.update({
+                'veredicte_text': 'Tèrmiques Blaves', 'veredicte_color': '#17a2b8',
+                'explicacio': "L'atmosfera és massa seca per formar núvols. Es poden generar tèrmiques sense núvol (blaves), però no es pot determinar un sostre clar."
+            })
+            return resultats
+
+        # --- PAS 2: SIMULAR L'ESCALFAMENT PER TROBAR LA TEMPERATURA DE DISPAR ---
         triggered = False
         for temp_increment in np.arange(0, 15, 0.5):
             current_t = t_sfc + temp_increment * units.delta_degC
-            
-            # --- LÒGICA SIMPLIFICADA I ROBUSTA ---
-            # Llançem la parcel·la directament amb la humitat de superfície (Td)
             parcel_profile = mpcalc.parcel_profile(p, current_t, td_sfc)
-            # --- FI DE LA SIMPLIFICACIÓ ---
-            
             cape, cin = mpcalc.cape_cin(p, T, Td, parcel_profile)
             
-            if cape.m > 10 and cin.m > -50:
+            if cape.m > 25 and cin.m > -40:
                 resultats['temperatura_dispar'] = current_t.m
-                altures = mpcalc.pressure_to_height_std(p)
                 
-                # El LCL també es calcula amb la humitat de superfície directa
-                lcl_p, _ = mpcalc.lcl(p_sfc, current_t, td_sfc)
-                resultats['base_nuvols_m'] = float(np.interp(lcl_p.m, p.m[::-1], altures.m[::-1]))
+                # --- PAS 3: CALCULAR SOSTRE I FORÇA DE LA PARCEL·LA DISPARADA ---
+                try:
+                    el_p, _ = mpcalc.el(p, T, parcel_profile)
+                    resultats['sostre_termiques_m'] = float(np.interp(el_p.m, p.m[::-1], altures.m[::-1]))
+                except ValueError:
+                    # Si la tèrmica és feble i no té EL, el sostre és la base del núvol
+                    resultats['sostre_termiques_m'] = ambient_lcl_m
 
-                el_p, _ = mpcalc.el(p, T, parcel_profile)
-                resultats['sostre_termiques_m'] = float(np.interp(el_p.m, p.m[::-1], altures.m[::-1]))
-                
                 resultats['forca_ascensos_ms'] = float(np.sqrt(2 * cape.m) if cape.m > 0 else 0)
                 resultats['triggered_profile'] = parcel_profile.to('degC')
                 triggered = True
@@ -1859,6 +1869,7 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
             })
             return resultats
 
+        # Veredicte final basat en la potència
         sostre_km = resultats['sostre_termiques_m'] / 1000 if pd.notna(resultats['sostre_termiques_m']) else 0
         forca_ms = resultats['forca_ascensos_ms'] if pd.notna(resultats['forca_ascensos_ms']) else 0
 
@@ -1871,13 +1882,7 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
         else:
             resultats.update({'veredicte_text': 'Febles', 'veredicte_color': '#17a2b8'})
         
-        resultats['explicacio'] = f"A partir de {resultats['temperatura_dispar']:.1f}°C a la superfície, es dispararan tèrmiques. S'espera que formin núvols a {resultats['base_nuvols_m']:.0f} m, amb un sostre útil fins als {resultats['sostre_termiques_m']:.0f} m i ascensos de fins a {resultats['forca_ascensos_ms']:.1f} m/s."
-
-    except Exception as e:
-        resultats['explicacio'] = f"S'ha produït un error durant l'anàlisi: {e}"
-        resultats['veredicte_text'] = 'Error de Càlcul'
-        
-    return resultats
+        resultats['explicacio'] = f"A partir de {resultats['temperatur
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def carregar_perfil_basic_sondeig_cat(lat, lon, hourly_index):
