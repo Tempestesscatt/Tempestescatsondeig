@@ -3220,25 +3220,46 @@ def format_time_left(total_seconds):
 def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi, interpretacions_ia):
     """
     Crea la interfície d'usuari per a la pestanya de l'assistent d'IA.
-    Ara rep una pre-anàlisi i les interpretacions qualitatives per guiar l'IA.
+    Incluye ahora la opción de modo desarrollador con contraseña.
     """
     st.markdown("#### Assistent d'Anàlisi (IA Gemini)")
     
     is_guest = st.session_state.get('guest_mode', False)
     current_user = st.session_state.get('username')
+    is_developer = st.session_state.get('developer_mode', False)
 
-    if not is_guest:
+    # Mostrar estado del modo desarrollador
+    if is_developer:
+        st.success("🔓 **MODO DESARROLLADOR ACTIVADO** - Preguntas ilimitadas")
+    
+    if not is_guest and not is_developer:
         st.info(f"ℹ️ Recorda que tens un límit de **{MAX_IA_REQUESTS} consultes cada 3 hores**.")
-    else:
+    elif is_guest:
         st.info("ℹ️ Fes una pregunta en llenguatge natural sobre les dades del sondeig.")
 
-    if "messages" not in st.session_state: st.session_state.messages = []
+    # Formulario para activar modo desarrollador
+    if not is_developer:
+        with st.expander("🔧 Acceso desarrollador"):
+            dev_password = st.text_input("Contraseña de desarrollador:", type="password")
+            if st.button("Activar modo desarrollador"):
+                if dev_password == st.secrets["app_secrets"]["moderator_password"]:
+                    st.session_state.developer_mode = True
+                    st.rerun()
+                else:
+                    st.error("Contraseña incorrecta")
+
+    if "messages" not in st.session_state: 
+        st.session_state.messages = []
+    
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]): st.markdown(message["content"])
+        with st.chat_message(message["role"]): 
+            st.markdown(message["content"])
 
     if prompt := st.chat_input("Fes una pregunta sobre el sondeig..."):
         limit_excedit = False
-        if not is_guest and current_user:
+        
+        # Verificar límites solo si no es desarrollador
+        if not is_developer and not is_guest and current_user:
             now_ts = time.time()
             rate_limits = load_json_file(RATE_LIMIT_FILE)
             user_timestamps = rate_limits.get(current_user, [])
@@ -3255,9 +3276,10 @@ def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi, interpretacion
                 rate_limits[current_user] = recent_timestamps
                 save_json_file(rate_limits, RATE_LIMIT_FILE)
 
-        if not limit_excedit:
+        if not limit_excedit or is_developer:
             st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"): st.markdown(prompt)
+            with st.chat_message("user"): 
+                st.markdown(prompt)
             
             with st.chat_message("assistant"):
                 try:
@@ -3274,7 +3296,7 @@ def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi, interpretacion
                     st.session_state.messages.append({"role": "assistant", "content": resposta_completa})
                 except Exception as e:
                     st.error(f"Hi ha hagut un error en contactar amb l'assistent d'IA: {e}")
-
+                    
 def interpretar_parametres(params, nivell_conv):
     """
     Tradueix els paràmetres numèrics clau a categories qualitatives
@@ -3442,13 +3464,17 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     VERSIÓ SINCRONITZADA:
     - La lògica per mostrar alertes a la llista de ciutats ara comença a 30.
     - Nova escala d'emojis per a les alertes: 🟡 (30-49), 🟠 (50-79), 🔴 (80+).
+    - Inclou botó per desactivar modo desarrollador si está activo.
     """
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
     col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
     with col_text:
-        if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username')}**!")
+        if not is_guest: 
+            st.markdown(f"Benvingut/da, **{st.session_state.get('username')}**!")
+            if st.session_state.get('developer_mode', False):
+                st.success("🔓 **MODO DESARROLLADOR ACTIVADO**")
     with col_change:
         if st.button("Canviar a EEUU?", use_container_width=True):
             keys_to_delete = ['poble_selector', 'poble_selector_usa', 'zone_selected', 'active_tab_cat', 'active_tab_usa', 'dia_selector', 'hora_selector', 'dia_selector_usa_widget', 'hora_selector_usa']
@@ -3458,6 +3484,12 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     with col_logout:
         if st.button("Sortir" if is_guest else "Tanca Sessió", use_container_width=True):
             for key in list(st.session_state.keys()): del st.session_state[key]
+            st.rerun()
+
+    # Botón para desactivar modo desarrollador si está activo
+    if st.session_state.get('developer_mode', False):
+        if st.button("🚫 Desactivar modo desarrollador", use_container_width=True):
+            st.session_state.developer_mode = False
             st.rerun()
 
     with st.container(border=True):
@@ -4094,6 +4126,8 @@ def main():
         st.session_state.logged_in = False
     if 'zone_selected' not in st.session_state:
         st.session_state.zone_selected = None
+    if 'developer_mode' not in st.session_state:
+        st.session_state.developer_mode = False
 
     # --- FLUX DE NAVEGACIÓ PRINCIPAL ---
 
