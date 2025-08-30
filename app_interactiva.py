@@ -1797,8 +1797,8 @@ def crear_dial_vent_animat(label, wind_dir, wind_spd):
 
 def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
     """
-    Sistema Expert v4.1 (Correcció d'Unitats) per a Tèrmiques Diürnes.
-    Corregeix l'ordre dels arguments a la crida de 'mixing_ratio_from_relative_humidity'.
+    Sistema Expert v4.2 (Correcció de Noms de Funció) per a Tèrmiques Diürnes.
+    Utilitza el nom correcte 'dewpoint' en lloc de 'dewpoint_from_mixing_ratio'.
     """
     resultats = {
         'veredicte_text': 'Anàlisi no disponible', 'veredicte_color': '#808080',
@@ -1826,19 +1826,19 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
         
         capa_limit = p_sfc.m - 50
         mask_capa_limit = p.m >= capa_limit
+        
+        # Aquesta part es manté, ja que la vam corregir abans
         if np.count_nonzero(mask_capa_limit) > 1:
-            # --- LÍNIA CORREGIDA 1 ---
-            # L'ordre correcte és: pressió, temperatura, humitat
             mixing_ratio_sfc = np.mean(mpcalc.mixing_ratio_from_relative_humidity(
                 p[mask_capa_limit], Td[mask_capa_limit], np.ones_like(p[mask_capa_limit])*100*units.percent
             ))
-            # --- FI DE LA CORRECCIÓ ---
         else:
-            # --- LÍNIA CORREGIDA 2 ---
             mixing_ratio_sfc = mpcalc.mixing_ratio_from_relative_humidity(p_sfc, td_sfc, 100*units.percent)
-            # --- FI DE LA CORRECCIÓ ---
             
-        td_representativa_sfc = mpcalc.dewpoint_from_mixing_ratio(p_sfc, mixing_ratio_sfc)
+        # --- LÍNIA CORREGIDA ---
+        # El nom correcte de la funció és simplement 'dewpoint'
+        td_representativa_sfc = mpcalc.dewpoint(p_sfc, mixing_ratio_sfc)
+        # --- FI DE LA CORRECCIÓ ---
 
         triggered = False
         for temp_increment in np.arange(0, 15, 0.5):
