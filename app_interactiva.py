@@ -1797,8 +1797,9 @@ def crear_dial_vent_animat(label, wind_dir, wind_spd):
 
 def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
     """
-    Sistema Expert v3.2 (Correcció d'Unitats) per a Tèrmiques Diürnes.
-    Soluciona l'error d'operació ambigua de Pint utilitzant 'delta_degC' per als increments.
+    Sistema Expert v4.0 (Humitat Superficial Realista) per a Tèrmiques Diürnes.
+    Calcula la humitat mitjana de la capa límit per a un LCL realista,
+    evitant el valor incorrecte de "2m".
     """
     resultats = {
         'veredicte_text': 'Anàlisi no disponible', 'veredicte_color': '#808080',
@@ -1813,7 +1814,6 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
 
     try:
         p, T, Td = sounding_data
-        
         p_sfc, t_sfc, td_sfc = p[0], T[0], Td[0]
         resultats['temperatura_actual'] = t_sfc.m
 
@@ -1821,29 +1821,42 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
         if not (10 <= hora_num <= 18):
             resultats.update({
                 'veredicte_text': 'Fora d\'hores', 'veredicte_color': '#6c757d',
-                'explicacio': "L'anàlisi de tèrmiques només és rellevant durant les hores centrals del dia (10h-18h), quan l'escalfament solar és significatiu."
+                'explicacio': "L'anàlisi de tèrmiques només és rellevant durant les hores centrals del dia (10h-18h)."
             })
             return resultats
+        
+        # --- NOU CÀLCUL DE LA HUMITAT SUPERFICIAL REALISTA ---
+        # Agafem la capa més baixa (primers 50hPa) per calcular la ratio de barreja mitjana.
+        capa_limit = p_sfc.m - 50
+        mask_capa_limit = p.m >= capa_limit
+        if np.count_nonzero(mask_capa_limit) > 1:
+            mixing_ratio_sfc = np.mean(mpcalc.mixing_ratio_from_relative_humidity(p[mask_capa_limit], np.ones_like(p[mask_capa_limit])*100*units.percent, Td[mask_capa_limit]))
+        else:
+            mixing_ratio_sfc = mpcalc.mixing_ratio_from_relative_humidity(p_sfc, 100*units.percent, td_sfc)
+        # Obtenim el punt de rosada representatiu a la pressió superficial
+        td_representativa_sfc = mpcalc.dewpoint_from_mixing_ratio(p_sfc, mixing_ratio_sfc)
+        # --- FI DEL NOU CÀLCUL ---
 
         triggered = False
         for temp_increment in np.arange(0, 15, 0.5):
-            
-            # --- LÍNIA CORREGIDA ---
-            # Especifiquem que l'increment és un DELTA de temperatura, no una temperatura absoluta.
             current_t = t_sfc + temp_increment * units.delta_degC
-            # --- FI DE LA CORRECCIÓ ---
-
-            parcel_profile = mpcalc.parcel_profile(p, current_t, td_sfc)
+            
+            # Utilitzem la nova humitat representativa per llançar la parcel·la
+            parcel_profile = mpcalc.parcel_profile(p, current_t, td_representativa_sfc)
             cape, cin = mpcalc.cape_cin(p, T, Td, parcel_profile)
             
             if cape.m > 10 and cin.m > -50:
                 resultats['temperatura_dispar'] = current_t.m
                 altures = mpcalc.pressure_to_height_std(p)
-                lcl_p, _ = mpcalc.lcl(p_sfc, current_t, td_sfc)
+                
+                # El LCL també es calcula amb la humitat correcta
+                lcl_p, _ = mpcalc.lcl(p_sfc, current_t, td_representativa_sfc)
                 resultats['base_nuvols_m'] = float(np.interp(lcl_p.m, p.m[::-1], altures.m[::-1]))
+
                 el_p, _ = mpcalc.el(p, T, parcel_profile)
                 resultats['sostre_termiques_m'] = float(np.interp(el_p.m, p.m[::-1], altures.m[::-1]))
-                resultats['forca_ascensos_ms'] = float(np.sqrt(2 * cape.m))
+                
+                resultats['forca_ascensos_ms'] = float(np.sqrt(2 * cape.m) if cape.m > 0 else 0)
                 resultats['triggered_profile'] = parcel_profile.to('degC')
                 triggered = True
                 break
@@ -1855,8 +1868,8 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
             })
             return resultats
 
-        sostre_km = resultats['sostre_termiques_m'] / 1000
-        forca_ms = resultats['forca_ascensos_ms']
+        sostre_km = resultats['sostre_termiques_m'] / 1000 if pd.notna(resultats['sostre_termiques_m']) else 0
+        forca_ms = resultats['forca_ascensos_ms'] if pd.notna(resultats['forca_ascensos_ms']) else 0
 
         if sostre_km > 4.0 and forca_ms > 3.0:
             resultats.update({'veredicte_text': 'Excel·lents', 'veredicte_color': '#dc3545'})
@@ -1867,6 +1880,7 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
         else:
             resultats.update({'veredicte_text': 'Febles', 'veredicte_color': '#17a2b8'})
         
+        # El text del resum ara també serà correcte
         resultats['explicacio'] = f"A partir de {resultats['temperatura_dispar']:.1f}°C a la superfície, es dispararan tèrmiques. S'espera que formin núvols a {resultats['base_nuvols_m']:.0f} m, amb un sostre útil fins als {resultats['sostre_termiques_m']:.0f} m i ascensos de fins a {resultats['forca_ascensos_ms']:.1f} m/s."
 
     except Exception as e:
