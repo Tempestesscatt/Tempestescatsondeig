@@ -1797,8 +1797,8 @@ def crear_dial_vent_animat(label, wind_dir, wind_spd):
 
 def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
     """
-    Sistema Expert v3.1 (Corregit) per a Tèrmiques Diürnes.
-    Corregeix l'accés a les dades del tuple del sondeig per evitar errors de tipus.
+    Sistema Expert v3.2 (Correcció d'Unitats) per a Tèrmiques Diürnes.
+    Soluciona l'error d'operació ambigua de Pint utilitzant 'delta_degC' per als increments.
     """
     resultats = {
         'veredicte_text': 'Anàlisi no disponible', 'veredicte_color': '#808080',
@@ -1812,10 +1812,7 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
     if not sounding_data: return resultats
 
     try:
-        # --- LÍNIA CORREGIDA ---
-        # Accedim directament al tuple, sense índexs addicionals
         p, T, Td = sounding_data
-        # --- FI DE LA CORRECCIÓ ---
         
         p_sfc, t_sfc, td_sfc = p[0], T[0], Td[0]
         resultats['temperatura_actual'] = t_sfc.m
@@ -1830,7 +1827,12 @@ def analitzar_potencial_termiques_diurnes(sounding_data, hora_sel_str):
 
         triggered = False
         for temp_increment in np.arange(0, 15, 0.5):
-            current_t = t_sfc + temp_increment * units.degC
+            
+            # --- LÍNIA CORREGIDA ---
+            # Especifiquem que l'increment és un DELTA de temperatura, no una temperatura absoluta.
+            current_t = t_sfc + temp_increment * units.delta_degC
+            # --- FI DE LA CORRECCIÓ ---
+
             parcel_profile = mpcalc.parcel_profile(p, current_t, td_sfc)
             cape, cin = mpcalc.cape_cin(p, T, Td, parcel_profile)
             
