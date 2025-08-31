@@ -3452,11 +3452,12 @@ def quadrant_capitals(cap_on_va):
     else:
         return None, []
 
-
 def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpretacions_ia, sounding_data=None):
     """
-    Genera un prompt (v10.0) compacte i pràctic.
-    Interpreta trajectòria, alerta capitals de comarca i afegeix zones properes.
+    Genera un prompt (v11.0) compacte i pràctic.
+    - Resposta curta inicial amb alerta per localitat i zones properes.
+    - Respostes de seguiment sense repetir l’avís inicial.
+    - Interpretació de trajectòria segons el vent.
     """
     prompt_parts = [
         "### ROL I ESTIL",
@@ -3490,7 +3491,7 @@ def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpret
             prompt_parts.append(f"- El sistema es desplaça cap al {quadrant} ({cap_on_va:.0f}°).")
             if capitals:
                 prompt_parts.append(f"- Capitals de comarca a vigilar: {', '.join(capitals)}")
-                zones_afectades = capitals  # per a la resposta curta
+                zones_afectades = capitals
         except Exception:
             pass
 
@@ -3503,11 +3504,22 @@ def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpret
     if 'SRH_0-3km' in params and pd.notna(params['SRH_0-3km']):
         prompt_parts.append(f"- SRH 0-3km: {params['SRH_0-3km']:.0f} m²/s²")
 
-    # Pregunta usuari + instrucció de resposta curta i zonal
+    # Instruccions per estil de resposta
+    prompt_parts.append("\n### ESTIL DE RESPOSTA EN CONVERSA")
+    prompt_parts.append(
+        "- Si és la PRIMERA resposta: fes un avís curt i directe (3-5 frases) amb la localitat i zones properes."
+    )
+    prompt_parts.append(
+        "- Si és una PREGUNTA DE SEGUIMENT: no repeteixis l’avís inicial, dona només explicacions, raons o detalls addicionals."
+    )
+    prompt_parts.append(
+        "- Si ja ho has dit abans, no ho tornis a repetir. Sempre aporta un angle nou."
+    )
+
+    # Pregunta de l'usuari
     prompt_parts.append("\n### INSTRUCCIÓ FINAL")
     prompt_parts.append(
-        f"Respon a la pregunta: \"{pregunta_usuari}\" amb un màxim de 5 frases, "
-        f"menciona {poble} i alerta també les zones properes (per ex. {', '.join(zones_afectades[:3]) if zones_afectades else 'comarques veïnes'})."
+        f"Respon a la pregunta: \"{pregunta_usuari}\" escurçant al màxim i, si és possible, menciona {poble} i zones properes (per ex. {', '.join(zones_afectades[:3]) if zones_afectades else 'comarques veïnes'})."
     )
 
     return "\n".join(prompt_parts)
