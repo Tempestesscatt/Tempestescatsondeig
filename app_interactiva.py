@@ -3452,75 +3452,185 @@ def quadrant_capitals(cap_on_va):
     else:
         return None, []
 
-def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpretacions_ia, sounding_data=None):
+def graus_a_direccio_cardinal(graus):
+    direccions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+                  "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"]
+    index = round(graus / 22.5) % 16
+    return direccions[index]
+
+def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpretacions_ia, sounding_data=None, historical_context=None, user_preferences=None):
     """
-    Genera un prompt (v11.0) compacte i pràctic.
-    - Resposta curta inicial amb alerta per localitat i zones properes.
-    - Respostes de seguiment sense repetir l’avís inicial.
-    - Interpretació de trajectòria segons el vent.
+    Genera un prompt molt més ampli i millorat per a la IA, evitant repeticions
+    i proporcionant anàlisis profunds, contextualitzats i personalitzats per a un meteoròleg expert.
     """
-    prompt_parts = [
-        "### ROL I ESTIL",
-        "Ets un meteoròleg operatiu, directe i proper. Respon amb 3-5 frases curtes, com si avissessis un amic. Zero repeticions.",
 
-        "\n### MISSIÓ",
-        "Explica què pot passar amb el temps al lloc de l’usuari i quines zones properes poden estar afectades, basant-te en el 'Veredicte', les 'Interpretacions' i la trajectòria del sistema.",
-        
-        "\n### ANÀLISI AUTOMÀTICA",
-        f"- Localitat: {poble}",
-        f"- Veredicte Final: {pre_analisi.get('veredicte', 'No determinat')}",
-    ]
+    # --- 1. Extracció i processament de paràmetres clau ---
+    mucape = params.get('MUCAPE', 0) or 0
+    cape_ml = params.get('MLCAPE', 0) or 0 # Mean Layer CAPE
+    cin_ml = params.get('MLCIN', 0) or 0 # Mean Layer CIN
+    li = params.get('LI', 999) # Lifted Index
 
-    # Interpretacions
-    prompt_parts.append("\n### INTERPRETACIONS CLAU")
-    for key, value in interpretacions_ia.items():
-        prompt_parts.append(f"- {key}: {value}")
+    bwd_0_6km = params.get('BWD_0-6km', 0) or 0 # Bulk Wind Difference
+    srh_0_3km = params.get('SRH_0-3km', 0) or 0 # Storm Relative Helicity
+    srh_0_1km = params.get('SRH_0-1km', 0) or 0 # SRH en capes baixes (tornados)
 
-    # Trajectòria i capitals
-    zones_afectades = []
+    pw = params.get('PW', 0) or 0 # Precipitable Water
+    lifted_parcel_temp = params.get('LIFTED_PARCEL_TEMP', None)
+    lifted_parcel_dewp = params.get('LIFTED_PARCEL_DEWP', None)
+    lcl_height = params.get('LCL_HEIGHT', None) # Lifting Condensation Level
+    lfc_height = params.get('LFC_HEIGHT', None) # Level of Free Convection
+    el_height = params.get('EL_HEIGHT', None) # Equilibrium Level
+
+    temp_850hpa = params.get('TEMP_850hPa', None)
+    temp_500hpa = params.get('TEMP_500hPa', None)
+    geopot_500hpa = params.get('GEOPOT_500hPa', None)
+
+    conv_key = f'CONV_{params.get("level_cat_main_conv", 925)}hPa'
+    convergencia_nivell_baix = params.get(conv_key, 0) or 0
+
+    hail_potential = params.get('HAIL_POTENTIAL', 'Baix') # Potencial de calamarsa (automàtic)
+    tornado_potential = params.get('TORNADO_POTENTIAL', 'Baix') # Potencial de tornado (automàtic)
+    wind_potential = params.get('WIND_POTENTIAL', 'Baix') # Potencial de ràfegues de vent (automàtic)
+
+    # Informació de la massa d'aire
+    temp_superficie = params.get('TEMP_SURFACE', None)
+    dewp_superficie = params.get('DEWP_SURFACE', None)
+    
+    # Índexs addicionals
+    cin = params.get('MUCIN', 0) or 0 # MUCIN per compatibilitat amb el codi original
+    eff_srh = params.get('EFF_SRH', 0) or 0 # Effective SRH
+    eff_shear = params.get('EFF_SHEAR', 0) or 0 # Effective Shear
+    lapse_rate_700_500 = params.get('LAPSE_RATE_700_500', 0) or 0 # Taxa de caiguda 700-500hPa
+
+    # Trajectòria del sistema (millorada amb direcció de flux)
+    direccion_sistema = "No determinable"
     if sounding_data:
-        p, T, Td, u, v, heights, prof = sounding_data
         try:
-            mean_u = np.mean(u[heights <= 6000])
-            mean_v = np.mean(v[heights <= 6000])
-            mean_dir_from = mpcalc.wind_direction(mean_u, mean_v).m
-            cap_on_va = direccio_moviment(mean_dir_from)
-            quadrant, capitals = quadrant_capitals(cap_on_va)
+            p, u, v, heights = sounding_data[0], sounding_data[3], sounding_data[4], sounding_data[5]
+            
+            # Wind mean in the 0-6km layer for system motion
+            mask_0_6km = (heights >= 0 * units.meter) & (heights <= 6000 * units.meter)
+            mean_u_0_6km = np.mean(u[mask_0_6km])
+            mean_v_0_6km = np.mean(v[mask_0_6km])
+            
+            dir_from_0_6km = mpcalc.wind_direction(mean_u_0_6km, mean_v_0_6km).m
+            dir_to_0_6km = (dir_from_0_6km + 180) % 360
+            direccion_sistema = f"{dir_to_0_6km:.0f}° ({graus_a_direccio_cardinal(dir_to_0_6km)})"
+            
+            # Low-level flow (0-1km) for storm initiation/movement
+            mask_0_1km = (heights >= 0 * units.meter) & (heights <= 1000 * units.meter)
+            mean_u_0_1km = np.mean(u[mask_0_1km])
+            mean_v_0_1km = np.mean(v[mask_0_1km])
+            
+            dir_from_0_1km = mpcalc.wind_direction(mean_u_0_1km, mean_v_0_1km).m
+            dir_to_0_1km = (dir_from_0_1km + 180) % 360
+            flux_baix_nivell = f"{dir_to_0_1km:.0f}° ({graus_a_direccio_cardinal(dir_to_0_1km)})"
 
-            prompt_parts.append("\n### TRAJECTÒRIA ESTIMADA")
-            prompt_parts.append(f"- El sistema es desplaça cap al {quadrant} ({cap_on_va:.0f}°).")
-            if capitals:
-                prompt_parts.append(f"- Capitals de comarca a vigilar: {', '.join(capitals)}")
-                zones_afectades = capitals
-        except Exception:
-            pass
+        except Exception as e:
+            direccion_sistema = f"Error calculant trajectòria: {e}"
+            flux_baix_nivell = "No determinable"
+    else:
+        flux_baix_nivell = "No determinable"
 
-    # Dades numèriques
-    prompt_parts.append("\n### DADES NUMÈRIQUES")
-    if 'MLCAPE' in params and pd.notna(params['MLCAPE']):
-        prompt_parts.append(f"- MLCAPE: {params['MLCAPE']:.0f} J/kg")
-    if 'BWD_0-6km' in params and pd.notna(params['BWD_0-6km']):
-        prompt_parts.append(f"- Shear 0-6km: {params['BWD_0-6km']:.0f} kt")
-    if 'SRH_0-3km' in params and pd.notna(params['SRH_0-3km']):
-        prompt_parts.append(f"- SRH 0-3km: {params['SRH_0-3km']:.0f} m²/s²")
+    # --- 2. Definició de l'estructura del prompt ---
 
-    # Instruccions per estil de resposta
-    prompt_parts.append("\n### ESTIL DE RESPOSTA EN CONVERSA")
+    prompt_parts = []
+
+    # ### ROL I OBJECTIU ###
     prompt_parts.append(
-        "- Si és la PRIMERA resposta: fes un avís curt i directe (3-5 frases) amb la localitat i zones properes."
+        "**ROL**: Ets un meteoròleg expert, amb dècades d'experiència en predicció de temps sever. La teva especialitat és interpretar dades complexes i comunicar-les de manera clara i accionable. "
+        "Tens un coneixement profund de la dinàmica atmosfèrica, els índexs termodinàmics i cinemàtics, i la seva relació amb fenòmens de temps sever."
     )
     prompt_parts.append(
-        "- Si és una PREGUNTA DE SEGUIMENT: no repeteixis l’avís inicial, dona només explicacions, raons o detalls addicionals."
-    )
-    prompt_parts.append(
-        "- Si ja ho has dit abans, no ho tornis a repetir. Sempre aporta un angle nou."
+        "**OBJECTIU**: La teva tasca és proporcionar una anàlisi meteorològica exhaustiva i personalitzada. Has d'identificar els riscos potencials, explicar el context i oferir recomanacions pràctiques, anticipant-te a les necessitats de l'usuari. "
+        "La teva anàlisi ha de ser proactiva, predictiva i extremadament útil."
     )
 
-    # Pregunta de l'usuari
-    prompt_parts.append("\n### INSTRUCCIÓ FINAL")
-    prompt_parts.append(
-        f"Respon a la pregunta: \"{pregunta_usuari}\" escurçant al màxim i, si és possible, menciona {poble} i zones properes (per ex. {', '.join(zones_afectades[:3]) if zones_afectades else 'comarques veïnes'})."
-    )
+    prompt_parts.append("\n### ANÀLISI DETALLADA DE LA SITUACIÓ ACTUAL ###")
+    prompt_parts.append(f"**Ubicació d'interès**: {poble}")
+    prompt_parts.append(f"**Pregunta de l'usuari**: {pregunta_usuari}\n")
+
+    # ### DADES DE DIAGNÒSTIC METEOROLÒGIC ###
+    prompt_parts.append("#### Dades Termodinàmiques i de Convecció ####")
+    if mucape > 0: prompt_parts.append(f"- **MUCAPE**: {mucape:.0f} J/kg (Energia potencial convectiva per a la parcel·la més inestable)")
+    if cape_ml > 0: prompt_parts.append(f"- **MLCAPE**: {cape_ml:.0f} J/kg (Energia potencial convectiva de la capa mitjana, representativa de la massa d'aire)")
+    if cin > 0: prompt_parts.append(f"- **MUCIN**: {cin:.0f} J/kg (Energia d'inhibició convectiva per la parcel·la més inestable)")
+    if cin_ml > 0: prompt_parts.append(f"- **MLCIN**: {cin_ml:.0f} J/kg (Inhibició de la capa mitjana)")
+    if li != 999: prompt_parts.append(f"- **Lifted Index (LI)**: {li:.1f} (Indicador d'estabilitat/inestabilitat)")
+    if lcl_height is not None: prompt_parts.append(f"- **Nivell de Condensació per Ascens (LCL)**: {lcl_height:.0f} m (Altura on una parcel·la d'aire ascendeix i es condensa, formant la base del núvol)")
+    if lfc_height is not None: prompt_parts.append(f"- **Nivell de Convecció Lliure (LFC)**: {lfc_height:.0f} m (Altura on una parcel·la d'aire ascendeix lliurement sense força externa)")
+    if el_height is not None: prompt_parts.append(f"- **Nivell d'Equilibri (EL)**: {el_height:.0f} m (Altura màxima a la qual una parcel·la pot ascendir)")
+    if pw > 0: prompt_parts.append(f"- **Aigua Precipitable (PW)**: {pw:.1f} mm (Quantitat total de vapor d'aigua en la columna atmosfèrica)")
+    if temp_superficie is not None and dewp_superficie is not None:
+        prompt_parts.append(f"- **Temperatura en superfície**: {temp_superficie:.1f}°C")
+        prompt_parts.append(f"- **Punt de rosada en superfície**: {dewp_superficie:.1f}°C (Indica la humitat disponible a prop del terra)")
+    if lapse_rate_700_500 != 0: prompt_parts.append(f"- **Gradient vertical de temperatura (700-500 hPa)**: {lapse_rate_700_500:.1f} °C/km (Indica inestabilitat a nivells mitjans per a calamarsa)")
+
+    prompt_parts.append("\n#### Dades Cinemàtiques i de Cisallament ####")
+    if bwd_0_6km > 0: prompt_parts.append(f"- **Cisallament 0-6km (Bulk Wind Difference)**: {bwd_0_6km:.0f} nusos (Indica el potencial d'organització de les tempestes)")
+    if srh_0_3km > 0: prompt_parts.append(f"- **Helicitat Relativa a la Tempesta (SRH 0-3km)**: {srh_0_3km:.0f} m²/s² (Energia rotacional a baixos nivells, clau per a supercèl·lules i tornados)")
+    if srh_0_1km > 0: prompt_parts.append(f"- **Helicitat Relativa a la Tempesta (SRH 0-1km)**: {srh_0_1km:.0f} m²/s² (Especialment rellevant per al desenvolupament de tornados)")
+    if eff_srh > 0: prompt_parts.append(f"- **SRH Efectiva**: {eff_srh:.0f} m²/s² (Calculada a través de la capa efectiva de cisallament, més precisa per a la rotació)")
+    if eff_shear > 0: prompt_parts.append(f"- **Cisallament Efectiu**: {eff_shear:.0f} nusos (Cisallament en la capa on realment opera la convecció)")
+    if convergencia_nivell_baix != 0: prompt_parts.append(f"- **Convergència a nivell baix ({params.get('level_cat_main_conv', 925)}hPa)**: {convergencia_nivell_baix:.1f} ×10⁻⁵ s⁻¹ (Mecanisme d'elevació crucial per iniciar la convecció)")
+    prompt_parts.append(f"- **Direcció general del sistema (0-6km)**: {direccion_sistema} (Indica la direcció de desplaçament de les tempestes)")
+    prompt_parts.append(f"- **Flux a baix nivell (0-1km)**: {flux_baix_nivell} (Important per a la humitat i el cisallament a nivells baixos)")
+
+    prompt_parts.append("\n#### Condicions de l'Alta Atmosfera ####")
+    if temp_850hpa is not None: prompt_parts.append(f"- **Temperatura a 850 hPa**: {temp_850hpa:.1f}°C")
+    if temp_500hpa is not None: prompt_parts.append(f"- **Temperatura a 500 hPa**: {temp_500hpa:.1f}°C")
+    if geopot_500hpa is not None: prompt_parts.append(f"- **Geopotencial a 500 hPa**: {geopot_500hpa:.0f} m (Indica la configuració sinòptica general a nivells mitjans)")
+
+    # ### INTERPRETACIÓ AUTOMÀTICA / PREDICCIÓ INICIAL ###
+    prompt_parts.append("\n### INTERPRETACIÓ PRÈVIA AUTOMÀTICA ###")
+    prompt_parts.append(f"- **Veredicte General**: {pre_analisi.get('veredicte', 'No determinat')}")
+    prompt_parts.append(f"- **Tipus de núvol esperat**: {pre_analisi.get('descripcio', 'No determinat')}")
+    prompt_parts.append(f"- **Potencial de Calamarsa**: {hail_potential}")
+    prompt_parts.append(f"- **Potencial de Tornado**: {tornado_potential}")
+    prompt_parts.append(f"- **Potencial de Vent fort**: {wind_potential}")
+    if interpretacions_ia:
+        prompt_parts.append("\n**Interpretacions addicionals (IA)**:")
+        for key, value in interpretacions_ia.items():
+            prompt_parts.append(f"- {key}: {value}")
+
+    # ### CONTEXT HISTÒRIC (si disponible) ###
+    if historical_context:
+        prompt_parts.append("\n### CONTEXT HISTÒRIC ###")
+        prompt_parts.append("Per a una avaluació més completa, considera el següent context històric de temps sever a la regió:")
+        for item in historical_context:
+            prompt_parts.append(f"- {item}")
+
+    # ### PREFERÈNCIES DE L'USUARI (si disponible) ###
+    if user_preferences:
+        prompt_parts.append("\n### PREFERÈNCIES DE L'USUARI ###")
+        prompt_parts.append("L'usuari ha expressat preferència per la següent informació o format:")
+        for item in user_preferences:
+            prompt_parts.append(f"- {item}")
+
+    # ### INSTRUCCIONS DETALLADES PER A LA IA ###
+    prompt_parts.append("\n### INSTRUCCIONS PER A LA TEVA ANÀLISI EXPERTA ###")
+    prompt_parts.append("- **INTEGRACIÓ DE DADES**: No et limitis a llistar valors. Integra i contextualitza cada paràmetre. Explica com interactuen entre ells (e.g., 'Alt CAPE amb CIN moderat suggereix que...').")
+    prompt_parts.append("- **DIAGNÒSTIC AVANÇAT**: Proporciona un diagnòstic clar que aprofundeixi en els mecanismes físics que podrien conduir al temps sever (e.g., 'El cisallament direccional i la forta helicitat indiquen potencial per a supercèl·lules amb rotació').")
+    prompt_parts.append("- **AVALUACIÓ DE RISCOS ESPECÍFICS**: Desglossa el potencial de temps sever per tipus de fenomen: calamarsa (mida i distribució), tornados (intensitat i durada), vents forts (ràfegues i danys), pluges torrencials (inundacions).")
+    prompt_parts.append("- **EVOLUCIÓ TEMPORAL I ESPACIAL**: Detalla com es podrien desenvolupar les condicions al llarg del temps (hores clau d'inici, pic i fi) i en l'espai (àrees més afectades, moviment).")
+    prompt_parts.append("- **ESCENARIS ALTERNATIUS**: Si hi ha incertesa o paràmetres contradictoris, explica els possibles escenaris alternatius i què indicaria cadascun (e.g., 'Si la inhibició es trenca, espera un desenvolupament explosiu; si persisteix, activitat més aïllada').")
+    prompt_parts.append("- **RECOMANACIONS PRÀCTIQUES I PROACTIVES**: Ofereix consells concrets i útils per a la ubicació (e.g., 'Recomanem estar alerta entre les X i les Y hores', 'Assegureu objectes a l'exterior', 'Considereu rutes alternatives').")
+    prompt_parts.append("- **LLENGUATGE I TO**: Utilitza un llenguatge clar, concís i professional. Evita la jargon tècnic innecessari sense explicació. El to ha de ser informatiu i autoritari, com un expert real.")
+    prompt_parts.append("- **RESPOSTA DIRECTA**: Aborda la pregunta de l'usuari de manera explícita i completa, utilitzant tota la informació disponible.")
+    prompt_parts.append("- **ESTRUCTURA DE LA RESPOSTA**: Organitza la teva resposta en seccions lògiques (Diagnòstic, Potencial de Risc, Evolució, Recomanacions).")
+    prompt_parts.append("- **BREVETAT AMB PROFUNDITAT**: Sigues concís, però no sacrifiquis la profunditat de l'anàlisi. Cada frase ha d'aportar valor.")
+
+    prompt_parts.append("\n### FORMAT DE RESPOSTA DESITJAT ###")
+    prompt_parts.append("La teva resposta ha de ser en CATALÀ i estructurada de la següent manera:")
+    prompt_parts.append("1.  **Diagnòstic Meteorològic Actual**: Anàlisi de les condicions, destacant els factors clau d'inestabilitat i cisallament.")
+    prompt_parts.append("2.  **Avaluació del Risc de Temps Sever**: Detall del potencial per a calamarsa, tornados, vents forts i pluges intenses, amb probabilitats o nivells d'alerta si és possible.")
+    prompt_parts.append("3.  **Evolució i Escenaris**: Com s'espera que les condicions canviïn, finestres temporals crítiques i possibles divergències en la predicció.")
+    prompt_parts.append("4.  **Recomanacions i Consells**: Accions concretes per a la població de {poble} o per a la gestió de riscos.")
+    prompt_parts.append("5.  **Resposta a la pregunta de l'usuari** (Integrada en les seccions pertinents o com a resum final, si escau).")
+    prompt_parts.append("Utilitza encapçalaments clars i llistes si són adequades. Màxim 5-6 paràgrafs ben estructurats, sense excedir les 600-800 paraules per mantenir la claredat i el focus.")
+    prompt_parts.append("---")
+    prompt_parts.append("Comença la teva anàlisi ara, sense preàmbuls introductoris innecessaris.")
+
 
     return "\n".join(prompt_parts)
 
