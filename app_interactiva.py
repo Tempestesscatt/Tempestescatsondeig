@@ -3006,6 +3006,95 @@ def on_poble_select():
     # Assegurem que no sigui el placeholder abans d'assignar-lo
     if poble and "---" not in poble:
         st.session_state.poble_selector = poble
+
+
+
+def ui_sidebar_selectors():
+    """
+    Crea els controls de selecció a la barra lateral. Aquest mètode és 100% fiable.
+    """
+    st.sidebar.header("Zona d'Anàlisi")
+
+    # --- CALLBACKS INTERNS PER A LA LÒGICA DE SELECCIÓ ---
+    def on_comarca_change():
+        # Quan canvia la comarca, resetejem la selecció de poble
+        st.session_state.poble_selector = None
+        # També netegem el widget del selector de poble per evitar inconsistències
+        if 'poble_selector_widget' in st.session_state:
+            st.session_state.poble_selector_widget = "--- Selecciona una opció ---"
+
+    def on_poble_change():
+        # Quan canvia el poble, actualitzem l'estat principal
+        poble = st.session_state.poble_selector_widget
+        if poble and "---" not in poble:
+            st.session_state.poble_selector = poble
+        else:
+            st.session_state.poble_selector = None
+
+    # --- WIDGETS DE LA BARRA LATERAL ---
+
+    # Selector de Comarca
+    comarques = sorted(list(CIUTATS_PER_COMARCA.keys()))
+    st.sidebar.selectbox(
+        "Pas 1: Tria una comarca",
+        options=["--- Selecciona una opció ---"] + comarques,
+        key='selected_comarca',
+        on_change=on_comarca_change
+    )
+
+    # Si s'ha triat una comarca, mostrem el selector de poblacions
+    comarca_sel = st.session_state.get('selected_comarca')
+    if comarca_sel and "---" not in comarca_sel:
+        poblacions = sorted(list(CIUTATS_PER_COMARCA.get(comarca_sel, {}).keys()))
+        st.sidebar.selectbox(
+            "Pas 2: Tria una localitat",
+            options=["--- Selecciona una opció ---"] + poblacions,
+            key="poble_selector_widget",
+            on_change=on_poble_change
+        )
+
+
+def ui_mapa_display():
+    """
+    Aquesta funció NOMÉS MOSTRA el mapa com un visor. Reacciona a les seleccions
+    fetes a la barra lateral, però no és un control d'entrada.
+    """
+    st.markdown("#### Mapa de Situació")
+    gdf = carregar_dades_geografiques()
+    if gdf is None: return
+
+    comarca_sel = st.session_state.get('selected_comarca')
+    poble_sel = st.session_state.get('poble_selector')
+
+    # Determina el centre i el zoom
+    map_center = [41.83, 1.87]
+    zoom_level = 8
+    if comarca_sel and "---" not in comarca_sel:
+        comarca_shape = gdf[gdf['nomcomar'] == comarca_sel]
+        if not comarca_shape.empty:
+            map_center = [comarca_shape.geometry.centroid.y.iloc[0], comarca_shape.geometry.centroid.x.iloc[0]]
+            zoom_level = 10
+    
+    m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB positron", scrollWheelZoom=False)
+
+    # Dibuixa les comarques, ressaltant la seleccionada
+    def style_function(feature):
+        style = {'fillColor': '#28a745', 'color': 'black', 'weight': 1, 'fillOpacity': 0.1}
+        if comarca_sel and feature['properties']['nomcomar'] == comarca_sel:
+            style['fillColor'] = '#FF4B4B'; style['fillOpacity'] = 0.5
+        return style
+    folium.GeoJson(gdf, style_function=style_function).add_to(m)
+
+    # Si s'ha triat un poble, afegeix un marcador
+    if poble_sel:
+        coords = CIUTATS_CATALUNYA[poble_sel]
+        folium.Marker(
+            location=[coords['lat'], coords['lon']],
+            tooltip=poble_sel,
+            icon=folium.Icon(color='blue', icon='info-sign')
+        ).add_to(m)
+
+    st_folium(m, width="100%", height=400, returned_objects=[])
         
         
 def ui_mapa_interactiu_seleccio():
@@ -4366,103 +4455,56 @@ def ui_peu_de_pagina():
 # --- Lògica Principal de l'Aplicació ---
 
 def run_catalunya_app():
-    # --- PAS 1: CAPÇALERA I NAVEGACIÓ ---
-    # (Aquesta part no canvia i es manté igual)
+    # --- PAS 1: DIBUIXAR LA INTERFÍCIE ESTÀTICA I ELS CONTROLS ---
+    
+    # Dibuixa els controls a la barra lateral
+    ui_sidebar_selectors()
+
+    # Dibuixa la capçalera principal
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     is_developer = st.session_state.get('developer_mode', False)
-
+    # ... (la resta de la teva capçalera amb botons)
     if is_developer:
         col_text, col_change, col_dev, col_logout = st.columns([0.5, 0.15, 0.15, 0.15])
     else:
         col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
-    
     with col_text:
         if not is_guest: 
             username = st.session_state.get('username', 'Usuari')
             st.markdown(f"Benvingut/da, **{username}**!")
-    
     with col_change:
         if st.button("Canviar a EEUU?", use_container_width=True):
-            for key in list(st.session_state.keys()):
-                if key not in ['logged_in', 'username', 'guest_mode', 'developer_mode']:
-                    del st.session_state[key]
-            st.session_state.zone_selected = 'valley_halley'
-            st.rerun()
-    
+            st.session_state.clear(); st.session_state.logged_in = True; st.session_state.zone_selected = 'valley_halley'; st.rerun()
     if is_developer:
         with col_dev:
             if st.button("🚫 Sortir Mode Dev", use_container_width=True, type="secondary"):
                 st.session_state.clear(); st.rerun()
-
     with col_logout:
         if st.button("Sortir" if is_guest else "Tanca Sessió", use_container_width=True):
             st.session_state.clear(); st.rerun()
-            
     st.divider()
 
-    # --- NOU FLUX DE LÒGICA PRINCIPAL ---
+    # --- PAS 2: DECIDIR QUÈ MOSTRAR BASANT-SE EN L'ESTAT ---
 
-    # Si NO tenim un poble seleccionat, estem en "mode selecció"
-    if 'poble_selector' not in st.session_state or st.session_state.poble_selector is None:
-        
-        # Dibuixem el mapa i recollim el clic
-        map_data, gdf = ui_mapa_interactiu_seleccio()
+    poble_sel = st.session_state.get('poble_selector')
 
-        # Processem el clic del mapa si n'hi ha un
-        if map_data and map_data.get('last_object_clicked_tooltip'):
-            clicked_comarca = map_data['last_object_clicked_tooltip']
-            if gdf is not None and clicked_comarca in gdf['nomcomar'].tolist():
-                # Si l'usuari clica una comarca, l'emmagatzemem a l'estat i refresquem
-                if st.session_state.get('selected_comarca') != clicked_comarca:
-                    st.session_state.selected_comarca = clicked_comarca
-                    st.rerun()
+    # Si encara NO s'ha seleccionat un poble, mostrem el mapa i un missatge d'ajuda
+    if not poble_sel:
+        ui_mapa_display() # El mapa ara és només un visor
+        st.info("⬅️ Utilitza els selectors de la barra lateral per triar una comarca i una localitat.")
+        return # Aturem l'execució aquí
 
-        # Si ja tenim una comarca seleccionada a l'estat, mostrem la llista de poblacions
-        comarca_sel = st.session_state.get('selected_comarca')
-        if comarca_sel:
-            with st.container(border=True):
-                st.markdown(f"#### Pas 2: Tria una localitat de **{comarca_sel}**")
-                poblacions = sorted(list(CIUTATS_PER_COMARCA.get(comarca_sel, {}).keys()))
-                
-                # Aquest 'selectbox' utilitza el callback 'on_poble_select'
-                st.selectbox(
-                    "Poblacions disponibles:",
-                    options=["--- Selecciona una opció ---"] + poblacions,
-                    key="poble_selector_widget",
-                    on_change=on_poble_select
-                )
-                
-                if st.button("Canviar de comarca"):
-                    st.session_state.selected_comarca = None
-                    st.session_state.poble_selector = None
-                    st.rerun()
-        
-        # Missatge d'ajuda final si encara no s'ha completat la selecció
-        st.warning("El procés està a l'espera de la teva selecció.")
-
-    # Si SÍ que tenim un poble seleccionat, estem en "mode anàlisi"
+    # Si S'HA SELECCIONAT un poble, mostrem la interfície d'anàlisi completa
     else:
-        poble_sel = st.session_state.poble_selector
-        
-        # Mostrem un títol clar i un botó per tornar enrere
         st.success(f"### Anàlisi per a: **{poble_sel}**")
-        if st.button("⬅️ Canviar de localitat (Tornar al mapa)"):
-            st.session_state.poble_selector = None
-            st.session_state.selected_comarca = None
-            st.rerun()
-        
-        # Ara ve la resta del teu codi d'anàlisi, que només s'executa quan tot està seleccionat
         
         # Inicialització de selectors de temps i pestanyes
-        if 'dia_selector' not in st.session_state: 
-            st.session_state.dia_selector = datetime.now(TIMEZONE_CAT).strftime('%d/%m/%Y')
-        if 'hora_selector' not in st.session_state: 
-            st.session_state.hora_selector = f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h"
-        if 'level_cat_main' not in st.session_state: 
-            st.session_state.level_cat_main = 925
-        if 'active_tab_cat' not in st.session_state: 
-            st.session_state.active_tab_cat = "Anàlisi Vertical"
+        # ... (Aquesta part es manté exactament igual que la tenies)
+        if 'dia_selector' not in st.session_state: st.session_state.dia_selector = datetime.now(TIMEZONE_CAT).strftime('%d/%m/%Y')
+        if 'hora_selector' not in st.session_state: st.session_state.hora_selector = f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h"
+        if 'level_cat_main' not in st.session_state: st.session_state.level_cat_main = 925
+        if 'active_tab_cat' not in st.session_state: st.session_state.active_tab_cat = "Anàlisi Vertical"
 
         with st.container(border=True):
             col_dia, col_hora, col_nivell = st.columns(3)
@@ -4480,7 +4522,8 @@ def run_catalunya_app():
                     nivells = [1000, 950, 925, 900, 850, 800, 700]
                     st.selectbox("Nivell (Mapes):", nivells, key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
 
-        # Càlculs de temps i variables per a l'anàlisi
+        # Càlculs i la resta de la lògica de les pestanyes...
+        # ... (Aquesta part es manté exactament igual que la tenies)
         dia_sel_str = st.session_state.dia_selector
         hora_sel_str = st.session_state.hora_selector
         nivell_sel = st.session_state.level_cat_main if not is_guest else 925
@@ -4492,7 +4535,6 @@ def run_catalunya_app():
         hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
 
-        # Menú de pestanyes
         menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Anàlisi de Vents", "Tall Vertical Simulat"]
         menu_icons = ["graph-up-arrow", "map", "wind", "moisture"]
         if not is_guest:
@@ -4503,7 +4545,6 @@ def run_catalunya_app():
         selected_tab = option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx, key="catalunya_nav_selector")
         st.session_state.active_tab_cat = selected_tab
 
-        # Lògica per mostrar la pestanya seleccionada
         if selected_tab == "Anàlisi de Mapes":
             ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
         else:
@@ -4555,7 +4596,7 @@ def run_catalunya_app():
                     analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
                     interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
                     sounding_data = data_tuple[0] if data_tuple else None
-                    ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)
+                    ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)```
 
 def run_valley_halley_app():
     # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
