@@ -3405,17 +3405,65 @@ def interpretar_parametres(params, nivell_conv):
     return interpretacions
 
 
+    
+
+
+# --- Capitals de comarca agrupades per quadrant ---
+CAPITALS_QUADRANTS = {
+    "E": ["Barcelona", "Mataró", "Granollers", "Sabadell", "Terrassa", "Manresa", "Girona", "Figueres", "Olot"],
+    "NE": ["Girona", "Figueres", "Olot", "Ripoll", "Puigcerdà"],
+    "N": ["Vic", "Ripoll", "Berga", "La Seu d’Urgell", "Puigcerdà", "Sort"],
+    "NW": ["Lleida", "Balaguer", "La Seu d’Urgell", "Sort", "Tremp"],
+    "W": ["Lleida", "Balaguer", "Cervera", "Tàrrega", "Mollerussa"],
+    "SW": ["Tarragona", "Reus", "Falset", "Gandesa", "Tortosa"],
+    "S": ["Tarragona", "Reus", "Valls", "Amposta", "Tortosa"],
+    "SE": ["Barcelona", "Vilanova i la Geltrú", "Vilafranca del Penedès", "Tarragona", "Igualada"]
+}
+
+
+def direccio_moviment(des_de_graus):
+    """
+    Converteix la direcció del vent (d'on ve) en la trajectòria real (cap on va).
+    """
+    cap_on_va = (des_de_graus + 180) % 360
+    return cap_on_va
+
+
+def quadrant_capitals(cap_on_va):
+    """
+    Dona el quadrant cardinal i les capitals de comarca a vigilar.
+    """
+    if 337.5 <= cap_on_va or cap_on_va < 22.5:
+        return "N", CAPITALS_QUADRANTS["N"]
+    elif 22.5 <= cap_on_va < 67.5:
+        return "NE", CAPITALS_QUADRANTS["NE"]
+    elif 67.5 <= cap_on_va < 112.5:
+        return "E", CAPITALS_QUADRANTS["E"]
+    elif 112.5 <= cap_on_va < 157.5:
+        return "SE", CAPITALS_QUADRANTS["SE"]
+    elif 157.5 <= cap_on_va < 202.5:
+        return "S", CAPITALS_QUADRANTS["S"]
+    elif 202.5 <= cap_on_va < 247.5:
+        return "SW", CAPITALS_QUADRANTS["SW"]
+    elif 247.5 <= cap_on_va < 292.5:
+        return "W", CAPITALS_QUADRANTS["W"]
+    elif 292.5 <= cap_on_va < 337.5:
+        return "NW", CAPITALS_QUADRANTS["NW"]
+    else:
+        return None, []
+
+
 def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpretacions_ia, sounding_data=None):
     """
-    Genera un prompt (v8.0) més compacte, directe i pràctic.
-    Inclou interpretació qualitativa i alertes segons la direcció del sistema.
+    Genera un prompt (v9.0) compacte i pràctic.
+    Interpreta la trajectòria segons la direcció del vent i alerta capitals de comarca.
     """
     prompt_parts = [
         "### ROL I ESTIL",
-        "Ets un expert en meteorologia operativa, proper i directe, parles amb seguretat i to col·lega. Respon amb frases curtes i clares, sense repetir-te.",
+        "Ets un meteoròleg operatiu, directe i proper. Respon amb frases curtes i clares, sense repetir-te.",
 
         "\n### MISSIÓ",
-        "Has d'explicar al teu amic què pot passar amb el temps, a partir del 'Veredicte' i les 'Interpretacions'. Sigues pràctic i alerta si cal. No repeteixis les mateixes idees si et tornen a preguntar després.",
+        "Explica al teu amic què pot passar amb el temps, basant-te en el 'Veredicte' i les 'Interpretacions'. Avisa de trajectòries i capitals de comarca si cal. No repeteixis res si després et tornen a preguntar.",
 
         "\n### ANÀLISI AUTOMÀTICA",
         f"- Localitat: {poble}",
@@ -3427,34 +3475,20 @@ def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpret
     for key, value in interpretacions_ia.items():
         prompt_parts.append(f"- {key}: {value}")
 
-    # Informació del hodògraf
+    # Hodògraf i trajectòria
     if sounding_data:
         p, T, Td, u, v, heights, prof = sounding_data
-
         try:
-            # Càlcul de vent mitjà en 0-6 km (moviment del sistema)
             mean_u = np.mean(u[heights <= 6000])
             mean_v = np.mean(v[heights <= 6000])
-            mean_dir = mpcalc.wind_direction(mean_u, mean_v).m
-            mean_speed = mpcalc.wind_speed(mean_u, mean_v).to('kt').m
+            mean_dir_from = mpcalc.wind_direction(mean_u, mean_v).m  # d'on ve
+            cap_on_va = direccio_moviment(mean_dir_from)
+            quadrant, capitals = quadrant_capitals(cap_on_va)
 
-            direccio_cardinal = graus_a_direccio_cardinal(mean_dir)
             prompt_parts.append("\n### TRAJECTÒRIA ESTIMADA")
-            prompt_parts.append(f"- El sistema es desplaça cap a {direccio_cardinal} ({mean_dir:.0f}°) a {mean_speed:.0f} kt.")
-
-            # Avis de capitals segons quadrant
-            avisos = []
-            if 180 <= mean_dir <= 270:  # cap a l'est
-                avisos = ["Girona", "Barcelona", "Tarragona"]
-            elif 90 <= mean_dir < 180:  # cap al sud
-                avisos = ["Tarragona", "Lleida"]
-            elif 0 <= mean_dir < 90:  # cap al nord
-                avisos = ["Girona", "Andorra"]
-            elif 270 < mean_dir <= 360:  # cap a l’oest
-                avisos = ["Lleida", "Osca"]
-
-            if avisos:
-                prompt_parts.append(f"- Capitals a vigilar: {', '.join(avisos)}")
+            prompt_parts.append(f"- El sistema es desplaça cap al {quadrant} ({cap_on_va:.0f}°).")
+            if capitals:
+                prompt_parts.append(f"- Capitals de comarca a vigilar: {', '.join(capitals)}")
         except Exception:
             pass
 
@@ -3469,7 +3503,7 @@ def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpret
 
     # Pregunta de l’usuari
     prompt_parts.append("\n### INSTRUCCIÓ FINAL")
-    prompt_parts.append(f"Respon a la pregunta: \"{pregunta_usuari}\" amb un màxim de 5 frases, directes i adaptades. No repeteixis res del que ja hagis dit en respostes anteriors.")
+    prompt_parts.append(f"Respon a la pregunta: \"{pregunta_usuari}\" amb un màxim de 5 frases, directes i adaptades.")
 
     return "\n".join(prompt_parts)
 
