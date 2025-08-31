@@ -3458,7 +3458,7 @@ def graus_a_direccio_cardinal(graus):
     index = round(graus / 22.5) % 16
     return direccions[index]
 
-def generar_prompt_concis_per_ia(params, pregunta_usuari, poble, pre_analisi, interpretacions_ia, sounding_data=None, historical_context=None, user_preferences=None):
+def  generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpretacions_ia, sounding_data=None, historical_context=None, user_preferences=None):
     """
     Genera un prompt potent però concís per a la IA, buscant respostes breus,
     directes i altament útils per a un meteoròleg expert.
