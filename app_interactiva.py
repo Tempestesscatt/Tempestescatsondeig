@@ -4556,6 +4556,7 @@ def ui_pestanya_estacions_meteorologiques():
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME/GFS via Open-Meteo | Imatges via Meteociel & NOAA | IA per Google Gemini.</p>", unsafe_allow_html=True)
 
+# --- Lògica Principal de l'Aplicació ---
 def run_catalunya_app():
     # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
@@ -4575,6 +4576,7 @@ def run_catalunya_app():
     
     with col_change:
         if st.button("Canviar a EEUU?", use_container_width=True):
+            # Neteja COMPLETA de l'estat abans de canviar de zona
             for key in list(st.session_state.keys()):
                 if key not in ['logged_in', 'username', 'guest_mode', 'developer_mode']:
                     del st.session_state[key]
@@ -4604,6 +4606,7 @@ def run_catalunya_app():
             if not is_guest:
                  st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
 
+    # Càlcul de l'índex horari a partir dels selectors
     dia_sel_str = st.session_state.dia_selector
     hora_sel_str = st.session_state.hora_selector
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
@@ -4611,9 +4614,10 @@ def run_catalunya_app():
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     
-    # --- PAS 3: FLUX DE SELECCIÓ I ANÀLISI (AMB LA MILLORA) ---
+    # --- PAS 3: FLUX DE SELECCIÓ I ANÀLISI ---
     alertes_comarca = calcular_alertes_per_comarca(hourly_index_sel)
     
+    # Dibuixem els selectors de localitat
     with st.container(border=True):
         st.markdown("#### Tria una comarca i una localitat")
         col_comarca, col_poble = st.columns(2)
@@ -4626,44 +4630,25 @@ def run_catalunya_app():
                 return f"{nom} (🔴)" if valor and valor >= 50 else f"{nom} (🟠)" if valor else nom
             comarca_sel = st.selectbox("Comarca:", options=comarques_options, format_func=format_comarca, key="comarca_selector")
 
+        # El selector de pobles depèn de la comarca
         poble_sel = None
         if comarca_sel and "---" not in comarca_sel:
             with col_poble:
-                # *** INICI DE LA MILLORA ***
                 poblacions_dict = CIUTATS_PER_COMARCA[comarca_sel]
-                
-                # Calculem la convergència només per als pobles de la comarca seleccionada
-                conv_poblacions = calcular_convergencia_per_llista_poblacions(hourly_index_sel, poblacions_dict)
-
-                # Creem una funció per formatar les etiquetes dels pobles amb la seva convergència
-                def format_poblacio_label(nom_poblacio):
-                    if "---" in nom_poblacio: return nom_poblacio
-                    
-                    valor_conv = conv_poblacions.get(nom_poblacio)
-                    
-                    if isinstance(valor_conv, (int, float)) and valor_conv >= 25:
-                        emoji = "🔴" if valor_conv >= 50 else "🟠"
-                        return f"{nom_poblacio} ({emoji} {valor_conv:.0f})"
-                    return nom_poblacio
-                
                 poblacions_options = ["--- Selecciona Localitat ---"] + sorted(list(poblacions_dict.keys()))
-                poble_sel = st.selectbox(
-                    "Localitat:", 
-                    options=poblacions_options, 
-                    key="poble_selector",
-                    format_func=format_poblacio_label  # Apliquem el nou format
-                )
-                # *** FI DE LA MILLORA ***
+                poble_sel = st.selectbox("Localitat:", options=poblacions_options, key="poble_selector")
 
     # --- LÒGICA D'ESTAT: Mostrar anàlisi o missatge d'espera ---
     if poble_sel and "---" not in poble_sel:
+        # Si tenim una localitat vàlida, mostrem l'anàlisi detallada
+        
         # Neteja de la pestanya activa si la localitat canvia
         if 'last_poble_sel' not in st.session_state or st.session_state.last_poble_sel != poble_sel:
             st.session_state.last_poble_sel = poble_sel
             if 'active_tab_cat' in st.session_state:
                 del st.session_state['active_tab_cat']
         
-        # La resta de la teva lògica d'anàlisi va aquí (sense canvis)
+        # La resta de la teva lògica d'anàlisi va aquí
         nivell_sel = st.session_state.get('level_cat_main', 925)
         lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
@@ -4678,6 +4663,7 @@ def run_catalunya_app():
         selected_tab = option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
         st.session_state.active_tab_cat = selected_tab
 
+        # (La teva lògica per mostrar cada pestanya es manté exactament igual aquí dins)
         if selected_tab == "Anàlisi de Mapes":
             ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
         else:
@@ -4695,10 +4681,8 @@ def run_catalunya_app():
                 params_calc = data_tuple[1] if data_tuple else {}
                 map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
                 if map_data_conv:
-                    # Obtenim la convergència del diccionari ja calculat si existeix
-                    conv_poblacions_actual = calcular_convergencia_per_llista_poblacions(hourly_index_sel, CIUTATS_PER_COMARCA[comarca_sel])
-                    conv_value = conv_poblacions_actual.get(poble_sel)
-                    if conv_value is not None:
+                    conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+                    if pd.notna(conv_value):
                         params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
                 
                 if selected_tab == "Anàlisi Vertical":
@@ -4733,6 +4717,7 @@ def run_catalunya_app():
                     sounding_data = data_tuple[0] if data_tuple else None
                     ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)
     else:
+        # Si no hi ha una localitat seleccionada, mostrem el mapa i un missatge
         ui_mapa_display(list(alertes_comarca.keys()))
         st.info("Selecciona una comarca i una localitat als menús de dalt per començar l'anàlisi detallada.")
         
@@ -4974,4 +4959,3 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
 if __name__ == "__main__":
     main()
-
