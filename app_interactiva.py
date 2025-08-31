@@ -265,7 +265,197 @@ MAP_ZOOM_LEVELS_CAT = {
     'Tarragona': [0.9, 1.35, 40.95, 41.3]
 }
 
+CIUTATS_PER_COMARCA = {
+    "Alt Camp": {
+        'Valls': {'lat': 41.2872, 'lon': 1.2505, 'sea_dir': (110, 220)},
+    },
+    "Alt Empordà": {
+        'Cadaqués': {'lat': 42.2888, 'lon': 3.2770, 'sea_dir': (0, 180)},
+        'Castelló d\'Empúries': {'lat': 42.2582, 'lon': 3.0725, 'sea_dir': (70, 160)},
+        'Figueres': {'lat': 42.2662, 'lon': 2.9622, 'sea_dir': (70, 160)},
+        'L\'Escala': {'lat': 42.1235, 'lon': 3.1311, 'sea_dir': (0, 160)},
+        'La Jonquera': {'lat': 42.4194, 'lon': 2.8752, 'sea_dir': None},
+        'Llançà': {'lat': 42.3625, 'lon': 3.1539, 'sea_dir': (0, 150)},
+        'Roses': {'lat': 42.2619, 'lon': 3.1764, 'sea_dir': (90, 200)},
+    },
+    "Alt Penedès": {
+        'Vilafranca del Penedès': {'lat': 41.3453, 'lon': 1.6995, 'sea_dir': (100, 200)},
+    },
+    "Alt Urgell": {
+        'La Seu d\'Urgell': {'lat': 42.3582, 'lon': 1.4593, 'sea_dir': None},
+    },
+    "Anoia": {
+        'Calaf': {'lat': 41.7311, 'lon': 1.5126, 'sea_dir': None},
+        'Capellades': {'lat': 41.5312, 'lon': 1.6874, 'sea_dir': None},
+        'Igualada': {'lat': 41.5791, 'lon': 1.6174, 'sea_dir': None},
+    },
+    "Bages": {
+        'Cardona': {'lat': 41.9138, 'lon': 1.6806, 'sea_dir': None},
+        'Manresa': {'lat': 41.7230, 'lon': 1.8268, 'sea_dir': None},
+    },
+    "Baix Camp": {
+        'Cambrils': {'lat': 41.0667, 'lon': 1.0500, 'sea_dir': (110, 220)},
+        'La Selva del Camp': {'lat': 41.2131, 'lon': 1.1384, 'sea_dir': (110, 220)},
+        'Reus': {'lat': 41.1550, 'lon': 1.1075, 'sea_dir': (120, 220)},
+    },
+    "Baix Ebre": {
+        'L\'Ametlla de Mar': {'lat': 40.8824, 'lon': 0.8016, 'sea_dir': (90, 200)},
+        'Tortosa': {'lat': 40.8126, 'lon': 0.5211, 'sea_dir': (60, 160)},
+    },
+    "Baix Empordà": {
+        'Begur': {'lat': 41.9542, 'lon': 3.2076, 'sea_dir': (0, 180)},
+        'Calonge': {'lat': 41.8601, 'lon': 3.0768, 'sea_dir': (80, 190)},
+        'La Bisbal d\'Empordà': {'lat': 41.9602, 'lon': 3.0378, 'sea_dir': (80, 170)},
+        'Palamós': {'lat': 41.8465, 'lon': 3.1287, 'sea_dir': (80, 190)},
+        'Pals': {'lat': 41.9688, 'lon': 3.1458, 'sea_dir': (0, 180)},
+        'Platja d\'Aro': {'lat': 41.8175, 'lon': 3.0645, 'sea_dir': (80, 190)},
+        'Sant Feliu de Guíxols': {'lat': 41.7801, 'lon': 3.0278, 'sea_dir': (80, 190)},
+        'Santa Cristina d\'Aro': {'lat': 41.8130, 'lon': 2.9976, 'sea_dir': (80, 190)},
+    },
+    "Baix Llobregat": {
+        'Castellbisbal': {'lat': 41.4776, 'lon': 1.9866, 'sea_dir': None},
+        'L\'Hospitalet de Llobregat': {'lat': 41.3571, 'lon': 2.1030, 'sea_dir': (90, 190)},
+        'Olesa de Montserrat': {'lat': 41.5451, 'lon': 1.8955, 'sea_dir': None},
+        'Sant Feliu de Llobregat': {'lat': 41.3833, 'lon': 2.0500, 'sea_dir': (100, 200)},
+        'Viladecans': {'lat': 41.3155, 'lon': 2.0194, 'sea_dir': (100, 200)},
+    },
+    "Barcelonès": {
+        'Barcelona': {'lat': 41.3851, 'lon': 2.1734, 'sea_dir': (90, 190)},
+        'Santa Coloma de Gramenet': {'lat': 41.4550, 'lon': 2.2111, 'sea_dir': (90, 190)},
+    },
+    "Berguedà": {
+        'Berga': {'lat': 42.1051, 'lon': 1.8458, 'sea_dir': None},
+    },
+    "Cerdanya": {
+        'Bellver de Cerdanya': {'lat': 42.3705, 'lon': 1.7770, 'sea_dir': None},
+        'Puigcerdà': {'lat': 42.4331, 'lon': 1.9287, 'sea_dir': None},
+    },
+    "Conca de Barberà": {
+        'Montblanc': {'lat': 41.3761, 'lon': 1.1610, 'sea_dir': None},
+    },
+    "Garraf": {
+        'Sant Pere de Ribes': {'lat': 41.2599, 'lon': 1.7725, 'sea_dir': (100, 220)},
+        'Sitges': {'lat': 41.2351, 'lon': 1.8117, 'sea_dir': (100, 220)},
+        'Vilanova i la Geltrú': {'lat': 41.2241, 'lon': 1.7252, 'sea_dir': (100, 200)},
+    },
+    "Garrotxa": {
+        'Castellfollit de la Roca': {'lat': 42.2201, 'lon': 2.5517, 'sea_dir': None},
+        'Olot': {'lat': 42.1818, 'lon': 2.4900, 'sea_dir': None},
+        'Santa Pau': {'lat': 42.1448, 'lon': 2.5695, 'sea_dir': None},
+    },
+    "Gironès": {
+        'Cassà de la Selva': {'lat': 41.8893, 'lon': 2.8736, 'sea_dir': (80, 170)},
+        'Flaçà': {'lat': 42.0494, 'lon': 2.9559, 'sea_dir': (80, 170)},
+        'Girona': {'lat': 41.9831, 'lon': 2.8249, 'sea_dir': (80, 170)},
+        'Llagostera': {'lat': 41.8291, 'lon': 2.8931, 'sea_dir': (80, 180)},
+        'Riudellots de la Selva': {'lat': 41.9080, 'lon': 2.8099, 'sea_dir': (80, 170)},
+    },
+    "Maresme": {
+        'Alella': {'lat': 41.4947, 'lon': 2.2955, 'sea_dir': (90, 180)},
+        'Arenys de Mar': {'lat': 41.5815, 'lon': 2.5504, 'sea_dir': (90, 180)},
+        'Arenys de Munt': {'lat': 41.6094, 'lon': 2.5411, 'sea_dir': None},
+        'Cabrera de Mar': {'lat': 41.5275, 'lon': 2.3958, 'sea_dir': (90, 180)},
+        'Calella': {'lat': 41.6146, 'lon': 2.6653, 'sea_dir': (90, 180)},
+        'Malgrat de Mar': {'lat': 41.6461, 'lon': 2.7423, 'sea_dir': (90, 180)},
+        'Mataró': {'lat': 41.5388, 'lon': 2.4449, 'sea_dir': (90, 180)},
+        'Pineda de Mar': {'lat': 41.6277, 'lon': 2.6908, 'sea_dir': (90, 180)},
+        'Santa Susanna': {'lat': 41.6366, 'lon': 2.7098, 'sea_dir': (90, 180)},
+        'Vilassar de Dalt': {'lat': 41.5167, 'lon': 2.3583, 'sea_dir': None},
+        'Vilassar de Mar': {'lat': 41.5057, 'lon': 2.3920, 'sea_dir': (90, 180)},
+    },
+    "Montsià": {
+        'Alcanar': {'lat': 40.5434, 'lon': 0.4820, 'sea_dir': (60, 160)},
+        'Amposta': {'lat': 40.7093, 'lon': 0.5810, 'sea_dir': (70, 170)},
+        'La Sénia': {'lat': 40.6322, 'lon': 0.2831, 'sea_dir': None},
+    },
+    "Noguera": {
+        'Agramunt': {'lat': 41.7871, 'lon': 1.0967, 'sea_dir': None},
+        'Balaguer': {'lat': 41.7904, 'lon': 0.8066, 'sea_dir': None},
+        'Camarasa': {'lat': 41.8753, 'lon': 0.8804, 'sea_dir': None},
+    },
+    "Osona": {
+        'Centelles': {'lat': 41.7963, 'lon': 2.2203, 'sea_dir': None},
+        'Manlleu': {'lat': 42.0016, 'lon': 2.2844, 'sea_dir': None},
+        'Vic': {'lat': 41.9301, 'lon': 2.2545, 'sea_dir': None},
+        'Vidrà': {'lat': 42.1226, 'lon': 2.3116, 'sea_dir': None},
+    },
+    "Pallars Jussà": {
+        'La Pobla de Segur': {'lat': 42.2472, 'lon': 0.9678, 'sea_dir': None},
+        'Tremp': {'lat': 42.1664, 'lon': 0.8953, 'sea_dir': None},
+    },
+    "Pallars Sobirà": {
+        'Sarroca de Bellera': {'lat': 42.3957, 'lon': 0.8656, 'sea_dir': None},
+        'Sort': {'lat': 42.4131, 'lon': 1.1278, 'sea_dir': None},
+    },
+    "Pla de l'Estany": {
+        'Banyoles': {'lat': 42.1197, 'lon': 2.7667, 'sea_dir': (80, 170)},
+    },
+    "Ripollès": {
+        'Ripoll': {'lat': 42.2013, 'lon': 2.1903, 'sea_dir': None},
+        'Sant Joan de les Abadesses': {'lat': 42.2355, 'lon': 2.2858, 'sea_dir': None},
+    },
+    "Segrià": {
+        'Lleida': {'lat': 41.6177, 'lon': 0.6200, 'sea_dir': None},
+        'Soses': {'lat': 41.5358, 'lon': 0.5186, 'sea_dir': None},
+    },
+    "Selva": {
+        'Arbúcies': {'lat': 41.8159, 'lon': 2.5152, 'sea_dir': None},
+        'Blanes': {'lat': 41.6748, 'lon': 2.7917, 'sea_dir': (80, 180)},
+        'Hostalric': {'lat': 41.7479, 'lon': 2.6360, 'sea_dir': None},
+        'Lloret de Mar': {'lat': 41.7005, 'lon': 2.8450, 'sea_dir': (80, 180)},
+        'Santa Coloma de Farners': {'lat': 41.8596, 'lon': 2.6703, 'sea_dir': None},
+        'Vidreres': {'lat': 41.7876, 'lon': 2.7788, 'sea_dir': (80, 180)},
+    },
+    "Solsonès": {
+        'Solsona': {'lat': 41.9942, 'lon': 1.5161, 'sea_dir': None},
+    },
+    "Tarragonès": {
+        'Altafulla': {'lat': 41.1417, 'lon': 1.3750, 'sea_dir': (110, 220)},
+        'Salou': {'lat': 41.0763, 'lon': 1.1417, 'sea_dir': (110, 220)},
+        'Tarragona': {'lat': 41.1189, 'lon': 1.2445, 'sea_dir': (110, 220)},
+    },
+    "Val d'Aran": {
+        'Vielha': {'lat': 42.7027, 'lon': 0.7966, 'sea_dir': None},
+    },
+    "Vallès Occidental": {
+        'Castellar del Vallès': {'lat': 41.6186, 'lon': 2.0875, 'sea_dir': None},
+        'Cerdanyola del Vallès': {'lat': 41.4925, 'lon': 2.1415, 'sea_dir': (100, 200)},
+        'Montcada i Reixac': {'lat': 41.4851, 'lon': 2.1884, 'sea_dir': (100, 200)},
+        'Rubí': {'lat': 41.4936, 'lon': 2.0323, 'sea_dir': (100, 200)},
+        'Sabadell': {'lat': 41.5483, 'lon': 2.1075, 'sea_dir': (100, 200)},
+        'Sant Cugat del Vallès': {'lat': 41.4727, 'lon': 2.0863, 'sea_dir': (100, 200)},
+        'Sant Quirze del Vallès': {'lat': 41.5303, 'lon': 2.0831, 'sea_dir': None},
+        'Terrassa': {'lat': 41.5615, 'lon': 2.0084, 'sea_dir': (100, 200)},
+    },
+    "Vallès Oriental": {
+        'Caldes de Montbui': {'lat': 41.6315, 'lon': 2.1678, 'sea_dir': None},
+        'Cardedeu': {'lat': 41.6403, 'lon': 2.3582, 'sea_dir': (90, 180)},
+        'Granollers': {'lat': 41.6083, 'lon': 2.2886, 'sea_dir': (90, 180)},
+        'Mollet del Vallès': {'lat': 41.5385, 'lon': 2.2144, 'sea_dir': (100, 200)},
+    },
+}
 
+# Genera una llista plana a partir de la nova estructura per compatibilitat
+CIUTATS_CATALUNYA = {
+    ciutat: dades 
+    for comarca in CIUTATS_PER_COMARCA.values() 
+    for ciutat, dades in comarca.items()
+}
+
+# Afegeix els punts marins manualment
+PUNTS_MAR = {
+    'Costes de Girona (Mar)':   {'lat': 42.05, 'lon': 3.30, 'sea_dir': (0, 360)},
+    'Litoral Barceloní (Mar)': {'lat': 41.40, 'lon': 2.90, 'sea_dir': (0, 360)},
+    'Aigües de Tarragona (Mar)': {'lat': 40.90, 'lon': 2.00, 'sea_dir': (0, 360)},
+}
+CIUTATS_CATALUNYA.update(PUNTS_MAR)
+
+# Defineix les llistes necessàries a partir de la principal
+POBLACIONS_TERRA = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' not in k}
+CIUTATS_CONVIDAT = {
+    'Barcelona': CIUTATS_CATALUNYA['Barcelona'], 'Girona': CIUTATS_CATALUNYA['Girona'],
+    'Lleida': CIUTATS_CATALUNYA['Lleida'], 'Tarragona': CIUTATS_CATALUNYA['Tarragona']
+}
 
 # --- Constants per Tornado Alley ---
 API_URL_USA = "https://api.open-meteo.com/v1/forecast"
@@ -3672,10 +3862,9 @@ def on_city_change(source_widget_key, other_widget_key, placeholder_text, city_d
 
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya", convergencies=None):
     """
-    VERSIÓ SINCRONITZADA:
-    - La lògica per mostrar alertes a la llista de ciutats ara comença a 30.
-    - Nova escala d'emojis per a les alertes: 🟡 (30-49), 🟠 (50-79), 🔴 (80+).
-    - Inclou botó per desactivar modo desarrollador si está activo.
+    VERSIÓ AMB LLISTA PER COMARQUES:
+    - Construeix el selector de localitats a partir de l'estructura CIUTATS_PER_COMARCA.
+    - Manté les alertes de convergència (🟡/🟠/🔴) al costat de cada nom.
     """
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
@@ -3702,7 +3891,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 if key in st.session_state: del st.session_state[key]
             st.rerun()
     
-    # Columna específica para desarrolladores
     if is_developer:
         with col_dev:
             if st.button("🚫 Sortir Mode Dev", use_container_width=True, type="secondary"):
@@ -3716,13 +3904,14 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 del st.session_state[key]
             st.rerun()
 
-    # Resto de la función sin cambios...
     with st.container(border=True):
-        st.caption("💡 Les alertes (🟡/🟠/🔴) indiquen localitats amb 'disparador' (convergència ≥ 30). La llista s'ordena per potencial.")
+        st.caption("💡 Les alertes (🟡/🟠/🔴) indiquen localitats amb 'disparador' (convergència ≥ 30).")
         
         def format_city_label(city_key):
-            if "---" in city_key: return "────────────────"
+            # Formata les comarques com a títols no seleccionables
+            if city_key.startswith("---"): return f"--- {city_key[3:]} ---"
             if not convergencies or city_key not in convergencies: return city_key
+            
             conv = convergencies.get(city_key)
             if isinstance(conv, (int, float)):
                 emoji = "🔴" if conv >= 80 else "🟠" if conv >= 50 else "🟡" if conv >= 30 else ""
@@ -3732,33 +3921,28 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
         if zona_activa == 'catalunya':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc:
-                actives_terra, inactives_terra = [], []
-                actives_mar, inactives_mar = [], []
-
-                if convergencies:
-                    for city, conv in convergencies.items():
-                        is_numeric = isinstance(conv, (int, float))
-                        llindar_actiu = 30
-                        if city in POBLACIONS_TERRA:
-                            (actives_terra if is_numeric and conv >= llindar_actiu else inactives_terra).append(city)
-                        elif city in PUNTS_MAR:
-                            (actives_mar if is_numeric and conv >= llindar_actiu else inactives_mar).append(city)
-                    
-                    actives_terra.sort(key=lambda k: convergencies[k], reverse=True)
-                    actives_mar.sort(key=lambda k: convergencies[k], reverse=True)
-                else:
-                    inactives_terra = sorted(list(POBLACIONS_TERRA.keys()))
-                    inactives_mar = sorted(list(PUNTS_MAR.keys()))
-
+                # Construeix la llista d'opcions a partir de les comarques
                 opcions_finals = []
-                if actives_terra: opcions_finals.extend(["--- FOCUS DE CONVERGÈNCIA ---"] + actives_terra)
-                if inactives_terra: opcions_finals.extend(["--- POBLACIONS SENSE DISPAR ---"] + sorted(inactives_terra))
-                if actives_mar: opcions_finals.extend(["--- FOCUS MARINS ---"] + actives_mar)
-                if inactives_mar: opcions_finals.extend(["--- ZONES MARINES SENSE DISPAR ---"] + sorted(inactives_mar))
+                for comarca, ciutats_dict in sorted(CIUTATS_PER_COMARCA.items()):
+                    # Afegeix la comarca com a capçalera (es marcarà al format_func)
+                    opcions_finals.append(f"---{comarca.upper()}---")
+                    # Afegeix les ciutats de la comarca, ordenades alfabèticament
+                    opcions_finals.extend(sorted(ciutats_dict.keys()))
+
+                # Afegeix els punts marins al final
+                opcions_finals.append("---ZONES MARINES---")
+                opcions_finals.extend(sorted(PUNTS_MAR.keys()))
                 
                 poble_actual = st.session_state.get('poble_selector', 'Barcelona')
                 idx = opcions_finals.index(poble_actual) if poble_actual in opcions_finals else 0
-                st.selectbox("Localitat:", options=opcions_finals, key="poble_selector", format_func=format_city_label, index=idx)
+                
+                st.selectbox(
+                    "Localitat:", 
+                    options=opcions_finals, 
+                    key="poble_selector", 
+                    format_func=format_city_label, 
+                    index=idx
+                )
 
             with col_dia:
                 now_local = datetime.now(TIMEZONE_CAT)
@@ -3775,7 +3959,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     idx = nivells.index(nivell_actual) if nivell_actual in nivells else 2
                     st.selectbox("Nivell:", nivells, key="level_cat_main", index=idx, format_func=lambda x: f"{x} hPa")
         
-        else: # Zona USA
+        else: # Zona USA (aquesta part no canvia)
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc:
                 actives, inactives = [], []
