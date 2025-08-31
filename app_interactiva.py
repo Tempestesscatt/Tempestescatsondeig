@@ -3405,83 +3405,71 @@ def interpretar_parametres(params, nivell_conv):
     return interpretacions
 
 
-def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpretacions_ia, sounding_data=None, hodograph_fig=None):
+def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpretacions_ia, sounding_data=None):
     """
-    Genera el prompt definitiu (v7.0) que inclou una interpretació qualitativa
-    dels paràmetres i informació del hodógrafo per a un raonament de l'IA de màxima qualitat.
+    Genera un prompt (v8.0) més compacte, directe i pràctic.
+    Inclou interpretació qualitativa i alertes segons la direcció del sistema.
     """
-    # --- ROL I PERSONALITAT ---
     prompt_parts = [
-        "### ROL I PERSONALITAT",
-        "Ets un expert apassionat de la meteorologia super expressiu i obert. El teu to és molt divertit i bromista, pero cinfiat i directe, com si donessis un classes a un amic de tot la vida.",
-        
+        "### ROL I ESTIL",
+        "Ets un expert en meteorologia operativa, proper i directe, parles amb seguretat i to col·lega. Respon amb frases curtes i clares, sense repetir-te.",
+
         "\n### MISSIÓ",
-        "Un sistema automàtic ha analitzat un sondeig i t'ha donat un 'Veredicte' i una interpretació qualitativa dels paràmetres, pots aproximar, no cal centrarte sempre amb el que diu el  ( Entorn actual:) ja que pot ser vòlatil,sense delirar clar. La teva missió és doanr informació i obrir-te per construir una explicació coherent i senzilla per al teu amic.",
-        
-        "\n### REGLES DE LA RESPOSTA",
-        "1. **Comença :** Respon  a la pregunta del teu amic sigui quina sigui, amb la meteo basant-te en el 'Veredicte' amb naturalesa i compasió, nomès digues les xifres si et pregunta..",
-        "2. **Construeix el Raonament:** Utilitza les 'Interpretacions' per explicar el perquè del veredicte. Centra't primer en el 'Disparador (Convergència)' i després en la 'Inhibició (CIN) de 0 a -30 es poc CIN si hi ha una convergencia moderada, peró de 60 a 100 comença a ser algo dificil, de 100 a més es molt dificil superar-la'. Aquesta és la lluita principal.",
-        "3. **Sigues Breu i Contundent:** La teva resposta ha de ser curta i anar al gra de forma divertida. Màxim 5 frases.",
+        "Has d'explicar al teu amic què pot passar amb el temps, a partir del 'Veredicte' i les 'Interpretacions'. Sigues pràctic i alerta si cal. No repeteixis les mateixes idees si et tornen a preguntar després.",
 
         "\n### ANÀLISI AUTOMÀTICA",
-        f"**Localitat:** {poble}",
-        f"**Veredicte Final:** {pre_analisi.get('veredicte', 'No determinat')}",
-        
-        "\n### INTERPRETACIONS CLAU (El que has d'utilitzar per explicar)",
+        f"- Localitat: {poble}",
+        f"- Veredicte Final: {pre_analisi.get('veredicte', 'No determinat')}",
     ]
-    
-    # Afegim les interpretacions al prompt
+
+    # Afegim les interpretacions
+    prompt_parts.append("\n### INTERPRETACIONS CLAU")
     for key, value in interpretacions_ia.items():
-        prompt_parts.append(f"- **{key}:** {value}")
+        prompt_parts.append(f"- {key}: {value}")
 
-    # Afegim informació del hodógrafo si está disponible
+    # Informació del hodògraf
     if sounding_data:
-        prompt_parts.append("\n### INFORMACIÓ DEL HODÓGRAF")
         p, T, Td, u, v, heights, prof = sounding_data
-        
-        # Información de vientos en superficie
-        u_sfc, v_sfc = u[0], v[0]
-        wind_speed_sfc = mpcalc.wind_speed(u_sfc, v_sfc).to('kt').m
-        wind_dir_sfc = mpcalc.wind_direction(u_sfc, v_sfc).m
-        prompt_parts.append(f"- **Vent superfície:** {wind_speed_sfc:.1f} kt des de {graus_a_direccio_cardinal(wind_dir_sfc)} ({wind_dir_sfc:.0f}°)")
-        
-        # Información de vientos a 500m
+
         try:
-            h_500m = 500 * units.meter
-            u_500m = np.interp(h_500m, heights, u)
-            v_500m = np.interp(h_500m, heights, v)
-            wind_speed_500m = mpcalc.wind_speed(u_500m, v_500m).to('kt').m
-            wind_dir_500m = mpcalc.wind_direction(u_500m, v_500m).m
-            prompt_parts.append(f"- **Vent a 500m:** {wind_speed_500m:.1f} kt des de {graus_a_direccio_cardinal(wind_dir_500m)} ({wind_dir_500m:.0f}°)")
-        except:
-            pass
-            
-        # Información de vientos a 3000m
-        try:
-            h_3000m = 3000 * units.meter
-            u_3000m = np.interp(h_3000m, heights, u)
-            v_3000m = np.interp(h_3000m, heights, v)
-            wind_speed_3000m = mpcalc.wind_speed(u_3000m, v_3000m).to('kt').m
-            wind_dir_3000m = mpcalc.wind_direction(u_3000m, v_3000m).m
-            prompt_parts.append(f"- **Vent a 3000m:** {wind_speed_3000m:.1f} kt des de {graus_a_direccio_cardinal(wind_dir_3000m)} ({wind_dir_3000m:.0f}°)")
-        except:
+            # Càlcul de vent mitjà en 0-6 km (moviment del sistema)
+            mean_u = np.mean(u[heights <= 6000])
+            mean_v = np.mean(v[heights <= 6000])
+            mean_dir = mpcalc.wind_direction(mean_u, mean_v).m
+            mean_speed = mpcalc.wind_speed(mean_u, mean_v).to('kt').m
+
+            direccio_cardinal = graus_a_direccio_cardinal(mean_dir)
+            prompt_parts.append("\n### TRAJECTÒRIA ESTIMADA")
+            prompt_parts.append(f"- El sistema es desplaça cap a {direccio_cardinal} ({mean_dir:.0f}°) a {mean_speed:.0f} kt.")
+
+            # Avis de capitals segons quadrant
+            avisos = []
+            if 180 <= mean_dir <= 270:  # cap a l'est
+                avisos = ["Girona", "Barcelona", "Tarragona"]
+            elif 90 <= mean_dir < 180:  # cap al sud
+                avisos = ["Tarragona", "Lleida"]
+            elif 0 <= mean_dir < 90:  # cap al nord
+                avisos = ["Girona", "Andorra"]
+            elif 270 < mean_dir <= 360:  # cap a l’oest
+                avisos = ["Lleida", "Osca"]
+
+            if avisos:
+                prompt_parts.append(f"- Capitals a vigilar: {', '.join(avisos)}")
+        except Exception:
             pass
 
-    # Afegim un parell de valors numèrics importants per si l'IA els vol esmentar
-    prompt_parts.append("\n### DADES NUMÈRIQUES DE REFERÈNCIA")
+    # Valors numèrics de referència
+    prompt_parts.append("\n### DADES NUMÈRIQUES")
     if 'MLCAPE' in params and pd.notna(params['MLCAPE']): 
-        prompt_parts.append(f"- MLCAPE exacte: {params['MLCAPE']:.0f} J/kg")
+        prompt_parts.append(f"- MLCAPE: {params['MLCAPE']:.0f} J/kg")
     if 'BWD_0-6km' in params and pd.notna(params['BWD_0-6km']): 
-        prompt_parts.append(f"- Cisallament 0-6km: {params['BWD_0-6km']:.0f} nusos")
+        prompt_parts.append(f"- Shear 0-6km: {params['BWD_0-6km']:.0f} kt")
     if 'SRH_0-3km' in params and pd.notna(params['SRH_0-3km']): 
-        prompt_parts.append(f"- Helicitat 0-3km: {params['SRH_0-3km']:.0f} m²/s²")
-    
-    conv_key = next((k for k in params if k.startswith('CONV_')), None)
-    if conv_key and conv_key in params and pd.notna(params[conv_key]): 
-        prompt_parts.append(f"- Convergència exacta: {params[conv_key]:.1f}")
-    
+        prompt_parts.append(f"- SRH 0-3km: {params['SRH_0-3km']:.0f} m²/s²")
+
+    # Pregunta de l’usuari
     prompt_parts.append("\n### INSTRUCCIÓ FINAL")
-    prompt_parts.append(f"Ara, escriu la teva anàlisi breu i directa. La pregunta del teu amic és: \"{pregunta_usuari}\"")
+    prompt_parts.append(f"Respon a la pregunta: \"{pregunta_usuari}\" amb un màxim de 5 frases, directes i adaptades. No repeteixis res del que ja hagis dit en respostes anteriors.")
 
     return "\n".join(prompt_parts)
 
