@@ -1246,6 +1246,51 @@ def crear_hodograf_avancat(p, u, v, heights, params_calc, titol, timestamp_str):
     
     return fig
 
+
+@st.cache_data(ttl=1800, show_spinner="Analitzant focus de convergència a tot el territori...")
+def calcular_punts_alerta_convergencia(hourly_index):
+    """
+    Analitza el mapa complet de Catalunya per a un moment donat, calcula la convergència
+    a 925hPa i retorna una llista de coordenades on se superi el llindar de 25.
+    """
+    NIVELL_ANALISI_ALERTES = 925 # Nivell òptim per a convergència de baixes capes
+    CONV_THRESHOLD = 25
+    
+    # Carreguem les dades del mapa per a tot el territori
+    map_data, error = carregar_dades_mapa_cat(NIVELL_ANALISI_ALERTES, hourly_index)
+    if error or not map_data or len(map_data['lons']) < 4:
+        return []
+
+    try:
+        # Interpolació i càlcul de convergència (lògica extreta dels mapes)
+        lons, lats = map_data['lons'], map_data['lats']
+        grid_lon, grid_lat = np.meshgrid(
+            np.linspace(min(lons), max(lons), 150),
+            np.linspace(min(lats), max(lats), 150)
+        )
+        u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
+        grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+        grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+
+        with np.errstate(invalid='ignore'):
+            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+            convergence = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
+            convergence_scaled = convergence.to('1/s').magnitude * 1e5
+        
+        # Trobem els punts que superen el llindar
+        punts_calents_idx = np.argwhere(convergence_scaled > CONV_THRESHOLD)
+        
+        alertes = []
+        for idx in punts_calents_idx:
+            lat = grid_lat[idx[0], idx[1]]
+            lon = grid_lon[idx[0], idx[1]]
+            valor = convergence_scaled[idx[0], idx[1]]
+            alertes.append({'lat': lat, 'lon': lon, 'value': valor})
+            
+        return alertes
+    except Exception:
+        return [] # En cas d'error, retornem una llista buida
+
 def calcular_puntuacio_tempesta(sounding_data, params, nivell_conv):
     """
     Versió 2.0. Elimina la dependència de la component marítima, ja que
@@ -3010,39 +3055,34 @@ def on_poble_select():
 
 
 
-def ui_mapa_display():
+def ui_mapa_display(hourly_index):
     """
-    Aquesta funció NOMÉS MOSTRA el mapa com un visor. Reacciona a les seleccions
-    fetes als menús desplegables, però no és un control d'entrada.
+    Aquesta versió, a més de mostrar el mapa, hi afegeix cercles d'alerta
+    als punts amb alta convergència.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
     if gdf is None: return
 
+    # Obtenim els punts d'alerta per a l'hora seleccionada
+    punts_alerta = calcular_punts_alerta_convergencia(hourly_index)
+
     comarca_sel = st.session_state.get('selected_comarca')
     poble_sel = st.session_state.get('poble_selector')
 
-    # Determina el centre i el zoom del mapa
-    map_center = [41.83, 1.87] # Centre de Catalunya
-    zoom_level = 8
+    map_center = [41.83, 1.87]; zoom_level = 8
     if comarca_sel and "---" not in comarca_sel:
         comarca_shape = gdf[gdf['nomcomar'] == comarca_sel]
         if not comarca_shape.empty:
             map_center = [comarca_shape.geometry.centroid.y.iloc[0], comarca_shape.geometry.centroid.x.iloc[0]]
             zoom_level = 10
     
-    # Crea el mapa base
     m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB positron", scrollWheelZoom=False)
 
-    # Dibuixa les comarques, ressaltant la seleccionada
     def style_function(feature):
-        # Estil per defecte per a les comarques
         style = {'fillColor': '#28a745', 'color': 'black', 'weight': 1, 'fillOpacity': 0.15}
-        # Si la comarca és la seleccionada, canvia el seu estil
         if comarca_sel and feature['properties']['nomcomar'] == comarca_sel:
-            style['fillColor'] = '#FF4B4B'
-            style['fillOpacity'] = 0.6
-            style['weight'] = 2
+            style['fillColor'] = '#FF4B4B'; style['fillOpacity'] = 0.6; style['weight'] = 2
         return style
     
     folium.GeoJson(
@@ -3051,7 +3091,19 @@ def ui_mapa_display():
         tooltip=folium.GeoJsonTooltip(fields=['nomcomar'], aliases=['Comarca:'])
     ).add_to(m)
 
-    # Si s'ha triat un poble, afegeix un marcador destacat
+    # --- NOU BLOC: DIBUIXAR ELS CERCLES D'ALERTA ---
+    for alerta in punts_alerta:
+        folium.CircleMarker(
+            location=[alerta['lat'], alerta['lon']],
+            radius=6, # Mida del cercle en píxels
+            color='red',
+            fill=True,
+            fill_color='red',
+            fill_opacity=0.6,
+            popup=f"Convergència: {alerta['value']:.0f}"
+        ).add_to(m)
+    # ----------------------------------------------
+
     if poble_sel:
         coords = CIUTATS_CATALUNYA[poble_sel]
         folium.Marker(
@@ -3060,7 +3112,6 @@ def ui_mapa_display():
             icon=folium.Icon(color='blue', icon='info-sign')
         ).add_to(m)
 
-    # Mostra el mapa a Streamlit (sense retornar cap dada de clic)
     st_folium(m, width="100%", height=400, returned_objects=[])
 
 
@@ -4431,44 +4482,81 @@ def ui_peu_de_pagina():
 # --- Lògica Principal de l'Aplicació ---
 
 def run_catalunya_app():
-    # --- CAPÇALERA I NAVEGACIÓ ---
-    # (Aquesta part no canvia)
+    # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     is_developer = st.session_state.get('developer_mode', False)
-    # ... (la resta de la teva capçalera amb botons)
+
+    # Dibuixa la capçalera amb els botons de canvi de zona i logout
     if is_developer:
         col_text, col_change, col_dev, col_logout = st.columns([0.5, 0.15, 0.15, 0.15])
     else:
         col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
+    
     with col_text:
         if not is_guest: 
             username = st.session_state.get('username', 'Usuari')
             st.markdown(f"Benvingut/da, **{username}**!")
+    
     with col_change:
         if st.button("Canviar a EEUU?", use_container_width=True):
-            st.session_state.clear(); st.session_state.logged_in = True; st.session_state.zone_selected = 'valley_halley'; st.rerun()
+            for key in list(st.session_state.keys()):
+                if key not in ['logged_in', 'username', 'guest_mode', 'developer_mode']:
+                    del st.session_state[key]
+            st.session_state.zone_selected = 'valley_halley'
+            st.rerun()
+    
     if is_developer:
         with col_dev:
             if st.button("🚫 Sortir Mode Dev", use_container_width=True, type="secondary"):
                 st.session_state.clear(); st.rerun()
+
     with col_logout:
         if st.button("Sortir" if is_guest else "Tanca Sessió", use_container_width=True):
             st.session_state.clear(); st.rerun()
+            
     st.divider()
 
-    # --- FLUX DE L'APLICACIÓ ---
+    # --- PAS 2: FLUX DE L'APLICACIÓ BASAT EN L'ESTAT ---
 
     poble_sel = st.session_state.get('poble_selector')
 
-    # Si NO s'ha seleccionat un poble final, mostrem la interfície de selecció
+    # ESTAT 1: MODE SELECCIÓ (si encara no s'ha triat un poble)
     if not poble_sel:
-        ui_mapa_display()  # Mostra el mapa com a visor
-        ui_main_page_selectors() # Mostra els selectors a sota del mapa
-        st.warning("Selecciona una comarca i una localitat per començar l'anàlisi.")
-        return # Aturem l'execució aquí
+        # Mostrem els controls de temps primer, ja que afecten les alertes del mapa
+        if 'dia_selector' not in st.session_state: st.session_state.dia_selector = datetime.now(TIMEZONE_CAT).strftime('%d/%m/%Y')
+        if 'hora_selector' not in st.session_state: st.session_state.hora_selector = f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h"
+        
+        with st.container(border=True):
+            st.caption("Selecciona el dia i l'hora per veure les alertes de convergència al mapa.")
+            col_dia, col_hora, _ = st.columns([0.4, 0.4, 0.2])
+            with col_dia:
+                now_local = datetime.now(TIMEZONE_CAT)
+                opcions_dia = [(now_local + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)]
+                st.selectbox("Dia:", opcions_dia, key="dia_selector", disabled=is_guest)
+            with col_hora:
+                opcions_hora = [f"{h:02d}:00h" for h in range(24)]
+                hora_actual = st.session_state.get('hora_selector')
+                idx = opcions_hora.index(hora_actual) if hora_actual in opcions_hora else 12
+                st.selectbox("Hora:", opcions_hora, key="hora_selector", disabled=is_guest, index=idx)
 
-    # Si S'HA SELECCIONAT un poble, mostrem la interfície d'anàlisi
+        # Calculem l'índex horari a partir de la selecció de l'usuari
+        dia_sel_str = st.session_state.dia_selector
+        hora_sel_str = st.session_state.hora_selector
+        target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
+        local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
+        start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+
+        # Mostrem el mapa (que ara rep l'índex horari per mostrar les alertes)
+        ui_mapa_display(hourly_index_sel)
+        # Mostrem els selectors de comarca/població
+        ui_main_page_selectors()
+        
+        st.warning("Selecciona una comarca i una localitat per començar l'anàlisi detallada.")
+        return
+
+    # ESTAT 2: MODE ANÀLISI (si ja s'ha triat un poble)
     else:
         st.success(f"### Anàlisi per a: **{poble_sel}**")
         if st.button("⬅️ Canviar de localitat"):
@@ -4476,13 +4564,13 @@ def run_catalunya_app():
             st.session_state.selected_comarca = None
             st.rerun()
         
-        # --- La resta del teu codi d'anàlisi es manté exactament igual ---
-        
+        # Inicialització de selectors i pestanyes (només per al mode anàlisi)
         if 'dia_selector' not in st.session_state: st.session_state.dia_selector = datetime.now(TIMEZONE_CAT).strftime('%d/%m/%Y')
         if 'hora_selector' not in st.session_state: st.session_state.hora_selector = f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h"
         if 'level_cat_main' not in st.session_state: st.session_state.level_cat_main = 925
         if 'active_tab_cat' not in st.session_state: st.session_state.active_tab_cat = "Anàlisi Vertical"
 
+        # Mostrem els controls de temps i nivell per a l'anàlisi
         with st.container(border=True):
             col_dia, col_hora, col_nivell = st.columns(3)
             with col_dia:
@@ -4497,8 +4585,9 @@ def run_catalunya_app():
             with col_nivell:
                 if not is_guest:
                     nivells = [1000, 950, 925, 900, 850, 800, 700]
-                    st.selectbox("Nivell (Mapes):", nivells, key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
+                    st.selectbox("Nivell (Mapes d'Anàlisi):", nivells, key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
 
+        # Càlculs i variables per a l'anàlisi
         dia_sel_str = st.session_state.dia_selector
         hora_sel_str = st.session_state.hora_selector
         nivell_sel = st.session_state.level_cat_main if not is_guest else 925
@@ -4510,6 +4599,7 @@ def run_catalunya_app():
         hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
 
+        # Menú de pestanyes
         menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Anàlisi de Vents", "Tall Vertical Simulat"]
         menu_icons = ["graph-up-arrow", "map", "wind", "moisture"]
         if not is_guest:
@@ -4520,6 +4610,7 @@ def run_catalunya_app():
         selected_tab = option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx, key="catalunya_nav_selector")
         st.session_state.active_tab_cat = selected_tab
 
+        # Lògica per mostrar el contingut de la pestanya seleccionada
         if selected_tab == "Anàlisi de Mapes":
             ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
         else:
@@ -4572,7 +4663,7 @@ def run_catalunya_app():
                     interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
                     sounding_data = data_tuple[0] if data_tuple else None
                     ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)
-
+                    
 def run_valley_halley_app():
     # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
     if 'poble_selector_usa' not in st.session_state:
@@ -4818,4 +4909,3 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
 if __name__ == "__main__":
     main()
-
