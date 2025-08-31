@@ -3110,15 +3110,15 @@ def ui_mapa_display(comarques_en_alerta):
     st_folium(m, width="100%", height=400, returned_objects=[])
 
 @st.cache_data(ttl=1800, show_spinner="Analitzant focus de convergència a tot el territori...")
-def calcular_alertes_per_comarca(hourly_index):
+def calcular_alertes_per_comarca(hourly_index, nivell):
     """
-    Retorna un diccionari amb el valor MÀXIM de convergència per a cada comarca que superi el llindar.
-    Exemple: {'Pallars Sobirà': 45.3, 'Gironès': 28.1}
+    Retorna un diccionari amb el valor MÀXIM de convergència per a cada comarca.
+    *** VERSIÓ CORREGIDA: Ara accepta l'índex horari i el nivell. ***
     """
-    NIVELL_ANALISI_ALERTES = 925
     CONV_THRESHOLD = 25
     
-    map_data, error = carregar_dades_mapa_cat(NIVELL_ANALISI_ALERTES, hourly_index)
+    # Utilitzem el 'nivell' que rebem com a paràmetre
+    map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
     gdf_comarques = carregar_dades_geografiques()
 
     if error or not map_data or gdf_comarques is None or len(map_data['lons']) < 4:
@@ -3150,9 +3150,11 @@ def calcular_alertes_per_comarca(hourly_index):
         max_conv_per_comarca = punts_dins_comarques.groupby('nomcomar')['value'].max()
         return max_conv_per_comarca.to_dict()
         
-    except Exception:
+    except Exception as e:
+        # Afegim un print per a depuració en cas que hi hagi un altre error
+        print(f"Error dins de calcular_alertes_per_comarca: {e}")
         return {}
-
+    
 @st.cache_data(ttl=1800)
 def calcular_convergencia_per_llista_poblacions(hourly_index, poblacions_dict):
     """
