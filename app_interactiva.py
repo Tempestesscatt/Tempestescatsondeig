@@ -3236,10 +3236,11 @@ def format_time_left(total_seconds):
     else:
         return f"d'aquí a {minutes} min"
 
-def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi, interpretacions_ia):
+def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi, interpretacions_ia, sounding_data=None):
     """
     Crea la interfície d'usuari per a la pestanya de l'assistent d'IA.
-    Incluye ahora la opción de modo desarrollador con contraseña.
+    Ara rep una pre-anàlisi i les interpretacions qualitatives per guiar l'IA.
+    Incluye ahora información del hodógrafo.
     """
     st.markdown("#### Assistent d'Anàlisi (IA Gemini)")
     
@@ -3266,6 +3267,40 @@ def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi, interpretacion
                     st.rerun()
                 else:
                     st.error("Contraseña incorrecta")
+
+    # Mostrar información del hodógrafo si está disponible
+    if sounding_data:
+        with st.expander("📊 Informació del hodógrafo disponible per a la IA"):
+            p, T, Td, u, v, heights, prof = sounding_data
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                u_sfc, v_sfc = u[0], v[0]
+                wind_speed_sfc = mpcalc.wind_speed(u_sfc, v_sfc).to('kt').m
+                wind_dir_sfc = mpcalc.wind_direction(u_sfc, v_sfc).m
+                st.metric("Vent superfície", f"{wind_speed_sfc:.1f} kt", f"{graus_a_direccio_cardinal(wind_dir_sfc)}")
+            
+            with col2:
+                try:
+                    h_500m = 500 * units.meter
+                    u_500m = np.interp(h_500m, heights, u)
+                    v_500m = np.interp(h_500m, heights, v)
+                    wind_speed_500m = mpcalc.wind_speed(u_500m, v_500m).to('kt').m
+                    wind_dir_500m = mpcalc.wind_direction(u_500m, v_500m).m
+                    st.metric("Vent a 500m", f"{wind_speed_500m:.1f} kt", f"{graus_a_direccio_cardinal(wind_dir_500m)}")
+                except:
+                    st.metric("Vent a 500m", "N/D")
+            
+            with col3:
+                try:
+                    h_3000m = 3000 * units.meter
+                    u_3000m = np.interp(h_3000m, heights, u)
+                    v_3000m = np.interp(h_3000m, heights, v)
+                    wind_speed_3000m = mpcalc.wind_speed(u_3000m, v_3000m).to('kt').m
+                    wind_dir_3000m = mpcalc.wind_direction(u_3000m, v_3000m).m
+                    st.metric("Vent a 3000m", f"{wind_speed_3000m:.1f} kt", f"{graus_a_direccio_cardinal(wind_dir_3000m)}")
+                except:
+                    st.metric("Vent a 3000m", "N/D")
 
     if "messages" not in st.session_state: 
         st.session_state.messages = []
@@ -3306,7 +3341,7 @@ def ui_pestanya_assistent_ia(params_calc, poble_sel, pre_analisi, interpretacion
                         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                         model = genai.GenerativeModel('gemini-1.5-flash')
                         
-                        prompt_complet = generar_prompt_per_ia(params_calc, prompt, poble_sel, pre_analisi, interpretacions_ia)
+                        prompt_complet = generar_prompt_per_ia(params_calc, prompt, poble_sel, pre_analisi, interpretacions_ia, sounding_data)
                         
                         response = model.generate_content(prompt_complet)
                         resposta_completa = response.text
@@ -3370,91 +3405,83 @@ def interpretar_parametres(params, nivell_conv):
     return interpretacions
 
 
-def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpretacions):
+def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpretacions_ia, sounding_data=None, hodograph_fig=None):
     """
-    Prompt definitiu v11.0 XXL -> payaso meteo català expansiu, conversador i anti-loro.
-    - Divertit, clown, bromista però amb base meteorològica real.
-    - Respostes variades: noves metàfores, nous avisos locals, nous temes meteorològics.
-    - Prohibit repetir literalment idees ja dites.
-    - Disposa de capitals de comarca catalanes per posar avisos i contextualitzar.
+    Genera el prompt definitiu (v7.0) que inclou una interpretació qualitativa
+    dels paràmetres i informació del hodógrafo per a un raonament de l'IA de màxima qualitat.
     """
-
-    # Llista de capitals de comarca (perquè pugui anar rotant i no repetir sempre les mateixes)
-    capitals_comarca = [
-        "Barcelona", "Girona", "Lleida", "Tarragona", "Manresa", "Vic", "Olot", "Figueres", "Ripoll",
-        "Berga", "Tremp", "La Seu d'Urgell", "Sort", "Vielha", "Balaguer", "Cervera", "Mollerussa",
-        "Tàrrega", "Amposta", "Tortosa", "Falset", "Gandesa", "Reus", "Valls", "El Vendrell",
-        "Vilafranca del Penedès", "Igualada", "Martorell", "Granollers", "Sabadell", "Terrassa",
-        "Mataró", "Badalona", "Santa Coloma de Gramenet"
-    ]
-
+    # --- ROL I PERSONALITAT ---
     prompt_parts = [
         "### ROL I PERSONALITAT",
-        "Ets un meteoròleg clown català hiperexpressiu, amb energia, sarcasme i moltes metàfores. "
-        "Et comportes com un amic que fa birres amb tu: bromista, exagerat i molt proper. "
-        "Només pots dir 'ey amic!' una vegada a tota la conversa. "
-        "Sempre respons en català excepte si et demanen explícitament un altre idioma.",
-
+        "Ets un expert apassionat de la meteorologia super expressiu i obert. El teu to és molt divertit i bromista, pero cinfiat i directe, com si donessis un classes a un amic de tot la vida.",
+        
         "\n### MISSIÓ",
-        "Has rebut un 'Veredicte' d’un sondeig automàtic. "
-        "La teva feina és traduir-ho en un relat divertit, visual i entenedor. "
-        "Cada torn ha de sonar fresc i diferent: noves bromes, metàfores creatives i avisos a capitals de comarca variades. "
-        "No repeteixis literalment el mateix contingut dues vegades. "
-        "Reserva les dades tècniques (CAPE, CIN, etc.) només si et pregunten explícitament.",
-
-        "\n### ESTIL DE RESPOSTA",
-        "1. Sempre en català (excepte si et demanen el contrari).",
-        "2. Primera resposta: curta (màxim 5 frases), divertida i clara.",
-        "3. Quan continues la conversa: NO REPETEIXIS res que ja hagis dit. "
-        "Canvia de registre: fes servir metàfores noves, gira el focus cap a altres fenòmens (boira, vent, llamps, muntanya, costa, pluges fines, tronades d’estiu...).",
-        "4. Fes avisos meteorològics concrets a capitals de comarca catalanes, rotant-les (no sempre Vic o Girona).",
-        "5. Pots variar el to: una vegada showman, una altra professor bromista, una altra exageradament catastrofista però divertit.",
-        "6. Si et pregunten 'per què?' diverses vegades: dona cada cop un motiu diferent, sense repetir literalment.",
-        "7. No repeteixis dades d’inestabilitat ni estabilitat fins que et demanin.",
-
-        "\n### COM EVITAR SONAR COM UN LLORO",
-        "- Mai repeteixis frases literals que ja has usat.",
-        "- Si tornes a parlar d’un mateix concepte, canvia la metàfora i el vocabulari.",
-        "- Canvia sempre la capital de comarca en cada torn quan facis avisos locals.",
-        "- Introdueix variacions: una vegada parla de trons, una altra de núvols negres, una altra de boira que sembla sopa, una altra del vent que pentina muntanyes…",
-        "- Mantén l’humor amb exageracions i metàfores absurdes, però no cal repetir fórmules fixes.",
-
-        "\n### EXEMPLES DE VARIACIÓ CREATIVA",
-        "- Si abans has dit: 'Els núvols venen com un exèrcit', després pots dir: 'El cel sembla un DJ carregant el drop amb llamps'.",
-        "- Si abans has avisat a Vic, després avisa a Tortosa o Olot.",
-        "- Si abans has fet servir la metàfora de batalla (CIN vs Convergència), després pots fer servir la d’un joc de cartes o una festa que no arrenca.",
-        "- Si abans has dit que hi haurà trons com bombes, després pots dir que són tambors d’una festa major.",
+        "Un sistema automàtic ha analitzat un sondeig i t'ha donat un 'Veredicte' i una interpretació qualitativa dels paràmetres, pots aproximar, no cal centrarte sempre amb el que diu el  ( Entorn actual:) ja que pot ser vòlatil,sense delirar clar. La teva missió és doanr informació i obrir-te per construir una explicació coherent i senzilla per al teu amic.",
+        
+        "\n### REGLES DE LA RESPOSTA",
+        "1. **Comença :** Respon  a la pregunta del teu amic sigui quina sigui, amb la meteo basant-te en el 'Veredicte' amb naturalesa i compasió, nomès digues les xifres si et pregunta..",
+        "2. **Construeix el Raonament:** Utilitza les 'Interpretacions' per explicar el perquè del veredicte. Centra't primer en el 'Disparador (Convergència)' i després en la 'Inhibició (CIN) de 0 a -30 es poc CIN si hi ha una convergencia moderada, peró de 60 a 100 comença a ser algo dificil, de 100 a més es molt dificil superar-la'. Aquesta és la lluita principal.",
+        "3. **Sigues Breu i Contundent:** La teva resposta ha de ser curta i anar al gra de forma divertida. Màxim 5 frases.",
 
         "\n### ANÀLISI AUTOMÀTICA",
         f"**Localitat:** {poble}",
         f"**Veredicte Final:** {pre_analisi.get('veredicte', 'No determinat')}",
-
-        "\n### INTERPRETACIONS CLAU (ingredients narratius, però sense números fins que els demanin)",
+        
+        "\n### INTERPRETACIONS CLAU (El que has d'utilitzar per explicar)",
     ]
-
-    for key, value in interpretacions.items():
+    
+    # Afegim les interpretacions al prompt
+    for key, value in interpretacions_ia.items():
         prompt_parts.append(f"- **{key}:** {value}")
 
-    # Dades tècniques guardades per si es demanen
-    prompt_parts.append("\n### DADES TÈCNIQUES (NO DIGUIS FINS QUE ET DEMANIN)")
-    if 'MLCAPE' in params and pd.notna(params['MLCAPE']):
+    # Afegim informació del hodógrafo si está disponible
+    if sounding_data:
+        prompt_parts.append("\n### INFORMACIÓ DEL HODÓGRAF")
+        p, T, Td, u, v, heights, prof = sounding_data
+        
+        # Información de vientos en superficie
+        u_sfc, v_sfc = u[0], v[0]
+        wind_speed_sfc = mpcalc.wind_speed(u_sfc, v_sfc).to('kt').m
+        wind_dir_sfc = mpcalc.wind_direction(u_sfc, v_sfc).m
+        prompt_parts.append(f"- **Vent superfície:** {wind_speed_sfc:.1f} kt des de {graus_a_direccio_cardinal(wind_dir_sfc)} ({wind_dir_sfc:.0f}°)")
+        
+        # Información de vientos a 500m
+        try:
+            h_500m = 500 * units.meter
+            u_500m = np.interp(h_500m, heights, u)
+            v_500m = np.interp(h_500m, heights, v)
+            wind_speed_500m = mpcalc.wind_speed(u_500m, v_500m).to('kt').m
+            wind_dir_500m = mpcalc.wind_direction(u_500m, v_500m).m
+            prompt_parts.append(f"- **Vent a 500m:** {wind_speed_500m:.1f} kt des de {graus_a_direccio_cardinal(wind_dir_500m)} ({wind_dir_500m:.0f}°)")
+        except:
+            pass
+            
+        # Información de vientos a 3000m
+        try:
+            h_3000m = 3000 * units.meter
+            u_3000m = np.interp(h_3000m, heights, u)
+            v_3000m = np.interp(h_3000m, heights, v)
+            wind_speed_3000m = mpcalc.wind_speed(u_3000m, v_3000m).to('kt').m
+            wind_dir_3000m = mpcalc.wind_direction(u_3000m, v_3000m).m
+            prompt_parts.append(f"- **Vent a 3000m:** {wind_speed_3000m:.1f} kt des de {graus_a_direccio_cardinal(wind_dir_3000m)} ({wind_dir_3000m:.0f}°)")
+        except:
+            pass
+
+    # Afegim un parell de valors numèrics importants per si l'IA els vol esmentar
+    prompt_parts.append("\n### DADES NUMÈRIQUES DE REFERÈNCIA")
+    if 'MLCAPE' in params and pd.notna(params['MLCAPE']): 
         prompt_parts.append(f"- MLCAPE exacte: {params['MLCAPE']:.0f} J/kg")
+    if 'BWD_0-6km' in params and pd.notna(params['BWD_0-6km']): 
+        prompt_parts.append(f"- Cisallament 0-6km: {params['BWD_0-6km']:.0f} nusos")
+    if 'SRH_0-3km' in params and pd.notna(params['SRH_0-3km']): 
+        prompt_parts.append(f"- Helicitat 0-3km: {params['SRH_0-3km']:.0f} m²/s²")
+    
     conv_key = next((k for k in params if k.startswith('CONV_')), None)
-    if conv_key and conv_key in params and pd.notna(params[conv_key]):
+    if conv_key and conv_key in params and pd.notna(params[conv_key]): 
         prompt_parts.append(f"- Convergència exacta: {params[conv_key]:.1f}")
-
-    # Conversació fluida i expansiva
+    
     prompt_parts.append("\n### INSTRUCCIÓ FINAL")
-    prompt_parts.append(
-        f"La pregunta del teu amic és: \"{pregunta_usuari}\".\n"
-        "Respon amb humor, metàfores creatives i avisos a capitals de comarca catalanes. "
-        "A cada torn, inventa un estil nou i evita sonar com un lloro. "
-        "Només dona dades tècniques si t’ho demanen."
-    )
-
-    # Afegim capitals de comarca disponibles per si el model vol inspirar-se
-    prompt_parts.append("\n### LLISTA DE CAPITALS DE COMARCA DISPONIBLES")
-    prompt_parts.append(", ".join(capitals_comarca))
+    prompt_parts.append(f"Ara, escriu la teva anàlisi breu i directa. La pregunta del teu amic és: \"{pregunta_usuari}\"")
 
     return "\n".join(prompt_parts)
 
@@ -3963,29 +3990,44 @@ def ui_peu_de_pagina():
 
 def run_catalunya_app():
     # --- PAS 1: INICIALITZACIÓ (es manté igual) ---
-    if 'poble_selector' not in st.session_state: st.session_state.poble_selector = "Barcelona"
-    if 'dia_selector' not in st.session_state: st.session_state.dia_selector = datetime.now(TIMEZONE_CAT).strftime('%d/%m/%Y')
-    if 'hora_selector' not in st.session_state: st.session_state.hora_selector = f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h"
-    if 'level_cat_main' not in st.session_state: st.session_state.level_cat_main = 925
-    if 'active_tab_cat' not in st.session_state: st.session_state.active_tab_cat = "Anàlisi de Mapes"
+    if 'poble_selector' not in st.session_state: 
+        st.session_state.poble_selector = "Barcelona"
+    if 'dia_selector' not in st.session_state: 
+        st.session_state.dia_selector = datetime.now(TIMEZONE_CAT).strftime('%d/%m/%Y')
+    if 'hora_selector' not in st.session_state: 
+        st.session_state.hora_selector = f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h"
+    if 'level_cat_main' not in st.session_state: 
+        st.session_state.level_cat_main = 925
+    if 'active_tab_cat' not in st.session_state: 
+        st.session_state.active_tab_cat = "Anàlisi de Mapes"
 
     # --- PAS 2: CÀLCULS PREVIS I CAPÇALERA (es manté igual) ---
     is_guest = st.session_state.get('guest_mode', False)
-    pre_dia_sel = st.session_state.dia_selector; pre_hora_sel = st.session_state.hora_selector
+    pre_dia_sel = st.session_state.dia_selector
+    pre_hora_sel = st.session_state.hora_selector
     pre_target_date = datetime.strptime(pre_dia_sel, '%d/%m/%Y').date()
     pre_local_dt = TIMEZONE_CAT.localize(datetime.combine(pre_target_date, datetime.min.time()).replace(hour=int(pre_hora_sel.split(':')[0])))
     pre_start_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     pre_hourly_index = int((pre_local_dt.astimezone(pytz.utc) - pre_start_utc).total_seconds() / 3600)
+    
+    # Carregar dades del mapa per a la capçalera
     map_data_conv_header, _ = carregar_dades_mapa_cat(st.session_state.level_cat_main, pre_hourly_index)
     pre_convergencies = calcular_convergencies_per_llista(map_data_conv_header, CIUTATS_CATALUNYA) if map_data_conv_header else {}
+    
+    # Mostrar capçalera amb les convergències
     ui_capcalera_selectors(None, None, zona_activa="catalunya", convergencies=pre_convergencies)
 
     # --- PAS 3: LECTURA D'ESTAT (es manté igual) ---
     poble_sel = st.session_state.poble_selector
-    if "---" in poble_sel: st.info("Selecciona una localitat de la llista per començar l'anàlisi."); return
-    dia_sel_str = st.session_state.dia_selector; hora_sel_str = st.session_state.hora_selector
+    if "---" in poble_sel: 
+        st.info("Selecciona una localitat de la llista per començar l'anàlisi.")
+        return
+        
+    dia_sel_str = st.session_state.dia_selector
+    hora_sel_str = st.session_state.hora_selector
     nivell_sel = st.session_state.level_cat_main if not is_guest else 925
     lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
+    
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -3995,9 +4037,11 @@ def run_catalunya_app():
     # --- PAS 4: MENÚ I PESTANYES (es manté igual) ---
     menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical", "Anàlisi de Vents", "Tall Vertical Simulat"]
     menu_icons = ["map", "graph-up-arrow", "wind", "moisture"]
+    
     if not is_guest:
         menu_options.append("💬 Assistent IA")
         menu_icons.append("chat-quote-fill")
+        
     default_idx = menu_options.index(st.session_state.active_tab_cat) if st.session_state.active_tab_cat in menu_options else 0
     selected_tab = option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx, key="catalunya_nav_selector")
     st.session_state.active_tab_cat = selected_tab
@@ -4005,22 +4049,30 @@ def run_catalunya_app():
     if selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
     else:
+        # Carregar dades del sondeig per a les altres pestanyes
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
         
+        # Avisar si s'ha ajustat l'hora
         if not error_msg and final_index != hourly_index_sel:
             adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
             adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
             st.warning(f"**Avís:** No hi havia dades per a les {hora_sel_str}. Es mostren les de l'hora més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
 
-        if error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        # Mostrar error si no es poden carregar les dades
+        if error_msg: 
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
+            # Processar paràmetres calculats
             params_calc = data_tuple[1] if data_tuple else {}
+            
+            # Afegir informació de convergència als paràmetres
             if poble_sel in pre_convergencies:
                 conv_value = pre_convergencies.get(poble_sel)
                 if isinstance(conv_value, (int, float)) and pd.notna(conv_value):
                     params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
             
+            # Mostrar la pestanya corresponent
             if selected_tab == "Anàlisi Vertical":
                 avis_proximitat = analitzar_amenaça_convergencia_propera(map_data_conv_header, params_calc, lat_sel, lon_sel, nivell_sel)
                 ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, avis_proximitat)
@@ -4028,33 +4080,41 @@ def run_catalunya_app():
             elif selected_tab == "Anàlisi de Vents":
                 ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_sel_str, timestamp_str)
 
-            # --- BLOC DE LÒGICA CORREGIT PER A LA PESTANYA DE SIMULACIÓ AMB GUIA ---
             elif selected_tab == "Tall Vertical Simulat":
                 col_esquerra, col_dreta = st.columns([0.7, 0.3])
 
                 with col_esquerra:
                     st.markdown(f"#### Simulació de Cicle de Vida per a {poble_sel}")
                     st.caption(timestamp_str)
+                    
+                    # Control de regeneració d'animació
                     if 'regenerate_key' not in st.session_state:
                         st.session_state.regenerate_key = 0
                     if st.button("🔄 Regenerar Animació", help="Crea una nova versió de l'animació."):
                         st.session_state.regenerate_key += 1
+                    
+                    # Generar i mostrar animació
                     with st.spinner("Generant animació..."):
                         params_tuple = tuple(sorted(params_calc.items()))
                         gif_bytes = generar_animacio_cachejada(params_tuple, hora_sel_str, st.session_state.regenerate_key)
+                    
                     if gif_bytes is None:
                         st.warning("Les condicions actuals (CAPE < 100) no són suficients per generar una tempesta simulada.")
                     else:
                         st.image(gif_bytes, caption="Animació del cicle de vida simulat (2 hores).")
 
                 with col_dreta:
-                    # Cridem la nova funció de la guia
+                    # Mostrar guia d'interpretació
                     ui_guia_tall_vertical(params_calc, nivell_sel)
 
             elif selected_tab == "💬 Assistent IA" and not is_guest:
+                # Preparar anàlisi per a l'IA
                 analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
                 interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
-                ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia)
+                
+                # Passar les dades del sondeig a l'assistent IA
+                sounding_data = data_tuple[0] if data_tuple else None
+                ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)
 
 def run_valley_halley_app():
     # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
