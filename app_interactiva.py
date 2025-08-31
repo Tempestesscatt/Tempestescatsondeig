@@ -3055,6 +3055,7 @@ def on_poble_select():
 def ui_mapa_display(comarques_en_alerta):
     """
     Aquesta versió rep un set de comarques en alerta i les pinta de vermell.
+    *** VERSIÓ CORREGIDA PER EVITAR EL KEYERROR ***
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
@@ -3082,7 +3083,7 @@ def ui_mapa_display(comarques_en_alerta):
             style['fillColor'] = '#d9534f' # Vermell d'alerta
             style['fillOpacity'] = 0.6
             
-        # Si la comarca està seleccionada, la ressaltem (amb un color diferent si està en alerta)
+        # Si la comarca està seleccionada, la ressaltem
         if nom_comarca == comarca_sel:
             style['color'] = '#0000FF' # Vora blava per a la selecció
             style['weight'] = 3
@@ -3096,7 +3097,9 @@ def ui_mapa_display(comarques_en_alerta):
         tooltip=folium.GeoJsonTooltip(fields=['nomcomar'], aliases=['Comarca:'])
     ).add_to(m)
 
-    if poble_sel:
+    # --- LÍNIA CLAU DE LA CORRECCIÓ ---
+    # Només intentem afegir el marcador si 'poble_sel' és una localitat vàlida.
+    if poble_sel and "---" not in poble_sel:
         coords = CIUTATS_CATALUNYA[poble_sel]
         folium.Marker(
             location=[coords['lat'], coords['lon']],
@@ -3105,7 +3108,6 @@ def ui_mapa_display(comarques_en_alerta):
         ).add_to(m)
 
     st_folium(m, width="100%", height=400, returned_objects=[])
-
 
 @st.cache_data(ttl=1800, show_spinner="Analitzant focus de convergència a tot el territori...")
 def calcular_alertes_per_comarca(hourly_index):
@@ -4957,3 +4959,4 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
 if __name__ == "__main__":
     main()
+
