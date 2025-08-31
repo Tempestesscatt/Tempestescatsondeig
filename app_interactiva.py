@@ -3529,7 +3529,7 @@ def  generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpre
     # ### ROL I OBJECTIU (Més resumit) ###
     prompt_parts.append(
         "**ROL**: Ets un meteoròleg expert en temps sever. "
-        "**OBJECTIU**: Proporciona una anàlisi concisa, accionable i predictiva de la situació meteorològica per a l'usuari, identificant riscos i recomanacions clau."
+        "**OBJECTIU**: Proporciona una anàlisi concisa i molt resumida amb to graciós, accionable i predictiva de la situació meteorològica per a l'usuari, identificant riscos i recomanacions clau."
     )
 
     prompt_parts.append(f"\n### ANÀLISI PER A {poble} ###")
@@ -3581,7 +3581,7 @@ def  generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpre
         "- **Focus en Risc**: Detalla el potencial de cada fenomen sever (calamarsa, tornados, vent, pluja) per a {poble}.\n"
         "- **Evolució**: Indica moments clau i tendències. Considera escenaris alternatius si hi ha incertesa.\n"
         "- **Recomanacions**: Proporciona consells pràctics i directes. Respon a la pregunta de l'usuari de forma explícita.\n"
-        "- **Concisió i Utilitat**: La resposta ha de ser breu, clara, directa i extremadament útil."
+        "- **Concisió i Utilitat**: La resposta ha de ser breu, clara, divertida, directa i extremadament útil."
     )
 
     prompt_parts.append("\n### FORMAT DE RESPOSTA DESITJAT ###")
