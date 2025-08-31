@@ -4556,7 +4556,6 @@ def ui_pestanya_estacions_meteorologiques():
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME/GFS via Open-Meteo | Imatges via Meteociel & NOAA | IA per Google Gemini.</p>", unsafe_allow_html=True)
 
-# --- Lògica Principal de l'Aplicació ---
 def run_catalunya_app():
     # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
@@ -4576,7 +4575,6 @@ def run_catalunya_app():
     
     with col_change:
         if st.button("Canviar a EEUU?", use_container_width=True):
-            # Neteja COMPLETA de l'estat abans de canviar de zona
             for key in list(st.session_state.keys()):
                 if key not in ['logged_in', 'username', 'guest_mode', 'developer_mode']:
                     del st.session_state[key]
@@ -4594,9 +4592,15 @@ def run_catalunya_app():
             
     st.divider()
 
-    # --- PAS 2: CONTROLS DE TEMPS UNIFICATS ---
+    # --- PAS 2: GESTIÓ D'ESTAT EXPLÍCITA ---
+    # Inicialitzem les variables d'estat si no existeixen. Aquesta és la clau.
+    if 'comarca_sel' not in st.session_state:
+        st.session_state.comarca_sel = None
+    if 'poble_sel' not in st.session_state:
+        st.session_state.poble_sel = None
+
+    # --- PAS 3: CONTROLS DE TEMPS I NIVELL ---
     with st.container(border=True):
-        st.caption("Selecciona el dia i l'hora per a l'anàlisi. Aquesta selecció es mantindrà quan canviïs de localitat.")
         col_dia, col_hora, col_nivell = st.columns(3)
         with col_dia:
             st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_CAT) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector")
@@ -4606,50 +4610,30 @@ def run_catalunya_app():
             if not is_guest:
                  st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
 
-    # Càlcul de l'índex horari a partir dels selectors
+    # Obtenim els valors dels controls de temps/nivell
     dia_sel_str = st.session_state.dia_selector
     hora_sel_str = st.session_state.hora_selector
+    nivell_sel = st.session_state.get('level_cat_main', 925)
+    
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-    
-    # --- PAS 3: FLUX DE SELECCIÓ I ANÀLISI ---
-    alertes_comarca = calcular_alertes_per_comarca(hourly_index_sel)
-    
-    # Dibuixem els selectors de localitat
-    with st.container(border=True):
-        st.markdown("#### Tria una comarca i una localitat")
-        col_comarca, col_poble = st.columns(2)
-        
-        with col_comarca:
-            comarques_options = ["--- Selecciona Comarca ---"] + sorted(list(CIUTATS_PER_COMARCA.keys()))
-            def format_comarca(nom):
-                if "---" in nom: return nom
-                valor = alertes_comarca.get(nom)
-                return f"{nom} (🔴)" if valor and valor >= 50 else f"{nom} (🟠)" if valor else nom
-            comarca_sel = st.selectbox("Comarca:", options=comarques_options, format_func=format_comarca, key="comarca_selector")
 
-        # El selector de pobles depèn de la comarca
-        poble_sel = None
-        if comarca_sel and "---" not in comarca_sel:
-            with col_poble:
-                poblacions_dict = CIUTATS_PER_COMARCA[comarca_sel]
-                poblacions_options = ["--- Selecciona Localitat ---"] + sorted(list(poblacions_dict.keys()))
-                poble_sel = st.selectbox("Localitat:", options=poblacions_options, key="poble_selector")
-
-    # --- LÒGICA D'ESTAT: Mostrar anàlisi o missatge d'espera ---
-    if poble_sel and "---" not in poble_sel:
-        # Si tenim una localitat vàlida, mostrem l'anàlisi detallada
-        
-        # Neteja de la pestanya activa si la localitat canvia
-        if 'last_poble_sel' not in st.session_state or st.session_state.last_poble_sel != poble_sel:
-            st.session_state.last_poble_sel = poble_sel
+    # --- PAS 4: LÒGICA CONDICIONAL BASADA EN L'ESTAT ---
+    
+    # ESTAT 1: MODE ANÀLISI (Si tenim una localitat seleccionada a l'estat)
+    if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
+        poble_sel = st.session_state.poble_sel
+        st.success(f"### Anàlisi per a: **{poble_sel}**")
+        if st.button("⬅️ Tornar al mapa de selecció"):
+            st.session_state.poble_sel = None
+            st.session_state.comarca_sel = None
             if 'active_tab_cat' in st.session_state:
                 del st.session_state['active_tab_cat']
-        
-        # La resta de la teva lògica d'anàlisi va aquí
-        nivell_sel = st.session_state.get('level_cat_main', 925)
+            st.rerun()
+
+        # La resta de la teva lògica d'anàlisi (pestanyes, gràfics, etc.) va aquí dins
         lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
 
@@ -4663,7 +4647,6 @@ def run_catalunya_app():
         selected_tab = option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
         st.session_state.active_tab_cat = selected_tab
 
-        # (La teva lògica per mostrar cada pestanya es manté exactament igual aquí dins)
         if selected_tab == "Anàlisi de Mapes":
             ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
         else:
@@ -4716,11 +4699,54 @@ def run_catalunya_app():
                     interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
                     sounding_data = data_tuple[0] if data_tuple else None
                     ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)
+    
+    # ESTAT 2: MODE SELECCIÓ (Si no hi ha cap localitat a l'estat)
     else:
-        # Si no hi ha una localitat seleccionada, mostrem el mapa i un missatge
+        alertes_comarca = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
         ui_mapa_display(list(alertes_comarca.keys()))
-        st.info("Selecciona una comarca i una localitat als menús de dalt per començar l'anàlisi detallada.")
         
+        with st.container(border=True):
+            st.markdown("#### Tria una comarca i una localitat per començar")
+            col_comarca, col_poble = st.columns(2)
+            
+            with col_comarca:
+                comarques_options = ["--- Selecciona Comarca ---"] + sorted(list(CIUTATS_PER_COMARCA.keys()))
+                def format_comarca(nom):
+                    if "---" in nom: return nom
+                    valor = alertes_comarca.get(nom)
+                    return f"{nom} (🔴)" if valor and valor >= 50 else f"{nom} (🟠)" if valor else nom
+                
+                # Llegim el valor de l'estat per definir l'índex per defecte
+                idx_comarca = comarques_options.index(st.session_state.comarca_sel) if st.session_state.comarca_sel in comarques_options else 0
+                comarca_widget_val = st.selectbox("Comarca:", options=comarques_options, format_func=format_comarca, index=idx_comarca)
+
+                # Si l'usuari canvia la comarca, actualitzem l'estat i reiniciem el poble
+                if comarca_widget_val != st.session_state.comarca_sel:
+                    st.session_state.comarca_sel = comarca_widget_val
+                    st.session_state.poble_sel = None
+                    st.rerun()
+
+            with col_poble:
+                if st.session_state.comarca_sel and "---" not in st.session_state.comarca_sel:
+                    poblacions_dict = CIUTATS_PER_COMARCA[st.session_state.comarca_sel]
+                    conv_poblacions = calcular_convergencia_per_llista_poblacions(hourly_index_sel, poblacions_dict, nivell_sel)
+
+                    def format_poblacio_label(nom_poblacio):
+                        if "---" in nom_poblacio: return nom_poblacio
+                        valor_conv = conv_poblacions.get(nom_poblacio)
+                        if isinstance(valor_conv, (int, float)) and valor_conv >= 25:
+                            emoji = "🔴" if valor_conv >= 50 else "🟠"
+                            return f"{nom_poblacio} ({emoji} {valor_conv:.0f})"
+                        return nom_poblacio
+                    
+                    poblacions_options = ["--- Selecciona Localitat ---"] + sorted(list(poblacions_dict.keys()))
+                    idx_poble = poblacions_options.index(st.session_state.poble_sel) if st.session_state.poble_sel in poblacions_options else 0
+                    poble_widget_val = st.selectbox("Localitat:", options=poblacions_options, format_func=format_poblacio_label, index=idx_poble)
+
+                    # Si l'usuari tria un poble, actualitzem l'estat i fem rerun per entrar en mode anàlisi
+                    if poble_widget_val != st.session_state.poble_sel:
+                        st.session_state.poble_sel = poble_widget_val
+                        st.rerun()
 
 def run_valley_halley_app():
     # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
