@@ -3188,26 +3188,14 @@ def calcular_convergencia_per_llista_poblacions(hourly_index, poblacions_dict):
 
 def ui_main_page_selectors(alertes_comarca):
     """
-    Crea els controls de selecció a la pàgina principal.
-    Mostra els valors de convergència tant a la llista de comarques com a la de poblacions.
+    Crea els controls de selecció i retorna els valors escollits.
+    Aquesta versió no utilitza callbacks per a una lògica més clara i robusta.
     """
     with st.container(border=True):
         st.markdown("#### Pas 1: Tria una comarca i una localitat")
-
-        # Callbacks interns per a la lògica de selecció
-        def on_comarca_change():
-            st.session_state.poble_selector = None
-            if 'poble_selector_widget' in st.session_state:
-                st.session_state.poble_selector_widget = "--- Selecciona una opció ---"
-        def on_poble_change():
-            poble = st.session_state.poble_selector_widget
-            st.session_state.poble_selector = poble if poble and "---" not in poble else None
-
-        # Widgets de selecció
         col1, col2 = st.columns(2)
         
         with col1:
-            # Formata les comarques per mostrar el valor màxim de convergència
             def format_comarca_label(nom_comarca):
                 if "---" in nom_comarca: return nom_comarca
                 valor = alertes_comarca.get(nom_comarca)
@@ -3217,31 +3205,37 @@ def ui_main_page_selectors(alertes_comarca):
                 return nom_comarca
 
             comarques = sorted(list(CIUTATS_PER_COMARCA.keys()))
-            st.selectbox("Comarca:", options=["--- Selecciona una opció ---"] + comarques,
-                         key='selected_comarca', on_change=on_comarca_change, format_func=format_comarca_label)
+            comarca_seleccionada = st.selectbox(
+                "Comarca:",
+                options=["--- Selecciona una opció ---"] + comarques,
+                key='selected_comarca_widget',
+                format_func=format_comarca_label
+            )
 
-        comarca_sel = st.session_state.get('selected_comarca')
-        if comarca_sel and "---" not in comarca_sel:
+        poblacio_seleccionada = None
+        if comarca_seleccionada and "---" not in comarca_seleccionada:
             with col2:
-                # --- NOU BLOC DE CÀLCUL I FORMAT ---
-                poblacions_dict = CIUTATS_PER_COMARCA.get(comarca_sel, {})
+                poblacions_dict = CIUTATS_PER_COMARCA.get(comarca_seleccionada, {})
                 hourly_index = st.session_state.get('hourly_index_sel', 0)
-                
-                # Cridem la nova funció per obtenir els valors de cada població
                 conv_poblacions = calcular_convergencia_per_llista_poblacions(hourly_index, poblacions_dict)
 
                 def format_poblacio_label(nom_poblacio):
                     if "---" in nom_poblacio: return nom_poblacio
                     valor = conv_poblacions.get(nom_poblacio)
-                    # Mostrem el valor si és significatiu (>25)
                     if valor and valor >= 25:
                         return f"{nom_poblacio} (Conv: {valor:.0f})"
                     return nom_poblacio
-                # ------------------------------------
 
                 poblacions = sorted(list(poblacions_dict.keys()))
-                st.selectbox("Localitat:", options=["--- Selecciona una opció ---"] + poblacions,
-                             key="poble_selector_widget", on_change=on_poble_change, format_func=format_poblacio_label)
+                poblacio_seleccionada = st.selectbox(
+                    "Localitat:",
+                    options=["--- Selecciona una opció ---"] + poblacions,
+                    key="poble_selector_widget",
+                    format_func=format_poblacio_label
+                )
+        
+        # Aquesta línia és la clau: sempre retorna una tupla de dos elements
+        return comarca_seleccionada, poblacio_seleccionada
     
 
 def canviar_poble_analitzat(nom_poble):
@@ -4563,7 +4557,7 @@ def ui_peu_de_pagina():
 # --- Lògica Principal de l'Aplicació ---
 
 def run_catalunya_app():
-    # --- CAPÇALERA I NAVEGACIÓ GLOBAL ---
+    # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     is_developer = st.session_state.get('developer_mode', False)
@@ -4597,77 +4591,63 @@ def run_catalunya_app():
             
     st.divider()
 
-    # --- FLUX DE L'APLICACIÓ ---
+    # --- PAS 2: CONTROLS DE TEMPS UNIFICATS ---
+    with st.container(border=True):
+        st.caption("Selecciona el dia i l'hora per a l'anàlisi. Aquesta selecció es mantindrà quan canviïs de localitat.")
+        col_dia, col_hora, _ = st.columns([0.4, 0.4, 0.2])
+        with col_dia:
+            st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_CAT) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector")
+        with col_hora:
+            st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
+
+    dia_sel_str = st.session_state.dia_selector
+    hora_sel_str = st.session_state.hora_selector
+    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
+    local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
+    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    st.session_state.hourly_index_sel = hourly_index_sel
+
+    # --- PAS 3: FLUX DE L'APLICACIÓ ---
     poble_sel = st.session_state.get('poble_selector')
 
-    # ESTAT 1: MODE SELECCIÓ (si no s'ha triat un poble)
+    # ESTAT 1: MODE SELECCIÓ
     if not poble_sel:
-        with st.container(border=True):
-            st.caption("Selecciona el dia i l'hora per veure les alertes de convergència al mapa i als selectors.")
-            col_dia, col_hora, _ = st.columns([0.4, 0.4, 0.2])
-            with col_dia:
-                st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_CAT) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector")
-            with col_hora:
-                st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
-
-        dia_sel_str = st.session_state.dia_selector
-        hora_sel_str = st.session_state.hora_selector
-        target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
-        local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
-        start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-        st.session_state.hourly_index_sel = hourly_index_sel
-
         alertes_comarca = calcular_alertes_per_comarca(hourly_index_sel)
-        
         ui_mapa_display(list(alertes_comarca.keys()))
         
-        # LÒGICA DE CONTROL CENTRALITZADA
         comarca_actual, poble_actual = ui_main_page_selectors(alertes_comarca)
         
-        # Si la comarca seleccionada al widget és diferent de la que tenim guardada, actualitzem l'estat.
         if comarca_actual != st.session_state.get('selected_comarca'):
             st.session_state.selected_comarca = comarca_actual if comarca_actual and "---" not in comarca_actual else None
-            st.session_state.poble_selector = None # Resetejem el poble en canviar de comarca
+            st.session_state.poble_selector = None
             st.rerun()
 
-        # Si l'usuari selecciona un poble vàlid, actualitzem l'estat final i fem un rerun per passar al mode anàlisi.
         if poble_actual and "---" not in poble_actual:
             if st.session_state.get('poble_selector') != poble_actual:
                 st.session_state.poble_selector = poble_actual
                 st.rerun()
-
+        
         st.warning("Selecciona una comarca i una localitat per començar l'anàlisi detallada.")
         return
 
-    # ESTAT 2: MODE ANÀLISI (si ja tenim un poble seleccionat)
+    # ESTAT 2: MODE ANÀLISI
     else:
         st.success(f"### Anàlisi per a: **{poble_sel}**")
         if st.button("⬅️ Canviar de localitat"):
+            # Reseteja només la selecció geogràfica, preservant el temps
             st.session_state.poble_selector = None
             st.session_state.selected_comarca = None
             st.rerun()
         
-        with st.container(border=True):
-            col_dia, col_hora, col_nivell = st.columns(3)
-            with col_dia:
-                st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_CAT) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector")
-            with col_hora:
-                st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
-            with col_nivell:
-                if not is_guest:
-                    nivells = [1000, 950, 925, 900, 850, 800, 700]
-                    st.selectbox("Nivell (Mapes d'Anàlisi):", nivells, key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
+        if not is_guest:
+            with st.container(border=True):
+                st.selectbox("Nivell per als Mapes d'Anàlisi:", 
+                             options=[1000, 950, 925, 900, 850, 800, 700], 
+                             key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
 
-        dia_sel_str = st.session_state.dia_selector
-        hora_sel_str = st.session_state.hora_selector
         nivell_sel = st.session_state.get('level_cat_main', 925)
         lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
-        
-        target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
-        local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
-        start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
 
         menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Anàlisi de Vents", "Tall Vertical Simulat"]
