@@ -4596,7 +4596,7 @@ def run_catalunya_app():
                     analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
                     interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
                     sounding_data = data_tuple[0] if data_tuple else None
-                    ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)```
+                    ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)
 
 def run_valley_halley_app():
     # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
