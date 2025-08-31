@@ -4581,13 +4581,12 @@ def run_catalunya_app():
         # LÒGICA DE CONTROL CENTRALITZADA
         comarca_actual, poble_actual = ui_main_page_selectors(alertes_comarca)
         
-        # Si la comarca seleccionada al widget és diferent de la que tenim guardada, actualitzem l'estat.
-        if comarca_actual != st.session_state.get('selected_comarca'):
+        if comarca_actual != st.session_state.get('selected_comarca_widget_value'):
+            st.session_state.selected_comarca_widget_value = comarca_actual
             st.session_state.selected_comarca = comarca_actual if comarca_actual and "---" not in comarca_actual else None
-            st.session_state.poble_selector = None # Resetejem el poble en canviar de comarca
+            st.session_state.poble_selector = None
             st.rerun()
 
-        # Si l'usuari selecciona un poble vàlid, actualitzem l'estat final i fem un rerun per passar al mode anàlisi.
         if poble_actual and "---" not in poble_actual:
             if st.session_state.get('poble_selector') != poble_actual:
                 st.session_state.poble_selector = poble_actual
@@ -4599,10 +4598,20 @@ def run_catalunya_app():
     # ESTAT 2: MODE ANÀLISI (si ja tenim un poble seleccionat)
     else:
         st.success(f"### Anàlisi per a: **{poble_sel}**")
+        
+        # --- LÍNIA CLAU CORREGIDA ---
         if st.button("⬅️ Canviar de localitat"):
+            # Neteja explícita de totes les variables d'estat de selecció
             st.session_state.poble_selector = None
             st.session_state.selected_comarca = None
+            if 'poble_selector_widget' in st.session_state:
+                del st.session_state['poble_selector_widget']
+            if 'selected_comarca_widget' in st.session_state:
+                del st.session_state['selected_comarca_widget']
+            if 'selected_comarca_widget_value' in st.session_state:
+                del st.session_state['selected_comarca_widget_value']
             st.rerun()
+        # ----------------------------
         
         with st.container(border=True):
             col_dia, col_hora, col_nivell = st.columns(3)
@@ -4615,6 +4624,7 @@ def run_catalunya_app():
                     nivells = [1000, 950, 925, 900, 850, 800, 700]
                     st.selectbox("Nivell (Mapes d'Anàlisi):", nivells, key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
 
+        # ... (La resta de la funció es manté exactament igual)
         dia_sel_str = st.session_state.dia_selector
         hora_sel_str = st.session_state.hora_selector
         nivell_sel = st.session_state.get('level_cat_main', 925)
