@@ -2245,56 +2245,42 @@ def debug_convergence_calculation(map_data, llista_ciutats):
         print("="*50 + "\n\n")
         return {}
 
-@st.cache_data(ttl=1800, show_spinner="Analitzant zones de convergència...")
-def calcular_convergencies_per_llista(map_data, llista_ciutats):
+@st.cache_data(ttl=1800)
+def calcular_convergencia_per_llista_poblacions(hourly_index, poblacions_dict, nivell):
     """
-    Analitza el mapa de dades per trobar el valor MÀXIM de convergència
-    en un radi proper a cada ciutat de la llista. Això assegura que les alertes
-    de la llista coincideixin amb els nuclis visualitzats al mapa.
+    Calcula la convergència per a una llista de poblacions a un nivell específic.
+    *** VERSIÓ CORREGIDA: Ara accepta el paràmetre 'nivell'. ***
     """
-    if not map_data or 'lons' not in map_data or len(map_data['lons']) < 4:
+    if not poblacions_dict:
         return {}
 
-    convergencies = {}
+    # Utilitzem el 'nivell' que rebem com a paràmetre
+    map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
+    if error or not map_data:
+        return {}
+
     try:
         lons, lats = map_data['lons'], map_data['lats']
-        speed_data, dir_data = map_data['speed_data'], map_data['dir_data']
-
-        # Creem una graella d'alta resolució per a l'anàlisi
-        grid_lon, grid_lat = np.meshgrid(
-            np.linspace(min(lons), max(lons), 200),
-            np.linspace(min(lats), max(lats), 200)
-        )
-        u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+        grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100))
+        
+        u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
         grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
         grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
         
         with np.errstate(invalid='ignore'):
             dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
             convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
-            convergence_scaled[np.isnan(convergence_scaled)] = 0
-
-        # Lògica d'anàlisi per àrea
-        SEARCH_RADIUS_DEG = 0.15  # Radi de cerca en graus (aprox. 15-20 km)
-
-        for nom_ciutat, coords in llista_ciutats.items():
-            lat_sel, lon_sel = coords['lat'], coords['lon']
-            
-            dist_from_city = np.sqrt((grid_lat - lat_sel)**2 + (grid_lon - lon_sel)**2)
-            nearby_mask = dist_from_city <= SEARCH_RADIUS_DEG
-            
-            if np.any(nearby_mask):
-                # Ens quedem amb el valor MÀXIM de convergència dins d'aquesta àrea.
-                max_conv_in_area = np.max(convergence_scaled[nearby_mask])
-                convergencies[nom_ciutat] = max_conv_in_area
-            else:
-                convergencies[nom_ciutat] = 0
-    
-    except Exception as e:
-        print(f"Error crític a calcular_convergencies_per_llista: {e}")
-        return {}
         
-    return convergencies
+        resultats = {}
+        for nom, coords in poblacions_dict.items():
+            valor = griddata((grid_lon.flatten(), grid_lat.flatten()), convergence_scaled.flatten(), (coords['lon'], coords['lat']), method='cubic')
+            if pd.notna(valor):
+                resultats[nom] = valor
+        
+        return resultats
+    except Exception as e:
+        print(f"Error dins de calcular_convergencia_per_llista_poblacions: {e}")
+        return {}
 
 
 @st.cache_data(ttl=1800)
