@@ -4367,6 +4367,7 @@ def ui_peu_de_pagina():
 
 def run_catalunya_app():
     # --- PAS 1: CAPÇALERA I NAVEGACIÓ ---
+    # (Aquesta part no canvia i es manté igual)
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     is_developer = st.session_state.get('developer_mode', False)
@@ -4383,7 +4384,6 @@ def run_catalunya_app():
     
     with col_change:
         if st.button("Canviar a EEUU?", use_container_width=True):
-            # Neteja completa de l'estat per evitar conflictes
             for key in list(st.session_state.keys()):
                 if key not in ['logged_in', 'username', 'guest_mode', 'developer_mode']:
                     del st.session_state[key]
@@ -4401,149 +4401,161 @@ def run_catalunya_app():
             
     st.divider()
 
-    # --- PAS 2: LÒGICA D'INTERACCIÓ PRINCIPAL ---
-    
-    # Dibuixem el mapa i recollim si hi ha hagut un clic
-    map_data, gdf = ui_mapa_interactiu_seleccio()
+    # --- NOU FLUX DE LÒGICA PRINCIPAL ---
 
-    # Processem el clic del mapa si n'hi ha un
-    if map_data and map_data.get('last_object_clicked_tooltip'):
-        clicked_comarca = map_data['last_object_clicked_tooltip']
-        if gdf is not None and clicked_comarca in gdf['nomcomar'].tolist():
-            if st.session_state.get('selected_comarca') != clicked_comarca:
-                st.session_state.selected_comarca = clicked_comarca
-                st.session_state.poble_selector = None # Important: reseteja el poble anterior
-                st.rerun()
+    # Si NO tenim un poble seleccionat, estem en "mode selecció"
+    if 'poble_selector' not in st.session_state or st.session_state.poble_selector is None:
+        
+        # Dibuixem el mapa i recollim el clic
+        map_data, gdf = ui_mapa_interactiu_seleccio()
 
-    # Si hi ha una comarca seleccionada, mostrem la llista de poblacions
-    comarca_sel = st.session_state.get('selected_comarca')
-    if comarca_sel:
-        with st.container(border=True):
-            st.markdown(f"#### Pas 2: Tria una localitat de **{comarca_sel}**")
-            
-            poblacions = sorted(list(CIUTATS_PER_COMARCA.get(comarca_sel, {}).keys()))
-            
-            st.selectbox(
-                "Poblacions disponibles:",
-                options=["--- Selecciona una opció ---"] + poblacions,
-                key="poble_selector_widget",
-                on_change=on_poble_select
-            )
-            
-            if st.button("Canviar de comarca"):
-                st.session_state.selected_comarca = None
-                st.session_state.poble_selector = None
-                st.rerun()
+        # Processem el clic del mapa si n'hi ha un
+        if map_data and map_data.get('last_object_clicked_tooltip'):
+            clicked_comarca = map_data['last_object_clicked_tooltip']
+            if gdf is not None and clicked_comarca in gdf['nomcomar'].tolist():
+                # Si l'usuari clica una comarca, l'emmagatzemem a l'estat i refresquem
+                if st.session_state.get('selected_comarca') != clicked_comarca:
+                    st.session_state.selected_comarca = clicked_comarca
+                    st.rerun()
 
-    # --- PAS 3: MOSTRAR L'ANÀLISI FINAL SI JA S'HA SELECCIONAT UN POBLE ---
-    poble_sel = st.session_state.get('poble_selector')
-    
-    if not poble_sel:
+        # Si ja tenim una comarca seleccionada a l'estat, mostrem la llista de poblacions
+        comarca_sel = st.session_state.get('selected_comarca')
+        if comarca_sel:
+            with st.container(border=True):
+                st.markdown(f"#### Pas 2: Tria una localitat de **{comarca_sel}**")
+                poblacions = sorted(list(CIUTATS_PER_COMARCA.get(comarca_sel, {}).keys()))
+                
+                # Aquest 'selectbox' utilitza el callback 'on_poble_select'
+                st.selectbox(
+                    "Poblacions disponibles:",
+                    options=["--- Selecciona una opció ---"] + poblacions,
+                    key="poble_selector_widget",
+                    on_change=on_poble_select
+                )
+                
+                if st.button("Canviar de comarca"):
+                    st.session_state.selected_comarca = None
+                    st.session_state.poble_selector = None
+                    st.rerun()
+        
+        # Missatge d'ajuda final si encara no s'ha completat la selecció
         st.warning("El procés està a l'espera de la teva selecció.")
-        return 
-    
-    st.success(f"### Anàlisi per a: **{poble_sel}**")
-    
-    # Inicialització de selectors de temps i pestanyes
-    if 'dia_selector' not in st.session_state: 
-        st.session_state.dia_selector = datetime.now(TIMEZONE_CAT).strftime('%d/%m/%Y')
-    if 'hora_selector' not in st.session_state: 
-        st.session_state.hora_selector = f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h"
-    if 'level_cat_main' not in st.session_state: 
-        st.session_state.level_cat_main = 925
-    if 'active_tab_cat' not in st.session_state: 
-        st.session_state.active_tab_cat = "Anàlisi Vertical"
 
-    with st.container(border=True):
-        col_dia, col_hora, col_nivell = st.columns(3)
-        with col_dia:
-            now_local = datetime.now(TIMEZONE_CAT)
-            opcions_dia = [(now_local + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)]
-            st.selectbox("Dia:", opcions_dia, key="dia_selector", disabled=is_guest)
-        with col_hora:
-            opcions_hora = [f"{h:02d}:00h" for h in range(24)]
-            hora_actual = st.session_state.get('hora_selector')
-            idx = opcions_hora.index(hora_actual) if hora_actual in opcions_hora else 12
-            st.selectbox("Hora:", opcions_hora, key="hora_selector", disabled=is_guest, index=idx)
-        with col_nivell:
-            if not is_guest:
-                nivells = [1000, 950, 925, 900, 850, 800, 700]
-                st.selectbox("Nivell (Mapes):", nivells, key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
-
-    dia_sel_str = st.session_state.dia_selector
-    hora_sel_str = st.session_state.hora_selector
-    nivell_sel = st.session_state.level_cat_main if not is_guest else 925
-    lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
-    
-    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
-    local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
-    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
-
-    menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Anàlisi de Vents", "Tall Vertical Simulat"]
-    menu_icons = ["graph-up-arrow", "map", "wind", "moisture"]
-    
-    if not is_guest:
-        menu_options.append("💬 Assistent IA")
-        menu_icons.append("chat-quote-fill")
-        
-    default_idx = menu_options.index(st.session_state.active_tab_cat) if st.session_state.active_tab_cat in menu_options else 0
-    selected_tab = option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx, key="catalunya_nav_selector")
-    st.session_state.active_tab_cat = selected_tab
-
-    if selected_tab == "Anàlisi de Mapes":
-        ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
+    # Si SÍ que tenim un poble seleccionat, estem en "mode anàlisi"
     else:
-        with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
-            data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+        poble_sel = st.session_state.poble_selector
         
-        if not error_msg and final_index != hourly_index_sel:
-            adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
-            adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
-            st.warning(f"**Avís:** No hi havia dades per a les {hora_sel_str}. Es mostren les de l'hora més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+        # Mostrem un títol clar i un botó per tornar enrere
+        st.success(f"### Anàlisi per a: **{poble_sel}**")
+        if st.button("⬅️ Canviar de localitat (Tornar al mapa)"):
+            st.session_state.poble_selector = None
+            st.session_state.selected_comarca = None
+            st.rerun()
+        
+        # Ara ve la resta del teu codi d'anàlisi, que només s'executa quan tot està seleccionat
+        
+        # Inicialització de selectors de temps i pestanyes
+        if 'dia_selector' not in st.session_state: 
+            st.session_state.dia_selector = datetime.now(TIMEZONE_CAT).strftime('%d/%m/%Y')
+        if 'hora_selector' not in st.session_state: 
+            st.session_state.hora_selector = f"{datetime.now(TIMEZONE_CAT).hour:02d}:00h"
+        if 'level_cat_main' not in st.session_state: 
+            st.session_state.level_cat_main = 925
+        if 'active_tab_cat' not in st.session_state: 
+            st.session_state.active_tab_cat = "Anàlisi Vertical"
 
-        if error_msg: 
-            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        with st.container(border=True):
+            col_dia, col_hora, col_nivell = st.columns(3)
+            with col_dia:
+                now_local = datetime.now(TIMEZONE_CAT)
+                opcions_dia = [(now_local + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)]
+                st.selectbox("Dia:", opcions_dia, key="dia_selector", disabled=is_guest)
+            with col_hora:
+                opcions_hora = [f"{h:02d}:00h" for h in range(24)]
+                hora_actual = st.session_state.get('hora_selector')
+                idx = opcions_hora.index(hora_actual) if hora_actual in opcions_hora else 12
+                st.selectbox("Hora:", opcions_hora, key="hora_selector", disabled=is_guest, index=idx)
+            with col_nivell:
+                if not is_guest:
+                    nivells = [1000, 950, 925, 900, 850, 800, 700]
+                    st.selectbox("Nivell (Mapes):", nivells, key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
+
+        # Càlculs de temps i variables per a l'anàlisi
+        dia_sel_str = st.session_state.dia_selector
+        hora_sel_str = st.session_state.hora_selector
+        nivell_sel = st.session_state.level_cat_main if not is_guest else 925
+        lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
+        
+        target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
+        local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
+        start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+        timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
+
+        # Menú de pestanyes
+        menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Anàlisi de Vents", "Tall Vertical Simulat"]
+        menu_icons = ["graph-up-arrow", "map", "wind", "moisture"]
+        if not is_guest:
+            menu_options.append("💬 Assistent IA")
+            menu_icons.append("chat-quote-fill")
+        
+        default_idx = menu_options.index(st.session_state.active_tab_cat) if st.session_state.active_tab_cat in menu_options else 0
+        selected_tab = option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx, key="catalunya_nav_selector")
+        st.session_state.active_tab_cat = selected_tab
+
+        # Lògica per mostrar la pestanya seleccionada
+        if selected_tab == "Anàlisi de Mapes":
+            ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
         else:
-            params_calc = data_tuple[1] if data_tuple else {}
-            map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
-            if map_data_conv:
-                conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
-                if pd.notna(conv_value):
-                    params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
+            with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
+                data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
             
-            if selected_tab == "Anàlisi Vertical":
-                avis_proximitat = analitzar_amenaça_convergencia_propera(map_data_conv, params_calc, lat_sel, lon_sel, nivell_sel)
-                ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, avis_proximitat)
-            
-            elif selected_tab == "Anàlisi de Vents":
-                ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_sel_str, timestamp_str)
+            if not error_msg and final_index != hourly_index_sel:
+                adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+                adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
+                st.warning(f"**Avís:** No hi havia dades per a les {hora_sel_str}. Es mostren les de l'hora més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
 
-            elif selected_tab == "Tall Vertical Simulat":
-                col_esquerra, col_dreta = st.columns([0.7, 0.3])
-                with col_esquerra:
-                    st.markdown(f"#### Simulació de Cicle de Vida per a {poble_sel}")
-                    st.caption(timestamp_str)
-                    if 'regenerate_key' not in st.session_state:
-                        st.session_state.regenerate_key = 0
-                    if st.button("🔄 Regenerar Animació", help="Crea una nova versió de l'animació."):
-                        st.session_state.regenerate_key += 1
-                    with st.spinner("Generant animació..."):
-                        params_tuple = tuple(sorted(params_calc.items()))
-                        gif_bytes = generar_animacio_cachejada(params_tuple, hora_sel_str, st.session_state.regenerate_key)
-                    if gif_bytes is None:
-                        st.warning("Les condicions actuals (CAPE < 100) no són suficients per generar una tempesta simulada.")
-                    else:
-                        st.image(gif_bytes, caption="Animació del cicle de vida simulat (2 hores).")
-                with col_dreta:
-                    ui_guia_tall_vertical(params_calc, nivell_sel)
+            if error_msg: 
+                st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+            else:
+                params_calc = data_tuple[1] if data_tuple else {}
+                map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
+                if map_data_conv:
+                    conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+                    if pd.notna(conv_value):
+                        params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
+                
+                if selected_tab == "Anàlisi Vertical":
+                    avis_proximitat = analitzar_amenaça_convergencia_propera(map_data_conv, params_calc, lat_sel, lon_sel, nivell_sel)
+                    ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, avis_proximitat)
+                
+                elif selected_tab == "Anàlisi de Vents":
+                    ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_sel_str, timestamp_str)
 
-            elif selected_tab == "💬 Assistent IA" and not is_guest:
-                analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
-                interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
-                sounding_data = data_tuple[0] if data_tuple else None
-                ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)
+                elif selected_tab == "Tall Vertical Simulat":
+                    col_esquerra, col_dreta = st.columns([0.7, 0.3])
+                    with col_esquerra:
+                        st.markdown(f"#### Simulació de Cicle de Vida per a {poble_sel}")
+                        st.caption(timestamp_str)
+                        if 'regenerate_key' not in st.session_state:
+                            st.session_state.regenerate_key = 0
+                        if st.button("🔄 Regenerar Animació", help="Crea una nova versió de l'animació."):
+                            st.session_state.regenerate_key += 1
+                        with st.spinner("Generant animació..."):
+                            params_tuple = tuple(sorted(params_calc.items()))
+                            gif_bytes = generar_animacio_cachejada(params_tuple, hora_sel_str, st.session_state.regenerate_key)
+                        if gif_bytes is None:
+                            st.warning("Les condicions actuals (CAPE < 100) no són suficients per generar una tempesta simulada.")
+                        else:
+                            st.image(gif_bytes, caption="Animació del cicle de vida simulat (2 hores).")
+                    with col_dreta:
+                        ui_guia_tall_vertical(params_calc, nivell_sel)
+
+                elif selected_tab == "💬 Assistent IA" and not is_guest:
+                    analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
+                    interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
+                    sounding_data = data_tuple[0] if data_tuple else None
+                    ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)
 
 def run_valley_halley_app():
     # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
