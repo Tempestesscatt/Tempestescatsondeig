@@ -2994,8 +2994,10 @@ def carregar_dades_geografiques():
     except Exception as e:
         st.error(f"Error en carregar l'arxiu 'comarques.geojson'. Assegura't que estigui a la mateixa carpeta que l'script al teu repositori de GitHub. Detall: {e}")
         return None
+        
 def ui_mapa_interactiu_seleccio():
     """
+    VERSIÓ CORREGIDA I FUNCIONAL:
     Crea i mostra un mapa interactiu de Catalunya per seleccionar una comarca i després una població.
     Retorna el nom de la població seleccionada, o None si no se n'ha triat cap.
     """
@@ -3004,17 +3006,17 @@ def ui_mapa_interactiu_seleccio():
 
     gdf = carregar_dades_geografiques()
     if gdf is None:
-        return None # Si no hi ha mapa, no podem continuar
+        return None
 
     # Inicialitzem l'estat si no existeix
     if 'selected_comarca' not in st.session_state:
         st.session_state.selected_comarca = None
     
-    # Centre inicial del mapa (Catalunya)
+    # Centre i zoom inicial del mapa
     map_center = [41.83, 1.87]
     zoom_level = 8
 
-    # Si ja s'ha seleccionat una comarca, centrem el mapa en ella
+    # Si ja s'ha seleccionat una comarca, ajustem el centre i el zoom
     if st.session_state.selected_comarca:
         comarca_shape = gdf[gdf['nomcomar'] == st.session_state.selected_comarca]
         if not comarca_shape.empty:
@@ -3022,7 +3024,7 @@ def ui_mapa_interactiu_seleccio():
             zoom_level = 10
 
     # Creem el mapa base de Folium
-    m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB positron")
+    m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB positron", scrollWheelZoom=False)
 
     if st.session_state.selected_comarca:
         # --- VISTA DE COMARCA SELECCIONADA ---
@@ -3031,20 +3033,14 @@ def ui_mapa_interactiu_seleccio():
         comarca_shape = gdf[gdf['nomcomar'] == st.session_state.selected_comarca]
         folium.GeoJson(
             comarca_shape,
-            style_function=lambda x: {'fillColor': '#FF4B4B', 'color': 'black', 'weight': 2, 'fillOpacity': 0.6}
+            style_function=lambda x: {'fillColor': '#FF4B4B', 'color': 'black', 'weight': 2, 'fillOpacity': 0.5}
         ).add_to(m)
 
-        # Afegeix els marcadors de les poblacions dins d'aquesta comarca
-        comarca_key = st.session_state.selected_comarca.replace("La ", "La_").split(" ")[0] # Normalització simple per clau
+        # --- LÒGICA CORREGIDA PER AFEGIR MARCADORS ---
+        # Busquem directament a la nostra estructura de dades amb el nom complet
+        ciutats_de_la_comarca = CIUTATS_PER_COMARCA.get(st.session_state.selected_comarca, {})
         
-        ciutats_en_comarca = []
-        # Busquem la comarca correcta a la nostra estructura de dades
-        for nom_comarca_complet, ciutats_dict in CIUTATS_PER_COMARCA.items():
-            if st.session_state.selected_comarca == nom_comarca_complet:
-                ciutats_en_comarca = ciutats_dict.items()
-                break
-        
-        for ciutat, coords in ciutats_en_comarca:
+        for ciutat, coords in ciutats_de_la_comarca.items():
             folium.Marker(
                 location=[coords['lat'], coords['lon']],
                 popup=f"<b>{ciutat}</b><br>Fes clic per analitzar",
@@ -3062,36 +3058,39 @@ def ui_mapa_interactiu_seleccio():
             tooltip=folium.GeoJsonTooltip(fields=['nomcomar'], aliases=['Comarca:']),
         ).add_to(m)
 
-    # Renderitzem el mapa a Streamlit i capturem les interaccions
+    # Renderitzem el mapa i capturem el valor de l'últim element clicat
     map_data = st_folium(m, width="100%", height=500, returned_objects=['last_object_clicked_tooltip'])
 
-    # Lògica de processament de clics
-    if map_data and map_data['last_object_clicked_tooltip']:
+    # --- LÒGICA MILLORADA PER PROCESSAR ELS CLICS ---
+    if map_data and map_data.get('last_object_clicked_tooltip'):
         clicked_value = map_data['last_object_clicked_tooltip']
         
-        # Si hem clicat una comarca...
+        # Cas 1: L'usuari ha clicat en una comarca
         if clicked_value in gdf['nomcomar'].tolist():
+            # Si la comarca clicada és diferent de la que ja teníem, l'actualitzem
             if st.session_state.selected_comarca != clicked_value:
                 st.session_state.selected_comarca = clicked_value
-                st.rerun() # Redibuixem per mostrar la vista de comarca
+                st.session_state.poble_selector = None # Netegem la selecció de poble anterior
+                st.rerun() # Forcem el redibuixat per mostrar el zoom i els marcadors
         
-        # Si hem clicat un marcador de ciutat...
+        # Cas 2: L'usuari ha clicat en el marcador d'una població
         elif clicked_value in CIUTATS_CATALUNYA:
-            # Hem trobat una ciutat! L'assignem i la retornem.
-            st.session_state.poble_selector = clicked_value
-            # Netegem la selecció de comarca per a la propera vegada
-            st.session_state.selected_comarca = None
-            st.success(f"Has seleccionat {clicked_value}. Carregant anàlisi...")
-            time.sleep(1)
-            st.rerun()
+            # Si el poble seleccionat és nou, l'actualitzem
+            if st.session_state.get('poble_selector') != clicked_value:
+                st.session_state.poble_selector = clicked_value
+                st.success(f"Has seleccionat {clicked_value}. Carregant anàlisi...")
+                time.sleep(1) # Petita pausa per veure el missatge
+                st.rerun() # Forcem el redibuixat per mostrar els panells d'anàlisi
 
-    # Botó per tornar a la vista general de Catalunya
+    # Botó per tornar a la vista general de Catalunya si estem en mode zoom
     if st.session_state.selected_comarca:
         if st.button("⬅️ Tornar al mapa de comarques", use_container_width=True):
             st.session_state.selected_comarca = None
+            st.session_state.poble_selector = None
             st.rerun()
 
-    return st.session_state.get('poble_selector')
+    # La funció no necessita retornar res, ja que tota la lògica es gestiona
+    # a través de l'estat de la sessió (st.session_state)
     
 
 
