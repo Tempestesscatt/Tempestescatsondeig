@@ -4555,7 +4555,6 @@ def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME/GFS via Open-Meteo | Imatges via Meteociel & NOAA | IA per Google Gemini.</p>", unsafe_allow_html=True)
 
 # --- Lògica Principal de l'Aplicació ---
-
 def run_catalunya_app():
     # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
@@ -4621,11 +4620,17 @@ def run_catalunya_app():
         if comarca_actual != st.session_state.get('selected_comarca'):
             st.session_state.selected_comarca = comarca_actual if comarca_actual and "---" not in comarca_actual else None
             st.session_state.poble_selector = None
+            # --- CORRECCIÓ 1: Reinicia la pestanya en canviar de comarca ---
+            if 'active_tab_cat' in st.session_state:
+                del st.session_state['active_tab_cat']
             st.rerun()
 
         if poble_actual and "---" not in poble_actual:
             if st.session_state.get('poble_selector') != poble_actual:
                 st.session_state.poble_selector = poble_actual
+                # --- CORRECCIÓ 2: Reinicia la pestanya en seleccionar una nova localitat ---
+                if 'active_tab_cat' in st.session_state:
+                    del st.session_state['active_tab_cat']
                 st.rerun()
         
         st.warning("Selecciona una comarca i una localitat per començar l'anàlisi detallada.")
@@ -4635,9 +4640,12 @@ def run_catalunya_app():
     else:
         st.success(f"### Anàlisi per a: **{poble_sel}**")
         if st.button("⬅️ Canviar de localitat"):
-            # Reseteja només la selecció geogràfica, preservant el temps
+            # Reseteja la selecció geogràfica
             st.session_state.poble_selector = None
             st.session_state.selected_comarca = None
+            # --- CORRECCIÓ 3: Reinicia la pestanya en tornar al menú de selecció ---
+            if 'active_tab_cat' in st.session_state:
+                del st.session_state['active_tab_cat']
             st.rerun()
         
         if not is_guest:
@@ -4656,10 +4664,12 @@ def run_catalunya_app():
             menu_options.append("💬 Assistent IA")
             menu_icons.append("chat-quote-fill")
         
+        # Amb la correcció, això tornarà a l'índex 0 (Anàlisi Vertical) de manera segura
         default_idx = menu_options.index(st.session_state.get('active_tab_cat', "Anàlisi Vertical"))
         selected_tab = option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx, key="catalunya_nav_selector")
         st.session_state.active_tab_cat = selected_tab
 
+        # El reste de la lògica de les pestanyes es manté igual
         if selected_tab == "Anàlisi de Mapes":
             ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
         else:
