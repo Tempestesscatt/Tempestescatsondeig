@@ -2976,18 +2976,24 @@ def crear_mapa_convergencia_cat(lons, lats, speed_data, dir_data, dewpoint_data,
 def carregar_dades_geografiques():
     """
     Carrega i processa l'arxiu GeoJSON de les comarques per utilitzar-lo al mapa.
-    Aquesta funció es desa a la memòria cau per a un rendiment òptim.
+    Aquesta versió utilitza un camí absolut per ser compatible amb Streamlit Cloud.
     """
     try:
-        # Carreguem el fitxer GeoJSON amb les formes de les comarques
-        gdf = gpd.read_file("comarques.geojson")
+        # --- LÍNIES MODIFICADES ---
+        # Troba el directori on s'està executant l'script actual
+        script_dir = os.path.dirname(__file__)
+        # Crea el camí complet i correcte a l'arxiu geojson
+        file_path = os.path.join(script_dir, "comarques.geojson")
+        # --------------------------
+
+        # Carreguem el fitxer GeoJSON amb el camí complet
+        gdf = gpd.read_file(file_path)
         # Assegurem que la projecció sigui la correcta per a Folium
         gdf = gdf.to_crs("EPSG:4326")
         return gdf
     except Exception as e:
-        st.error(f"Error en carregar l'arxiu 'comarques.geojson'. Assegura't que estigui a la mateixa carpeta que l'script. Detall: {e}")
+        st.error(f"Error en carregar l'arxiu 'comarques.geojson'. Assegura't que estigui a la mateixa carpeta que l'script al teu repositori de GitHub. Detall: {e}")
         return None
-
 def ui_mapa_interactiu_seleccio():
     """
     Crea i mostra un mapa interactiu de Catalunya per seleccionar una comarca i després una població.
