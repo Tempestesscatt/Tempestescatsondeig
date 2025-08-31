@@ -3455,33 +3455,34 @@ def quadrant_capitals(cap_on_va):
 
 def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpretacions_ia, sounding_data=None):
     """
-    Genera un prompt (v9.0) compacte i pràctic.
-    Interpreta la trajectòria segons la direcció del vent i alerta capitals de comarca.
+    Genera un prompt (v10.0) compacte i pràctic.
+    Interpreta trajectòria, alerta capitals de comarca i afegeix zones properes.
     """
     prompt_parts = [
         "### ROL I ESTIL",
-        "Ets un meteoròleg operatiu, directe i proper. Respon amb frases curtes i clares, sense repetir-te.",
+        "Ets un meteoròleg operatiu, directe i proper. Respon amb 3-5 frases curtes, com si avissessis un amic. Zero repeticions.",
 
         "\n### MISSIÓ",
-        "Explica al teu amic què pot passar amb el temps, basant-te en el 'Veredicte' i les 'Interpretacions'. Avisa de trajectòries i capitals de comarca si cal. No repeteixis res si després et tornen a preguntar.",
-
+        "Explica què pot passar amb el temps al lloc de l’usuari i quines zones properes poden estar afectades, basant-te en el 'Veredicte', les 'Interpretacions' i la trajectòria del sistema.",
+        
         "\n### ANÀLISI AUTOMÀTICA",
         f"- Localitat: {poble}",
         f"- Veredicte Final: {pre_analisi.get('veredicte', 'No determinat')}",
     ]
 
-    # Afegim les interpretacions
+    # Interpretacions
     prompt_parts.append("\n### INTERPRETACIONS CLAU")
     for key, value in interpretacions_ia.items():
         prompt_parts.append(f"- {key}: {value}")
 
-    # Hodògraf i trajectòria
+    # Trajectòria i capitals
+    zones_afectades = []
     if sounding_data:
         p, T, Td, u, v, heights, prof = sounding_data
         try:
             mean_u = np.mean(u[heights <= 6000])
             mean_v = np.mean(v[heights <= 6000])
-            mean_dir_from = mpcalc.wind_direction(mean_u, mean_v).m  # d'on ve
+            mean_dir_from = mpcalc.wind_direction(mean_u, mean_v).m
             cap_on_va = direccio_moviment(mean_dir_from)
             quadrant, capitals = quadrant_capitals(cap_on_va)
 
@@ -3489,23 +3490,28 @@ def generar_prompt_per_ia(params, pregunta_usuari, poble, pre_analisi, interpret
             prompt_parts.append(f"- El sistema es desplaça cap al {quadrant} ({cap_on_va:.0f}°).")
             if capitals:
                 prompt_parts.append(f"- Capitals de comarca a vigilar: {', '.join(capitals)}")
+                zones_afectades = capitals  # per a la resposta curta
         except Exception:
             pass
 
-    # Valors numèrics de referència
+    # Dades numèriques
     prompt_parts.append("\n### DADES NUMÈRIQUES")
-    if 'MLCAPE' in params and pd.notna(params['MLCAPE']): 
+    if 'MLCAPE' in params and pd.notna(params['MLCAPE']):
         prompt_parts.append(f"- MLCAPE: {params['MLCAPE']:.0f} J/kg")
-    if 'BWD_0-6km' in params and pd.notna(params['BWD_0-6km']): 
+    if 'BWD_0-6km' in params and pd.notna(params['BWD_0-6km']):
         prompt_parts.append(f"- Shear 0-6km: {params['BWD_0-6km']:.0f} kt")
-    if 'SRH_0-3km' in params and pd.notna(params['SRH_0-3km']): 
+    if 'SRH_0-3km' in params and pd.notna(params['SRH_0-3km']):
         prompt_parts.append(f"- SRH 0-3km: {params['SRH_0-3km']:.0f} m²/s²")
 
-    # Pregunta de l’usuari
+    # Pregunta usuari + instrucció de resposta curta i zonal
     prompt_parts.append("\n### INSTRUCCIÓ FINAL")
-    prompt_parts.append(f"Respon a la pregunta: \"{pregunta_usuari}\" amb un màxim de 5 frases, directes i adaptades.")
+    prompt_parts.append(
+        f"Respon a la pregunta: \"{pregunta_usuari}\" amb un màxim de 5 frases, "
+        f"menciona {poble} i alerta també les zones properes (per ex. {', '.join(zones_afectades[:3]) if zones_afectades else 'comarques veïnes'})."
+    )
 
     return "\n".join(prompt_parts)
+
 
 
 
