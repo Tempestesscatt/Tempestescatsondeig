@@ -22,4 +22,6 @@ Pillow
 streamlit-option-menu
 global-land-mask
 imageio
-foluim
+folium
+streamlit-folium
+geopandas
