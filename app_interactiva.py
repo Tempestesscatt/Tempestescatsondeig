@@ -54,6 +54,19 @@ retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
+
+API_URL_ITALIA = "https://api.open-meteo.com/v1/forecast"
+TIMEZONE_ITALIA = pytz.timezone('Europe/Rome')
+CIUTATS_ITALIA = {
+    'Roma': {'lat': 41.9028, 'lon': 12.4964, 'sea_dir': (190, 280)},
+    'Milà': {'lat': 45.4642, 'lon': 9.1900, 'sea_dir': None},
+    'Nàpols': {'lat': 40.8518, 'lon': 14.2681, 'sea_dir': (180, 270)},
+    'Florència': {'lat': 43.7696, 'lon': 11.2558, 'sea_dir': None},
+}
+MAP_EXTENT_ITALIA = [6.5, 18.5, 36.5, 47.0]
+# Nivells de pressió específics disponibles per a aquest model italià
+PRESS_LEVELS_ITALIA = sorted([1000, 925, 850, 700, 500, 250], reverse=True)
+
 API_URL_ALEMANYA = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_ALEMANYA = pytz.timezone('Europe/Berlin')
 CIUTATS_ALEMANYA = {
@@ -2677,6 +2690,103 @@ def precache_datos_iniciales():
         print(f"Pre-caching falló: {e}")
         return False
 
+
+
+@st.cache_data(ttl=3600, max_entries=20, show_spinner=False)
+def carregar_dades_sondeig_italia(lat, lon, hourly_index):
+    """
+    Carrega i processa dades de sondeig per a Itàlia utilitzant el model
+    d'alta resolució 'italia_meteo_arpae_icon_2i'.
+    Inclou la càrrega de la variable 'vertical_velocity'.
+    """
+    try:
+        h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
+        press_vars = ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height", "vertical_velocity"]
+        h_press = [f"{v}_{p}hPa" for v in press_vars for p in PRESS_LEVELS_ITALIA]
+        
+        params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "italia_meteo_arpae_icon_2i", "forecast_days": 2}
+        
+        response = openmeteo.weather_api(API_URL_ITALIA, params=params)[0]
+        hourly = response.Hourly()
+
+        # <<<--- LÍNIA CORREGIDA: Crida a la nova funció auxiliar --->>>
+        valid_index = trobar_hora_valida_mes_propera(hourly, hourly_index, len(h_base))
+        
+        if valid_index is None:
+            return None, hourly_index, "No s'han trobat dades vàlides properes a l'hora sol·licitada."
+
+        # La resta de la funció es manté igual
+        sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[valid_index] for i, v in enumerate(h_base)}
+        sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
+        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
+
+        p_data = {}
+        var_count = len(h_base)
+        for i, var in enumerate(press_vars):
+            p_data[var] = [hourly.Variables(var_count + i * len(PRESS_LEVELS_ITALIA) + j).ValuesAsNumpy()[valid_index] for j in range(len(PRESS_LEVELS_ITALIA))]
+
+        for i, p_val in enumerate(PRESS_LEVELS_ITALIA):
+            if p_val < p_profile[-1] and all(not np.isnan(p_data[v][i]) for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"]):
+                p_profile.append(p_val)
+                T_profile.append(p_data["temperature"][i])
+                Td_profile.append(mpcalc.dewpoint_from_relative_humidity(p_data["temperature"][i] * units.degC, p_data["relative_humidity"][i] * units.percent).m)
+                u, v = mpcalc.wind_components(p_data["wind_speed"][i] * units('km/h'), p_data["wind_direction"][i] * units.degrees)
+                u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m); h_profile.append(p_data["geopotential_height"][i])
+
+        processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
+        
+        if processed_data:
+            params_calc = processed_data[1]
+            for i, p_val in enumerate(PRESS_LEVELS_ITALIA):
+                vv_value = p_data["vertical_velocity"][i]
+                if pd.notna(vv_value):
+                    params_calc[f'VV_{p_val}hPa'] = vv_value
+
+        return processed_data, valid_index, error
+        
+    except Exception as e: 
+        return None, hourly_index, f"Error en carregar dades del sondeig ICON-2I (Itàlia): {e}"
+    
+
+def trobar_hora_valida_mes_propera(hourly_response, target_index, num_base_vars, max_offset=3):
+    """
+    Busca l'índex horari més proper al 'target_index' que tingui dades completes.
+    Comprova l'índex demanat, i després busca en un rang creixent (+1, -1, +2, -2, etc.).
+    
+    Args:
+        hourly_response: L'objecte `hourly` de la resposta de l'API Open-Meteo.
+        target_index: L'índex horari desitjat.
+        num_base_vars: El nombre de variables de superfície a comprovar per a la validesa.
+        max_offset: El nombre màxim d'hores a buscar cap endavant/enrere.
+
+    Returns:
+        L'índex vàlid trobat, o None si no se'n troba cap dins del rang.
+    """
+    total_hours = len(hourly_response.Variables(0).ValuesAsNumpy())
+
+    # Iterem en un rang creixent des de l'objectiu (0, 1, -1, 2, -2...)
+    for offset in range(max_offset + 1):
+        indices_to_try = sorted(list(set([target_index + offset, target_index - offset])))
+        
+        for h_idx in indices_to_try:
+            if 0 <= h_idx < total_hours:
+                # Comprovem que totes les variables de superfície tinguin dades
+                sfc_check = [hourly_response.Variables(i).ValuesAsNumpy()[h_idx] for i in range(num_base_vars)]
+                if not any(np.isnan(val) for val in sfc_check):
+                    return h_idx  # Hem trobat un índex vàlid
+
+    return None # No s'ha trobat cap índex vàlid dins del rang
+
+def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
+    st.markdown("#### Mapes de Pronòstic (Model ICON 2.2km - Itàlia)")
+    
+    with st.spinner(f"Carregant mapa ICON-2I a {nivell_sel}hPa..."):
+        # Aquesta és una funció simplificada ja que el model italià no està a la graella global
+        # Mostrarem un missatge a l'usuari de moment
+        st.info("La visualització de mapes per al model regional d'Itàlia està en desenvolupament.")
+        st.image("https://www.arpae.it/images/METEO/left-analisi-previsioni.jpg", caption="Font: ARPAE Emilia-Romagna", use_container_width=True)
+
+
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
     VERSIÓ FINAL AMB ESCALA AJUSTADA (30-150):
@@ -4341,74 +4451,47 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
-    # Navegació entre zones i botó de retorn
-    altres_zones = {'catalunya': 'Catalunya', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya'}
-    # Eliminem la zona actual de les opcions per canviar
+    altres_zones = {'catalunya': 'Catalunya', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya', 'italia': 'Itàlia'}
     del altres_zones[zona_activa]
     
-    # Creem una columna addicional per al nou botó
     col_text, col_nav, col_back, col_logout = st.columns([0.5, 0.2, 0.15, 0.15])
     
     with col_text:
-        if not is_guest: 
-            st.markdown(f"Benvingut/da, **{st.session_state.get('username', 'Usuari')}**!")
-    
+        if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username', 'Usuari')}**!")
     with col_nav:
-        # Aquest és el menú per canviar directament a una altra zona
         nova_zona_key = st.selectbox("Canviar a:", options=list(altres_zones.keys()), format_func=lambda k: altres_zones[k], index=None, placeholder="Anar a...")
         if nova_zona_key:
             st.session_state.zone_selected = nova_zona_key
             st.rerun()
-
-    # <--- NOU BLOC AFEGIT --->
     with col_back:
-        # Aquest és el nou botó per tornar a la pantalla de selecció de zona
         if st.button("⬅️ Zones", use_container_width=True, help="Tornar a la selecció de zona"):
-            # Eliminem la clau que defineix la zona actual. Això és el que activa la pantalla de selecció.
-            if 'zone_selected' in st.session_state:
-                del st.session_state['zone_selected']
-            
-            # (Opcional però recomanat) Netejem altres estats per evitar conflictes
-            keys_to_clear = [
-                'poble_selector', 'poble_selector_usa', 'poble_selector_alemanya',
-                'active_tab_cat', 'active_tab_usa', 'active_tab_alemanya'
-            ]
-            for key in keys_to_clear:
-                if key in st.session_state:
-                    del st.session_state[key]
-            
+            keys_to_clear = [k for k in st.session_state if k not in ['logged_in', 'username', 'guest_mode', 'developer_mode']]
+            for key in keys_to_clear: del st.session_state[key]
             st.rerun()
-    # <--- FI DEL NOU BLOC --->
-
     with col_logout:
         if st.button("Sortir" if is_guest else "Tanca Sessió", use_container_width=True):
-            for key in list(st.session_state.keys()): 
-                del st.session_state[key]
+            for key in list(st.session_state.keys()): del st.session_state[key]
             st.rerun()
 
-    # La resta de la funció (el container amb els selectors de ciutat, dia, hora)
-    # es manté exactament igual que abans.
     with st.container(border=True):
         if zona_activa == 'catalunya':
-            # ... el teu codi per als selectors de Catalunya ...
-            pass 
+            # ... El teu codi de selectors per a Catalunya va aquí ...
+            pass
         elif zona_activa == 'valley_halley':
-            # ... el teu codi per als selectors dels EUA ...
+            # ... El teu codi de selectors per a EUA va aquí ...
             pass
         elif zona_activa == 'alemanya':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
-            with col_loc:
-                st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ALEMANYA.keys())), key="poble_selector_alemanya")
-            with col_dia:
-                opcions_dia = [(datetime.now(TIMEZONE_ALEMANYA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(3)]
-                st.selectbox("Dia:", opcions_dia, key="dia_selector_alemanya")
-            with col_hora:
-                opcions_hora = [f"{h:02d}:00h" for h in range(24)]
-                st.selectbox("Hora:", opcions_hora, key="hora_selector_alemanya")
-            with col_nivell:
-                st.selectbox("Nivell:", PRESS_LEVELS_ICON, key="level_alemanya_main", index=4, format_func=lambda x: f"{x} hPa")
-
-
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ALEMANYA.keys())), key="poble_selector_alemanya")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_ALEMANYA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(3)], key="dia_selector_alemanya")
+            with col_hora: st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector_alemanya")
+            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_ICON, key="level_alemanya_main", index=6, format_func=lambda x: f"{x} hPa")
+        elif zona_activa == 'italia':
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ITALIA.keys())), key="poble_selector_italia")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_ITALIA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_italia")
+            with col_hora: st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector_italia")
+            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_ITALIA, key="level_italia_main", index=2, format_func=lambda x: f"{x} hPa")
 
 @st.cache_resource(ttl=1800, show_spinner=False)
 def generar_mapa_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
@@ -5013,37 +5096,99 @@ def ui_zone_selection():
 
     path_anim_cat = "catalunya_anim.mp4"
     path_anim_usa = "tornado_alley_anim.mp4"
-    path_anim_alemanya = "germany_anim.mp4" # <-- HAS DE CREAR AQUEST ARXIU DE VÍDEO!
+    path_anim_alemanya = "germany_anim.mp4"
+    path_anim_italia = "italy_anim.mp4" # <-- HAS DE CREAR AQUEST ARXIU DE VÍDEO!
 
     with st.spinner('Carregant entorns geoespacials...'): 
         time.sleep(1) 
 
-    col1, col2, col3 = st.columns(3)
+    # Estructura 2x2 per a un millor disseny
+    row1_col1, row1_col2 = st.columns(2)
+    row2_col1, row2_col2 = st.columns(2)
 
-    with col1:
+    with row1_col1:
         with st.container(border=True):
-            st.markdown(generar_html_video_animacio(path_anim_cat), unsafe_allow_html=True)
+            st.markdown(generar_html_video_animacio(path_anim_cat, height="200px"), unsafe_allow_html=True)
             st.subheader("Catalunya")
-            st.write("Anàlisi detallada (Model AROME) per al territori català. Ideal per a tempestes locals.")
+            st.write("Anàlisi AROME per al territori català.")
             if st.button("Analitzar Catalunya", use_container_width=True, type="primary"):
                 st.session_state['zone_selected'] = 'catalunya'
                 st.rerun()
-    with col2:
+    with row1_col2:
         with st.container(border=True):
-            st.markdown(generar_html_video_animacio(path_anim_usa), unsafe_allow_html=True)
+            st.markdown(generar_html_video_animacio(path_anim_usa, height="200px"), unsafe_allow_html=True)
             st.subheader("Tornado Alley (EUA)")
-            st.write("Anàlisi sinòptica (Model GFS) per al 'Corredor de Tornados'. Per a sistemes de gran escala.")
+            st.write("Anàlisi GFS per al 'Corredor de Tornados'.")
             if st.button("Analitzar Tornado Alley", use_container_width=True):
                 st.session_state['zone_selected'] = 'valley_halley'
                 st.rerun()
-    with col3:
+    with row2_col1:
         with st.container(border=True):
-            st.markdown(generar_html_video_animacio(path_anim_alemanya), unsafe_allow_html=True)
+            st.markdown(generar_html_video_animacio(path_anim_alemanya, height="200px"), unsafe_allow_html=True)
             st.subheader("Alemanya")
-            st.write("Anàlisi d'alta resolució (Model ICON-D2). Excel·lent per a sistemes convectius a Europa Central.")
+            st.write("Anàlisi ICON-D2 per a Europa Central.")
             if st.button("Analitzar Alemanya", use_container_width=True):
                 st.session_state['zone_selected'] = 'alemanya'
                 st.rerun()
+    with row2_col2:
+        with st.container(border=True):
+            st.markdown(generar_html_video_animacio(path_anim_italia, height="200px"), unsafe_allow_html=True)
+            st.subheader("Itàlia")
+            st.write("Anàlisi ICON-2.2km per a la península Itàlica.")
+            if st.button("Analitzar Itàlia", use_container_width=True):
+                st.session_state['zone_selected'] = 'italia'
+                st.rerun()
+
+
+
+def run_italia_app():
+    # Inicialització d'estat per a Itàlia
+    if 'poble_selector_italia' not in st.session_state: st.session_state.poble_selector_italia = "Roma"
+    if 'dia_selector_italia' not in st.session_state: st.session_state.dia_selector_italia = datetime.now(TIMEZONE_ITALIA).strftime('%d/%m/%Y')
+    if 'hora_selector_italia' not in st.session_state: st.session_state.hora_selector_italia = f"{datetime.now(TIMEZONE_ITALIA).hour:02d}:00h"
+    if 'level_italia_main' not in st.session_state: st.session_state.level_italia_main = 850
+    if 'active_tab_italia' not in st.session_state: st.session_state.active_tab_italia = "Anàlisi Vertical"
+
+    ui_capcalera_selectors(None, zona_activa="italia")
+    
+    poble_sel = st.session_state.poble_selector_italia
+    dia_sel_str = st.session_state.dia_selector_italia
+    hora_sel_str = st.session_state.hora_selector_italia
+    nivell_sel = st.session_state.level_italia_main
+    lat_sel, lon_sel = CIUTATS_ITALIA[poble_sel]['lat'], CIUTATS_ITALIA[poble_sel]['lon']
+    
+    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
+    local_dt = TIMEZONE_ITALIA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
+    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str}"
+
+    menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Satèl·lit (Temps Real)"]
+    menu_icons = ["graph-up-arrow", "map-fill", "globe-europe-africa"]
+    default_idx = menu_options.index(st.session_state.active_tab_italia)
+
+    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
+    st.session_state.active_tab_italia = selected_tab
+
+    if selected_tab == "Anàlisi Vertical":
+        with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
+            data_tuple, final_index, error_msg = carregar_dades_sondeig_italia(lat_sel, lon_sel, hourly_index_sel)
+        
+        if not error_msg and final_index != hourly_index_sel:
+            adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+            adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_ITALIA)
+            st.warning(f"**Avís:** Dades no disponibles per a les {hora_sel_str}. Es mostren les de les **{adjusted_local_time.strftime('%H:%Mh')}**.")
+
+        if error_msg:
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        else:
+            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+
+    elif selected_tab == "Anàlisi de Mapes":
+        ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel)
+
+    elif selected_tab == "Satèl·lit (Temps Real)":
+        ui_pestanya_satelit_europa()
 
 def run_alemanya_app():
     # Inicialització robusta de l'estat per a Alemanya
@@ -5110,8 +5255,7 @@ def main():
     inject_custom_css()
     hide_streamlit_style()
     
-    if 'logged_in' not in st.session_state:
-        st.session_state.logged_in = False
+    if 'logged_in' not in st.session_state: st.session_state.logged_in = False
     
     if not st.session_state.logged_in:
         afegir_video_de_fons()
@@ -5122,15 +5266,16 @@ def main():
         ui_zone_selection()
         return
 
-    # Segons la zona seleccionada, executem l'app corresponent
+    # Lògica principal que crida la funció de l'app corresponent
     if st.session_state.zone_selected == 'catalunya':
         run_catalunya_app()
-            
     elif st.session_state.zone_selected == 'valley_halley':
         run_valley_halley_app()
-    
     elif st.session_state.zone_selected == 'alemanya':
         run_alemanya_app()
+    elif st.session_state.zone_selected == 'italia':
+        run_italia_app()
+
 
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
