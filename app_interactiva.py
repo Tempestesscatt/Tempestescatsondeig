@@ -3225,31 +3225,60 @@ def carregar_dades_mapa_japo(nivell, hourly_index):
 
 def crear_mapa_forecast_combinat_japo(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     """
-    Crea el mapa visual de vent i convergència per al Japó.
+    Versió Completa: Crea el mapa visual de vent i AFEGEIX els nuclis de convergència
+    per al Japó, utilitzant les dades del model JMA GSM.
     """
     fig, ax = crear_mapa_base(MAP_EXTENT_JAPO, projection=ccrs.LambertConformal(central_longitude=138, central_latitude=36))
+    
     if len(lons) < 4: 
         ax.set_title("Dades insuficients per generar el mapa")
         return fig
 
+    # Interpolació de dades a una graella fina (sense canvis)
     grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_JAPO[0], MAP_EXTENT_JAPO[1], 200), np.linspace(MAP_EXTENT_JAPO[2], MAP_EXTENT_JAPO[3], 200))
-    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic'); grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic')
+    grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
-    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'); grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
     
+    # Dibuix de la velocitat del vent (fons de color - sense canvis)
     colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
     speed_levels = [0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
-    custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    custom_cmap = ListedColormap(colors_wind)
+    norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
     
+    # Dibuix de les línies de corrent (sense canvis)
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=5.0, arrowsize=0.5, zorder=4, transform=ccrs.PlateCarree())
     
-    # Ciutats
+    # <<<--- NOU BLOC AFEGIT: CÀLCUL I DIBUIX DE LA CONVERGÈNCIA --->>>
+    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+    convergence_scaled = -(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s').magnitude * 1e5
+    
+    # Filtrem la convergència per a zones amb prou humitat (punt de rosada > 14°C)
+    convergence_in_humid_areas = np.where(grid_dewpoint >= 14, convergence_scaled, 0)
+    
+    # Definim els nivells i colors per al dibuix de la convergència
+    fill_levels = [5, 10, 15, 25]
+    fill_colors = ['#ffc107', '#ff9800', '#f44336'] # Groc -> Taronja -> Vermell
+    line_levels = [5, 10, 15]
+    line_colors = ['#e65100', '#bf360c', '#b71c1c']
+    
+    # Dibuixem els contorns de color i les línies
+    ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=fill_colors, alpha=0.6, zorder=5, transform=ccrs.PlateCarree())
+    contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors=line_colors, linestyles='--', linewidths=1.2, zorder=6, transform=ccrs.PlateCarree())
+    ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
+    # <<<--- FI DEL NOU BLOC ---_>>>
+
+    # Afegir ciutats per a referència (sense canvis)
     for city, coords in CIUTATS_JAPO.items():
         ax.plot(coords['lon'], coords['lat'], 'o', color='red', markersize=3, markeredgecolor='black', transform=ccrs.PlateCarree(), zorder=10)
         ax.text(coords['lon'] + 0.15, coords['lat'] + 0.15, city, fontsize=8, transform=ccrs.PlateCarree(), zorder=10, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
 
-    ax.set_title(f"Vent a {nivell}hPa (Model JMA MSM)\n{timestamp_str}", weight='bold', fontsize=16)
+    # <<<--- CANVI AL TÍTOL --->>>
+    ax.set_title(f"Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    
     return fig
 
 
@@ -5963,4 +5992,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
 if __name__ == "__main__":
     main()
+
+
+
 
