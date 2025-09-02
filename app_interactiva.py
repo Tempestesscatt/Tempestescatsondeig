@@ -6033,11 +6033,14 @@ def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
     
+    # <<<--- NOU: Afegim una llegenda per a l'emoji --->>>
+    st.info("💡 Les zones marcades amb un cercle verd 🟢 disposen de webcams en directe pre-configurades.", icon="📷")
+
     # Definim tots els camins de vídeo
     paths = {
         'cat': "catalunya_anim.mp4", 'usa': "tornado_alley_anim.mp4", 'ale': "germany_anim.mp4",
         'ita': "italy_anim.mp4", 'hol': "netherlands_anim.mp4", 'japo': "japan_anim.mp4",
-        'uk': "uk_anim.mp4", 'can': "canada_anim.mp4" # <-- HAS DE CREAR AQUEST ARXIU
+        'uk': "uk_anim.mp4", 'can': "canada_anim.mp4"
     }
     
     with st.spinner('Carregant entorns geoespacials...'): time.sleep(1)
@@ -6049,7 +6052,14 @@ def ui_zone_selection():
     def create_zone_button(col, path, title, key, zone_id, type="secondary"):
         with col, st.container(border=True):
             st.markdown(generar_html_video_animacio(path, height="160px"), unsafe_allow_html=True)
-            st.subheader(title)
+            
+            # <<<--- CANVI PRINCIPAL AQUÍ: Afegim l'emoji si la zona té webcams --->>>
+            display_title = title
+            if zone_id in ['japo', 'uk', 'canada']:
+                display_title += " 🟢"
+            
+            st.subheader(display_title)
+            
             if st.button(f"Analitzar {title}", key=key, use_container_width=True, type=type):
                 st.session_state['zone_selected'] = zone_id
                 st.rerun()
