@@ -67,9 +67,13 @@ WEBCAM_LINKS = {
     "Southampton": "https://www.youtube.com/embed/yJyL012sH_E?autoplay=1&mute=1&loop=1&playlist=yJyL012sH_E",
     "Fort William": "https://www.youtube.com/embed/B_r9e8g3_IM?autoplay=1&mute=1&loop=1&playlist=B_r9e8g3_IM",
     "Dublín (Paddocks)": "https://www.youtube.com/embed/SbAgJi-1i8s?autoplay=1&mute=1&loop=1&playlist=SbAgJi-1i8s", # Webcam del Temple Bar a Dublín
-    "Scarborough": "https://www.youtube.com/embed/SApqPE63_V4?autoplay=1&mute=1&loop=1&playlist=SApqPE63_V4",
+    "Scarborough": "https://www.youtube.com/live/T0oUufecXeE?si=hUgA3G5QXnmviriy",
 
-    # Pots afegir més ciutats aquí...
+    # Canadà
+    "Revelstoke, BC": "https://www.youtube.com/embed/DPATwG436-A?autoplay=1&mute=1",   # Webcam de Revelstoke Mountain Resort
+    "Banff, AB": "https://www.youtube.com/embed/L36B6z689Ds?autoplay=1&mute=1",        # Webcam de la Gondola de Banff
+    "Calgary, AB": "https://www.youtube.com/embed/t-g-nI7SA3Y?autoplay=1&mute=1",       # Vista de la Torre de Calgary
+    "Vancouver, BC": "https://www.youtube.com/embed/FIMmA2P_4qg?autoplay=1&mute=1",     # Vista del port de Vancouver
 }
 
 # --- Constants per al Canadà Continental ---
