@@ -53,6 +53,25 @@ cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
 
+
+
+
+API_URL_UK = "https://api-open-meteo.com/v1/forecast" # Utilitza un endpoint lleugerament diferent
+TIMEZONE_UK = pytz.timezone('Europe/London')
+CIUTATS_UK = {
+    'Londres': {'lat': 51.5085, 'lon': -0.1257, 'sea_dir': (10, 120)},
+    'Manchester': {'lat': 53.4808, 'lon': -2.2426, 'sea_dir': (220, 320)},
+    'Edimburg': {'lat': 55.9533, 'lon': -3.1883, 'sea_dir': (0, 100)},
+    'Dublín': {'lat': 53.3498, 'lon': -6.2603, 'sea_dir': (50, 150)},
+}
+MAP_EXTENT_UK = [-11, 2, 49, 59]
+# Llista de nivells de pressió extremadament detallada per al model UKMO
+PRESS_LEVELS_UK = sorted([
+    1000, 975, 950, 925, 900, 850, 800, 750, 700, 650, 600, 550, 500, 450, 400, 
+    350, 300, 250, 200, 150, 100
+], reverse=True)
+
+
 API_URL_JAPO = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_JAPO = pytz.timezone('Asia/Tokyo')
 CIUTATS_JAPO = {
@@ -2804,6 +2823,61 @@ def carregar_dades_sondeig_japo(lat, lon, hourly_index):
         import traceback
         traceback.print_exc()
         return None, hourly_index, f"Error crític en carregar dades del sondeig del Japó: {e}"
+    
+
+
+@st.cache_data(ttl=3600, max_entries=20, show_spinner=False)
+def carregar_dades_sondeig_uk(lat, lon, hourly_index):
+    """
+    Carrega dades de sondeig per al Regne Unit utilitzant el model d'alta
+    resolució UKMO de 2km.
+    """
+    try:
+        h_base = ["temperature_2m", "relative_humidity_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
+        press_vars = ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height", "vertical_velocity"]
+        h_press = [f"{v}_{p}hPa" for v in press_vars for p in PRESS_LEVELS_UK]
+        all_requested_vars = h_base + h_press
+        
+        params = {"latitude": lat, "longitude": lon, "hourly": all_requested_vars, "models": "ukmo_uk_deterministic_2km", "forecast_days": 2}
+        
+        response = openmeteo.weather_api(API_URL_UK, params=params)[0]
+        hourly = response.Hourly()
+
+        valid_index = trobar_hora_valida_mes_propera(hourly, hourly_index, len(h_base))
+        if valid_index is None: return None, hourly_index, "No s'han trobat dades vàlides."
+
+        hourly_vars = {hourly.Variables(i).Name().decode(): hourly.Variables(i).ValuesAsNumpy() for i in range(len(all_requested_vars))}
+        
+        sfc_data = {v: hourly_vars[v][valid_index] for v in h_base}
+        sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
+        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [mpcalc.dewpoint_from_relative_humidity(sfc_data["temperature_2m"] * units.degC, sfc_data["relative_humidity_2m"] * units.percent).m], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
+
+        for p_val in PRESS_LEVELS_UK:
+            if p_val < p_profile[-1]:
+                p_profile.append(p_val)
+                temp = hourly_vars.get(f'temperature_{p_val}hPa', [np.nan])[valid_index]
+                rh = hourly_vars.get(f'relative_humidity_{p_val}hPa', [np.nan])[valid_index]
+                ws = hourly_vars.get(f'wind_speed_{p_val}hPa', [np.nan])[valid_index]
+                wd = hourly_vars.get(f'wind_direction_{p_val}hPa', [np.nan])[valid_index]
+                h = hourly_vars.get(f'geopotential_height_{p_val}hPa', [np.nan])[valid_index]
+                
+                T_profile.append(temp); h_profile.append(h)
+                
+                if pd.notna(temp) and pd.notna(rh): Td_profile.append(mpcalc.dewpoint_from_relative_humidity(temp * units.degC, rh * units.percent).m)
+                else: Td_profile.append(np.nan)
+                
+                if pd.notna(ws) and pd.notna(wd):
+                    u, v = mpcalc.wind_components(ws * units('km/h'), wd * units.degrees)
+                    u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m)
+                else:
+                    u_profile.append(np.nan); v_profile.append(np.nan)
+
+        processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
+        return processed_data, valid_index, error
+        
+    except Exception as e: 
+        import traceback; traceback.print_exc()
+        return None, hourly_index, f"Error crític en carregar dades del sondeig del Regne Unit: {e}"
         
 
 def ui_pestanya_satelit_japo():
@@ -5556,12 +5630,13 @@ def ui_zone_selection():
     path_anim_alemanya = "germany_anim.mp4"
     path_anim_italia = "italy_anim.mp4"
     path_anim_holanda = "netherlands_anim.mp4"
-    path_anim_japo = "japan_anim.mp4" # Recorda crear aquest arxiu de vídeo
+    path_anim_japo = "japan_anim.mp4"
+    path_anim_uk = "uk_anim.mp4" # <-- Recorda crear aquest arxiu de vídeo!
 
     with st.spinner('Carregant entorns geoespacials...'):
         time.sleep(1)
 
-    # Creem una graella de 2 files i 3 columnes per a les 6 zones
+    # Creem una graella de 2 files i 3 columnes per a les zones
     row1_col1, row1_col2, row1_col3 = st.columns(3)
     row2_col1, row2_col2, row2_col3 = st.columns(3)
 
@@ -5573,7 +5648,6 @@ def ui_zone_selection():
             if st.button("Analitzar Catalunya", use_container_width=True, type="primary"):
                 st.session_state['zone_selected'] = 'catalunya'
                 st.rerun()
-
     with row1_col2:
         with st.container(border=True):
             st.markdown(generar_html_video_animacio(path_anim_usa, height="180px"), unsafe_allow_html=True)
@@ -5581,7 +5655,6 @@ def ui_zone_selection():
             if st.button("Analitzar Tornado Alley", use_container_width=True):
                 st.session_state['zone_selected'] = 'valley_halley'
                 st.rerun()
-
     with row1_col3:
         with st.container(border=True):
             st.markdown(generar_html_video_animacio(path_anim_alemanya, height="180px"), unsafe_allow_html=True)
@@ -5598,7 +5671,6 @@ def ui_zone_selection():
             if st.button("Analitzar Itàlia", use_container_width=True):
                 st.session_state['zone_selected'] = 'italia'
                 st.rerun()
-
     with row2_col2:
         with st.container(border=True):
             st.markdown(generar_html_video_animacio(path_anim_holanda, height="180px"), unsafe_allow_html=True)
@@ -5606,7 +5678,6 @@ def ui_zone_selection():
             if st.button("Analitzar Holanda", use_container_width=True):
                 st.session_state['zone_selected'] = 'holanda'
                 st.rerun()
-
     with row2_col3:
         with st.container(border=True):
             st.markdown(generar_html_video_animacio(path_anim_japo, height="180px"), unsafe_allow_html=True)
@@ -5614,6 +5685,18 @@ def ui_zone_selection():
             if st.button("Analitzar Japó", use_container_width=True):
                 st.session_state['zone_selected'] = 'japo'
                 st.rerun()
+    
+    # --- Fila 3 (Centrada) ---
+    st.divider()
+    _, col_center, _ = st.columns([1, 1, 1])
+    with col_center:
+        with st.container(border=True):
+            st.markdown(generar_html_video_animacio(path_anim_uk, height="180px"), unsafe_allow_html=True)
+            st.subheader("Regne Unit i Irlanda")
+            if st.button("Analitzar Regne Unit", use_container_width=True):
+                st.session_state['zone_selected'] = 'uk'
+                st.rerun()
+
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_italia(nivell, hourly_index):
@@ -5852,6 +5935,68 @@ def run_alemanya_app():
         ui_pestanya_satelit_europa()
 
 
+
+def run_uk_app():
+    # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
+    if 'poble_selector_uk' not in st.session_state: st.session_state.poble_selector_uk = "Londres"
+    if 'dia_selector_uk' not in st.session_state: st.session_state.dia_selector_uk = datetime.now(TIMEZONE_UK).strftime('%d/%m/%Y')
+    if 'hora_selector_uk' not in st.session_state: 
+        now_uk = datetime.now(TIMEZONE_UK)
+        now_cat = now_uk.astimezone(TIMEZONE_CAT)
+        st.session_state.hora_selector_uk = f"{now_uk.hour:02d}:00h (CAT: {now_cat.hour:02d}h)"
+    if 'level_uk_main' not in st.session_state: st.session_state.level_uk_main = 850
+    if 'active_tab_uk' not in st.session_state: st.session_state.active_tab_uk = "Anàlisi Vertical"
+
+    # --- PAS 2: CAPÇALERA I SELECTORS PRINCIPALS ---
+    ui_capcalera_selectors(None, zona_activa="uk")
+    
+    # --- PAS 3: RECOPILACIÓ DE VALORS I CÀLCULS DE TEMPS ---
+    poble_sel = st.session_state.poble_selector_uk
+    dia_sel_str = st.session_state.dia_selector_uk
+    hora_sel_str_full = st.session_state.hora_selector_uk
+    hora_sel_str = hora_sel_str_full.split(' ')[0]
+    
+    nivell_sel = st.session_state.level_uk_main
+    lat_sel, lon_sel = CIUTATS_UK[poble_sel]['lat'], CIUTATS_UK[poble_sel]['lon']
+    
+    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
+    local_dt = TIMEZONE_UK.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
+    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    
+    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_UK.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+
+    # --- PAS 4: MENÚ DE NAVEGACIÓ ENTRE PESTANYES ---
+    menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Satèl·lit (Temps Real)"]
+    menu_icons = ["graph-up-arrow", "map-fill", "globe-europe-africa"]
+    default_idx = menu_options.index(st.session_state.active_tab_uk)
+
+    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
+    st.session_state.active_tab_uk = selected_tab
+
+    # --- PAS 5: LÒGICA PER A CADA PESTANYA ---
+    if selected_tab == "Anàlisi Vertical":
+        with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
+            data_tuple, final_index, error_msg = carregar_dades_sondeig_uk(lat_sel, lon_sel, hourly_index_sel)
+        
+        if data_tuple is None or error_msg:
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        else:
+            if final_index != hourly_index_sel:
+                adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+                adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_UK)
+                st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+            
+            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+    
+    elif selected_tab == "Anàlisi de Mapes":
+        st.info("La visualització de mapes per al model del Regne Unit (UKMO) està en desenvolupament.")
+        # Aquí aniria la crida a 'ui_pestanya_mapes_uk' quan estigui llesta
+    
+    elif selected_tab == "Satèl·lit (Temps Real)":
+        ui_pestanya_satelit_europa()
+        
 
 def run_holanda_app():
     # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
