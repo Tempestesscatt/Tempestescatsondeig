@@ -4629,17 +4629,33 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             st.rerun()
 
     with st.container(border=True):
-        # Aquest bloc ara està preparat per a totes les zones
-        if zona_activa == 'catalunya': pass # El teu codi existent
-        elif zona_activa == 'valley_halley': pass # El teu codi existent
-        elif zona_activa == 'alemanya': pass # El teu codi existent
-        elif zona_activa == 'italia': pass # El teu codi existent
+        if zona_activa == 'catalunya':
+            # Aquesta part es manté igual
+            pass
+        elif zona_activa == 'valley_halley':
+            # Aquesta part es manté igual
+            pass
+        elif zona_activa == 'alemanya':
+            # Aquesta part es manté igual
+            pass
+        elif zona_activa == 'italia':
+            # Aquesta part es manté igual
+            pass
         elif zona_activa == 'holanda':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_HOLANDA.keys())), key="poble_selector_holanda")
             with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_HOLANDA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_holanda")
             with col_hora: st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector_holanda")
-            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_HOLANDA, key="level_holanda_main", index=2, format_func=lambda x: f"{x} hPa")
+            with col_nivell:
+                
+                # <<<--- CANVI PRINCIPAL AQUÍ --->>>
+                # Excloem 1000 hPa de la llista d'opcions, ja que no està disponible per als mapes d'aquest model.
+                nivells_mapa_holanda = [p for p in PRESS_LEVELS_HOLANDA if p != 1000]
+                
+                # Ajustem l'índex per defecte (850hPa) a la seva nova posició a la llista.
+                # Llista original: [1000, 925, 850...], 850hPa era l'índex 2.
+                # Nova llista: [925, 850...], 850hPa és ara l'índex 1.
+                st.selectbox("Nivell:", nivells_mapa_holanda, key="level_holanda_main", index=1, format_func=lambda x: f"{x} hPa")
 
 @st.cache_resource(ttl=1800, show_spinner=False)
 def generar_mapa_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
@@ -5623,3 +5639,4 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
 if __name__ == "__main__":
     main()
+
