@@ -74,6 +74,16 @@ WEBCAM_LINKS = {
     "Banff, AB": "https://www.youtube.com/embed/_0wPODlF9wU?autoplay=1&mute=1",
     "Calgary, AB": "https://www.youtube.com/embed/MwcqP3ta6RI?autoplay=1&mute=1",
     "Vancouver, BC": "https://www.youtube.com/embed/-2vwOXTxbkw?autoplay=1&mute=1",
+
+
+
+        # <<<--- AFEGEIX O SUBSTITUEIX AQUESTES LÍNIES PER AL JAPÓ --->>>
+    # Japó
+    "Tòquio": "https://www.youtube.com/embed/_k-5U7IeK8g?autoplay=1&mute=1",
+    "Oshino Hakkai (Fuji)": "https://www.youtube.com/embed/sm3xXTfDtGE?autoplay=1&mute=1",
+    "Hasaki Beach": "https://www.youtube.com/embed/Ntz4h44KTDc?autoplay=1&mute=1",
+    "Hakodate": "https://www.youtube.com/embed/sE1bH-zc9Pg?autoplay=1&mute=1"
+
 }
 
 # --- Constants per al Canadà Continental ---
@@ -113,11 +123,11 @@ API_URL_JAPO = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_JAPO = pytz.timezone('Asia/Tokyo')
 CIUTATS_JAPO = {
     'Tòquio': {'lat': 35.6895, 'lon': 139.6917, 'sea_dir': (100, 200)},
-    'Osaka': {'lat': 34.6937, 'lon': 135.5023, 'sea_dir': (120, 240)},
-    'Sapporo': {'lat': 43.0618, 'lon': 141.3545, 'sea_dir': None},
-    'Fukuoka': {'lat': 33.5904, 'lon': 130.4017, 'sea_dir': (270, 360)},
+    'Oshino Hakkai (Fuji)': {'lat': 35.4590, 'lon': 138.8340, 'sea_dir': None},
+    'Hasaki Beach': {'lat': 35.7330, 'lon': 140.8440, 'sea_dir': (45, 135)},
+    'Hakodate': {'lat': 41.7687, 'lon': 140.7288, 'sea_dir': (120, 270)},
 }
-MAP_EXTENT_JAPO = [128, 146, 30, 46] # Ajustat per centrar-se a les illes principals
+MAP_EXTENT_JAPO = [128, 146, 30, 46] # Manté una bona cobertura
 # Llista de nivells de pressió completa per al model JMA MSM
 PRESS_LEVELS_JAPO = sorted([1000, 925, 850, 700, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 
@@ -6334,43 +6344,64 @@ def run_holanda_app():
 
 
 def run_japo_app():
+    # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
     if 'poble_selector_japo' not in st.session_state: st.session_state.poble_selector_japo = "Tòquio"
     if 'dia_selector_japo' not in st.session_state: st.session_state.dia_selector_japo = datetime.now(TIMEZONE_JAPO).strftime('%d/%m/%Y')
     if 'hora_selector_japo' not in st.session_state: st.session_state.hora_selector_japo = datetime.now(TIMEZONE_JAPO).hour
     if 'level_japo_main' not in st.session_state: st.session_state.level_japo_main = 850
     if 'active_tab_japo' not in st.session_state: st.session_state.active_tab_japo = "Anàlisi Vertical"
+
+    # --- PAS 2: CAPÇALERA I SELECTORS PRINCIPALS ---
     ui_capcalera_selectors(None, zona_activa="japo")
-    poble_sel, dia_sel_str, hora_sel, nivell_sel = st.session_state.poble_selector_japo, st.session_state.dia_selector_japo, st.session_state.hora_selector_japo, st.session_state.level_japo_main
+    
+    # --- PAS 3: RECOPILACIÓ DE VALORS I CÀLCULS DE TEMPS ---
+    poble_sel = st.session_state.poble_selector_japo
+    dia_sel_str = st.session_state.dia_selector_japo
+    hora_sel = st.session_state.hora_selector_japo
     hora_sel_str = f"{hora_sel:02d}:00h"
+    
+    nivell_sel = st.session_state.level_japo_main
     lat_sel, lon_sel = CIUTATS_JAPO[poble_sel]['lat'], CIUTATS_JAPO[poble_sel]['lon']
+    
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     local_dt = TIMEZONE_JAPO.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_sel))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_JAPO.zone}) / {cat_dt.strftime('%d/%m, %H:%Mh')} (CAT)"
+
+    # --- PAS 4: MENÚ DE NAVEGACIÓ ENTRE PESTANYES ---
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
     default_idx = menu_options.index(st.session_state.active_tab_japo)
+
     selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
     st.session_state.active_tab_japo = selected_tab
+
+    # --- PAS 5: LÒGICA PER A CADA PESTANYA ---
     if selected_tab == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_japo(lat_sel, lon_sel, hourly_index_sel)
-        if data_tuple is None or error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        if data_tuple is None or error_msg: 
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
             if final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_JAPO)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+    
     elif selected_tab == "Anàlisi de Mapes":
         with st.spinner(f"Carregant mapa JMA GSM a {nivell_sel}hPa..."):
             map_data, error = carregar_dades_mapa_japo(nivell_sel, hourly_index_sel)
-        if error or not map_data: st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+        
+        if error or not map_data: 
+            st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
         else:
             fig = crear_mapa_forecast_combinat_japo(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str.replace(f"{poble_sel} | ", ""))
             st.pyplot(fig, use_container_width=True); plt.close(fig)
+    
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="japo")
 
