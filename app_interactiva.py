@@ -2688,8 +2688,9 @@ def ui_pestanya_mapes_holanda(hourly_index_sel, timestamp_str, nivell_sel):
 @st.cache_data(ttl=3600, max_entries=20, show_spinner=False)
 def carregar_dades_sondeig_japo(lat, lon, hourly_index):
     """
-    Versió Definitiva: Carrega dades per al Japó sense utilitzar el mètode .Name()
-    per ser compatible amb la resposta de l'API del model JMA MSM.
+    Versió Final i Tolerant: Construeix un perfil atmosfèric complet,
+    omplint amb 'NaN' les dades que falten en alguns nivells, per evitar
+    l'error de "perfil massa curt".
     """
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
@@ -2706,35 +2707,46 @@ def carregar_dades_sondeig_japo(lat, lon, hourly_index):
         if valid_index is None: 
             return None, hourly_index, "No s'han trobat dades vàlides."
 
-        # <<<--- BLOC DE LECTURA CORREGIT I ROBUST --->>>
-        # Construïm el diccionari iterant sobre la nostra pròpia llista de variables.
-        # Això no depèn de cap mètode de l'objecte resposta i és universal.
         hourly_vars = {}
         for i, var_name in enumerate(all_requested_vars):
             try:
-                # Accedim a les variables per la seva posició, que sabem que és correcta.
                 hourly_vars[var_name] = hourly.Variables(i).ValuesAsNumpy()
             except Exception:
-                # Si per alguna raó una variable no ve, la ignorem.
                 hourly_vars[var_name] = np.array([np.nan])
         
         sfc_data = {v: hourly_vars[v][valid_index] for v in h_base}
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
         p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
 
+        # <<<--- BLOC DE CONSTRUCCIÓ TOLERANT (LA CLAU DE LA SOLUCIÓ) --->>>
         for p_val in PRESS_LEVELS_JAPO:
-            var_names_level = [f"{v}_{p_val}hPa" for v in press_vars]
-            if p_val < p_profile[-1] and all(f in hourly_vars and not np.isnan(hourly_vars[f][valid_index]) for f in var_names_level):
+            # Només afegim el nivell si la seva pressió és menor que l'anterior (més alt)
+            if p_val < p_profile[-1]:
                 p_profile.append(p_val)
-                T_profile.append(hourly_vars[f'temperature_{p_val}hPa'][valid_index])
-                Td_profile.append(hourly_vars[f'dew_point_{p_val}hPa'][valid_index])
-                u, v = mpcalc.wind_components(hourly_vars[f'wind_speed_{p_val}hPa'][valid_index] * units('km/h'), hourly_vars[f'wind_direction_{p_val}hPa'][valid_index] * units.degrees)
-                u_profile.append(u.to('m/s').m)
-                v_profile.append(v.to('m/s').m)
-                h_profile.append(hourly_vars[f'geopotential_height_{p_val}hPa'][valid_index])
 
-        # Tornem (processed_data, error) que espera la funció principal
+                # Intentem obtenir cada valor. Si no existeix o és NaN, afegim un NaN.
+                # L'operador .get(key, [np.nan]) evita errors si la clau no existeix.
+                T_profile.append(hourly_vars.get(f'temperature_{p_val}hPa', [np.nan])[valid_index])
+                Td_profile.append(hourly_vars.get(f'dew_point_{p_val}hPa', [np.nan])[valid_index])
+                h_profile.append(hourly_vars.get(f'geopotential_height_{p_val}hPa', [np.nan])[valid_index])
+                
+                ws = hourly_vars.get(f'wind_speed_{p_val}hPa', [np.nan])[valid_index]
+                wd = hourly_vars.get(f'wind_direction_{p_val}hPa', [np.nan])[valid_index]
+
+                if pd.notna(ws) and pd.notna(wd):
+                    u, v = mpcalc.wind_components(ws * units('km/h'), wd * units.degrees)
+                    u_profile.append(u.to('m/s').m)
+                    v_profile.append(v.to('m/s').m)
+                else:
+                    u_profile.append(np.nan)
+                    v_profile.append(np.nan)
+        
+        # Ara passem el perfil "brut" (amb possibles forats) a la funció de processament,
+        # que s'encarregarà de netejar-lo.
         processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
+        
+        # Si el processament ha fallat (perquè fins i tot després de netejar el perfil és massa curt),
+        # l'error es propagarà correctament.
         return processed_data, valid_index, error
         
     except Exception as e: 
