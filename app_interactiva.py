@@ -57,37 +57,35 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 WEBCAM_LINKS = {
     # Catalunya
-    "Barcelona": "https://www.youtube.com/embed/2i_o-a_I73s?autoplay=1&mute=1&loop=1&playlist=2i_o-a_I73s",
-    "Tarragona": "https://www.youtube.com/embed/YpCY_oE852g?autoplay=1&mute=1&loop=1&playlist=YpCY_oE852g",
+    "Barcelona": "https://www.youtube.com/embed/2i_o-a_I73s?autoplay=1&mute=1",
+    "Tarragona": "https://www.youtube.com/embed/YpCY_oE852g?autoplay=1&mute=1",
 
-    # Tornado Alley (EUA)
-    "Oklahoma City, OK": "https://www.youtube.com/embed/T6dClc9yS54?autoplay=1&mute=1&loop=1&playlist=T6dClc9yS54",
+    # Tornado Alley (EUA) - AQUESTS SÓN ELS TEUS ENLLAÇOS, AMB EL FORMAT CORRECTE
+    "Dallas, TX": "https://www.youtube.com/embed/for_g-h2H6s?autoplay=1&mute=1",
+    "Wichita, KS": "https://www.youtube.com/embed/Dh_hS-j62a0?autoplay=1&mute=1",
+    "Houston, TX": "https://www.youtube.com/embed/Bv2tY1e6E3g?autoplay=1&mute=1",
+    "Kansas City, MO": "https://www.youtube.com/embed/zEa-6yV38so?autoplay=1&mute=1",
 
     # Regne Unit i Irlanda
-    "Southampton": "https://www.youtube.com/embed/yJyL012sH_E?autoplay=1&mute=1&loop=1&playlist=yJyL012sH_E",
-    "Fort William": "https://www.youtube.com/embed/B_r9e8g3_IM?autoplay=1&mute=1&loop=1&playlist=B_r9e8g3_IM",
-    "Dublín (Paddocks)": "https://www.youtube.com/embed/SbAgJi-1i8s?autoplay=1&mute=1&loop=1&playlist=SbAgJi-1i8s",  # Webcam del Temple Bar a Dublín
-    "Scarborough": "https://www.youtube.com/live/T0oUufecXeE?si=hUgA3G5QXnmviriy",
+    "Southampton": "https://www.youtube.com/embed/yJyL012sH_E?autoplay=1&mute=1",
+    "Fort William": "https://www.youtube.com/embed/B_r9e8g3_IM?autoplay=1&mute=1",
+    "Dublín (Paddocks)": "https://www.youtube.com/embed/SbAgJi-1i8s?autoplay=1&mute=1",
+    "Scarborough": "https://www.youtube.com/embed/SApqPE63_V4?autoplay=1&mute=1",
 
     # Canadà
     "Revelstoke, BC": "https://www.youtube.com/embed/fIMbMz2P7Bs?autoplay=1&mute=1",
     "Banff, AB": "https://www.youtube.com/embed/_0wPODlF9wU?autoplay=1&mute=1",
     "Calgary, AB": "https://www.youtube.com/embed/MwcqP3ta6RI?autoplay=1&mute=1",
     "Vancouver, BC": "https://www.youtube.com/embed/-2vwOXTxbkw?autoplay=1&mute=1",
-
+    
     # Japó
     "Tòquio": "https://www.youtube.com/embed/_k-5U7IeK8g?autoplay=1&mute=1",
     "Oshino Hakkai (Fuji)": "https://www.youtube.com/embed/sm3xXTfDtGE?autoplay=1&mute=1",
     "Hasaki Beach": "https://www.youtube.com/embed/Ntz4h44KTDc?autoplay=1&mute=1",
     "Hakodate": "https://www.youtube.com/embed/sE1bH-zc9Pg?autoplay=1&mute=1",
-
-    # Tornado Alley (altres ciutats)
-    "Dallas, TX": "https://www.youtube.com/live/for_g-h2H6s?autoplay=1&mute=1",
-    "Wichita, KS": "https://www.youtube.com/live/Dh_hS-j62a0?autoplay=1&mute=1",
-    "Houston, TX": "https://www.youtube.com/live/Bv2tY1e6E3g?autoplay=1&mute=1",
-    "Kansas City, MO": "https://www.youtube.com/live/zEa-6yV38so?autoplay=1&mute=1",
+    
+    # Pots afegir més ciutats aquí seguint sempre el format /embed/
 }
-
 
 # --- Constants per al Canadà Continental ---
 API_URL_CANADA = "https://api.open-meteo.com/v1/forecast"
