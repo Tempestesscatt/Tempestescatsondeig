@@ -56,7 +56,7 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
 
-API_URL_UK = "https://api-open-meteo.com/v1/forecast" # Utilitza un endpoint lleugerament diferent
+API_URL_UK = "https://api.open-meteo.com/v1/forecast" 
 TIMEZONE_UK = pytz.timezone('Europe/London')
 CIUTATS_UK = {
     'Londres': {'lat': 51.5085, 'lon': -0.1257, 'sea_dir': (10, 120)},
@@ -65,7 +65,6 @@ CIUTATS_UK = {
     'Dublín': {'lat': 53.3498, 'lon': -6.2603, 'sea_dir': (50, 150)},
 }
 MAP_EXTENT_UK = [-11, 2, 49, 59]
-# Llista de nivells de pressió extremadament detallada per al model UKMO
 PRESS_LEVELS_UK = sorted([
     1000, 975, 950, 925, 900, 850, 800, 750, 700, 650, 600, 550, 500, 450, 400, 
     350, 300, 250, 200, 150, 100
@@ -2829,8 +2828,8 @@ def carregar_dades_sondeig_japo(lat, lon, hourly_index):
 @st.cache_data(ttl=3600, max_entries=20, show_spinner=False)
 def carregar_dades_sondeig_uk(lat, lon, hourly_index):
     """
-    Carrega dades de sondeig per al Regne Unit utilitzant el model d'alta
-    resolució UKMO de 2km.
+    Versió Definitiva i Corregida: Utilitza l'URL correcta i el mètode de lectura
+    de dades robust per ser compatible amb la resposta de l'API del model UKMO.
     """
     try:
         h_base = ["temperature_2m", "relative_humidity_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
@@ -2840,13 +2839,21 @@ def carregar_dades_sondeig_uk(lat, lon, hourly_index):
         
         params = {"latitude": lat, "longitude": lon, "hourly": all_requested_vars, "models": "ukmo_uk_deterministic_2km", "forecast_days": 2}
         
+        # Utilitzem la constant d'URL corregida
         response = openmeteo.weather_api(API_URL_UK, params=params)[0]
         hourly = response.Hourly()
 
         valid_index = trobar_hora_valida_mes_propera(hourly, hourly_index, len(h_base))
-        if valid_index is None: return None, hourly_index, "No s'han trobat dades vàlides."
+        if valid_index is None: 
+            return None, hourly_index, "No s'han trobat dades vàlides."
 
-        hourly_vars = {hourly.Variables(i).Name().decode(): hourly.Variables(i).ValuesAsNumpy() for i in range(len(all_requested_vars))}
+        # <<<--- BLOC DE LECTURA ROBUST (LA SOLUCIÓ CLAU) --->>>
+        hourly_vars = {}
+        for i, var_name in enumerate(all_requested_vars):
+            try:
+                hourly_vars[var_name] = hourly.Variables(i).ValuesAsNumpy()
+            except Exception:
+                hourly_vars[var_name] = np.array([np.nan])
         
         sfc_data = {v: hourly_vars[v][valid_index] for v in h_base}
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
@@ -2873,6 +2880,17 @@ def carregar_dades_sondeig_uk(lat, lon, hourly_index):
                     u_profile.append(np.nan); v_profile.append(np.nan)
 
         processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
+        
+        # Injectem la velocitat vertical si existeix
+        if processed_data:
+            params_calc = processed_data[1]
+            for p_val in PRESS_LEVELS_UK:
+                vv_var_name = f'vertical_velocity_{p_val}hPa'
+                if vv_var_name in hourly_vars:
+                    vv_value = hourly_vars[vv_var_name][valid_index]
+                    if pd.notna(vv_value):
+                        params_calc[f'VV_{p_val}hPa'] = vv_value
+
         return processed_data, valid_index, error
         
     except Exception as e: 
@@ -5996,7 +6014,7 @@ def run_uk_app():
     
     elif selected_tab == "Satèl·lit (Temps Real)":
         ui_pestanya_satelit_europa()
-        
+
 
 def run_holanda_app():
     # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
