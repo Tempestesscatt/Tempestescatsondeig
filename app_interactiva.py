@@ -82,10 +82,10 @@ WEBCAM_LINKS = {
     "Hakodate": "https://www.youtube.com/embed/sE1bH-zc9Pg?autoplay=1&mute=1",
 
     # Tornado Alley (altres ciutats)
-    "Dallas, TX": "https://www.youtube.com/embed/for_g-h2H6s?autoplay=1&mute=1",
-    "Wichita, KS": "https://www.youtube.com/embed/Dh_hS-j62a0?autoplay=1&mute=1",
-    "Houston, TX": "https://www.youtube.com/embed/Bv2tY1e6E3g?autoplay=1&mute=1",
-    "Kansas City, MO": "https://www.youtube.com/embed/zEa-6yV38so?autoplay=1&mute=1",
+    "Dallas, TX": "https://www.youtube.com/live/for_g-h2H6s?autoplay=1&mute=1",
+    "Wichita, KS": "https://www.youtube.com/live/Dh_hS-j62a0?autoplay=1&mute=1",
+    "Houston, TX": "https://www.youtube.com/live/Bv2tY1e6E3g?autoplay=1&mute=1",
+    "Kansas City, MO": "https://www.youtube.com/live/zEa-6yV38so?autoplay=1&mute=1",
 }
 
 
