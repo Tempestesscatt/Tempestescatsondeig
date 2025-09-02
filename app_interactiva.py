@@ -59,13 +59,12 @@ TIMEZONE_ALEMANYA = pytz.timezone('Europe/Berlin')
 CIUTATS_ALEMANYA = {
     'Berlín': {'lat': 52.5200, 'lon': 13.4050, 'sea_dir': None},
     'Munic': {'lat': 48.1351, 'lon': 11.5820, 'sea_dir': None},
-    'Hamburg': {'lat': 53.5511, 'lon': 9.9937, 'sea_dir': (290, 360)}, # Influència del Mar del Nord
+    'Hamburg': {'lat': 53.5511, 'lon': 9.9937, 'sea_dir': (290, 360)}, 
     'Frankfurt': {'lat': 50.1109, 'lon': 8.6821, 'sea_dir': None},
 }
 MAP_EXTENT_ALEMANYA = [5.5, 15.5, 47.0, 55.5]
-# El model ICON té nivells de pressió lleugerament diferents, ens hi adaptem
-PRESS_LEVELS_ICON = sorted([1000, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200], reverse=True)
-
+# Llista de nivells de pressió ACTUALITZADA per al model ICON
+PRESS_LEVELS_ICON = sorted([1000, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 
 
 
@@ -3342,10 +3341,10 @@ def mostrar_spinner_mapa(mensaje, funcion_carga, *args, **kwargs):
 def carregar_dades_sondeig_alemanya(lat, lon, hourly_index):
     """
     Carrega i processa les dades d'un sondeig vertical per a un punt a Alemanya
-    utilitzant el model d'alta resolució ICON-D2.
+    utilitzant el model d'alta resolució ICON-D2, ara amb nivells fins a 100 hPa.
     """
     try:
-        # Llista de variables de superfície i per nivells de pressió
+        # La llista de variables es genera dinàmicament a partir de la constant actualitzada
         h_base = ["temperature_2m", "relative_humidity_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
         h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS_ICON]
         
@@ -3353,44 +3352,41 @@ def carregar_dades_sondeig_alemanya(lat, lon, hourly_index):
             "latitude": lat, 
             "longitude": lon, 
             "hourly": h_base + h_press, 
-            "models": "icon_d2", # Model específic d'alta resolució per a Alemanya
+            "models": "icon_d2", 
             "forecast_days": 3
         }
         
         response = openmeteo.weather_api(API_URL_ALEMANYA, params=params)[0]
         hourly = response.Hourly()
 
-        # Lògica per trobar l'hora vàlida més propera (reutilitzada de les teves altres funcions)
+        # La lògica per trobar l'hora vàlida no canvia
         valid_index = None
         total_hours = len(hourly.Variables(0).ValuesAsNumpy())
         for offset in range(4): # Mirem fins a +/- 3 hores
-            h_idx = hourly_index + offset
-            if 0 <= h_idx < total_hours:
-                sfc_check = [hourly.Variables(i).ValuesAsNumpy()[h_idx] for i in range(len(h_base))]
-                if not any(np.isnan(val) for val in sfc_check):
-                    valid_index = h_idx
-                    break
+            for sign in [1, -1] if offset > 0 else [1]:
+                h_idx = hourly_index + (offset * sign)
+                if 0 <= h_idx < total_hours:
+                    sfc_check = [hourly.Variables(i).ValuesAsNumpy()[h_idx] for i in range(len(h_base))]
+                    if not any(np.isnan(val) for val in sfc_check):
+                        valid_index = h_idx; break
+            if valid_index is not None: break
+        
         if valid_index is None:
             return None, hourly_index, "No s'han trobat dades vàlides properes a l'hora sol·licitada."
         
-        # Construcció del perfil atmosfèric (exactament com a les teves altres funcions)
+        # La construcció del perfil tampoc canvia, ja que és dinàmica
         sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[valid_index] for i, v in enumerate(h_base)}
         sfc_dew_point = mpcalc.dewpoint_from_relative_humidity(sfc_data["temperature_2m"] * units.degC, sfc_data["relative_humidity_2m"] * units.percent).m
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
         
-        p_profile = [sfc_data["surface_pressure"]]
-        T_profile = [sfc_data["temperature_2m"]]
-        Td_profile = [sfc_dew_point]
-        u_profile = [sfc_u.to('m/s').m]
-        v_profile = [sfc_v.to('m/s').m]
-        h_profile = [0.0]
-        
-        # Recopilació de dades per nivells de pressió
+        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_dew_point], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
+
         p_data = {}
         var_count = len(h_base)
         for i, var in enumerate(["T", "RH", "WS", "WD", "H"]):
             p_data[var] = [hourly.Variables(var_count + i * len(PRESS_LEVELS_ICON) + j).ValuesAsNumpy()[valid_index] for j in range(len(PRESS_LEVELS_ICON))]
 
+        # Aquest bucle ara inclourà automàticament els nivells 200, 150 i 100 hPa
         for i, p_val in enumerate(PRESS_LEVELS_ICON):
             if p_val < p_profile[-1] and all(not np.isnan(p_data[v][i]) for v in ["T", "RH", "WS", "WD", "H"]):
                 p_profile.append(p_val)
@@ -3401,7 +3397,6 @@ def carregar_dades_sondeig_alemanya(lat, lon, hourly_index):
                 v_profile.append(v.to('m/s').m)
                 h_profile.append(p_data["H"][i])
 
-        # Finalment, processem el perfil construït amb la teva funció universal
         processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
         return processed_data, valid_index, error
         
@@ -5206,4 +5201,3 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
 if __name__ == "__main__":
     main()
-
