@@ -60,11 +60,11 @@ WEBCAM_LINKS = {
     "Barcelona": "https://www.youtube.com/embed/2i_o-a_I73s?autoplay=1&mute=1",
     "Tarragona": "https://www.youtube.com/embed/YpCY_oE852g?autoplay=1&mute=1",
 
-    # Tornado Alley (EUA) - AQUESTS SÓN ELS TEUS ENLLAÇOS, AMB EL FORMAT CORRECTE
-    "Dallas, TX": "https://www.youtube.com/embed/for_g-h2H6s?autoplay=1&mute=1",
-    "Wichita, KS": "https://www.youtube.com/embed/Dh_hS-j62a0?autoplay=1&mute=1",
-    "Houston, TX": "https://www.youtube.com/embed/Bv2tY1e6E3g?autoplay=1&mute=1",
-    "Kansas City, MO": "https://www.youtube.com/embed/zEa-6yV38so?autoplay=1&mute=1",
+     # Tornado Alley (EUA) - NOUS ENLLAÇOS VERIFICATS
+    "Dallas, TX": "https://www.youtube.com/embed/AbA8A5k5_v8?autoplay=1&mute=1",      # Skyline Cam
+    "Wichita, KS": "https://www.youtube.com/embed/L1JoA_84o4U?autoplay=1&mute=1",     # Wichita Airport Cam
+    "Houston, TX": "https://www.youtube.com/embed/n7N2NewE7Yc?autoplay=1&mute=1",      # Houston Skyline
+    "Kansas City, MO": "https://www.youtube.com/embed/5KCS_t4i7P4?autoplay=1&mute=1", # Kansas City Downtown Cam
 
     # Regne Unit i Irlanda
     "Southampton": "https://www.youtube.com/embed/yJyL012sH_E?autoplay=1&mute=1",
