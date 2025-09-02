@@ -64,7 +64,7 @@ WEBCAM_LINKS = {
     "Oklahoma City, OK": "https://www.youtube.com/embed/T6dClc9yS54?autoplay=1&mute=1&loop=1&playlist=T6dClc9yS54", # KOCO 5 News
 
     # Regne Unit
-    "Londres": "https://www.youtube.com/watch?v=QO-hO_kwwmY", # Vista del Tower Bridge
+    "Londres": "https://www.youtube.com/embed/l-f24fvi6yY?autoplay=1&mute=1&loop=1&playlist=l-f24fvi6yY", # Vista del Tower Bridge
 
     # Pots afegir més ciutats aquí...
     # "Roma": "URL_DE_LA_WEBCAM_DE_ROMA",
@@ -2874,10 +2874,7 @@ def carregar_dades_mapa_uk(nivell, hourly_index):
     model d'alta resolució UKMO de 2km.
     """
     try:
-        # Demanem relative_humidity per assegurar la màxima compatibilitat de dades
         variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-        
-        # Utilitzem una graella de 12x12 per evitar l'error de URL massa llarga
         lats, lons = np.linspace(MAP_EXTENT_UK[2], MAP_EXTENT_UK[3], 12), np.linspace(MAP_EXTENT_UK[0], MAP_EXTENT_UK[1], 12)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
         params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "ukmo_uk_deterministic_2km", "forecast_days": 2}
@@ -2899,7 +2896,6 @@ def carregar_dades_mapa_uk(nivell, hourly_index):
         if not output["lats"]: 
             return None, "No s'han rebut dades per a la graella del mapa."
         
-        # Calculem el punt de rosada i reanomenem les claus
         temp_data = np.array(output.pop(f'temperature_{nivell}hPa')) * units.degC
         rh_data = np.array(output.pop(f'relative_humidity_{nivell}hPa')) * units.percent
         output['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
@@ -2909,6 +2905,7 @@ def carregar_dades_mapa_uk(nivell, hourly_index):
         return output, None
     except Exception as e: 
         return None, f"Error en carregar dades del mapa UKMO: {e}"
+    
 
 def crear_mapa_forecast_combinat_uk(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     """
@@ -3943,29 +3940,54 @@ def crear_mapa_convergencia_cat(lons, lats, speed_data, dir_data, dewpoint_data,
 
 
 
-def ui_pestanya_webcams(poble_sel):
+def ui_pestanya_webcams(poble_sel, zona_activa):
     """
-    Mostra una webcam en directe per a la localitat seleccionada,
-    buscant l'enllaç al diccionari WEBCAM_LINKS.
+    Versió Definitiva: Mostra una webcam específica del diccionari WEBCAM_LINKS si existeix.
+    Si no, mostra un mapa interactiu de webcams de Windy.com centrat a la
+    localitat seleccionada com a opció per defecte.
     """
-    st.markdown(f"#### Webcam en Directe per a {poble_sel}")
+    st.markdown(f"#### Webcams en Directe per a {poble_sel}")
 
-    # Busquem si tenim una webcam per a la ciutat seleccionada
+    # 1. Intentem trobar una webcam específica al nostre diccionari
     webcam_url = WEBCAM_LINKS.get(poble_sel)
     
     if webcam_url:
-        st.info("La qualitat i disponibilitat del vídeo depenen de la font externa.")
-        
-        # Incrustem l'URL trobada en un iframe
+        # Si la trobem, la mostrem
+        st.info("La qualitat i disponibilitat del vídeo depenen de la font externa (ex: YouTube).")
         st.components.v1.html(
             f'<iframe width="100%" height="600" src="{webcam_url}" frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>',
             height=620
         )
     else:
-        # Si no trobem cap webcam per a aquesta ciutat, mostrem un missatge
-        st.warning(f"No s'ha configurat cap webcam en directe per a **{poble_sel}**.")
-        st.info("Pots afegir l'enllaç d'una webcam per a aquesta localitat al diccionari `WEBCAM_LINKS` a l'inici de l'script.")
+        # 2. Si no hi ha cap enllaç específic, mostrem el mapa de Windy com a fallback
+        st.warning(f"No s'ha configurat cap webcam específica per a **{poble_sel}**.")
+        st.info("Mostrant el mapa de webcams properes de Windy.com. Pots moure't pel mapa, fer zoom i clicar a les icones de càmera 📷 per veure les vistes en directe.")
 
+        # Determinem de quin diccionari hem de treure les coordenades
+        if zona_activa == 'catalunya': CIUTATS_DICT = CIUTATS_CATALUNYA
+        elif zona_activa == 'valley_halley': CIUTATS_DICT = USA_CITIES
+        elif zona_activa == 'alemanya': CIUTATS_DICT = CIUTATS_ALEMANYA
+        elif zona_activa == 'italia': CIUTATS_DICT = CIUTATS_ITALIA
+        elif zona_activa == 'holanda': CIUTATS_DICT = CIUTATS_HOLANDA
+        elif zona_activa == 'japo': CIUTATS_DICT = CIUTATS_JAPO
+        elif zona_activa == 'uk': CIUTATS_DICT = CIUTATS_UK
+        elif zona_activa == 'canada': CIUTATS_DICT = CIUTATS_CANADA
+        else: CIUTATS_DICT = {}
+
+        coords = CIUTATS_DICT.get(poble_sel)
+        if not coords:
+            st.error(f"No s'han trobat les coordenades per a {poble_sel} per centrar el mapa de Windy.")
+            return
+
+        lat, lon = coords['lat'], coords['lon']
+        
+        # Construïm l'URL final per a l'iframe de Windy
+        windy_url = f"https://embed.windy.com/webcams/map/{lat}/{lon}?overlay=radar"
+        
+        st.components.v1.html(
+            f'<iframe width="100%" height="500" src="{windy_url}" frameborder="0"></iframe>',
+            height=520
+        )
 
 @st.cache_data(show_spinner="Carregant mapa de selecció...")
 def carregar_dades_geografiques():
@@ -4658,7 +4680,41 @@ def analitzar_amenaça_convergencia_propera(map_data, params_calc, lat_sel, lon_
 
     except Exception:
         return None
+    
 
+def crear_mapa_forecast_combinat_uk(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
+    """
+    Crea el mapa visual de vent i convergència per al Regne Unit i Irlanda.
+    """
+    fig, ax = crear_mapa_base(MAP_EXTENT_UK, projection=ccrs.LambertConformal(central_longitude=-4.5, central_latitude=54))
+    if len(lons) < 4: return fig
+
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_UK[0], MAP_EXTENT_UK[1], 200), np.linspace(MAP_EXTENT_UK[2], MAP_EXTENT_UK[3], 200))
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic'); grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
+    u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'); grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    
+    colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
+    speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]
+    custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=4.5, arrowsize=0.5, zorder=4, transform=ccrs.PlateCarree())
+    
+    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat); convergence_scaled = -(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s').magnitude * 1e5
+    convergence_in_humid_areas = np.where(grid_dewpoint >= 12, convergence_scaled, 0)
+    
+    fill_levels = [5, 10, 15, 25]; fill_colors = ['#ffc107', '#ff9800', '#f44336']
+    line_levels = [5, 10, 15]; line_colors = ['#e65100', '#bf360c', '#b71c1c']
+    
+    ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=fill_colors, alpha=0.6, zorder=5, transform=ccrs.PlateCarree())
+    contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors=line_colors, linestyles='--', linewidths=1.2, zorder=6, transform=ccrs.PlateCarree())
+    ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
+
+    for city, coords in CIUTATS_UK.items():
+        ax.plot(coords['lon'], coords['lat'], 'o', color='red', markersize=3, markeredgecolor='black', transform=ccrs.PlateCarree(), zorder=10)
+        ax.text(coords['lon'] + 0.1, coords['lat'] + 0.1, city, fontsize=8, transform=ccrs.PlateCarree(), zorder=10, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+    ax.set_title(f"Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    return fig
 
         
 def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
@@ -6161,41 +6217,77 @@ def run_alemanya_app():
         ui_pestanya_webcams(poble_sel, zona_activa="alemanya")
 
 def run_uk_app():
+    # --- PAS 1: INICIALITZACIÓ D'ESTAT ---
     if 'poble_selector_uk' not in st.session_state: st.session_state.poble_selector_uk = "Londres"
     if 'dia_selector_uk' not in st.session_state: st.session_state.dia_selector_uk = datetime.now(TIMEZONE_UK).strftime('%d/%m/%Y')
     if 'hora_selector_uk' not in st.session_state: st.session_state.hora_selector_uk = datetime.now(TIMEZONE_UK).hour
     if 'level_uk_main' not in st.session_state: st.session_state.level_uk_main = 850
     if 'active_tab_uk' not in st.session_state: st.session_state.active_tab_uk = "Anàlisi Vertical"
+
+    # --- PAS 2: CAPÇALERA I SELECTORS ---
     ui_capcalera_selectors(None, zona_activa="uk")
+    
+    # --- PAS 3: RECOPILACIÓ DE VALORS ---
     poble_sel, dia_sel_str, hora_sel, nivell_sel = st.session_state.poble_selector_uk, st.session_state.dia_selector_uk, st.session_state.hora_selector_uk, st.session_state.level_uk_main
     hora_sel_str = f"{hora_sel:02d}:00h"
     lat_sel, lon_sel = CIUTATS_UK[poble_sel]['lat'], CIUTATS_UK[poble_sel]['lon']
+    
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     local_dt = TIMEZONE_UK.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_sel))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_UK.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+
+    # --- PAS 4: MENÚ DE PESTANYES ---
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
     default_idx = menu_options.index(st.session_state.active_tab_uk)
     selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
     st.session_state.active_tab_uk = selected_tab
+
+    # --- PAS 5: LÒGICA DE PESTANYES ---
     if selected_tab == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_uk(lat_sel, lon_sel, hourly_index_sel)
-        if data_tuple is None or error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        
+        if data_tuple is None or error_msg:
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
             if final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_UK)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+            
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+    
     elif selected_tab == "Anàlisi de Mapes":
+        # <<<--- BLOC ACTUALITZAT I FUNCIONAL --->>>
         ui_pestanya_mapes_uk(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
+    
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="uk")
 
+
+def ui_pestanya_mapes_uk(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
+    """
+    Funció de la interfície d'usuari per a la pestanya de mapes del Regne Unit.
+    """
+    st.markdown("#### Mapes de Pronòstic (Model UKMO 2km)")
+    with st.spinner(f"Carregant mapa UKMO a {nivell_sel}hPa..."):
+        map_data, error = carregar_dades_mapa_uk(nivell_sel, hourly_index_sel)
+    
+    if error or not map_data:
+        st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+    else:
+        fig = crear_mapa_forecast_combinat_uk(
+            map_data['lons'], map_data['lats'], map_data['speed_data'], 
+            map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, 
+            timestamp_str.replace(f"{poble_sel} | ", "")
+        )
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
 
 def run_holanda_app():
     if 'poble_selector_holanda' not in st.session_state: st.session_state.poble_selector_holanda = "Amsterdam"
