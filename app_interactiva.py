@@ -2781,22 +2781,11 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model ICON 2.2km - Itàlia)")
     
     with st.spinner(f"Carregant mapa ICON-2I a {nivell_sel}hPa..."):
-        map_data, error = carregar_dades_mapa_italia(nivell_sel, hourly_index_sel)
-    
-    if error:
-        st.error(f"Error en carregar el mapa: {error}")
-    elif map_data:
-        # Si tenim dades, creem i mostrem el mapa
-        fig = crear_mapa_forecast_combinat_italia(
-            map_data['lons'], map_data['lats'], 
-            map_data['speed_data'], map_data['dir_data'], 
-            map_data['dewpoint_data'], nivell_sel, 
-            timestamp_str
-        )
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
-    else:
-        st.warning("No s'han pogut obtenir les dades per generar el mapa.")
+        # Aquesta és una funció simplificada ja que el model italià no està a la graella global
+        # Mostrarem un missatge a l'usuari de moment
+        st.info("La visualització de mapes per al model regional d'Itàlia està en desenvolupament.")
+        st.image("https://www.arpae.it/images/METEO/left-analisi-previsioni.jpg", caption="Font: ARPAE Emilia-Romagna", use_container_width=True)
+
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
@@ -5454,3 +5443,4 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
 if __name__ == "__main__":
     main()
+
