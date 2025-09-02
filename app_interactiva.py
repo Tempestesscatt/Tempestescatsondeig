@@ -4669,7 +4669,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
-    altres_zones = {'catalunya': 'Catalunya', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya', 'italia': 'Itàlia', 'holanda': 'Holanda'}
+    altres_zones = {'catalunya': 'Catalunya', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya', 'italia': 'Itàlia', 'holanda': 'Holanda', 'japo': 'Japó'}
     del altres_zones[zona_activa]
     
     col_text, col_nav, col_back, col_logout = st.columns([0.5, 0.2, 0.15, 0.15])
@@ -4678,7 +4678,9 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
         if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username', 'Usuari')}**!")
     with col_nav:
         nova_zona_key = st.selectbox("Canviar a:", options=list(altres_zones.keys()), format_func=lambda k: altres_zones[k], index=None, placeholder="Anar a...")
-        if nova_zona_key: st.session_state.zone_selected = nova_zona_key; st.rerun()
+        if nova_zona_key:
+            st.session_state.zone_selected = nova_zona_key
+            st.rerun()
     with col_back:
         if st.button("⬅️ Zones", use_container_width=True, help="Tornar a la selecció de zona"):
             keys_to_clear = [k for k in st.session_state if k not in ['logged_in', 'username', 'guest_mode', 'developer_mode']]
@@ -4691,32 +4693,46 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
 
     with st.container(border=True):
         if zona_activa == 'catalunya':
-            # Aquesta part es manté igual
-            pass
+            # Aquesta part es manté del teu codi original
+            run_catalunya_app()
+        
         elif zona_activa == 'valley_halley':
-            # Aquesta part es manté igual
-            pass
+            # Lògica de selectors per a EUA
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(USA_CITIES.keys())), key="poble_selector_usa")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_USA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(3)], key="dia_selector_usa")
+            with col_hora: st.selectbox("Hora (Central Time):", options=[f"{h:02d}:00 (Local: {datetime.now(TIMEZONE_CAT).replace(hour=h).astimezone(TIMEZONE_USA).hour:02d}:00h)" for h in range(24)], key="hora_selector_usa")
+            with col_nivell: st.selectbox("Nivell:", [925, 850, 700, 500, 300], key="level_usa_main", index=1, format_func=lambda x: f"{x} hPa")
+
         elif zona_activa == 'alemanya':
-            # Aquesta part es manté igual
-            pass
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ALEMANYA.keys())), key="poble_selector_alemanya")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_ALEMANYA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(3)], key="dia_selector_alemanya")
+            with col_hora: st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector_alemanya")
+            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_ICON, key="level_alemanya_main", index=6, format_func=lambda x: f"{x} hPa")
+
         elif zona_activa == 'italia':
-            # Aquesta part es manté igual
-            pass
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ITALIA.keys())), key="poble_selector_italia")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_ITALIA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_italia")
+            with col_hora: st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector_italia")
+            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_ITALIA, key="level_italia_main", index=2, format_func=lambda x: f"{x} hPa")
+
         elif zona_activa == 'holanda':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_HOLANDA.keys())), key="poble_selector_holanda")
             with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_HOLANDA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_holanda")
             with col_hora: st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector_holanda")
             with col_nivell:
-                
-                # <<<--- CANVI PRINCIPAL AQUÍ --->>>
-                # Excloem 1000 hPa de la llista d'opcions, ja que no està disponible per als mapes d'aquest model.
                 nivells_mapa_holanda = [p for p in PRESS_LEVELS_HOLANDA if p != 1000]
-                
-                # Ajustem l'índex per defecte (850hPa) a la seva nova posició a la llista.
-                # Llista original: [1000, 925, 850...], 850hPa era l'índex 2.
-                # Nova llista: [925, 850...], 850hPa és ara l'índex 1.
                 st.selectbox("Nivell:", nivells_mapa_holanda, key="level_holanda_main", index=1, format_func=lambda x: f"{x} hPa")
+                
+        elif zona_activa == 'japo':
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_JAPO.keys())), key="poble_selector_japo")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_JAPO) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_japo")
+            with col_hora: st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector_japo")
+            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_JAPO, key="level_japo_main", index=2, format_func=lambda x: f"{x} hPa")
 
 @st.cache_resource(ttl=1800, show_spinner=False)
 def generar_mapa_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
@@ -5681,21 +5697,34 @@ def run_japo_app():
 
 
 def main():
-    inject_custom_css(); hide_streamlit_style()
+    inject_custom_css()
+    hide_streamlit_style()
+    
     if 'logged_in' not in st.session_state: st.session_state.logged_in = False
+    
     if not st.session_state.logged_in:
-        afegir_video_de_fons(); show_login_page(); return
+        afegir_video_de_fons()
+        show_login_page()
+        return
+
     if 'zone_selected' not in st.session_state or st.session_state.zone_selected is None:
-        ui_zone_selection(); return
+        ui_zone_selection()
+        return
 
-    if st.session_state.zone_selected == 'catalunya': run_catalunya_app()
-    elif st.session_state.zone_selected == 'valley_halley': run_valley_halley_app()
-    elif st.session_state.zone_selected == 'alemanya': run_alemanya_app()
-    elif st.session_state.zone_selected == 'italia': run_italia_app()
-    elif st.session_state.zone_selected == 'holanda': run_holanda_app()
-    elif st.session_state.zone_selected == 'japo': run_japo_app()
-
-
+    # Lògica principal que crida la funció de l'app corresponent a la zona seleccionada
+    if st.session_state.zone_selected == 'catalunya':
+        run_catalunya_app()
+    elif st.session_state.zone_selected == 'valley_halley':
+        run_valley_halley_app()
+    elif st.session_state.zone_selected == 'alemanya':
+        run_alemanya_app()
+    elif st.session_state.zone_selected == 'italia':
+        run_italia_app()
+    elif st.session_state.zone_selected == 'holanda':
+        run_holanda_app()
+    elif st.session_state.zone_selected == 'japo':
+        run_japo_app()
+        
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
     Sistema de Diagnòstic v28.0 - Lògica Jeràrquica amb LFC.
