@@ -2688,8 +2688,8 @@ def ui_pestanya_mapes_holanda(hourly_index_sel, timestamp_str, nivell_sel):
 @st.cache_data(ttl=3600, max_entries=20, show_spinner=False)
 def carregar_dades_sondeig_japo(lat, lon, hourly_index):
     """
-    Carrega i processa dades de sondeig per al Japó utilitzant el model d'alta
-    resolució JMA MSM.
+    Versió Definitiva: Carrega dades per al Japó sense utilitzar el mètode .Name()
+    per ser compatible amb la resposta de l'API del model JMA MSM.
     """
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
@@ -2703,9 +2703,20 @@ def carregar_dades_sondeig_japo(lat, lon, hourly_index):
         hourly = response.Hourly()
 
         valid_index = trobar_hora_valida_mes_propera(hourly, hourly_index, len(h_base))
-        if valid_index is None: return None, hourly_index, "No s'han trobat dades vàlides."
+        if valid_index is None: 
+            return None, hourly_index, "No s'han trobat dades vàlides."
 
-        hourly_vars = {hourly.Variables(i).Name().decode(): hourly.Variables(i).ValuesAsNumpy() for i in range(len(all_requested_vars))}
+        # <<<--- BLOC DE LECTURA CORREGIT I ROBUST --->>>
+        # Construïm el diccionari iterant sobre la nostra pròpia llista de variables.
+        # Això no depèn de cap mètode de l'objecte resposta i és universal.
+        hourly_vars = {}
+        for i, var_name in enumerate(all_requested_vars):
+            try:
+                # Accedim a les variables per la seva posició, que sabem que és correcta.
+                hourly_vars[var_name] = hourly.Variables(i).ValuesAsNumpy()
+            except Exception:
+                # Si per alguna raó una variable no ve, la ignorem.
+                hourly_vars[var_name] = np.array([np.nan])
         
         sfc_data = {v: hourly_vars[v][valid_index] for v in h_base}
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
@@ -2718,13 +2729,17 @@ def carregar_dades_sondeig_japo(lat, lon, hourly_index):
                 T_profile.append(hourly_vars[f'temperature_{p_val}hPa'][valid_index])
                 Td_profile.append(hourly_vars[f'dew_point_{p_val}hPa'][valid_index])
                 u, v = mpcalc.wind_components(hourly_vars[f'wind_speed_{p_val}hPa'][valid_index] * units('km/h'), hourly_vars[f'wind_direction_{p_val}hPa'][valid_index] * units.degrees)
-                u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m)
+                u_profile.append(u.to('m/s').m)
+                v_profile.append(v.to('m/s').m)
                 h_profile.append(hourly_vars[f'geopotential_height_{p_val}hPa'][valid_index])
 
-        return processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
+        # Tornem (processed_data, error) que espera la funció principal
+        processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
+        return processed_data, valid_index, error
         
     except Exception as e: 
-        import traceback; traceback.print_exc()
+        import traceback
+        traceback.print_exc()
         return None, hourly_index, f"Error crític en carregar dades del sondeig del Japó: {e}"
 
 def ui_pestanya_satelit_japo():
@@ -5889,3 +5904,4 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
 if __name__ == "__main__":
     main()
+
