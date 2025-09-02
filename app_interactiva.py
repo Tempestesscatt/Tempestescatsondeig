@@ -61,16 +61,16 @@ WEBCAM_LINKS = {
     "Tarragona": "https://www.youtube.com/embed/YpCY_oE852g?autoplay=1&mute=1&loop=1&playlist=YpCY_oE852g",
 
     # Tornado Alley (EUA)
-    "Oklahoma City, OK": "https://www.youtube.com/embed/T6dClc9yS54?autoplay=1&mute=1&loop=1&playlist=T6dClc9yS54", # KOCO 5 News
+    "Oklahoma City, OK": "https://www.youtube.com/embed/T6dClc9yS54?autoplay=1&mute=1&loop=1&playlist=T6dClc9yS54",
 
-    # Regne Unit
-    "Londres": "https://www.youtube.com/embed/l-f24fvi6yY?autoplay=1&mute=1&loop=1&playlist=l-f24fvi6yY", # Vista del Tower Bridge
+    # <<<--- AFEGEIX O SUBSTITUEIX AQUESTES LÍNIES PER AL REGNE UNIT I IRLANDA --->>>
+    "Southampton": "https://www.youtube.com/watch?v=QO-hO_kwwmY",
+    "Fort William": "https://www.youtube.com/watch?v=8miQ3QXA26Q",
+    "Dublín (Paddocks)": "https://www.youtube.com/watch?v=ZANLLiQ_L3A", # Webcam del Temple Bar a Dublín
+    "Scarborough": "https://www.youtube.com/watch?v=itG7PHrPSUw",
 
     # Pots afegir més ciutats aquí...
-    # "Roma": "URL_DE_LA_WEBCAM_DE_ROMA",
-    # "Tòquio": "URL_DE_LA_WEBCAM_DE_TOQUIO",
 }
-
 
 # --- Constants per al Canadà Continental ---
 API_URL_CANADA = "https://api.open-meteo.com/v1/forecast"
@@ -93,13 +93,12 @@ PRESS_LEVELS_CANADA = sorted([
 API_URL_UK = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_UK = pytz.timezone('Europe/London')
 CIUTATS_UK = {
-    'Londres': {'lat': 51.5085, 'lon': -0.1257, 'sea_dir': (10, 120)},
-    'Manchester': {'lat': 53.4808, 'lon': -2.2426, 'sea_dir': (220, 320)},
-    'Edimburg': {'lat': 55.9533, 'lon': -3.1883, 'sea_dir': (0, 100)},
-    'Dublín': {'lat': 53.3498, 'lon': -6.2603, 'sea_dir': (50, 150)},
+    'Southampton': {'lat': 50.9097, 'lon': -1.4044, 'sea_dir': (135, 225)},
+    'Fort William': {'lat': 56.8167, 'lon': -5.1121, 'sea_dir': (200, 250)},
+    'Dublín (Paddocks)': {'lat': 53.3498, 'lon': -6.2603, 'sea_dir': (50, 150)},
+    'Scarborough': {'lat': 54.2831, 'lon': -0.3997, 'sea_dir': (45, 135)},
 }
 MAP_EXTENT_UK = [-11, 2, 49, 59]
-# Llista de nivells de pressió extremadament detallada per al model UKMO
 PRESS_LEVELS_UK = sorted([
     1000, 975, 950, 925, 900, 850, 800, 750, 700, 650, 600, 550, 500, 450, 400, 
     375, 350, 325, 300, 275, 250, 225, 200, 175, 150, 125, 100, 70, 50, 40, 30, 20, 10
@@ -6216,9 +6215,11 @@ def run_alemanya_app():
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="alemanya")
 
+
 def run_uk_app():
     # --- PAS 1: INICIALITZACIÓ D'ESTAT ---
-    if 'poble_selector_uk' not in st.session_state: st.session_state.poble_selector_uk = "Londres"
+    # <<<--- CANVI: La ciutat per defecte ara és Southampton --->>>
+    if 'poble_selector_uk' not in st.session_state: st.session_state.poble_selector_uk = "Southampton"
     if 'dia_selector_uk' not in st.session_state: st.session_state.dia_selector_uk = datetime.now(TIMEZONE_UK).strftime('%d/%m/%Y')
     if 'hora_selector_uk' not in st.session_state: st.session_state.hora_selector_uk = datetime.now(TIMEZONE_UK).hour
     if 'level_uk_main' not in st.session_state: st.session_state.level_uk_main = 850
@@ -6228,8 +6229,12 @@ def run_uk_app():
     ui_capcalera_selectors(None, zona_activa="uk")
     
     # --- PAS 3: RECOPILACIÓ DE VALORS ---
-    poble_sel, dia_sel_str, hora_sel, nivell_sel = st.session_state.poble_selector_uk, st.session_state.dia_selector_uk, st.session_state.hora_selector_uk, st.session_state.level_uk_main
+    poble_sel = st.session_state.poble_selector_uk
+    dia_sel_str = st.session_state.dia_selector_uk
+    hora_sel = st.session_state.hora_selector_uk
     hora_sel_str = f"{hora_sel:02d}:00h"
+    
+    nivell_sel = st.session_state.level_uk_main
     lat_sel, lon_sel = CIUTATS_UK[poble_sel]['lat'], CIUTATS_UK[poble_sel]['lon']
     
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
@@ -6263,31 +6268,10 @@ def run_uk_app():
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
     
     elif selected_tab == "Anàlisi de Mapes":
-        # <<<--- BLOC ACTUALITZAT I FUNCIONAL --->>>
-        ui_pestanya_mapes_uk(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
+        st.info("La visualització de mapes per al model del Regne Unit (UKMO) està en desenvolupament.")
     
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="uk")
-
-
-def ui_pestanya_mapes_uk(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
-    """
-    Funció de la interfície d'usuari per a la pestanya de mapes del Regne Unit.
-    """
-    st.markdown("#### Mapes de Pronòstic (Model UKMO 2km)")
-    with st.spinner(f"Carregant mapa UKMO a {nivell_sel}hPa..."):
-        map_data, error = carregar_dades_mapa_uk(nivell_sel, hourly_index_sel)
-    
-    if error or not map_data:
-        st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
-    else:
-        fig = crear_mapa_forecast_combinat_uk(
-            map_data['lons'], map_data['lats'], map_data['speed_data'], 
-            map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, 
-            timestamp_str.replace(f"{poble_sel} | ", "")
-        )
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
 
 def run_holanda_app():
     if 'poble_selector_holanda' not in st.session_state: st.session_state.poble_selector_holanda = "Amsterdam"
