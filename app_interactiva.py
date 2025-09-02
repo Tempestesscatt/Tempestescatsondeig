@@ -2547,27 +2547,39 @@ def afegir_etiquetes_ciutats(ax, map_extent):
 @st.cache_data(ttl=3600, max_entries=20, show_spinner=False)
 def carregar_dades_sondeig_holanda(lat, lon, hourly_index):
     """
-    Carrega i processa dades de sondeig per a Holanda utilitzant el model
-    d'alta resolució KNMI Harmonie AROME.
-    Aquest model proporciona 'dew_point' directament.
+    Versió Corregida i Robusta: Carrega dades per a Holanda sense utilitzar
+    el mètode .NumberOfVariables() per ser compatible amb la resposta de l'API del model KNMI.
     """
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
-        # Aquest model ens dona directament 'dew_point', la qual cosa simplifica la càrrega.
         press_vars = ["temperature", "dew_point", "wind_speed", "wind_direction", "geopotential_height"]
         h_press = [f"{v}_{p}hPa" for v in press_vars for p in PRESS_LEVELS_HOLANDA]
         
-        params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "knmi_harmonie_arome_europe", "forecast_days": 2}
+        # Llista completa de totes les variables que estem demanant
+        all_requested_vars = h_base + h_press
+        
+        params = {"latitude": lat, "longitude": lon, "hourly": all_requested_vars, "models": "knmi_harmonie_arome_europe", "forecast_days": 2}
         
         response = openmeteo.weather_api(API_URL_HOLANDA, params=params)[0]
         hourly = response.Hourly()
 
-        hourly_vars = {hourly.Variables(i).Name().decode(): hourly.Variables(i).ValuesAsNumpy() for i in range(hourly.NumberOfVariables())}
         valid_index = trobar_hora_valida_mes_propera(hourly, hourly_index, len(h_base))
-        
         if valid_index is None:
             return None, hourly_index, "No s'han trobat dades vàlides properes a l'hora sol·licitada."
 
+        # <<<--- BLOC DE LECTURA CORREGIT --->>>
+        # Construïm el diccionari iterant sobre la nostra pròpia llista de variables sol·licitades.
+        # Això no depèn de .NumberOfVariables() i és, per tant, compatible.
+        hourly_vars = {}
+        for i, var_name in enumerate(all_requested_vars):
+            try:
+                hourly_vars[var_name] = hourly.Variables(i).ValuesAsNumpy()
+            except Exception:
+                # Si una variable no es pot llegir, la marquem com a buida per evitar errors
+                hourly_vars[var_name] = np.array([np.nan]) 
+
+        # La resta de la funció pot continuar igual, ja que depèn de 'hourly_vars',
+        # que ara es construeix correctament.
         sfc_data = {v: hourly_vars[v][valid_index] for v in h_base}
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
         p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
@@ -2577,7 +2589,7 @@ def carregar_dades_sondeig_holanda(lat, lon, hourly_index):
             if p_val < p_profile[-1] and all(f in hourly_vars and not np.isnan(hourly_vars[f][valid_index]) for f in var_names_level):
                 p_profile.append(p_val)
                 T_profile.append(hourly_vars[f'temperature_{p_val}hPa'][valid_index])
-                Td_profile.append(hourly_vars[f'dew_point_{p_val}hPa'][valid_index]) # Llegim directament el dew_point
+                Td_profile.append(hourly_vars[f'dew_point_{p_val}hPa'][valid_index])
                 u, v = mpcalc.wind_components(hourly_vars[f'wind_speed_{p_val}hPa'][valid_index] * units('km/h'), hourly_vars[f'wind_direction_{p_val}hPa'][valid_index] * units.degrees)
                 u_profile.append(u.to('m/s').m)
                 v_profile.append(v.to('m/s').m)
@@ -2587,9 +2599,10 @@ def carregar_dades_sondeig_holanda(lat, lon, hourly_index):
         return processed_data, valid_index, error
         
     except Exception as e: 
-        import traceback; traceback.print_exc()
+        import traceback
+        traceback.print_exc()
         return None, hourly_index, f"Error crític en carregar dades del sondeig d'Holanda: {e}"
-
+    
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_holanda(nivell, hourly_index):
     try:
