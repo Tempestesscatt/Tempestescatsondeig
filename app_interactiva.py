@@ -534,18 +534,25 @@ CIUTATS_CONVIDAT = {
 # --- Constants per Tornado Alley ---
 API_URL_USA = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_USA = pytz.timezone('America/Chicago')
+
+# <<<--- CORRECCIÓ: Tornem a utilitzar el nom original de la variable 'USA_CITIES' --->>>
 USA_CITIES = {
     'Dallas, TX': {'lat': 32.7767, 'lon': -96.7970},
-    'Elk City, OK': {'lat': 35.4098, 'lon': -99.4084},    # <-- NOU PUNT AFEGIT
-    'Houston, TX': {'lat': 29.7604, 'lon': -95.3698},     # <-- NOU PUNT AFEGIT
-    'Kansas City, MO': {'lat': 39.0997, 'lon': -94.5786},
+    'Houston, TX': {'lat': 29.7604, 'lon': -95.3698},
     'Oklahoma City, OK': {'lat': 35.4676, 'lon': -97.5164},
+    'Kansas City, MO': {'lat': 39.0997, 'lon': -94.5786},
     'Omaha, NE': {'lat': 41.2565, 'lon': -95.9345},
     'Tulsa, OK': {'lat': 36.1540, 'lon': -95.9928},
     'Wichita, KS': {'lat': 37.6872, 'lon': -97.3301},
 }
+
 MAP_EXTENT_USA = [-105, -85, 28, 48]
-PRESS_LEVELS_GFS = sorted([1000, 975, 950, 925, 900, 850, 800, 750, 700, 600, 500, 400, 300, 250, 200, 100], reverse=True)
+# Nova llista de nivells de pressió extremadament detallada per al model HRRR
+PRESS_LEVELS_HRRR = sorted([
+    1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 750, 725, 700, 675, 650, 
+    625, 600, 575, 550, 525, 500, 475, 450, 425, 400, 375, 350, 325, 300, 275, 
+    250, 225, 200, 175, 150, 125, 100
+], reverse=True)
 
 # --- Constants Generals ---
 USERS_FILE = 'users.json'
@@ -4222,62 +4229,58 @@ def carregar_dades_sondeig_cat(lat, lon, hourly_index):
         return None, hourly_index, f"Error en carregar dades del sondeig AROME: {e}"
     
             
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=1800, max_entries=20, show_spinner=False) # TTL més curt (30min) ja que el HRRR s'actualitza cada hora
 def carregar_dades_sondeig_usa(lat, lon, hourly_index):
+    """
+    Versió Actualitzada: Carrega dades de sondeig per a EUA utilitzant el model
+    d'alta resolució HRRR (gfs_hrrr), que proporciona un gran detall vertical.
+    """
     try:
-        h_base = ["temperature_2m", "relative_humidity_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
-        h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS_GFS]
-        params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "gfs_seamless", "forecast_days": 3}
+        h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
+        # HRRR proporciona 'dew_point' directament, la qual cosa és ideal
+        press_vars = ["temperature", "dew_point", "wind_speed", "wind_direction", "geopotential_height", "vertical_velocity"]
+        h_press = [f"{v}_{p}hPa" for v in press_vars for p in PRESS_LEVELS_HRRR]
+        all_requested_vars = h_base + h_press
+        
+        # <<<--- CANVI CLAU: Utilitzem el model 'gfs_hrrr' --->>>
+        params = {"latitude": lat, "longitude": lon, "hourly": all_requested_vars, "models": "gfs_hrrr", "forecast_days": 2} # HRRR té un pronòstic més curt
+        
         response = openmeteo.weather_api(API_URL_USA, params=params)[0]
         hourly = response.Hourly()
 
-        valid_index = None
-        max_hours_to_check = 3
-        total_hours = len(hourly.Variables(0).ValuesAsNumpy())
+        valid_index = trobar_hora_valida_mes_propera(hourly, hourly_index, len(h_base))
+        if valid_index is None: return None, hourly_index, "No s'han trobat dades vàlides."
 
-        for offset in range(max_hours_to_check + 1):
-            indices_to_try = sorted(list(set([hourly_index + offset, hourly_index - offset])))
-            for h_idx in indices_to_try:
-                if 0 <= h_idx < total_hours:
-                    sfc_check = [hourly.Variables(i).ValuesAsNumpy()[h_idx] for i in range(len(h_base))]
-                    if not any(np.isnan(val) for val in sfc_check):
-                        valid_index = h_idx
-                        break
-            if valid_index is not None:
-                break
+        hourly_vars = {}
+        for i, var_name in enumerate(all_requested_vars):
+            try: hourly_vars[var_name] = hourly.Variables(i).ValuesAsNumpy()
+            except Exception: hourly_vars[var_name] = np.array([np.nan])
         
-        if valid_index is None:
-            # RETORN SIMPLIFICAT
-            return None, hourly_index, "No s'han trobat dades vàlides properes a l'hora sol·licitada."
-
-        sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[valid_index] for i, v in enumerate(h_base)}
-
-        sfc_temp_C = sfc_data["temperature_2m"] * units.degC
-        sfc_rh_percent = sfc_data["relative_humidity_2m"] * units.percent
-        sfc_dew_point = mpcalc.dewpoint_from_relative_humidity(sfc_temp_C, sfc_rh_percent).m
-        
-        p_data = {}
-        var_count = len(h_base)
-        for i, var in enumerate(["T", "RH", "WS", "WD", "H"]):
-            p_data[var] = [hourly.Variables(var_count + i * len(PRESS_LEVELS_GFS) + j).ValuesAsNumpy()[valid_index] for j in range(len(PRESS_LEVELS_GFS))]
-        
+        sfc_data = {v: hourly_vars[v][valid_index] for v in h_base}
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
-        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_dew_point], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
+        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
 
-        for i, p_val in enumerate(PRESS_LEVELS_GFS):
-            if p_val < sfc_data["surface_pressure"] and all(not np.isnan(p_data[v][i]) for v in ["T", "RH", "WS", "WD", "H"]):
+        for p_val in PRESS_LEVELS_HRRR:
+            if p_val < p_profile[-1]:
                 p_profile.append(p_val)
-                T_profile.append(p_data["T"][i])
-                Td_profile.append(mpcalc.dewpoint_from_relative_humidity(p_data["T"][i] * units.degC, p_data["RH"][i] * units.percent).m)
-                u, v = mpcalc.wind_components(p_data["WS"][i] * units('km/h'), p_data["WD"][i] * units.degrees)
-                u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m); h_profile.append(p_data["H"][i])
+                T_profile.append(hourly_vars.get(f'temperature_{p_val}hPa', [np.nan])[valid_index])
+                Td_profile.append(hourly_vars.get(f'dew_point_{p_val}hPa', [np.nan])[valid_index])
+                h_profile.append(hourly_vars.get(f'geopotential_height_{p_val}hPa', [np.nan])[valid_index])
+                ws = hourly_vars.get(f'wind_speed_{p_val}hPa', [np.nan])[valid_index]
+                wd = hourly_vars.get(f'wind_direction_{p_val}hPa', [np.nan])[valid_index]
+                if pd.notna(ws) and pd.notna(wd):
+                    u, v = mpcalc.wind_components(ws * units('km/h'), wd * units.degrees)
+                    u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m)
+                else:
+                    u_profile.append(np.nan); v_profile.append(np.nan)
 
         processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
-        # RETORN SIMPLIFICAT
         return processed_data, valid_index, error
-    except Exception as e:
-        # RETORN SIMPLIFICAT
-        return None, hourly_index, f"Error en carregar dades del sondeig GFS: {e}"
+        
+    except Exception as e: 
+        import traceback; traceback.print_exc()
+        return None, hourly_index, f"Error crític en carregar dades del sondeig HRRR: {e}"
+
 
 def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str, map_extent):
     fig, ax = crear_mapa_base(map_extent)
@@ -4326,20 +4329,40 @@ def carregar_dades_mapa_base_usa(variables, hourly_index):
     except Exception as e: 
         return None, f"Error en carregar dades del mapa USA: {e}"
 
-@st.cache_data(ttl=3600)
+
+@st.cache_data(ttl=1800)
 def carregar_dades_mapa_usa(nivell, hourly_index):
+    """
+    Versió Actualitzada: Carrega dades de mapa per a EUA utilitzant el model HRRR.
+    """
     try:
-        variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-        map_data_raw, error = carregar_dades_mapa_base_usa(variables, hourly_index)
-        if error: return None, error
-        temp_data = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
-        rh_data = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
-        map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
-        map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
-        map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
-        return map_data_raw, None
+        variables = [f"temperature_{nivell}hPa", f"dew_point_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+        lats, lons = np.linspace(MAP_EXTENT_USA[2], MAP_EXTENT_USA[3], 12), np.linspace(MAP_EXTENT_USA[0], MAP_EXTENT_USA[1], 12)
+        lon_grid, lat_grid = np.meshgrid(lons, lats)
+        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "gfs_hrrr", "forecast_days": 2}
+        
+        responses = openmeteo.weather_api(API_URL_USA, params=params)
+        output = {var: [] for var in ["lats", "lons"] + variables}
+        for r in responses:
+            try:
+                valid_index = trobar_hora_valida_mes_propera(r.Hourly(), hourly_index, len(variables))
+                if valid_index is not None:
+                    vals = [r.Hourly().Variables(i).ValuesAsNumpy()[valid_index] for i in range(len(variables))]
+                    if not any(np.isnan(v) for v in vals):
+                        output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
+                        for i, var in enumerate(variables): output[var].append(vals[i])
+            except IndexError: continue
+
+        if not output["lats"]: return None, "No s'han rebut dades per a la graella del mapa."
+        
+        output['dewpoint_data'] = output.pop(f'dew_point_{nivell}hPa')
+        output['speed_data'] = output.pop(f'wind_speed_{nivell}hPa')
+        output['dir_data'] = output.pop(f'wind_direction_{nivell}hPa')
+        del output[f'temperature_{nivell}hPa']
+
+        return output, None
     except Exception as e:
-        return None, f"Error en processar dades del mapa GFS: {e}"
+        return None, f"Error en carregar dades del mapa HRRR: {e}"
 
 
 def haversine_distance(lat1, lon1, lat2, lon2):
@@ -5633,104 +5656,74 @@ def run_catalunya_app():
 
 
 def run_valley_halley_app():
-    # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
-    if 'poble_selector_usa' not in st.session_state:
-        st.session_state.poble_selector_usa = "Oklahoma City, OK"
+    # --- PAS 1: INICIALITZACIÓ D'ESTAT ---
+    if 'poble_selector_usa' not in st.session_state: st.session_state.poble_selector_usa = "Oklahoma City, OK"
+    if 'dia_selector_usa' not in st.session_state: st.session_state.dia_selector_usa = datetime.now(TIMEZONE_USA).strftime('%d/%m/%Y')
+    if 'hora_selector_usa' not in st.session_state: 
+        now_usa = datetime.now(TIMEZONE_USA)
+        now_cat = now_usa.astimezone(TIMEZONE_CAT)
+        st.session_state.hora_selector_usa = f"{now_usa.hour:02d}:00h (CAT: {now_cat.hour:02d}h)"
+    if 'level_usa_main' not in st.session_state: st.session_state.level_usa_main = 850
+    if 'active_tab_usa' not in st.session_state: st.session_state.active_tab_usa = "Anàlisi Vertical"
+
+    # --- PAS 2: CAPÇALERA I SELECTORS ---
+    ui_capcalera_selectors(None, zona_activa="valley_halley")
     
-    # <<-- LÍNIA CLAU AFEGIDA: Inicialitzem la variable que faltava -->>
-    if 'dia_selector_usa_widget' not in st.session_state:
-        st.session_state.dia_selector_usa_widget = datetime.now(TIMEZONE_USA).strftime('%d/%m/%Y')
-        
-    if 'hora_selector_usa' not in st.session_state:
-        now_spain = datetime.now(TIMEZONE_CAT)
-        time_in_usa = now_spain.astimezone(TIMEZONE_USA)
-        st.session_state.hora_selector_usa = f"{time_in_usa.hour:02d}:00 (Local: {now_spain.hour:02d}:00h)"
-    if 'level_usa_main' not in st.session_state:
-        st.session_state.level_usa_main = 850
-    if 'active_tab_usa' not in st.session_state:
-        st.session_state.active_tab_usa = "Anàlisi de Mapes"
-
-    # --- PAS 2: CÀLCULS PREVIS I CAPÇALERA ---
-    pre_hora_sel_text = st.session_state.hora_selector_usa
-    pre_hora_sel_cst = pre_hora_sel_text.split(' ')[0]
-    pre_dia_sel = st.session_state.dia_selector_usa_widget
-    pre_target_date = datetime.strptime(pre_dia_sel, '%d/%m/%Y').date()
-    pre_local_dt = TIMEZONE_USA.localize(datetime.combine(pre_target_date, datetime.min.time()).replace(hour=int(pre_hora_sel_cst.split(':')[0])))
-    pre_start_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    pre_hourly_index = int((pre_local_dt.astimezone(pytz.utc) - pre_start_utc).total_seconds() / 3600)
-
-    NIVELL_ANALISI_CONV = 850
-    pre_map_data, _ = carregar_dades_mapa_usa(NIVELL_ANALISI_CONV, pre_hourly_index)
-    pre_convergencies = calcular_convergencies_per_llista(pre_map_data, USA_CITIES) if pre_map_data else {}
-    
-    ui_capcalera_selectors(None, zona_activa="tornado_alley", convergencies=pre_convergencies)
-
-    # --- PAS 3: LLEGIR ESTAT FINAL I CARREGAR DADES ---
+    # --- PAS 3: RECOPILACIÓ DE VALORS ---
     poble_sel = st.session_state.poble_selector_usa
-    if "---" in poble_sel:
-        st.info("Selecciona una ciutat de la llista per començar l'anàlisi.")
-        return
-
-    dia_sel_str = st.session_state.dia_selector_usa_widget
+    dia_sel_str = st.session_state.dia_selector_usa
     hora_sel_str_full = st.session_state.hora_selector_usa
-    hora_sel_cst_only = hora_sel_str_full.split(' ')[0]
+    hora_sel_str = hora_sel_str_full.split(' ')[0]
+    
     nivell_sel = st.session_state.level_usa_main
     lat_sel, lon_sel = USA_CITIES[poble_sel]['lat'], USA_CITIES[poble_sel]['lon']
-
+    
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
-    local_dt = TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_cst_only.split(':')[0])))
+    local_dt = TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-    timestamp_str = f"{dia_sel_str} a les {hora_sel_cst_only} (Central Time)"
-
-    # --- PAS 4: DIBUIXAR MENÚ I RESULTATS ---
-    menu_options_usa = ["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"]
-    menu_icons_usa = ["map-fill", "graph-up-arrow", "globe-americas"]
-    default_idx_usa = menu_options_usa.index(st.session_state.active_tab_usa) if st.session_state.active_tab_usa in menu_options_usa else 0
-
-    selected_tab_usa = option_menu(
-        menu_title=None, 
-        options=menu_options_usa, 
-        icons=menu_icons_usa,
-        menu_icon="cast", 
-        orientation="horizontal", 
-        default_index=default_idx_usa,
-        key="usa_nav_selector"
-    )
     
+    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_USA.zone}) / {cat_dt.strftime('%d/%m, %H:%Mh')} (CAT)"
+
+    # --- PAS 4: MENÚ DE PESTANYES ---
+    menu_options_usa = ["Anàlisi Vertical", "Anàlisi de Mapes", "Satèl·lit (Temps Real)"]
+    menu_icons_usa = ["graph-up-arrow", "map-fill", "globe-americas"]
+    default_idx_usa = menu_options_usa.index(st.session_state.active_tab_usa)
+
+    selected_tab_usa = option_menu(None, menu_options_usa, icons=menu_icons_usa, menu_icon="cast", orientation="horizontal", default_index=default_idx_usa)
     st.session_state.active_tab_usa = selected_tab_usa
 
-    if selected_tab_usa == "Anàlisi de Mapes":
-        with st.spinner(f"Carregant mapa GFS a {nivell_sel}hPa..."):
-            map_data_final, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
-        if map_data_final:
-            fig = crear_mapa_forecast_combinat_usa(map_data_final['lons'], map_data_final['lats'], map_data_final['speed_data'], map_data_final['dir_data'], map_data_final['dewpoint_data'], nivell_sel, timestamp_str)
-            st.pyplot(fig, use_container_width=True); plt.close(fig)
-        else: st.warning(f"No s'han pogut carregar les dades del mapa per al nivell {nivell_sel}hPa.")
-            
-    elif selected_tab_usa == "Anàlisi Vertical":
-        with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
+    # --- PAS 5: LÒGICA DE LES PESTANYES ---
+    if selected_tab_usa == "Anàlisi Vertical":
+        with st.spinner(f"Carregant dades del sondeig HRRR per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_usa(lat_sel, lon_sel, hourly_index_sel)
         
-        if not error_msg and final_index != hourly_index_sel:
-            adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
-            adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_USA)
-            st.warning(f"**Avís:** No hi havia dades per a les {hora_sel_str_full}. Es mostren les de l'hora més propera: **{adjusted_local_time.strftime('%H:%M')}** (Central Time).")
-
-        if error_msg:
+        if data_tuple is None or error_msg:
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
-            params_calc = data_tuple[1] if data_tuple else {}
-            if nivell_sel == NIVELL_ANALISI_CONV and poble_sel in pre_convergencies:
-                params_calc[f'CONV_{nivell_sel}hPa'] = pre_convergencies[poble_sel]
-            else:
-                with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
-                    map_data_nivell_sel, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
-                    if map_data_nivell_sel:
-                        params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_nivell_sel, lat_sel, lon_sel)
+            if final_index != hourly_index_sel:
+                adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+                adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_USA)
+                st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
             
-            avis_proximitat_usa = analitzar_amenaça_convergencia_propera(pre_map_data, params_calc, lat_sel, lon_sel, nivell_sel)
-            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_cst_only, timestamp_str, avis_proximitat_usa)
+            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+            
+    elif selected_tab_usa == "Anàlisi de Mapes":
+        st.markdown("#### Mapes de Pronòstic (Model HRRR)")
+        with st.spinner(f"Carregant mapa HRRR a {nivell_sel}hPa..."):
+            map_data, error = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
+        
+        if error or not map_data:
+            st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+        else:
+            fig = crear_mapa_forecast_combinat_usa(
+                map_data['lons'], map_data['lats'], map_data['speed_data'],
+                map_data['dir_data'], map_data['dewpoint_data'], nivell_sel,
+                timestamp_str.replace(f"{poble_sel} | ", "")
+            )
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
         
     elif selected_tab_usa == "Satèl·lit (Temps Real)":
         ui_pestanya_satelit_usa()
