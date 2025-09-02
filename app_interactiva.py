@@ -56,7 +56,7 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
 
-API_URL_UK = "https://api.open-meteo.com/v1/forecast" 
+API_URL_UK = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_UK = pytz.timezone('Europe/London')
 CIUTATS_UK = {
     'Londres': {'lat': 51.5085, 'lon': -0.1257, 'sea_dir': (10, 120)},
@@ -65,9 +65,10 @@ CIUTATS_UK = {
     'Dublín': {'lat': 53.3498, 'lon': -6.2603, 'sea_dir': (50, 150)},
 }
 MAP_EXTENT_UK = [-11, 2, 49, 59]
+# Llista de nivells de pressió extremadament detallada per al model UKMO
 PRESS_LEVELS_UK = sorted([
     1000, 975, 950, 925, 900, 850, 800, 750, 700, 650, 600, 550, 500, 450, 400, 
-    350, 300, 250, 200, 150, 100
+    375, 350, 325, 300, 275, 250, 225, 200, 175, 150, 125, 100, 70, 50, 40, 30, 20, 10
 ], reverse=True)
 
 
@@ -2828,10 +2829,11 @@ def carregar_dades_sondeig_japo(lat, lon, hourly_index):
 @st.cache_data(ttl=3600, max_entries=20, show_spinner=False)
 def carregar_dades_sondeig_uk(lat, lon, hourly_index):
     """
-    Versió Definitiva i Corregida: Utilitza l'URL correcta i el mètode de lectura
-    de dades robust per ser compatible amb la resposta de l'API del model UKMO.
+    Carrega dades de sondeig per al Regne Unit utilitzant el model d'alta
+    resolució UKMO de 2km, gestionant el seu gran detall vertical.
     """
     try:
+        # Nota: La teva petició de prova demanava 'surface_pressure' a 'current', però la necessitem a 'hourly'.
         h_base = ["temperature_2m", "relative_humidity_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
         press_vars = ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height", "vertical_velocity"]
         h_press = [f"{v}_{p}hPa" for v in press_vars for p in PRESS_LEVELS_UK]
@@ -2839,21 +2841,16 @@ def carregar_dades_sondeig_uk(lat, lon, hourly_index):
         
         params = {"latitude": lat, "longitude": lon, "hourly": all_requested_vars, "models": "ukmo_uk_deterministic_2km", "forecast_days": 2}
         
-        # Utilitzem la constant d'URL corregida
         response = openmeteo.weather_api(API_URL_UK, params=params)[0]
         hourly = response.Hourly()
 
         valid_index = trobar_hora_valida_mes_propera(hourly, hourly_index, len(h_base))
-        if valid_index is None: 
-            return None, hourly_index, "No s'han trobat dades vàlides."
+        if valid_index is None: return None, hourly_index, "No s'han trobat dades vàlides."
 
-        # <<<--- BLOC DE LECTURA ROBUST (LA SOLUCIÓ CLAU) --->>>
         hourly_vars = {}
         for i, var_name in enumerate(all_requested_vars):
-            try:
-                hourly_vars[var_name] = hourly.Variables(i).ValuesAsNumpy()
-            except Exception:
-                hourly_vars[var_name] = np.array([np.nan])
+            try: hourly_vars[var_name] = hourly.Variables(i).ValuesAsNumpy()
+            except Exception: hourly_vars[var_name] = np.array([np.nan])
         
         sfc_data = {v: hourly_vars[v][valid_index] for v in h_base}
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
@@ -2880,17 +2877,6 @@ def carregar_dades_sondeig_uk(lat, lon, hourly_index):
                     u_profile.append(np.nan); v_profile.append(np.nan)
 
         processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
-        
-        # Injectem la velocitat vertical si existeix
-        if processed_data:
-            params_calc = processed_data[1]
-            for p_val in PRESS_LEVELS_UK:
-                vv_var_name = f'vertical_velocity_{p_val}hPa'
-                if vv_var_name in hourly_vars:
-                    vv_value = hourly_vars[vv_var_name][valid_index]
-                    if pd.notna(vv_value):
-                        params_calc[f'VV_{p_val}hPa'] = vv_value
-
         return processed_data, valid_index, error
         
     except Exception as e: 
@@ -4970,42 +4956,89 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             run_catalunya_app()
         
         elif zona_activa == 'valley_halley':
-            # ... (codi per a EUA, que ja funciona) ...
-            pass
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(USA_CITIES.keys())), key="poble_selector_usa")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_USA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(3)], key="dia_selector_usa")
+            with col_hora:
+                opcions_hora = []
+                target_date = datetime.strptime(st.session_state.dia_selector_usa, '%d/%m/%Y').date()
+                for h in range(24):
+                    local_dt = TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.day}/{cat_dt.month} {cat_dt.hour:02d}h)")
+                st.selectbox("Hora (Central Time):", options=opcions_hora, key="hora_selector_usa")
+            with col_nivell: st.selectbox("Nivell:", [925, 850, 700, 500, 300], key="level_usa_main", index=1, format_func=lambda x: f"{x} hPa")
 
         elif zona_activa == 'alemanya':
-            # ... (codi per a Alemanya, que ja funciona) ...
-            pass
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ALEMANYA.keys())), key="poble_selector_alemanya")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_ALEMANYA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(3)], key="dia_selector_alemanya")
+            with col_hora:
+                opcions_hora = []
+                target_date = datetime.strptime(st.session_state.dia_selector_alemanya, '%d/%m/%Y').date()
+                for h in range(24):
+                    local_dt = TIMEZONE_ALEMANYA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)")
+                st.selectbox("Hora:", options=opcions_hora, key="hora_selector_alemanya")
+            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_ICON, key="level_alemanya_main", index=6, format_func=lambda x: f"{x} hPa")
 
         elif zona_activa == 'italia':
-            # ... (codi per a Itàlia, que ja funciona) ...
-            pass
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ITALIA.keys())), key="poble_selector_italia")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_ITALIA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_italia")
+            with col_hora:
+                opcions_hora = []
+                target_date = datetime.strptime(st.session_state.dia_selector_italia, '%d/%m/%Y').date()
+                for h in range(24):
+                    local_dt = TIMEZONE_ITALIA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)")
+                st.selectbox("Hora:", options=opcions_hora, key="hora_selector_italia")
+            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_ITALIA, key="level_italia_main", index=2, format_func=lambda x: f"{x} hPa")
 
         elif zona_activa == 'holanda':
-            # ... (codi per a Holanda, que ja funciona) ...
-            pass
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_HOLANDA.keys())), key="poble_selector_holanda")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_HOLANDA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_holanda")
+            with col_hora:
+                opcions_hora = []
+                target_date = datetime.strptime(st.session_state.dia_selector_holanda, '%d/%m/%Y').date()
+                for h in range(24):
+                    local_dt = TIMEZONE_HOLANDA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)")
+                st.selectbox("Hora:", options=opcions_hora, key="hora_selector_holanda")
+            with col_nivell:
+                nivells_mapa_holanda = [p for p in PRESS_LEVELS_HOLANDA if p != 1000]
+                st.selectbox("Nivell:", nivells_mapa_holanda, key="level_holanda_main", index=1, format_func=lambda x: f"{x} hPa")
                 
         elif zona_activa == 'japo':
-            # ... (codi per al Japó, que ja funciona) ...
-            pass
-
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_JAPO.keys())), key="poble_selector_japo")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_JAPO) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_japo")
+            with col_hora:
+                opcions_hora = []
+                target_date = datetime.strptime(st.session_state.dia_selector_japo, '%d/%m/%Y').date()
+                for h in range(24):
+                    local_dt = TIMEZONE_JAPO.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)")
+                st.selectbox("Hora:", options=opcions_hora, key="hora_selector_japo")
+            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_JAPO, key="level_japo_main", index=2, format_func=lambda x: f"{x} hPa")
+        
         elif zona_activa == 'uk':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_UK.keys())), key="poble_selector_uk")
             with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_UK) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_uk")
             with col_hora:
-                
-                # <<<--- BLOC DE CODI AFEGIT I CORREGIT --->>>
                 opcions_hora = []
-                # Necessitem llegir el dia seleccionat per calcular correctament les hores equivalents
                 target_date = datetime.strptime(st.session_state.dia_selector_uk, '%d/%m/%Y').date()
                 for h in range(24):
                     local_dt = TIMEZONE_UK.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
                     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
                     opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)")
                 st.selectbox("Hora (GMT/BST):", options=opcions_hora, key="hora_selector_uk")
-                # <<<--- FI DEL BLOC CORREGIT --->>>
-                
             with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_UK, key="level_uk_main", index=5, format_func=lambda x: f"{x} hPa")
 
 
@@ -5503,6 +5536,69 @@ def run_catalunya_app():
                         st.session_state.poble_sel = poble_widget_val
                         st.rerun()
 
+
+
+def run_uk_app():
+    # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
+    if 'poble_selector_uk' not in st.session_state: st.session_state.poble_selector_uk = "Londres"
+    if 'dia_selector_uk' not in st.session_state: st.session_state.dia_selector_uk = datetime.now(TIMEZONE_UK).strftime('%d/%m/%Y')
+    if 'hora_selector_uk' not in st.session_state: 
+        now_uk = datetime.now(TIMEZONE_UK)
+        now_cat = now_uk.astimezone(TIMEZONE_CAT)
+        st.session_state.hora_selector_uk = f"{now_uk.hour:02d}:00h (CAT: {now_cat.hour:02d}h)"
+    if 'level_uk_main' not in st.session_state: st.session_state.level_uk_main = 850
+    if 'active_tab_uk' not in st.session_state: st.session_state.active_tab_uk = "Anàlisi Vertical"
+
+    # --- PAS 2: CAPÇALERA I SELECTORS PRINCIPALS ---
+    ui_capcalera_selectors(None, zona_activa="uk")
+    
+    # --- PAS 3: RECOPILACIÓ DE VALORS I CÀLCULS DE TEMPS ---
+    poble_sel = st.session_state.poble_selector_uk
+    dia_sel_str = st.session_state.dia_selector_uk
+    hora_sel_str_full = st.session_state.hora_selector_uk
+    hora_sel_str = hora_sel_str_full.split(' ')[0]
+    
+    nivell_sel = st.session_state.level_uk_main
+    lat_sel, lon_sel = CIUTATS_UK[poble_sel]['lat'], CIUTATS_UK[poble_sel]['lon']
+    
+    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
+    local_dt = TIMEZONE_UK.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
+    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    
+    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_UK.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+
+    # --- PAS 4: MENÚ DE NAVEGACIÓ ENTRE PESTANYES ---
+    menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Satèl·lit (Temps Real)"]
+    menu_icons = ["graph-up-arrow", "map-fill", "globe-europe-africa"]
+    default_idx = menu_options.index(st.session_state.active_tab_uk)
+
+    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
+    st.session_state.active_tab_uk = selected_tab
+
+    # --- PAS 5: LÒGICA PER A CADA PESTANYA ---
+    if selected_tab == "Anàlisi Vertical":
+        with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
+            data_tuple, final_index, error_msg = carregar_dades_sondeig_uk(lat_sel, lon_sel, hourly_index_sel)
+        
+        if data_tuple is None or error_msg:
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        else:
+            if final_index != hourly_index_sel:
+                adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+                adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_UK)
+                st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+            
+            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+    
+    elif selected_tab == "Anàlisi de Mapes":
+        st.info("La visualització de mapes per al model del Regne Unit (UKMO) està en desenvolupament.")
+        # Aquí aniria la crida a 'ui_pestanya_mapes_uk' quan estigui llesta
+    
+    elif selected_tab == "Satèl·lit (Temps Real)":
+        ui_pestanya_satelit_europa()
+        
 def run_valley_halley_app():
     # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
     if 'poble_selector_usa' not in st.session_state:
@@ -5611,77 +5707,52 @@ def ui_zone_selection():
     st.markdown("---")
 
     # Definim els camins a tots els vídeos d'animació
-    path_anim_cat = "catalunya_anim.mp4"
-    path_anim_usa = "tornado_alley_anim.mp4"
-    path_anim_alemanya = "germany_anim.mp4"
-    path_anim_italia = "italy_anim.mp4"
-    path_anim_holanda = "netherlands_anim.mp4"
-    path_anim_japo = "japan_anim.mp4"
-    path_anim_uk = "uk_anim.mp4" # <-- Recorda crear aquest arxiu de vídeo!
+    path_anim_cat, path_anim_usa = "catalunya_anim.mp4", "tornado_alley_anim.mp4"
+    path_anim_alemanya, path_anim_italia = "germany_anim.mp4", "italy_anim.mp4"
+    path_anim_holanda, path_anim_japo = "netherlands_anim.mp4", "japan_anim.mp4"
+    path_anim_uk = "uk_anim.mp4" # <-- HAS DE CREAR AQUEST ARXIU DE VÍDEO!
 
-    with st.spinner('Carregant entorns geoespacials...'):
-        time.sleep(1)
+    with st.spinner('Carregant entorns geoespacials...'): time.sleep(1)
 
-    # Creem una graella de 2 files i 3 columnes per a les zones
     row1_col1, row1_col2, row1_col3 = st.columns(3)
     row2_col1, row2_col2, row2_col3 = st.columns(3)
 
-    # --- Fila 1 ---
     with row1_col1:
         with st.container(border=True):
             st.markdown(generar_html_video_animacio(path_anim_cat, height="180px"), unsafe_allow_html=True)
-            st.subheader("Catalunya")
-            if st.button("Analitzar Catalunya", use_container_width=True, type="primary"):
-                st.session_state['zone_selected'] = 'catalunya'
-                st.rerun()
+            st.subheader("Catalunya"); st.button("Analitzar Catalunya", key="btn_cat", on_click=lambda: st.session_state.update({'zone_selected': 'catalunya'}), use_container_width=True, type="primary")
     with row1_col2:
         with st.container(border=True):
             st.markdown(generar_html_video_animacio(path_anim_usa, height="180px"), unsafe_allow_html=True)
-            st.subheader("Tornado Alley")
-            if st.button("Analitzar Tornado Alley", use_container_width=True):
-                st.session_state['zone_selected'] = 'valley_halley'
-                st.rerun()
+            st.subheader("Tornado Alley"); st.button("Analitzar Tornado Alley", key="btn_usa", on_click=lambda: st.session_state.update({'zone_selected': 'valley_halley'}), use_container_width=True)
     with row1_col3:
         with st.container(border=True):
             st.markdown(generar_html_video_animacio(path_anim_alemanya, height="180px"), unsafe_allow_html=True)
-            st.subheader("Alemanya")
-            if st.button("Analitzar Alemanya", use_container_width=True):
-                st.session_state['zone_selected'] = 'alemanya'
-                st.rerun()
-
-    # --- Fila 2 ---
+            st.subheader("Alemanya"); st.button("Analitzar Alemanya", key="btn_ale", on_click=lambda: st.session_state.update({'zone_selected': 'alemanya'}), use_container_width=True)
+    
     with row2_col1:
         with st.container(border=True):
             st.markdown(generar_html_video_animacio(path_anim_italia, height="180px"), unsafe_allow_html=True)
-            st.subheader("Itàlia")
-            if st.button("Analitzar Itàlia", use_container_width=True):
-                st.session_state['zone_selected'] = 'italia'
-                st.rerun()
+            st.subheader("Itàlia"); st.button("Analitzar Itàlia", key="btn_ita", on_click=lambda: st.session_state.update({'zone_selected': 'italia'}), use_container_width=True)
     with row2_col2:
         with st.container(border=True):
             st.markdown(generar_html_video_animacio(path_anim_holanda, height="180px"), unsafe_allow_html=True)
-            st.subheader("Holanda")
-            if st.button("Analitzar Holanda", use_container_width=True):
-                st.session_state['zone_selected'] = 'holanda'
-                st.rerun()
+            st.subheader("Holanda"); st.button("Analitzar Holanda", key="btn_hol", on_click=lambda: st.session_state.update({'zone_selected': 'holanda'}), use_container_width=True)
     with row2_col3:
         with st.container(border=True):
             st.markdown(generar_html_video_animacio(path_anim_japo, height="180px"), unsafe_allow_html=True)
-            st.subheader("Japó")
-            if st.button("Analitzar Japó", use_container_width=True):
-                st.session_state['zone_selected'] = 'japo'
-                st.rerun()
+            st.subheader("Japó"); st.button("Analitzar Japó", key="btn_japo", on_click=lambda: st.session_state.update({'zone_selected': 'japo'}), use_container_width=True)
     
-    # --- Fila 3 (Centrada) ---
     st.divider()
-    _, col_center, _ = st.columns([1, 1, 1])
+    _, col_center, _ = st.columns([1, 1.5, 1])
     with col_center:
         with st.container(border=True):
             st.markdown(generar_html_video_animacio(path_anim_uk, height="180px"), unsafe_allow_html=True)
-            st.subheader("Regne Unit i Irlanda")
-            if st.button("Analitzar Regne Unit", use_container_width=True):
-                st.session_state['zone_selected'] = 'uk'
-                st.rerun()
+            st.subheader("Regne Unit i Irlanda"); st.button("Analitzar Regne Unit", key="btn_uk", on_click=lambda: st.session_state.update({'zone_selected': 'uk'}), use_container_width=True)
+
+
+
+
 
 
 @st.cache_data(ttl=3600)
