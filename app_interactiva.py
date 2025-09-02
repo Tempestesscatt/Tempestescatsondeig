@@ -2781,11 +2781,22 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model ICON 2.2km - Itàlia)")
     
     with st.spinner(f"Carregant mapa ICON-2I a {nivell_sel}hPa..."):
-        # Aquesta és una funció simplificada ja que el model italià no està a la graella global
-        # Mostrarem un missatge a l'usuari de moment
-        st.info("La visualització de mapes per al model regional d'Itàlia està en desenvolupament.")
-        st.image("https://www.arpae.it/images/METEO/left-analisi-previsioni.jpg", caption="Font: ARPAE Emilia-Romagna", use_container_width=True)
-
+        map_data, error = carregar_dades_mapa_italia(nivell_sel, hourly_index_sel)
+    
+    if error:
+        st.error(f"Error en carregar el mapa: {error}")
+    elif map_data:
+        # Si tenim dades, creem i mostrem el mapa
+        fig = crear_mapa_forecast_combinat_italia(
+            map_data['lons'], map_data['lats'], 
+            map_data['speed_data'], map_data['dir_data'], 
+            map_data['dewpoint_data'], nivell_sel, 
+            timestamp_str
+        )
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
+    else:
+        st.warning("No s'han pogut obtenir les dades per generar el mapa.")
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
@@ -5140,6 +5151,103 @@ def ui_zone_selection():
                 st.rerun()
 
 
+@st.cache_data(ttl=3600)
+def carregar_dades_mapa_italia(nivell, hourly_index):
+    """
+    Carrega les dades en una graella per al mapa d'Itàlia utilitzant el model ICON-2I.
+    """
+    try:
+        variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+        
+        # Creem una graella de punts per cobrir Itàlia
+        lats, lons = np.linspace(MAP_EXTENT_ITALIA[2], MAP_EXTENT_ITALIA[3], 12), np.linspace(MAP_EXTENT_ITALIA[0], MAP_EXTENT_ITALIA[1], 12)
+        lon_grid, lat_grid = np.meshgrid(lons, lats)
+        params = {
+            "latitude": lat_grid.flatten().tolist(), 
+            "longitude": lon_grid.flatten().tolist(), 
+            "hourly": variables, 
+            "models": "italia_meteo_arpae_icon_2i", 
+            "forecast_days": 2
+        }
+        
+        responses = openmeteo.weather_api(API_URL_ITALIA, params=params)
+        output = {var: [] for var in ["lats", "lons"] + variables}
+        
+        # Processem la resposta de l'API
+        for r in responses:
+            try:
+                vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
+                if not any(np.isnan(v) for v in vals):
+                    output["lats"].append(r.Latitude())
+                    output["lons"].append(r.Longitude())
+                    for i, var in enumerate(variables): 
+                        output[var].append(vals[i])
+            except IndexError:
+                continue # Si l'hora no existeix per a aquest punt, el saltem
+
+        if not output["lats"]: 
+            return None, "No s'han rebut dades vàlides per a l'hora seleccionada."
+
+        # Processem les dades per a la visualització
+        temp_data = np.array(output.pop(f'temperature_{nivell}hPa')) * units.degC
+        rh_data = np.array(output.pop(f'relative_humidity_{nivell}hPa')) * units.percent
+        output['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
+        output['speed_data'] = output.pop(f'wind_speed_{nivell}hPa')
+        output['dir_data'] = output.pop(f'wind_direction_{nivell}hPa')
+        
+        return output, None
+
+    except Exception as e: 
+        return None, f"Error en carregar dades del mapa ICON-2I (Itàlia): {e}"
+    
+
+
+def crear_mapa_forecast_combinat_italia(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
+    """
+    Crea el mapa visual de vent i convergència per a Itàlia.
+    """
+    fig, ax = crear_mapa_base(MAP_EXTENT_ITALIA, projection=ccrs.LambertConformal(central_longitude=12.5, central_latitude=42))
+    
+    if len(lons) < 4: 
+        ax.set_title("Dades insuficients per generar el mapa")
+        return fig
+
+    # Interpolació de dades a una graella fina
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_ITALIA[0], MAP_EXTENT_ITALIA[1], 200), np.linspace(MAP_EXTENT_ITALIA[2], MAP_EXTENT_ITALIA[3], 200))
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic')
+    grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
+    u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+
+    # Dibuix de la velocitat del vent (fons de color)
+    colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
+    speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]
+    custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
+    
+    # Dibuix de les línies de corrent
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=4.5, arrowsize=0.5, zorder=4, transform=ccrs.PlateCarree())
+    
+    # Càlcul i dibuix de la convergència
+    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+    convergence_scaled = -(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s').magnitude * 1e5
+    convergence_in_humid_areas = np.where(grid_dewpoint >= 14, convergence_scaled, 0) # Llindar de punt de rosada
+    
+    fill_levels = [5, 10, 15, 25]; fill_colors = ['#ffc107', '#ff9800', '#f44336']
+    line_levels = [5, 10, 15]; line_colors = ['#e65100', '#bf360c', '#b71c1c']
+    
+    ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=fill_colors, alpha=0.6, zorder=5, transform=ccrs.PlateCarree())
+    contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors=line_colors, linestyles='--', linewidths=1.2, zorder=6, transform=ccrs.PlateCarree())
+    ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
+
+    # Afegir ciutats per a referència
+    for city, coords in CIUTATS_ITALIA.items():
+        ax.plot(coords['lon'], coords['lat'], 'o', color='red', markersize=3, markeredgecolor='black', transform=ccrs.PlateCarree(), zorder=10)
+        ax.text(coords['lon'] + 0.1, coords['lat'] + 0.1, city, fontsize=8, transform=ccrs.PlateCarree(), zorder=10, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+
+    ax.set_title(f"Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    return fig
 
 def run_italia_app():
     # Inicialització d'estat per a Itàlia
