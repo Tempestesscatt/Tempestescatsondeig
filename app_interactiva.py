@@ -4860,9 +4860,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
         if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username', 'Usuari')}**!")
     with col_nav:
         nova_zona_key = st.selectbox("Canviar a:", options=list(altres_zones.keys()), format_func=lambda k: altres_zones[k], index=None, placeholder="Anar a...")
-        if nova_zona_key:
-            st.session_state.zone_selected = nova_zona_key
-            st.rerun()
+        if nova_zona_key: st.session_state.zone_selected = nova_zona_key; st.rerun()
     with col_back:
         if st.button("⬅️ Zones", use_container_width=True, help="Tornar a la selecció de zona"):
             keys_to_clear = [k for k in st.session_state if k not in ['logged_in', 'username', 'guest_mode', 'developer_mode']]
@@ -4875,36 +4873,63 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
 
     with st.container(border=True):
         if zona_activa == 'catalunya':
-            # Aquesta part es manté del teu codi original
             run_catalunya_app()
         
         elif zona_activa == 'valley_halley':
-            # Lògica de selectors per a EUA
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc: st.selectbox("Ciutat:", options=sorted(list(USA_CITIES.keys())), key="poble_selector_usa")
             with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_USA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(3)], key="dia_selector_usa")
-            with col_hora: st.selectbox("Hora (Central Time):", options=[f"{h:02d}:00 (Local: {datetime.now(TIMEZONE_CAT).replace(hour=h).astimezone(TIMEZONE_USA).hour:02d}:00h)" for h in range(24)], key="hora_selector_usa")
+            with col_hora:
+                # <<<--- LÒGICA D'HORA MILLORADA --->>>
+                opcions_hora = []
+                target_date = datetime.strptime(st.session_state.dia_selector_usa, '%d/%m/%Y').date()
+                for h in range(24):
+                    local_dt = TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)")
+                st.selectbox("Hora (Central Time):", options=opcions_hora, key="hora_selector_usa")
             with col_nivell: st.selectbox("Nivell:", [925, 850, 700, 500, 300], key="level_usa_main", index=1, format_func=lambda x: f"{x} hPa")
 
         elif zona_activa == 'alemanya':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ALEMANYA.keys())), key="poble_selector_alemanya")
             with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_ALEMANYA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(3)], key="dia_selector_alemanya")
-            with col_hora: st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector_alemanya")
+            with col_hora:
+                opcions_hora = []
+                target_date = datetime.strptime(st.session_state.dia_selector_alemanya, '%d/%m/%Y').date()
+                for h in range(24):
+                    local_dt = TIMEZONE_ALEMANYA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)")
+                st.selectbox("Hora:", options=opcions_hora, key="hora_selector_alemanya")
             with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_ICON, key="level_alemanya_main", index=6, format_func=lambda x: f"{x} hPa")
 
         elif zona_activa == 'italia':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ITALIA.keys())), key="poble_selector_italia")
             with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_ITALIA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_italia")
-            with col_hora: st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector_italia")
+            with col_hora:
+                opcions_hora = []
+                target_date = datetime.strptime(st.session_state.dia_selector_italia, '%d/%m/%Y').date()
+                for h in range(24):
+                    local_dt = TIMEZONE_ITALIA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)")
+                st.selectbox("Hora:", options=opcions_hora, key="hora_selector_italia")
             with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_ITALIA, key="level_italia_main", index=2, format_func=lambda x: f"{x} hPa")
 
         elif zona_activa == 'holanda':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_HOLANDA.keys())), key="poble_selector_holanda")
             with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_HOLANDA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_holanda")
-            with col_hora: st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector_holanda")
+            with col_hora:
+                opcions_hora = []
+                target_date = datetime.strptime(st.session_state.dia_selector_holanda, '%d/%m/%Y').date()
+                for h in range(24):
+                    local_dt = TIMEZONE_HOLANDA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)")
+                st.selectbox("Hora:", options=opcions_hora, key="hora_selector_holanda")
             with col_nivell:
                 nivells_mapa_holanda = [p for p in PRESS_LEVELS_HOLANDA if p != 1000]
                 st.selectbox("Nivell:", nivells_mapa_holanda, key="level_holanda_main", index=1, format_func=lambda x: f"{x} hPa")
@@ -4913,8 +4938,16 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_JAPO.keys())), key="poble_selector_japo")
             with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_JAPO) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_japo")
-            with col_hora: st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector_japo")
+            with col_hora:
+                opcions_hora = []
+                target_date = datetime.strptime(st.session_state.dia_selector_japo, '%d/%m/%Y').date()
+                for h in range(24):
+                    local_dt = TIMEZONE_JAPO.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)")
+                st.selectbox("Hora:", options=opcions_hora, key="hora_selector_japo")
             with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_JAPO, key="level_japo_main", index=2, format_func=lambda x: f"{x} hPa")
+
 
 @st.cache_resource(ttl=1800, show_spinner=False)
 def generar_mapa_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
@@ -5680,19 +5713,27 @@ def crear_mapa_forecast_combinat_italia(lons, lats, speed_data, dir_data, dewpoi
     ax.set_title(f"Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
+
 def run_italia_app():
-    # Inicialització d'estat per a Itàlia
+    # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
     if 'poble_selector_italia' not in st.session_state: st.session_state.poble_selector_italia = "Roma"
     if 'dia_selector_italia' not in st.session_state: st.session_state.dia_selector_italia = datetime.now(TIMEZONE_ITALIA).strftime('%d/%m/%Y')
-    if 'hora_selector_italia' not in st.session_state: st.session_state.hora_selector_italia = f"{datetime.now(TIMEZONE_ITALIA).hour:02d}:00h"
+    if 'hora_selector_italia' not in st.session_state: 
+        now_it = datetime.now(TIMEZONE_ITALIA)
+        now_cat = now_it.astimezone(TIMEZONE_CAT)
+        st.session_state.hora_selector_italia = f"{now_it.hour:02d}:00h (CAT: {now_cat.hour:02d}h)"
     if 'level_italia_main' not in st.session_state: st.session_state.level_italia_main = 850
     if 'active_tab_italia' not in st.session_state: st.session_state.active_tab_italia = "Anàlisi Vertical"
 
+    # --- PAS 2: CAPÇALERA I SELECTORS PRINCIPALS ---
     ui_capcalera_selectors(None, zona_activa="italia")
     
+    # --- PAS 3: RECOPILACIÓ DE VALORS I CÀLCULS DE TEMPS ---
     poble_sel = st.session_state.poble_selector_italia
     dia_sel_str = st.session_state.dia_selector_italia
-    hora_sel_str = st.session_state.hora_selector_italia
+    hora_sel_str_full = st.session_state.hora_selector_italia
+    hora_sel_str = hora_sel_str_full.split(' ')[0] # Prenem només la part de l'hora local
+    
     nivell_sel = st.session_state.level_italia_main
     lat_sel, lon_sel = CIUTATS_ITALIA[poble_sel]['lat'], CIUTATS_ITALIA[poble_sel]['lon']
     
@@ -5700,8 +5741,12 @@ def run_italia_app():
     local_dt = TIMEZONE_ITALIA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str}"
+    
+    # Creem el timestamp millorat amb les dues hores
+    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_ITALIA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
 
+    # --- PAS 4: MENÚ DE NAVEGACIÓ ENTRE PESTANYES ---
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Satèl·lit (Temps Real)"]
     menu_icons = ["graph-up-arrow", "map-fill", "globe-europe-africa"]
     default_idx = menu_options.index(st.session_state.active_tab_italia)
@@ -5709,18 +5754,19 @@ def run_italia_app():
     selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
     st.session_state.active_tab_italia = selected_tab
 
+    # --- PAS 5: LÒGICA PER A CADA PESTANYA ---
     if selected_tab == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_italia(lat_sel, lon_sel, hourly_index_sel)
         
-        if not error_msg and final_index != hourly_index_sel:
-            adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
-            adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_ITALIA)
-            st.warning(f"**Avís:** Dades no disponibles per a les {hora_sel_str}. Es mostren les de les **{adjusted_local_time.strftime('%H:%Mh')}**.")
-
-        if error_msg:
+        if data_tuple is None or error_msg:
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
+            if final_index != hourly_index_sel:
+                adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+                adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_ITALIA)
+                st.warning(f"**Avís:** Dades no disponibles per a l'hora sol·licitada. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+            
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
 
     elif selected_tab == "Anàlisi de Mapes":
@@ -5729,20 +5775,29 @@ def run_italia_app():
     elif selected_tab == "Satèl·lit (Temps Real)":
         ui_pestanya_satelit_europa()
 
+
 def run_alemanya_app():
-    # Inicialització robusta de l'estat per a Alemanya
+    # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
+    # Assegura que totes les variables de sessió necessàries existeixen.
     if 'poble_selector_alemanya' not in st.session_state: st.session_state.poble_selector_alemanya = "Berlín"
     if 'dia_selector_alemanya' not in st.session_state: st.session_state.dia_selector_alemanya = datetime.now(TIMEZONE_ALEMANYA).strftime('%d/%m/%Y')
-    if 'hora_selector_alemanya' not in st.session_state: st.session_state.hora_selector_alemanya = f"{datetime.now(TIMEZONE_ALEMANYA).hour:02d}:00h"
+    if 'hora_selector_alemanya' not in st.session_state: 
+        now_de = datetime.now(TIMEZONE_ALEMANYA)
+        now_cat = now_de.astimezone(TIMEZONE_CAT)
+        st.session_state.hora_selector_alemanya = f"{now_de.hour:02d}:00h (CAT: {now_cat.hour:02d}h)"
     if 'level_alemanya_main' not in st.session_state: st.session_state.level_alemanya_main = 850
-    if 'active_tab_alemanya' not in st.session_state: st.session_state.active_tab_alemanya = "Anàlisi de Mapes"
+    if 'active_tab_alemanya' not in st.session_state: st.session_state.active_tab_alemanya = "Anàlisi Vertical"
 
-    # Capçalera i selectors
+    # --- PAS 2: CAPÇALERA I SELECTORS PRINCIPALS ---
     ui_capcalera_selectors(None, zona_activa="alemanya")
     
+    # --- PAS 3: RECOPILACIÓ DE VALORS I CÀLCULS DE TEMPS ---
     poble_sel = st.session_state.poble_selector_alemanya
     dia_sel_str = st.session_state.dia_selector_alemanya
-    hora_sel_str = st.session_state.hora_selector_alemanya
+    hora_sel_str_full = st.session_state.hora_selector_alemanya
+    # Aïllem l'hora local del text complet (ex: "14:00h (CAT: 14h)" -> "14:00h")
+    hora_sel_str = hora_sel_str_full.split(' ')[0]
+    
     nivell_sel = st.session_state.level_alemanya_main
     lat_sel, lon_sel = CIUTATS_ALEMANYA[poble_sel]['lat'], CIUTATS_ALEMANYA[poble_sel]['lon']
     
@@ -5750,39 +5805,48 @@ def run_alemanya_app():
     local_dt = TIMEZONE_ALEMANYA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str}"
+    
+    # Creem el timestamp millorat amb les dues hores
+    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_ALEMANYA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
 
-    # Menú de pestanyes
-    menu_options = ["Anàlisi de Mapes", "Anàlisi Vertical", "Satèl·lit (Temps Real)"]
-    menu_icons = ["map-fill", "graph-up-arrow", "globe-europe-africa"]
+    # --- PAS 4: MENÚ DE NAVEGACIÓ ENTRE PESTANYES ---
+    menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Satèl·lit (Temps Real)"]
+    menu_icons = ["graph-up-arrow", "map-fill", "globe-europe-africa"]
     default_idx = menu_options.index(st.session_state.active_tab_alemanya)
 
     selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
     st.session_state.active_tab_alemanya = selected_tab
 
-    # Lògica de les pestanyes
-    if selected_tab == "Anàlisi de Mapes":
-        with st.spinner(f"Carregant mapa ICON-D2 a {nivell_sel}hPa..."):
-            map_data, error = carregar_dades_mapa_alemanya(nivell_sel, hourly_index_sel)
-        if error:
-            st.error(f"Error en carregar el mapa: {error}")
-        else:
-            fig = crear_mapa_forecast_combinat_alemanya(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str)
-            st.pyplot(fig, use_container_width=True); plt.close(fig)
-
-    elif selected_tab == "Anàlisi Vertical":
+    # --- PAS 5: LÒGICA PER A CADA PESTANYA ---
+    if selected_tab == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_alemanya(lat_sel, lon_sel, hourly_index_sel)
         
-        if not error_msg and final_index != hourly_index_sel:
-            adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
-            adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_ALEMANYA)
-            st.warning(f"**Avís:** Dades no disponibles per a les {hora_sel_str}. Es mostren les de les **{adjusted_local_time.strftime('%H:%Mh')}**.")
-
-        if error_msg:
+        if data_tuple is None or error_msg:
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
+            if final_index != hourly_index_sel:
+                adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+                adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_ALEMANYA)
+                st.warning(f"**Avís:** Dades no disponibles per a l'hora sol·licitada. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+            
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+
+    elif selected_tab == "Anàlisi de Mapes":
+        with st.spinner(f"Carregant mapa ICON-D2 a {nivell_sel}hPa..."):
+            map_data, error = carregar_dades_mapa_alemanya(nivell_sel, hourly_index_sel)
+        
+        if error or not map_data:
+            st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+        else:
+            fig = crear_mapa_forecast_combinat_alemanya(
+                map_data['lons'], map_data['lats'], map_data['speed_data'],
+                map_data['dir_data'], map_data['dewpoint_data'], nivell_sel,
+                timestamp_str.replace(f"{poble_sel} | ", "")
+            )
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
 
     elif selected_tab == "Satèl·lit (Temps Real)":
         ui_pestanya_satelit_europa()
@@ -5790,23 +5854,38 @@ def run_alemanya_app():
 
 
 def run_holanda_app():
+    # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
     if 'poble_selector_holanda' not in st.session_state: st.session_state.poble_selector_holanda = "Amsterdam"
     if 'dia_selector_holanda' not in st.session_state: st.session_state.dia_selector_holanda = datetime.now(TIMEZONE_HOLANDA).strftime('%d/%m/%Y')
-    if 'hora_selector_holanda' not in st.session_state: st.session_state.hora_selector_holanda = f"{datetime.now(TIMEZONE_HOLANDA).hour:02d}:00h"
+    if 'hora_selector_holanda' not in st.session_state: 
+        now_nl = datetime.now(TIMEZONE_HOLANDA)
+        now_cat = now_nl.astimezone(TIMEZONE_CAT)
+        st.session_state.hora_selector_holanda = f"{now_nl.hour:02d}:00h (CAT: {now_cat.hour:02d}h)"
     if 'level_holanda_main' not in st.session_state: st.session_state.level_holanda_main = 850
     if 'active_tab_holanda' not in st.session_state: st.session_state.active_tab_holanda = "Anàlisi Vertical"
 
+    # --- PAS 2: CAPÇALERA I SELECTORS PRINCIPALS ---
     ui_capcalera_selectors(None, zona_activa="holanda")
     
-    poble_sel, dia_sel_str, hora_sel_str, nivell_sel = st.session_state.poble_selector_holanda, st.session_state.dia_selector_holanda, st.session_state.hora_selector_holanda, st.session_state.level_holanda_main
+    # --- PAS 3: RECOPILACIÓ DE VALORS I CÀLCULS DE TEMPS ---
+    poble_sel = st.session_state.poble_selector_holanda
+    dia_sel_str = st.session_state.dia_selector_holanda
+    hora_sel_str_full = st.session_state.hora_selector_holanda
+    hora_sel_str = hora_sel_str_full.split(' ')[0] # Prenem només la part de l'hora local
+    
+    nivell_sel = st.session_state.level_holanda_main
     lat_sel, lon_sel = CIUTATS_HOLANDA[poble_sel]['lat'], CIUTATS_HOLANDA[poble_sel]['lon']
     
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     local_dt = TIMEZONE_HOLANDA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str}"
+    
+    # Creem el timestamp millorat amb les dues hores
+    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_HOLANDA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
 
+    # --- PAS 4: MENÚ DE NAVEGACIÓ ENTRE PESTANYES ---
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Satèl·lit (Temps Real)"]
     menu_icons = ["graph-up-arrow", "map-fill", "globe-europe-africa"]
     default_idx = menu_options.index(st.session_state.active_tab_holanda)
@@ -5814,6 +5893,7 @@ def run_holanda_app():
     selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
     st.session_state.active_tab_holanda = selected_tab
 
+    # --- PAS 5: LÒGICA PER A CADA PESTANYA ---
     if selected_tab == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_holanda(lat_sel, lon_sel, hourly_index_sel)
@@ -5824,36 +5904,51 @@ def run_holanda_app():
             if final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_HOLANDA)
-                st.warning(f"**Avís:** Dades no disponibles per a les {hora_sel_str}. Es mostren les de les **{adjusted_local_time.strftime('%H:%Mh')}**.")
+                st.warning(f"**Avís:** Dades no disponibles per a l'hora sol·licitada. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+            
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
-    
+
     elif selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_holanda(hourly_index_sel, timestamp_str, nivell_sel)
-    
+
     elif selected_tab == "Satèl·lit (Temps Real)":
         ui_pestanya_satelit_europa()
 
+
 def run_japo_app():
-    # Inicialització d'estat
+    # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
+    # Assegura que totes les variables de sessió necessàries existeixen.
     if 'poble_selector_japo' not in st.session_state: st.session_state.poble_selector_japo = "Tòquio"
     if 'dia_selector_japo' not in st.session_state: st.session_state.dia_selector_japo = datetime.now(TIMEZONE_JAPO).strftime('%d/%m/%Y')
-    if 'hora_selector_japo' not in st.session_state: st.session_state.hora_selector_japo = f"{datetime.now(TIMEZONE_JAPO).hour:02d}:00h"
+    if 'hora_selector_japo' not in st.session_state: 
+        now_jp = datetime.now(TIMEZONE_JAPO)
+        now_cat = now_jp.astimezone(TIMEZONE_CAT)
+        st.session_state.hora_selector_japo = f"{now_jp.hour:02d}:00h (CAT: {now_cat.hour:02d}h)"
     if 'level_japo_main' not in st.session_state: st.session_state.level_japo_main = 850
     if 'active_tab_japo' not in st.session_state: st.session_state.active_tab_japo = "Anàlisi Vertical"
 
+    # --- PAS 2: CAPÇALERA I SELECTORS PRINCIPALS ---
     ui_capcalera_selectors(None, zona_activa="japo")
     
-    # Recopilació de valors i càlculs de temps
-    poble_sel, dia_sel_str, hora_sel_str, nivell_sel = st.session_state.poble_selector_japo, st.session_state.dia_selector_japo, st.session_state.hora_selector_japo, st.session_state.level_japo_main
+    # --- PAS 3: RECOPILACIÓ DE VALORS I CÀLCULS DE TEMPS ---
+    poble_sel = st.session_state.poble_selector_japo
+    dia_sel_str = st.session_state.dia_selector_japo
+    hora_sel_str_full = st.session_state.hora_selector_japo
+    hora_sel_str = hora_sel_str_full.split(' ')[0] # Prenem només la part de l'hora local
+    
+    nivell_sel = st.session_state.level_japo_main
     lat_sel, lon_sel = CIUTATS_JAPO[poble_sel]['lat'], CIUTATS_JAPO[poble_sel]['lon']
     
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     local_dt = TIMEZONE_JAPO.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_JAPO.zone})"
+    
+    # Creem el timestamp millorat amb les dues hores
+    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_JAPO.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
 
-    # Menú de navegació
+    # --- PAS 4: MENÚ DE NAVEGACIÓ ENTRE PESTANYES ---
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Satèl·lit (Temps Real)"]
     menu_icons = ["graph-up-arrow", "map-fill", "globe-asia-australia"]
     default_idx = menu_options.index(st.session_state.active_tab_japo)
@@ -5861,7 +5956,7 @@ def run_japo_app():
     selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
     st.session_state.active_tab_japo = selected_tab
 
-    # Lògica de les pestanyes
+    # --- PAS 5: LÒGICA PER A CADA PESTANYA ---
     if selected_tab == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_japo(lat_sel, lon_sel, hourly_index_sel)
@@ -5872,7 +5967,7 @@ def run_japo_app():
             if final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_JAPO)
-                st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+                st.warning(f"**Avís:** Dades no disponibles per a l'hora sol·licitada. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
             
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
     
@@ -5886,7 +5981,7 @@ def run_japo_app():
             fig = crear_mapa_forecast_combinat_japo(
                 map_data['lons'], map_data['lats'], map_data['speed_data'], 
                 map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, 
-                timestamp_str.replace(f"{poble_sel} | ", "") # Títol més net per al mapa
+                timestamp_str.replace(f"{poble_sel} | ", "")
             )
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
@@ -5992,7 +6087,3 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
 if __name__ == "__main__":
     main()
-
-
-
-
