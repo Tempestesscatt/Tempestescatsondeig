@@ -3123,16 +3123,16 @@ def forcar_regeneracio_animacio():
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_japo(nivell, hourly_index):
     """
-    Versió Final: Carrega les dades per al mapa del Japó utilitzant el model
-    global i fiable 'jma_gsm'.
+    Versió Corregida: Redueix la densitat de la graella de punts sol·licitada
+    per evitar l'error "414 Request-URI Too Long".
     """
     try:
-        # Demanem dew_point directament, ja que aquest model el proporciona
         variables = [f"temperature_{nivell}hPa", f"dew_point_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-        lats, lons = np.linspace(MAP_EXTENT_JAPO[2], MAP_EXTENT_JAPO[3], 15), np.linspace(MAP_EXTENT_JAPO[0], MAP_EXTENT_JAPO[1], 15)
+        
+        # <<<--- CANVI CLAU AQUÍ: Reduïm la graella de 15x15 a 10x10 --->>>
+        lats, lons = np.linspace(MAP_EXTENT_JAPO[2], MAP_EXTENT_JAPO[3], 10), np.linspace(MAP_EXTENT_JAPO[0], MAP_EXTENT_JAPO[1], 10)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
         
-        # <<<--- CANVI CLAU: Utilitzem el model 'jma_gsm' --->>>
         params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "jma_gsm", "forecast_days": 3}
         
         responses = openmeteo.weather_api(API_URL_JAPO, params=params)
@@ -3140,26 +3140,22 @@ def carregar_dades_mapa_japo(nivell, hourly_index):
         
         for r in responses:
             try:
-                # Utilitzem la nostra funció robusta per trobar l'hora vàlida
                 valid_index = trobar_hora_valida_mes_propera(r.Hourly(), hourly_index, len(variables))
                 if valid_index is not None:
                     vals = [r.Hourly().Variables(i).ValuesAsNumpy()[valid_index] for i in range(len(variables))]
                     if not any(np.isnan(v) for v in vals):
-                        output["lats"].append(r.Latitude())
-                        output["lons"].append(r.Longitude())
-                        for i, var in enumerate(variables): 
-                            output[var].append(vals[i])
+                        output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
+                        for i, var in enumerate(variables): output[var].append(vals[i])
             except IndexError: 
                 continue
 
         if not output["lats"]: 
             return None, "No s'han rebut dades per a la graella del mapa."
         
-        # Reanomenem les claus per a la funció de dibuix
         output['dewpoint_data'] = output.pop(f'dew_point_{nivell}hPa')
         output['speed_data'] = output.pop(f'wind_speed_{nivell}hPa')
         output['dir_data'] = output.pop(f'wind_direction_{nivell}hPa')
-        del output[f'temperature_{nivell}hPa'] # No la necessitem per a aquest mapa
+        del output[f'temperature_{nivell}hPa']
 
         return output, None
     except Exception as e: 
