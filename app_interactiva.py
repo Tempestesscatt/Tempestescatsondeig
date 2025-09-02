@@ -53,6 +53,18 @@ cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
 
+API_URL_JAPO = "https://api.open-meteo.com/v1/forecast"
+TIMEZONE_JAPO = pytz.timezone('Asia/Tokyo')
+CIUTATS_JAPO = {
+    'Tòquio': {'lat': 35.6895, 'lon': 139.6917, 'sea_dir': (100, 200)},
+    'Osaka': {'lat': 34.6937, 'lon': 135.5023, 'sea_dir': (120, 240)},
+    'Sapporo': {'lat': 43.0618, 'lon': 141.3545, 'sea_dir': None},
+    'Fukuoka': {'lat': 33.5904, 'lon': 130.4017, 'sea_dir': (270, 360)},
+}
+MAP_EXTENT_JAPO = [128, 146, 30, 46] # Ajustat per centrar-se a les illes principals
+# Llista de nivells de pressió completa per al model JMA MSM
+PRESS_LEVELS_JAPO = sorted([1000, 925, 850, 700, 500, 400, 300, 250, 200, 150, 100], reverse=True)
+
 
 API_URL_HOLANDA = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_HOLANDA = pytz.timezone('Europe/Amsterdam')
@@ -2673,7 +2685,56 @@ def ui_pestanya_mapes_holanda(hourly_index_sel, timestamp_str, nivell_sel):
         st.pyplot(fig, use_container_width=True); plt.close(fig)
     else: st.warning("No s'han pogut obtenir les dades per generar el mapa.")
                 
+@st.cache_data(ttl=3600, max_entries=20, show_spinner=False)
+def carregar_dades_sondeig_japo(lat, lon, hourly_index):
+    """
+    Carrega i processa dades de sondeig per al Japó utilitzant el model d'alta
+    resolució JMA MSM.
+    """
+    try:
+        h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
+        press_vars = ["temperature", "dew_point", "wind_speed", "wind_direction", "geopotential_height"]
+        h_press = [f"{v}_{p}hPa" for v in press_vars for p in PRESS_LEVELS_JAPO]
+        all_requested_vars = h_base + h_press
         
+        params = {"latitude": lat, "longitude": lon, "hourly": all_requested_vars, "models": "jma_msm", "forecast_days": 2}
+        
+        response = openmeteo.weather_api(API_URL_JAPO, params=params)[0]
+        hourly = response.Hourly()
+
+        valid_index = trobar_hora_valida_mes_propera(hourly, hourly_index, len(h_base))
+        if valid_index is None: return None, hourly_index, "No s'han trobat dades vàlides."
+
+        hourly_vars = {hourly.Variables(i).Name().decode(): hourly.Variables(i).ValuesAsNumpy() for i in range(len(all_requested_vars))}
+        
+        sfc_data = {v: hourly_vars[v][valid_index] for v in h_base}
+        sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
+        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
+
+        for p_val in PRESS_LEVELS_JAPO:
+            var_names_level = [f"{v}_{p_val}hPa" for v in press_vars]
+            if p_val < p_profile[-1] and all(f in hourly_vars and not np.isnan(hourly_vars[f][valid_index]) for f in var_names_level):
+                p_profile.append(p_val)
+                T_profile.append(hourly_vars[f'temperature_{p_val}hPa'][valid_index])
+                Td_profile.append(hourly_vars[f'dew_point_{p_val}hPa'][valid_index])
+                u, v = mpcalc.wind_components(hourly_vars[f'wind_speed_{p_val}hPa'][valid_index] * units('km/h'), hourly_vars[f'wind_direction_{p_val}hPa'][valid_index] * units.degrees)
+                u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m)
+                h_profile.append(hourly_vars[f'geopotential_height_{p_val}hPa'][valid_index])
+
+        return processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
+        
+    except Exception as e: 
+        import traceback; traceback.print_exc()
+        return None, hourly_index, f"Error crític en carregar dades del sondeig del Japó: {e}"
+
+def ui_pestanya_satelit_japo():
+    st.markdown("#### Imatge de Satèl·lit Himawari-9 (Temps Real)")
+    # URL del satèl·lit geoestacionari del Japó
+    sat_url = f"https://www.data.jma.go.jp/mscweb/data/himawari/img/fd/fd_P_00.jpg?{int(time.time())}"
+    st.image(sat_url, caption="Imatge del satèl·lit Himawari-9 - Disc Complet (JMA)", use_container_width=True)
+    st.info("Aquesta imatge del satèl·lit japonès s'actualitza cada 10 minuts.")
+    st.markdown("<p style='text-align: center;'>[Font: Japan Meteorological Agency (JMA)](https://www.data.jma.go.jp/mscweb/data/himawari/index.html)</p>", unsafe_allow_html=True)
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def carregar_dades_mapa_base_cat(variables, hourly_index):
     """
@@ -5258,47 +5319,70 @@ def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
 
+    # Definim els camins a tots els vídeos d'animació
     path_anim_cat = "catalunya_anim.mp4"
     path_anim_usa = "tornado_alley_anim.mp4"
     path_anim_alemanya = "germany_anim.mp4"
     path_anim_italia = "italy_anim.mp4"
-    path_anim_holanda = "netherlands_anim.mp4" # <-- HAS DE CREAR AQUEST ARXIU DE VÍDEO!
+    path_anim_holanda = "netherlands_anim.mp4"
+    path_anim_japo = "japan_anim.mp4" # Recorda crear aquest arxiu de vídeo
 
-    with st.spinner('Carregant entorns geoespacials...'): time.sleep(1)
+    with st.spinner('Carregant entorns geoespacials...'):
+        time.sleep(1)
 
-    # Disseny de 3 i 2 columnes per a les 5 zones
+    # Creem una graella de 2 files i 3 columnes per a les 6 zones
     row1_col1, row1_col2, row1_col3 = st.columns(3)
-    st.write("---") # Separador visual
-    row2_col1, row2_col2, _ = st.columns([1, 1, 1]) # La tercera columna és un espai buit
+    row2_col1, row2_col2, row2_col3 = st.columns(3)
 
+    # --- Fila 1 ---
     with row1_col1:
         with st.container(border=True):
             st.markdown(generar_html_video_animacio(path_anim_cat, height="180px"), unsafe_allow_html=True)
             st.subheader("Catalunya")
-            if st.button("Analitzar Catalunya", use_container_width=True, type="primary"): st.session_state['zone_selected'] = 'catalunya'; st.rerun()
+            if st.button("Analitzar Catalunya", use_container_width=True, type="primary"):
+                st.session_state['zone_selected'] = 'catalunya'
+                st.rerun()
+
     with row1_col2:
         with st.container(border=True):
             st.markdown(generar_html_video_animacio(path_anim_usa, height="180px"), unsafe_allow_html=True)
             st.subheader("Tornado Alley")
-            if st.button("Analitzar Tornado Alley", use_container_width=True): st.session_state['zone_selected'] = 'valley_halley'; st.rerun()
+            if st.button("Analitzar Tornado Alley", use_container_width=True):
+                st.session_state['zone_selected'] = 'valley_halley'
+                st.rerun()
+
     with row1_col3:
         with st.container(border=True):
             st.markdown(generar_html_video_animacio(path_anim_alemanya, height="180px"), unsafe_allow_html=True)
             st.subheader("Alemanya")
-            if st.button("Analitzar Alemanya", use_container_width=True): st.session_state['zone_selected'] = 'alemanya'; st.rerun()
+            if st.button("Analitzar Alemanya", use_container_width=True):
+                st.session_state['zone_selected'] = 'alemanya'
+                st.rerun()
+
+    # --- Fila 2 ---
     with row2_col1:
         with st.container(border=True):
             st.markdown(generar_html_video_animacio(path_anim_italia, height="180px"), unsafe_allow_html=True)
             st.subheader("Itàlia")
-            if st.button("Analitzar Itàlia", use_container_width=True): st.session_state['zone_selected'] = 'italia'; st.rerun()
+            if st.button("Analitzar Itàlia", use_container_width=True):
+                st.session_state['zone_selected'] = 'italia'
+                st.rerun()
+
     with row2_col2:
         with st.container(border=True):
             st.markdown(generar_html_video_animacio(path_anim_holanda, height="180px"), unsafe_allow_html=True)
             st.subheader("Holanda")
-            if st.button("Analitzar Holanda", use_container_width=True): st.session_state['zone_selected'] = 'holanda'; st.rerun()
+            if st.button("Analitzar Holanda", use_container_width=True):
+                st.session_state['zone_selected'] = 'holanda'
+                st.rerun()
 
-
-
+    with row2_col3:
+        with st.container(border=True):
+            st.markdown(generar_html_video_animacio(path_anim_japo, height="180px"), unsafe_allow_html=True)
+            st.subheader("Japó")
+            if st.button("Analitzar Japó", use_container_width=True):
+                st.session_state['zone_selected'] = 'japo'
+                st.rerun()
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_italia(nivell, hourly_index):
@@ -5551,7 +5635,49 @@ def run_holanda_app():
     elif selected_tab == "Satèl·lit (Temps Real)":
         ui_pestanya_satelit_europa()
 
+def run_japo_app():
+    if 'poble_selector_japo' not in st.session_state: st.session_state.poble_selector_japo = "Tòquio"
+    if 'dia_selector_japo' not in st.session_state: st.session_state.dia_selector_japo = datetime.now(TIMEZONE_JAPO).strftime('%d/%m/%Y')
+    if 'hora_selector_japo' not in st.session_state: st.session_state.hora_selector_japo = f"{datetime.now(TIMEZONE_JAPO).hour:02d}:00h"
+    if 'level_japo_main' not in st.session_state: st.session_state.level_japo_main = 850
+    if 'active_tab_japo' not in st.session_state: st.session_state.active_tab_japo = "Anàlisi Vertical"
 
+    ui_capcalera_selectors(None, zona_activa="japo")
+    
+    poble_sel, dia_sel_str, hora_sel_str, nivell_sel = st.session_state.poble_selector_japo, st.session_state.dia_selector_japo, st.session_state.hora_selector_japo, st.session_state.level_japo_main
+    lat_sel, lon_sel = CIUTATS_JAPO[poble_sel]['lat'], CIUTATS_JAPO[poble_sel]['lon']
+    
+    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
+    local_dt = TIMEZONE_JAPO.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
+    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str}"
+
+    menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Satèl·lit (Temps Real)"]
+    menu_icons = ["graph-up-arrow", "map-fill", "globe-asia-australia"]
+    default_idx = menu_options.index(st.session_state.active_tab_japo)
+
+    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
+    st.session_state.active_tab_japo = selected_tab
+
+    if selected_tab == "Anàlisi Vertical":
+        with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
+            data_tuple, final_index, error_msg = carregar_dades_sondeig_japo(lat_sel, lon_sel, hourly_index_sel)
+        
+        if data_tuple is None or error_msg:
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        else:
+            if final_index != hourly_index_sel:
+                adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+                adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_JAPO)
+                st.warning(f"**Avís:** Dades no disponibles. Es mostren les de les **{adjusted_local_time.strftime('%H:%Mh')}**.")
+            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+    
+    elif selected_tab == "Anàlisi de Mapes":
+        st.info("La visualització de mapes per al model regional del Japó (JMA MSM) està en desenvolupament.")
+    
+    elif selected_tab == "Satèl·lit (Temps Real)":
+        ui_pestanya_satelit_japo()
 
 
 def main():
@@ -5562,13 +5688,12 @@ def main():
     if 'zone_selected' not in st.session_state or st.session_state.zone_selected is None:
         ui_zone_selection(); return
 
-    # Lògica principal que crida la funció de l'app corresponent
     if st.session_state.zone_selected == 'catalunya': run_catalunya_app()
     elif st.session_state.zone_selected == 'valley_halley': run_valley_halley_app()
     elif st.session_state.zone_selected == 'alemanya': run_alemanya_app()
     elif st.session_state.zone_selected == 'italia': run_italia_app()
     elif st.session_state.zone_selected == 'holanda': run_holanda_app()
-
+    elif st.session_state.zone_selected == 'japo': run_japo_app()
 
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
@@ -5639,4 +5764,3 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
 if __name__ == "__main__":
     main()
-
