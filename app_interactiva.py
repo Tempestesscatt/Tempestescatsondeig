@@ -2688,13 +2688,14 @@ def ui_pestanya_mapes_holanda(hourly_index_sel, timestamp_str, nivell_sel):
 @st.cache_data(ttl=3600, max_entries=20, show_spinner=False)
 def carregar_dades_sondeig_japo(lat, lon, hourly_index):
     """
-    Versió Final i Tolerant: Construeix un perfil atmosfèric complet,
-    omplint amb 'NaN' les dades que falten en alguns nivells, per evitar
-    l'error de "perfil massa curt".
+    Versió Final: Canvia l'estratègia per demanar 'relative_humidity' en lloc de 'dew_point'
+    als nivells superiors, ja que és una dada més completa en el model JMA. El dew_point
+    es calcula manualment per assegurar un perfil robust.
     """
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
-        press_vars = ["temperature", "dew_point", "wind_speed", "wind_direction", "geopotential_height"]
+        # <<<--- CANVI D'ESTRATÈGIA: Demanem 'relative_humidity' en lloc de 'dew_point' --->>>
+        press_vars = ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"]
         h_press = [f"{v}_{p}hPa" for v in press_vars for p in PRESS_LEVELS_JAPO]
         all_requested_vars = h_base + h_press
         
@@ -2709,30 +2710,33 @@ def carregar_dades_sondeig_japo(lat, lon, hourly_index):
 
         hourly_vars = {}
         for i, var_name in enumerate(all_requested_vars):
-            try:
-                hourly_vars[var_name] = hourly.Variables(i).ValuesAsNumpy()
-            except Exception:
-                hourly_vars[var_name] = np.array([np.nan])
+            try: hourly_vars[var_name] = hourly.Variables(i).ValuesAsNumpy()
+            except Exception: hourly_vars[var_name] = np.array([np.nan])
         
         sfc_data = {v: hourly_vars[v][valid_index] for v in h_base}
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
         p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
 
-        # <<<--- BLOC DE CONSTRUCCIÓ TOLERANT (LA CLAU DE LA SOLUCIÓ) --->>>
         for p_val in PRESS_LEVELS_JAPO:
-            # Només afegim el nivell si la seva pressió és menor que l'anterior (més alt)
             if p_val < p_profile[-1]:
                 p_profile.append(p_val)
-
-                # Intentem obtenir cada valor. Si no existeix o és NaN, afegim un NaN.
-                # L'operador .get(key, [np.nan]) evita errors si la clau no existeix.
-                T_profile.append(hourly_vars.get(f'temperature_{p_val}hPa', [np.nan])[valid_index])
-                Td_profile.append(hourly_vars.get(f'dew_point_{p_val}hPa', [np.nan])[valid_index])
-                h_profile.append(hourly_vars.get(f'geopotential_height_{p_val}hPa', [np.nan])[valid_index])
                 
+                temp = hourly_vars.get(f'temperature_{p_val}hPa', [np.nan])[valid_index]
+                rh = hourly_vars.get(f'relative_humidity_{p_val}hPa', [np.nan])[valid_index]
                 ws = hourly_vars.get(f'wind_speed_{p_val}hPa', [np.nan])[valid_index]
                 wd = hourly_vars.get(f'wind_direction_{p_val}hPa', [np.nan])[valid_index]
-
+                h = hourly_vars.get(f'geopotential_height_{p_val}hPa', [np.nan])[valid_index]
+                
+                T_profile.append(temp)
+                h_profile.append(h)
+                
+                # Calculem el dew_point si tenim T i RH
+                if pd.notna(temp) and pd.notna(rh):
+                    Td_profile.append(mpcalc.dewpoint_from_relative_humidity(temp * units.degC, rh * units.percent).m)
+                else:
+                    Td_profile.append(np.nan)
+                
+                # Calculem el vent si tenim WS i WD
                 if pd.notna(ws) and pd.notna(wd):
                     u, v = mpcalc.wind_components(ws * units('km/h'), wd * units.degrees)
                     u_profile.append(u.to('m/s').m)
@@ -2741,12 +2745,9 @@ def carregar_dades_sondeig_japo(lat, lon, hourly_index):
                     u_profile.append(np.nan)
                     v_profile.append(np.nan)
         
-        # Ara passem el perfil "brut" (amb possibles forats) a la funció de processament,
-        # que s'encarregarà de netejar-lo.
+        # Ara passem el perfil a la funció de processament, que el netejarà.
+        # Com que hem calculat el dew_point, el perfil serà molt més complet.
         processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
-        
-        # Si el processament ha fallat (perquè fins i tot després de netejar el perfil és massa curt),
-        # l'error es propagarà correctament.
         return processed_data, valid_index, error
         
     except Exception as e: 
