@@ -63,10 +63,10 @@ WEBCAM_LINKS = {
     # Tornado Alley (EUA)
     "Oklahoma City, OK": "https://www.youtube.com/embed/T6dClc9yS54?autoplay=1&mute=1&loop=1&playlist=T6dClc9yS54",
 
-    # <<<--- AFEGEIX O SUBSTITUEIX AQUESTES LÍNIES PER AL REGNE UNIT I IRLANDA --->>>
+    # Regne Unit i Irlanda
     "Southampton": "https://www.youtube.com/embed/yJyL012sH_E?autoplay=1&mute=1&loop=1&playlist=yJyL012sH_E",
     "Fort William": "https://www.youtube.com/embed/B_r9e8g3_IM?autoplay=1&mute=1&loop=1&playlist=B_r9e8g3_IM",
-    "Dublín (Paddocks)": "https://www.youtube.com/embed/SbAgJi-1i8s?autoplay=1&mute=1&loop=1&playlist=SbAgJi-1i8s", # Webcam del Temple Bar a Dublín
+    "Dublín (Paddocks)": "https://www.youtube.com/embed/SbAgJi-1i8s?autoplay=1&mute=1&loop=1&playlist=SbAgJi-1i8s",  # Webcam del Temple Bar a Dublín
     "Scarborough": "https://www.youtube.com/live/T0oUufecXeE?si=hUgA3G5QXnmviriy",
 
     # Canadà
@@ -75,16 +75,19 @@ WEBCAM_LINKS = {
     "Calgary, AB": "https://www.youtube.com/embed/MwcqP3ta6RI?autoplay=1&mute=1",
     "Vancouver, BC": "https://www.youtube.com/embed/-2vwOXTxbkw?autoplay=1&mute=1",
 
-
-
-        # <<<--- AFEGEIX O SUBSTITUEIX AQUESTES LÍNIES PER AL JAPÓ --->>>
     # Japó
     "Tòquio": "https://www.youtube.com/embed/_k-5U7IeK8g?autoplay=1&mute=1",
     "Oshino Hakkai (Fuji)": "https://www.youtube.com/embed/sm3xXTfDtGE?autoplay=1&mute=1",
     "Hasaki Beach": "https://www.youtube.com/embed/Ntz4h44KTDc?autoplay=1&mute=1",
-    "Hakodate": "https://www.youtube.com/embed/sE1bH-zc9Pg?autoplay=1&mute=1"
+    "Hakodate": "https://www.youtube.com/embed/sE1bH-zc9Pg?autoplay=1&mute=1",
 
+    # Tornado Alley (altres ciutats)
+    "Dallas, TX": "https://www.youtube.com/embed/for_g-h2H6s?autoplay=1&mute=1",
+    "Wichita, KS": "https://www.youtube.com/embed/Dh_hS-j62a0?autoplay=1&mute=1",
+    "Houston, TX": "https://www.youtube.com/embed/Bv2tY1e6E3g?autoplay=1&mute=1",
+    "Kansas City, MO": "https://www.youtube.com/embed/zEa-6yV38so?autoplay=1&mute=1",
 }
+
 
 # --- Constants per al Canadà Continental ---
 API_URL_CANADA = "https://api.open-meteo.com/v1/forecast"
@@ -581,20 +584,13 @@ CIUTATS_CONVIDAT = {
 # --- Constants per Tornado Alley ---
 API_URL_USA = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_USA = pytz.timezone('America/Chicago')
-
-# <<<--- CORRECCIÓ: Tornem a utilitzar el nom original de la variable 'USA_CITIES' --->>>
 USA_CITIES = {
     'Dallas, TX': {'lat': 32.7767, 'lon': -96.7970},
-    'Houston, TX': {'lat': 29.7604, 'lon': -95.3698},
-    'Oklahoma City, OK': {'lat': 35.4676, 'lon': -97.5164},
-    'Kansas City, MO': {'lat': 39.0997, 'lon': -94.5786},
-    'Omaha, NE': {'lat': 41.2565, 'lon': -95.9345},
-    'Tulsa, OK': {'lat': 36.1540, 'lon': -95.9928},
     'Wichita, KS': {'lat': 37.6872, 'lon': -97.3301},
+    'Houston, TX': {'lat': 29.7604, 'lon': -95.3698},
+    'Kansas City, MO': {'lat': 39.0997, 'lon': -94.5786},
 }
-
 MAP_EXTENT_USA = [-105, -85, 28, 48]
-# Nova llista de nivells de pressió extremadament detallada per al model HRRR
 PRESS_LEVELS_HRRR = sorted([
     1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 750, 725, 700, 675, 650, 
     625, 600, 575, 550, 525, 500, 475, 450, 425, 400, 375, 350, 325, 300, 275, 
@@ -5973,7 +5969,8 @@ def run_catalunya_app():
 
 def run_valley_halley_app():
     # --- PAS 1: INICIALITZACIÓ D'ESTAT ---
-    if 'poble_selector_usa' not in st.session_state: st.session_state.poble_selector_usa = "Oklahoma City, OK"
+    # <<<--- CANVI: La ciutat per defecte ara és Dallas, TX --->>>
+    if 'poble_selector_usa' not in st.session_state: st.session_state.poble_selector_usa = "Dallas, TX"
     if 'dia_selector_usa' not in st.session_state: st.session_state.dia_selector_usa = datetime.now(TIMEZONE_USA).strftime('%d/%m/%Y')
     if 'hora_selector_usa' not in st.session_state: st.session_state.hora_selector_usa = datetime.now(TIMEZONE_USA).hour
     if 'level_usa_main' not in st.session_state: st.session_state.level_usa_main = 850
@@ -6010,7 +6007,8 @@ def run_valley_halley_app():
     if selected_tab == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig HRRR per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_usa(lat_sel, lon_sel, hourly_index_sel)
-        if data_tuple is None or error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        if data_tuple is None or error_msg: 
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
             if final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
@@ -6022,7 +6020,8 @@ def run_valley_halley_app():
         st.markdown("#### Mapes de Pronòstic (Model HRRR)")
         with st.spinner(f"Carregant mapa HRRR a {nivell_sel}hPa..."):
             map_data, error = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
-        if error or not map_data: st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+        if error or not map_data: 
+            st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
         else:
             fig = crear_mapa_forecast_combinat_usa(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str.replace(f"{poble_sel} | ", ""))
             st.pyplot(fig, use_container_width=True); plt.close(fig)
