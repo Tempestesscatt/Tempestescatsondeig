@@ -57,19 +57,19 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 WEBCAM_LINKS = {
     # Catalunya
-    "Barcelona": "https://www.youtube.com/embed/2i_o-a_I73s?autoplay=1&mute=1&loop=1&playlist=2i_o-a_I73s",
-    "Tarragona": "https://www.youtube.com/embed/YpCY_oE852g?autoplay=1&mute=1&loop=1&playlist=YpCY_oE852g",
+    "Barcelona": "https://www.youtube.com/embed/2i_o-a_I73s?autoplay=1&mute=1",
+    "Tarragona": "https://www.youtube.com/embed/YpCY_oE852g?autoplay=1&mute=1",
 
     # Tornado Alley (EUA)
-    "Oklahoma City, OK": "https://www.youtube.com/embed/T6dClc9yS54?autoplay=1&mute=1&loop=1&playlist=T6dClc9yS54",
+    "Oklahoma City, OK": "https://www.youtube.com/embed/T6dClc9yS54?autoplay=1&mute=1",
 
-    # <<<--- AFEGEIX O SUBSTITUEIX AQUESTES LÍNIES PER AL REGNE UNIT I IRLANDA --->>>
-    "Southampton": "https://www.youtube.com/watch?v=QO-hO_kwwmY",
-    "Fort William": "https://www.youtube.com/watch?v=8miQ3QXA26Q",
-    "Dublín (Paddocks)": "https://www.youtube.com/watch?v=ZANLLiQ_L3A", # Webcam del Temple Bar a Dublín
-    "Scarborough": "https://www.youtube.com/watch?v=itG7PHrPSUw",
+    # <<<--- AQUESTS SÓN ELS TEUS ENLLAÇOS, PERÒ AMB EL FORMAT CORRECTE --->>>
+    "Southampton": "https://www.youtube.com/embed/QO-hO_kwwmY?autoplay=1&mute=1",
+    "Fort William": "https://www.youtube.com/embed/8miQ3QXA26Q?autoplay=1&mute=1",
+    "Dublín (Paddocks)": "https://www.youtube.com/embed/ZANLLiQ_L3A?autoplay=1&mute=1",
+    "Scarborough": "https://www.youtube.com/embed/itG7PHrPSUw?autoplay=1&mute=1",
 
-    # Pots afegir més ciutats aquí...
+    # Pots afegir més ciutats aquí seguint sempre el format /embed/
 }
 
 # --- Constants per al Canadà Continental ---
