@@ -4950,15 +4950,95 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             st.rerun()
 
     with st.container(border=True):
-        if zona_activa == 'catalunya': run_catalunya_app()
-        # ... (aquí anirien els altres 'elif' per a les altres zones, que ja tens)
+        if zona_activa == 'catalunya':
+            # Selectors per a Catalunya
+            col_dia, col_hora, col_nivell = st.columns(3)
+            with col_dia:
+                st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_CAT) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector")
+            with col_hora:
+                st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
+            with col_nivell:
+                if not is_guest:
+                     st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
+        
+        elif zona_activa == 'valley_halley':
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(USA_CITIES.keys())), key="poble_selector_usa")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_USA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(3)], key="dia_selector_usa")
+            with col_hora:
+                opcions_hora = []
+                target_date = datetime.strptime(st.session_state.dia_selector_usa, '%d/%m/%Y').date()
+                for h in range(24):
+                    local_dt = TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.day}/{cat_dt.month} {cat_dt.hour:02d}h)")
+                st.selectbox("Hora (Central Time):", options=opcions_hora, key="hora_selector_usa")
+            with col_nivell: st.selectbox("Nivell:", [925, 850, 700, 500, 300], key="level_usa_main", index=1, format_func=lambda x: f"{x} hPa")
+
+        elif zona_activa == 'alemanya':
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ALEMANYA.keys())), key="poble_selector_alemanya")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_ALEMANYA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(3)], key="dia_selector_alemanya")
+            with col_hora:
+                opcions_hora = []
+                target_date = datetime.strptime(st.session_state.dia_selector_alemanya, '%d/%m/%Y').date()
+                for h in range(24):
+                    local_dt = TIMEZONE_ALEMANYA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)")
+                st.selectbox("Hora:", options=opcions_hora, key="hora_selector_alemanya")
+            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_ICON, key="level_alemanya_main", index=6, format_func=lambda x: f"{x} hPa")
+
+        elif zona_activa == 'italia':
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ITALIA.keys())), key="poble_selector_italia")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_ITALIA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_italia")
+            with col_hora:
+                opcions_hora = []
+                target_date = datetime.strptime(st.session_state.dia_selector_italia, '%d/%m/%Y').date()
+                for h in range(24):
+                    local_dt = TIMEZONE_ITALIA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)")
+                st.selectbox("Hora:", options=opcions_hora, key="hora_selector_italia")
+            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_ITALIA, key="level_italia_main", index=2, format_func=lambda x: f"{x} hPa")
+
+        elif zona_activa == 'holanda':
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_HOLANDA.keys())), key="poble_selector_holanda")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_HOLANDA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_holanda")
+            with col_hora:
+                opcions_hora = []
+                target_date = datetime.strptime(st.session_state.dia_selector_holanda, '%d/%m/%Y').date()
+                for h in range(24):
+                    local_dt = TIMEZONE_HOLANDA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)")
+                st.selectbox("Hora:", options=opcions_hora, key="hora_selector_holanda")
+            with col_nivell:
+                nivells_mapa_holanda = [p for p in PRESS_LEVELS_HOLANDA if p != 1000]
+                st.selectbox("Nivell:", nivells_mapa_holanda, key="level_holanda_main", index=1, format_func=lambda x: f"{x} hPa")
+                
+        elif zona_activa == 'japo':
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_JAPO.keys())), key="poble_selector_japo")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_JAPO) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_japo")
+            with col_hora:
+                opcions_hora = []
+                target_date = datetime.strptime(st.session_state.dia_selector_japo, '%d/%m/%Y').date()
+                for h in range(24):
+                    local_dt = TIMEZONE_JAPO.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)")
+                st.selectbox("Hora:", options=opcions_hora, key="hora_selector_japo")
+            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_JAPO, key="level_japo_main", index=2, format_func=lambda x: f"{x} hPa")
+        
         elif zona_activa == 'uk':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_UK.keys())), key="poble_selector_uk")
             with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_UK) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_uk")
             with col_hora:
                 opcions_hora = []
-                # Aquesta línia ara és segura, perquè 'dia_selector_uk' ha estat inicialitzat a 'run_uk_app'
                 target_date = datetime.strptime(st.session_state.dia_selector_uk, '%d/%m/%Y').date()
                 for h in range(24):
                     local_dt = TIMEZONE_UK.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
@@ -6088,6 +6168,8 @@ def main():
         run_holanda_app()
     elif st.session_state.zone_selected == 'japo':
         run_japo_app()
+    elif st.session_state.zone_selected == 'uk':
+        run_uk_app()
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
