@@ -64,7 +64,7 @@ WEBCAM_LINKS = {
     "Oklahoma City, OK": "https://www.youtube.com/embed/T6dClc9yS54?autoplay=1&mute=1&loop=1&playlist=T6dClc9yS54", # KOCO 5 News
 
     # Regne Unit
-    "Londres": "https://www.youtube.com/embed/l-f24fvi6yY?autoplay=1&mute=1&loop=1&playlist=l-f24fvi6yY", # Vista del Tower Bridge
+    "Londres": "https://www.youtube.com/watch?v=QO-hO_kwwmY", # Vista del Tower Bridge
 
     # Pots afegir més ciutats aquí...
     # "Roma": "URL_DE_LA_WEBCAM_DE_ROMA",
