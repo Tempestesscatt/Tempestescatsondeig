@@ -73,7 +73,7 @@ WEBCAM_LINKS = {
     "Revelstoke, BC": "https://www.youtube.com/embed/DPATwG436-A?autoplay=1&mute=1",   # Webcam de Revelstoke Mountain Resort
     "Banff, AB": "https://www.youtube.com/embed/L36B6z689Ds?autoplay=1&mute=1",        # Webcam de la Gondola de Banff
     "Calgary, AB": "https://www.youtube.com/embed/t-g-nI7SA3Y?autoplay=1&mute=1",       # Vista de la Torre de Calgary
-    "Vancouver, BC": "https://www.youtube.com/embed/FIMmA2P_4qg?autoplay=1&mute=1",     # Vista del port de Vancouver
+    "Vancouver, BC": "https://www.youtube.com/live/T0oUufecXeE?si=hUgA3G5QXnmviriy",     # Vista del port de Vancouver
 }
 
 # --- Constants per al Canadà Continental ---
