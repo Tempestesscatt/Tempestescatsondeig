@@ -70,10 +70,10 @@ WEBCAM_LINKS = {
     "Scarborough": "https://www.youtube.com/live/T0oUufecXeE?si=hUgA3G5QXnmviriy",
 
     # Canadà
-    "Revelstoke, BC": "https://www.youtube.com/embed/DPATwG436-A?autoplay=1&mute=1",   # Webcam de Revelstoke Mountain Resort
-    "Banff, AB": "https://www.youtube.com/embed/L36B6z689Ds?autoplay=1&mute=1",        # Webcam de la Gondola de Banff
-    "Calgary, AB": "https://www.youtube.com/embed/t-g-nI7SA3Y?autoplay=1&mute=1",       # Vista de la Torre de Calgary
-    "Vancouver, BC": "https://www.youtube.com/live/T0oUufecXeE?si=hUgA3G5QXnmviriy",     # Vista del port de Vancouver
+    "Revelstoke, BC": "https://www.youtube.com/embed/fIMbMz2P7Bs?autoplay=1&mute=1",
+    "Banff, AB": "https://www.youtube.com/embed/_0wPODlF9wU?autoplay=1&mute=1",
+    "Calgary, AB": "https://www.youtube.com/embed/MwcqP3ta6RI?autoplay=1&mute=1",
+    "Vancouver, BC": "https://www.youtube.com/embed/-2vwOXTxbkw?autoplay=1&mute=1",
 }
 
 # --- Constants per al Canadà Continental ---
