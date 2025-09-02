@@ -56,6 +56,25 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
 
+
+# --- Constants per al Canadà Continental ---
+API_URL_CANADA = "https://api.open-meteo.com/v1/forecast"
+TIMEZONE_CANADA = pytz.timezone('America/Winnipeg') # Central Time per a les praderies
+CIUTATS_CANADA = {
+    'Calgary, AB': {'lat': 51.0447, 'lon': -114.0719, 'sea_dir': None},
+    'Edmonton, AB': {'lat': 53.5461, 'lon': -113.4938, 'sea_dir': None},
+    'Regina, SK': {'lat': 50.4452, 'lon': -104.6189, 'sea_dir': None},
+    'Winnipeg, MB': {'lat': 49.8951, 'lon': -97.1384, 'sea_dir': None},
+}
+MAP_EXTENT_CANADA = [-120, -90, 48, 60] # Centrat a les praderies
+# Llista de nivells de pressió extremadament detallada per al model HRDPS
+PRESS_LEVELS_CANADA = sorted([
+    1015, 1000, 985, 970, 950, 925, 900, 875, 850, 825, 800, 775, 750, 725, 700, 
+    675, 650, 625, 600, 575, 550, 525, 500, 475, 450, 425, 400, 375, 350, 325, 
+    300, 275, 250, 225, 200, 175, 150, 125, 100
+], reverse=True)
+
+
 API_URL_UK = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_UK = pytz.timezone('Europe/London')
 CIUTATS_UK = {
@@ -3019,6 +3038,143 @@ def carregar_dades_mapa_base_cat(variables, hourly_index):
     except Exception as e:
         return None, f"Error en carregar dades del mapa: {e}"
 
+
+
+
+@st.cache_data(ttl=1800, max_entries=20, show_spinner=False) # TTL més curt (30min) ja que el HRDPS s'actualitza sovint
+def carregar_dades_sondeig_canada(lat, lon, hourly_index):
+    """
+    Carrega dades de sondeig per al Canadà utilitzant el model d'alta
+    resolució HRDPS (gem_hrdps_continental).
+    """
+    try:
+        h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
+        press_vars = ["temperature", "dew_point", "wind_speed", "wind_direction", "geopotential_height", "vertical_velocity"]
+        h_press = [f"{v}_{p}hPa" for v in press_vars for p in PRESS_LEVELS_CANADA]
+        all_requested_vars = h_base + h_press
+        
+        params = {"latitude": lat, "longitude": lon, "hourly": all_requested_vars, "models": "gem_hrdps_continental", "forecast_days": 2}
+        
+        response = openmeteo.weather_api(API_URL_CANADA, params=params)[0]
+        hourly = response.Hourly()
+
+        valid_index = trobar_hora_valida_mes_propera(hourly, hourly_index, len(h_base))
+        if valid_index is None: return None, hourly_index, "No s'han trobat dades vàlides."
+
+        hourly_vars = {}
+        for i, var_name in enumerate(all_requested_vars):
+            try: hourly_vars[var_name] = hourly.Variables(i).ValuesAsNumpy()
+            except Exception: hourly_vars[var_name] = np.array([np.nan])
+        
+        sfc_data = {v: hourly_vars[v][valid_index] for v in h_base}
+        sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
+        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
+
+        for p_val in PRESS_LEVELS_CANADA:
+            if p_val < p_profile[-1]:
+                p_profile.append(p_val)
+                T_profile.append(hourly_vars.get(f'temperature_{p_val}hPa', [np.nan])[valid_index])
+                Td_profile.append(hourly_vars.get(f'dew_point_{p_val}hPa', [np.nan])[valid_index])
+                h_profile.append(hourly_vars.get(f'geopotential_height_{p_val}hPa', [np.nan])[valid_index])
+                ws = hourly_vars.get(f'wind_speed_{p_val}hPa', [np.nan])[valid_index]
+                wd = hourly_vars.get(f'wind_direction_{p_val}hPa', [np.nan])[valid_index]
+                if pd.notna(ws) and pd.notna(wd):
+                    u, v = mpcalc.wind_components(ws * units('km/h'), wd * units.degrees)
+                    u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m)
+                else:
+                    u_profile.append(np.nan); v_profile.append(np.nan)
+
+        processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
+        return processed_data, valid_index, error
+        
+    except Exception as e: 
+        import traceback; traceback.print_exc()
+        return None, hourly_index, f"Error crític en carregar dades del sondeig del Canadà: {e}"
+
+@st.cache_data(ttl=1800)
+def carregar_dades_mapa_canada(nivell, hourly_index):
+    """
+    Carrega dades de mapa per al Canadà utilitzant el model HRDPS.
+    """
+    try:
+        variables = [f"temperature_{nivell}hPa", f"dew_point_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+        lats, lons = np.linspace(MAP_EXTENT_CANADA[2], MAP_EXTENT_CANADA[3], 12), np.linspace(MAP_EXTENT_CANADA[0], MAP_EXTENT_CANADA[1], 12)
+        lon_grid, lat_grid = np.meshgrid(lons, lats)
+        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "gem_hrdps_continental", "forecast_days": 2}
+        
+        responses = openmeteo.weather_api(API_URL_CANADA, params=params)
+        output = {var: [] for var in ["lats", "lons"] + variables}
+        for r in responses:
+            try:
+                valid_index = trobar_hora_valida_mes_propera(r.Hourly(), hourly_index, len(variables))
+                if valid_index is not None:
+                    vals = [r.Hourly().Variables(i).ValuesAsNumpy()[valid_index] for i in range(len(variables))]
+                    if not any(np.isnan(v) for v in vals):
+                        output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
+                        for i, var in enumerate(variables): output[var].append(vals[i])
+            except IndexError: continue
+
+        if not output["lats"]: return None, "No s'han rebut dades per a la graella del mapa."
+        
+        output['dewpoint_data'] = output.pop(f'dew_point_{nivell}hPa')
+        output['speed_data'] = output.pop(f'wind_speed_{nivell}hPa')
+        output['dir_data'] = output.pop(f'wind_direction_{nivell}hPa')
+        del output[f'temperature_{nivell}hPa']
+
+        return output, None
+    except Exception as e:
+        return None, f"Error en carregar dades del mapa HRDPS: {e}"
+
+def crear_mapa_forecast_combinat_canada(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
+    fig, ax = crear_mapa_base(MAP_EXTENT_CANADA, projection=ccrs.LambertConformal(central_longitude=-105, central_latitude=54))
+    if len(lons) < 4: return fig
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_CANADA[0], MAP_EXTENT_CANADA[1], 200), np.linspace(MAP_EXTENT_CANADA[2], MAP_EXTENT_CANADA[3], 200))
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic'); grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
+    u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic'); grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    
+    colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
+    speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]
+    custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=4.5, arrowsize=0.5, zorder=4, transform=ccrs.PlateCarree())
+    
+    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat); convergence_scaled = -(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s').magnitude * 1e5
+    convergence_in_humid_areas = np.where(grid_dewpoint >= 5, convergence_scaled, 0) # Llindar de punt de rosada més baix per a climes més freds
+    
+    fill_levels = [5, 10, 15, 25]; fill_colors = ['#ffc107', '#ff9800', '#f44336']
+    line_levels = [5, 10, 15]; line_colors = ['#e65100', '#bf360c', '#b71c1c']
+    
+    ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=fill_colors, alpha=0.6, zorder=5, transform=ccrs.PlateCarree())
+    contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors=line_colors, linestyles='--', linewidths=1.2, zorder=6, transform=ccrs.PlateCarree())
+    ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
+
+    for city, coords in CIUTATS_CANADA.items():
+        ax.plot(coords['lon'], coords['lat'], 'o', color='red', markersize=3, markeredgecolor='black', transform=ccrs.PlateCarree(), zorder=10)
+        ax.text(coords['lon'] + 0.1, coords['lat'] + 0.1, city, fontsize=8, transform=ccrs.PlateCarree(), zorder=10, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+    ax.set_title(f"Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    return fig
+
+def ui_pestanya_mapes_canada(hourly_index_sel, timestamp_str, nivell_sel, poble_sel): # <<<--- PARÀMETRE AFEGIT
+    """
+    Versió Corregida: Ara rep 'poble_sel' per poder construir el títol correctament.
+    """
+    st.markdown("#### Mapes de Pronòstic (Model HRDPS)")
+    with st.spinner(f"Carregant mapa HRDPS a {nivell_sel}hPa..."):
+        map_data, error = carregar_dades_mapa_canada(nivell_sel, hourly_index_sel)
+    
+    if error or not map_data:
+        st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+    else:
+        fig = crear_mapa_forecast_combinat_canada(
+            map_data['lons'], map_data['lats'], map_data['speed_data'],
+            map_data['dir_data'], map_data['dewpoint_data'], nivell_sel,
+            timestamp_str.replace(f"{poble_sel} | ", "") # <<<--- ARA AQUESTA LÍNIA FUNCIONA
+        )
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
+
+
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_cat(nivell, hourly_index):
     """
@@ -5034,11 +5190,15 @@ def on_city_change(source_widget_key, other_widget_key, placeholder_text, city_d
             st.session_state[other_widget_key] = placeholder_text
 
 
+
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya", convergencies=None):
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
-    altres_zones = {'catalunya': 'Catalunya', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya', 'italia': 'Itàlia', 'holanda': 'Holanda', 'japo': 'Japó', 'uk': 'Regne Unit'}
+    altres_zones = {
+        'catalunya': 'Catalunya', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya', 
+        'italia': 'Itàlia', 'holanda': 'Holanda', 'japo': 'Japó', 'uk': 'Regne Unit', 'canada': 'Canadà'
+    }
     del altres_zones[zona_activa]
     
     col_text, col_nav, col_back, col_logout = st.columns([0.5, 0.2, 0.15, 0.15])
@@ -5047,7 +5207,9 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
         if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username', 'Usuari')}**!")
     with col_nav:
         nova_zona_key = st.selectbox("Canviar a:", options=list(altres_zones.keys()), format_func=lambda k: altres_zones[k], index=None, placeholder="Anar a...")
-        if nova_zona_key: st.session_state.zone_selected = nova_zona_key; st.rerun()
+        if nova_zona_key:
+            st.session_state.zone_selected = nova_zona_key
+            st.rerun()
     with col_back:
         if st.button("⬅️ Zones", use_container_width=True, help="Tornar a la selecció de zona"):
             keys_to_clear = [k for k in st.session_state if k not in ['logged_in', 'username', 'guest_mode', 'developer_mode']]
@@ -5060,20 +5222,13 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
 
     with st.container(border=True):
         if zona_activa == 'catalunya':
-            # Selectors per a Catalunya
-            col_dia, col_hora, col_nivell = st.columns(3)
-            with col_dia:
-                st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_CAT) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector")
-            with col_hora:
-                st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
-            with col_nivell:
-                if not is_guest:
-                     st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
+            # Aquesta part es gestiona a run_catalunya_app per a una lògica més complexa
+            pass
         
         elif zona_activa == 'valley_halley':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc: st.selectbox("Ciutat:", options=sorted(list(USA_CITIES.keys())), key="poble_selector_usa")
-            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_USA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(3)], key="dia_selector_usa")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_USA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_usa")
             with col_hora:
                 opcions_hora = []
                 target_date = datetime.strptime(st.session_state.dia_selector_usa, '%d/%m/%Y').date()
@@ -5082,7 +5237,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
                     opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.day}/{cat_dt.month} {cat_dt.hour:02d}h)")
                 st.selectbox("Hora (Central Time):", options=opcions_hora, key="hora_selector_usa")
-            with col_nivell: st.selectbox("Nivell:", [925, 850, 700, 500, 300], key="level_usa_main", index=1, format_func=lambda x: f"{x} hPa")
+            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_HRRR, key="level_usa_main", index=6, format_func=lambda x: f"{x} hPa")
 
         elif zona_activa == 'alemanya':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
@@ -5138,7 +5293,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 for h in range(24):
                     local_dt = TIMEZONE_JAPO.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
                     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
-                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)")
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.day}/{cat_dt.month} {cat_dt.hour:02d}h)")
                 st.selectbox("Hora:", options=opcions_hora, key="hora_selector_japo")
             with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_JAPO, key="level_japo_main", index=2, format_func=lambda x: f"{x} hPa")
         
@@ -5155,6 +5310,20 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)")
                 st.selectbox("Hora (GMT/BST):", options=opcions_hora, key="hora_selector_uk")
             with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_UK, key="level_uk_main", index=5, format_func=lambda x: f"{x} hPa")
+
+        elif zona_activa == 'canada':
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_CANADA.keys())), key="poble_selector_canada")
+            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_CANADA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_canada")
+            with col_hora:
+                opcions_hora = []
+                target_date = datetime.strptime(st.session_state.dia_selector_canada, '%d/%m/%Y').date()
+                for h in range(24):
+                    local_dt = TIMEZONE_CANADA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    opcions_hora.append(f"{h:02d}:00h (CAT: {cat_dt.day}/{cat_dt.month} {cat_dt.hour:02d}h)")
+                st.selectbox("Hora (Central Time):", options=opcions_hora, key="hora_selector_canada")
+            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_CANADA, key="level_canada_main", index=6, format_func=lambda x: f"{x} hPa")
 
 
 @st.cache_resource(ttl=1800, show_spinner=False)
@@ -5435,10 +5604,62 @@ def ui_pestanya_estacions_meteorologiques():
 def ui_peu_de_pagina():
     st.divider(); st.markdown("<p style='text-align: center; font-size: 0.9em; color: grey;'>Dades AROME/GFS via Open-Meteo | Imatges via Meteociel & NOAA | IA per Google Gemini.</p>", unsafe_allow_html=True)
 
-# ==============================================================================
-# VERSIÓ DEFINITIVA DE run_catalunya_app
-# Soluciona el ValueError i manté l'animació a ample complet.
-# ==============================================================================
+
+
+
+
+def run_canada_app():
+    # --- PAS 1: INICIALITZACIÓ D'ESTAT ---
+    if 'poble_selector_canada' not in st.session_state: st.session_state.poble_selector_canada = "Calgary, AB"
+    if 'dia_selector_canada' not in st.session_state: st.session_state.dia_selector_canada = datetime.now(TIMEZONE_CANADA).strftime('%d/%m/%Y')
+    if 'hora_selector_canada' not in st.session_state:
+        now_can = datetime.now(TIMEZONE_CANADA); now_cat = now_can.astimezone(TIMEZONE_CAT)
+        st.session_state.hora_selector_canada = f"{now_can.hour:02d}:00h (CAT: {now_cat.day}/{now_cat.month} {now_cat.hour:02d}h)"
+    if 'level_canada_main' not in st.session_state: st.session_state.level_canada_main = 850
+    if 'active_tab_canada' not in st.session_state: st.session_state.active_tab_canada = "Anàlisi Vertical"
+
+    # --- PAS 2: CAPÇALERA I SELECTORS ---
+    ui_capcalera_selectors(None, zona_activa="canada")
+    
+    # --- PAS 3: RECOPILACIÓ DE VALORS ---
+    poble_sel, dia_sel_str, hora_sel_str_full, nivell_sel = st.session_state.poble_selector_canada, st.session_state.dia_selector_canada, st.session_state.hora_selector_canada, st.session_state.level_canada_main
+    hora_sel_str = hora_sel_str_full.split(' ')[0]
+    lat_sel, lon_sel = CIUTATS_CANADA[poble_sel]['lat'], CIUTATS_CANADA[poble_sel]['lon']
+    
+    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
+    local_dt = TIMEZONE_CANADA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=int(hora_sel_str.split(':')[0])))
+    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    
+    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_CANADA.zone}) / {cat_dt.strftime('%d/%m, %H:%Mh')} (CAT)"
+
+    # --- PAS 4: MENÚ DE PESTANYES ---
+    menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Satèl·lit (Temps Real)"]
+    menu_icons = ["graph-up-arrow", "map-fill", "globe-americas"]
+    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_canada))
+    st.session_state.active_tab_canada = selected_tab
+
+    # --- PAS 5: LÒGICA DE LES PESTANYES ---
+    if selected_tab == "Anàlisi Vertical":
+        with st.spinner(f"Carregant dades del sondeig HRDPS per a {poble_sel}..."):
+            data_tuple, final_index, error_msg = carregar_dades_sondeig_canada(lat_sel, lon_sel, hourly_index_sel)
+        if data_tuple is None or error_msg: 
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        else:
+            if final_index != hourly_index_sel:
+                adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+                adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CANADA)
+                st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+    
+    elif selected_tab == "Anàlisi de Mapes":
+        # <<<--- LÍNIA CORREGIDA: Passem 'poble_sel' a la funció --->>>
+        ui_pestanya_mapes_canada(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
+    
+    elif selected_tab == "Satèl·lit (Temps Real)":
+        ui_pestanya_satelit_usa()
+        
 
 def run_catalunya_app():
     # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
@@ -5728,54 +5949,43 @@ def run_valley_halley_app():
     elif selected_tab_usa == "Satèl·lit (Temps Real)":
         ui_pestanya_satelit_usa()
         
+
+
+
+
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
-
-    # Definim els camins a tots els vídeos d'animació
-    path_anim_cat, path_anim_usa = "catalunya_anim.mp4", "tornado_alley_anim.mp4"
-    path_anim_alemanya, path_anim_italia = "germany_anim.mp4", "italy_anim.mp4"
-    path_anim_holanda, path_anim_japo = "netherlands_anim.mp4", "japan_anim.mp4"
-    path_anim_uk = "uk_anim.mp4" # <-- HAS DE CREAR AQUEST ARXIU DE VÍDEO!
-
+    
+    # Definim tots els camins de vídeo
+    paths = {
+        'cat': "catalunya_anim.mp4", 'usa': "tornado_alley_anim.mp4", 'ale': "germany_anim.mp4",
+        'ita': "italy_anim.mp4", 'hol': "netherlands_anim.mp4", 'japo': "japan_anim.mp4",
+        'uk': "uk_anim.mp4", 'can': "canada_anim.mp4" # <-- HAS DE CREAR AQUEST ARXIU
+    }
+    
     with st.spinner('Carregant entorns geoespacials...'): time.sleep(1)
 
-    row1_col1, row1_col2, row1_col3 = st.columns(3)
-    row2_col1, row2_col2, row2_col3 = st.columns(3)
+    # Dissenye 4x2
+    row1_col1, row1_col2, row1_col3, row1_col4 = st.columns(4)
+    row2_col1, row2_col2, row2_col3, row2_col4 = st.columns(4)
 
-    with row1_col1:
-        with st.container(border=True):
-            st.markdown(generar_html_video_animacio(path_anim_cat, height="180px"), unsafe_allow_html=True)
-            st.subheader("Catalunya"); st.button("Analitzar Catalunya", key="btn_cat", on_click=lambda: st.session_state.update({'zone_selected': 'catalunya'}), use_container_width=True, type="primary")
-    with row1_col2:
-        with st.container(border=True):
-            st.markdown(generar_html_video_animacio(path_anim_usa, height="180px"), unsafe_allow_html=True)
-            st.subheader("Tornado Alley"); st.button("Analitzar Tornado Alley", key="btn_usa", on_click=lambda: st.session_state.update({'zone_selected': 'valley_halley'}), use_container_width=True)
-    with row1_col3:
-        with st.container(border=True):
-            st.markdown(generar_html_video_animacio(path_anim_alemanya, height="180px"), unsafe_allow_html=True)
-            st.subheader("Alemanya"); st.button("Analitzar Alemanya", key="btn_ale", on_click=lambda: st.session_state.update({'zone_selected': 'alemanya'}), use_container_width=True)
-    
-    with row2_col1:
-        with st.container(border=True):
-            st.markdown(generar_html_video_animacio(path_anim_italia, height="180px"), unsafe_allow_html=True)
-            st.subheader("Itàlia"); st.button("Analitzar Itàlia", key="btn_ita", on_click=lambda: st.session_state.update({'zone_selected': 'italia'}), use_container_width=True)
-    with row2_col2:
-        with st.container(border=True):
-            st.markdown(generar_html_video_animacio(path_anim_holanda, height="180px"), unsafe_allow_html=True)
-            st.subheader("Holanda"); st.button("Analitzar Holanda", key="btn_hol", on_click=lambda: st.session_state.update({'zone_selected': 'holanda'}), use_container_width=True)
-    with row2_col3:
-        with st.container(border=True):
-            st.markdown(generar_html_video_animacio(path_anim_japo, height="180px"), unsafe_allow_html=True)
-            st.subheader("Japó"); st.button("Analitzar Japó", key="btn_japo", on_click=lambda: st.session_state.update({'zone_selected': 'japo'}), use_container_width=True)
-    
-    st.divider()
-    _, col_center, _ = st.columns([1, 1.5, 1])
-    with col_center:
-        with st.container(border=True):
-            st.markdown(generar_html_video_animacio(path_anim_uk, height="180px"), unsafe_allow_html=True)
-            st.subheader("Regne Unit i Irlanda"); st.button("Analitzar Regne Unit", key="btn_uk", on_click=lambda: st.session_state.update({'zone_selected': 'uk'}), use_container_width=True)
+    def create_zone_button(col, path, title, key, zone_id, type="secondary"):
+        with col, st.container(border=True):
+            st.markdown(generar_html_video_animacio(path, height="160px"), unsafe_allow_html=True)
+            st.subheader(title)
+            if st.button(f"Analitzar {title}", key=key, use_container_width=True, type=type):
+                st.session_state['zone_selected'] = zone_id
+                st.rerun()
 
+    create_zone_button(row1_col1, paths['cat'], "Catalunya", "btn_cat", "catalunya", "primary")
+    create_zone_button(row1_col2, paths['usa'], "Tornado Alley", "btn_usa", "valley_halley")
+    create_zone_button(row1_col3, paths['ale'], "Alemanya", "btn_ale", "alemanya")
+    create_zone_button(row1_col4, paths['ita'], "Itàlia", "btn_ita", "italia")
+    create_zone_button(row2_col1, paths['hol'], "Holanda", "btn_hol", "holanda")
+    create_zone_button(row2_col2, paths['japo'], "Japó", "btn_japo", "japo")
+    create_zone_button(row2_col3, paths['uk'], "Regne Unit", "btn_uk", "uk")
+    create_zone_button(row2_col4, paths['can'], "Canadà", "btn_can", "canada")
 
 
 
