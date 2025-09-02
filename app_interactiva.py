@@ -4346,33 +4346,60 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
-    # Navegació entre zones
+    # Navegació entre zones i botó de retorn
     altres_zones = {'catalunya': 'Catalunya', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya'}
+    # Eliminem la zona actual de les opcions per canviar
     del altres_zones[zona_activa]
     
-    col_text, col_nav, col_logout = st.columns([0.6, 0.2, 0.2])
+    # Creem una columna addicional per al nou botó
+    col_text, col_nav, col_back, col_logout = st.columns([0.5, 0.2, 0.15, 0.15])
+    
     with col_text:
-        if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username', 'Usuari')}**!")
+        if not is_guest: 
+            st.markdown(f"Benvingut/da, **{st.session_state.get('username', 'Usuari')}**!")
+    
     with col_nav:
-        nova_zona_key = st.selectbox("Canviar de zona:", options=list(altres_zones.keys()), format_func=lambda k: altres_zones[k], index=None, placeholder="Anar a...")
+        # Aquest és el menú per canviar directament a una altra zona
+        nova_zona_key = st.selectbox("Canviar a:", options=list(altres_zones.keys()), format_func=lambda k: altres_zones[k], index=None, placeholder="Anar a...")
         if nova_zona_key:
             st.session_state.zone_selected = nova_zona_key
             st.rerun()
+
+    # <--- NOU BLOC AFEGIT --->
+    with col_back:
+        # Aquest és el nou botó per tornar a la pantalla de selecció de zona
+        if st.button("⬅️ Zones", use_container_width=True, help="Tornar a la selecció de zona"):
+            # Eliminem la clau que defineix la zona actual. Això és el que activa la pantalla de selecció.
+            if 'zone_selected' in st.session_state:
+                del st.session_state['zone_selected']
+            
+            # (Opcional però recomanat) Netejem altres estats per evitar conflictes
+            keys_to_clear = [
+                'poble_selector', 'poble_selector_usa', 'poble_selector_alemanya',
+                'active_tab_cat', 'active_tab_usa', 'active_tab_alemanya'
+            ]
+            for key in keys_to_clear:
+                if key in st.session_state:
+                    del st.session_state[key]
+            
+            st.rerun()
+    # <--- FI DEL NOU BLOC --->
+
     with col_logout:
         if st.button("Sortir" if is_guest else "Tanca Sessió", use_container_width=True):
-            for key in list(st.session_state.keys()): del st.session_state[key]
+            for key in list(st.session_state.keys()): 
+                del st.session_state[key]
             st.rerun()
 
+    # La resta de la funció (el container amb els selectors de ciutat, dia, hora)
+    # es manté exactament igual que abans.
     with st.container(border=True):
-        # ... (la resta de la teva lògica de selectors)
-        # Aquí va la part que mostra els selectors de ciutat, dia, hora, etc.
-        # Ha d'incloure la nova lògica per a `zona_activa == 'alemanya'`
         if zona_activa == 'catalunya':
             # ... el teu codi per als selectors de Catalunya ...
-            pass # Aquest codi ja el tens
+            pass 
         elif zona_activa == 'valley_halley':
             # ... el teu codi per als selectors dels EUA ...
-            pass # Aquest codi ja el tens
+            pass
         elif zona_activa == 'alemanya':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
             with col_loc:
@@ -4385,7 +4412,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 st.selectbox("Hora:", opcions_hora, key="hora_selector_alemanya")
             with col_nivell:
                 st.selectbox("Nivell:", PRESS_LEVELS_ICON, key="level_alemanya_main", index=4, format_func=lambda x: f"{x} hPa")
-
 
 
 
@@ -5110,7 +5136,7 @@ def main():
     
     elif st.session_state.zone_selected == 'alemanya':
         run_alemanya_app()
-        
+
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
@@ -5180,3 +5206,4 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
 if __name__ == "__main__":
     main()
+
