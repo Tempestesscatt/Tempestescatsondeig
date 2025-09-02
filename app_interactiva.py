@@ -3123,13 +3123,17 @@ def forcar_regeneracio_animacio():
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_japo(nivell, hourly_index):
     """
-    Carrega les dades en una graella per al mapa del Japó utilitzant el model JMA MSM.
+    Versió Final: Carrega les dades per al mapa del Japó utilitzant el model
+    global i fiable 'jma_gsm'.
     """
     try:
+        # Demanem dew_point directament, ja que aquest model el proporciona
         variables = [f"temperature_{nivell}hPa", f"dew_point_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
         lats, lons = np.linspace(MAP_EXTENT_JAPO[2], MAP_EXTENT_JAPO[3], 15), np.linspace(MAP_EXTENT_JAPO[0], MAP_EXTENT_JAPO[1], 15)
         lon_grid, lat_grid = np.meshgrid(lons, lats)
-        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "jma_msm", "forecast_days": 2}
+        
+        # <<<--- CANVI CLAU: Utilitzem el model 'jma_gsm' --->>>
+        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "jma_gsm", "forecast_days": 3}
         
         responses = openmeteo.weather_api(API_URL_JAPO, params=params)
         output = {var: [] for var in ["lats", "lons"] + variables}
@@ -3141,20 +3145,26 @@ def carregar_dades_mapa_japo(nivell, hourly_index):
                 if valid_index is not None:
                     vals = [r.Hourly().Variables(i).ValuesAsNumpy()[valid_index] for i in range(len(variables))]
                     if not any(np.isnan(v) for v in vals):
-                        output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
-                        for i, var in enumerate(variables): output[var].append(vals[i])
-            except IndexError: continue
+                        output["lats"].append(r.Latitude())
+                        output["lons"].append(r.Longitude())
+                        for i, var in enumerate(variables): 
+                            output[var].append(vals[i])
+            except IndexError: 
+                continue
 
-        if not output["lats"]: return None, "No s'han rebut dades per a la graella del mapa."
+        if not output["lats"]: 
+            return None, "No s'han rebut dades per a la graella del mapa."
         
+        # Reanomenem les claus per a la funció de dibuix
         output['dewpoint_data'] = output.pop(f'dew_point_{nivell}hPa')
         output['speed_data'] = output.pop(f'wind_speed_{nivell}hPa')
         output['dir_data'] = output.pop(f'wind_direction_{nivell}hPa')
-        del output[f'temperature_{nivell}hPa']
+        del output[f'temperature_{nivell}hPa'] # No la necessitem per a aquest mapa
 
         return output, None
     except Exception as e: 
-        return None, f"Error en carregar dades del mapa JMA: {e}"
+        return None, f"Error en carregar dades del mapa JMA GSM: {e}"
+        
 
 def crear_mapa_forecast_combinat_japo(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     """
@@ -5738,23 +5748,17 @@ def run_holanda_app():
         ui_pestanya_satelit_europa()
 
 def run_japo_app():
-    # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
-    # Assegura que totes les variables de sessió necessàries existeixen abans d'utilitzar-les.
+    # Inicialització d'estat
     if 'poble_selector_japo' not in st.session_state: st.session_state.poble_selector_japo = "Tòquio"
     if 'dia_selector_japo' not in st.session_state: st.session_state.dia_selector_japo = datetime.now(TIMEZONE_JAPO).strftime('%d/%m/%Y')
     if 'hora_selector_japo' not in st.session_state: st.session_state.hora_selector_japo = f"{datetime.now(TIMEZONE_JAPO).hour:02d}:00h"
     if 'level_japo_main' not in st.session_state: st.session_state.level_japo_main = 850
     if 'active_tab_japo' not in st.session_state: st.session_state.active_tab_japo = "Anàlisi Vertical"
 
-    # --- PAS 2: CAPÇALERA I SELECTORS PRINCIPALS ---
-    # Mostra la capçalera i els controls de ciutat, dia, hora i nivell.
     ui_capcalera_selectors(None, zona_activa="japo")
     
-    # --- PAS 3: RECOPILACIÓ DE VALORS I CÀLCULS DE TEMPS ---
-    poble_sel = st.session_state.poble_selector_japo
-    dia_sel_str = st.session_state.dia_selector_japo
-    hora_sel_str = st.session_state.hora_selector_japo
-    nivell_sel = st.session_state.level_japo_main
+    # Recopilació de valors i càlculs de temps
+    poble_sel, dia_sel_str, hora_sel_str, nivell_sel = st.session_state.poble_selector_japo, st.session_state.dia_selector_japo, st.session_state.hora_selector_japo, st.session_state.level_japo_main
     lat_sel, lon_sel = CIUTATS_JAPO[poble_sel]['lat'], CIUTATS_JAPO[poble_sel]['lon']
     
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
@@ -5763,7 +5767,7 @@ def run_japo_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_JAPO.zone})"
 
-    # --- PAS 4: MENÚ DE NAVEGACIÓ ENTRE PESTANYES ---
+    # Menú de navegació
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Satèl·lit (Temps Real)"]
     menu_icons = ["graph-up-arrow", "map-fill", "globe-asia-australia"]
     default_idx = menu_options.index(st.session_state.active_tab_japo)
@@ -5771,33 +5775,28 @@ def run_japo_app():
     selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
     st.session_state.active_tab_japo = selected_tab
 
-    # --- PAS 5: LÒGICA PER A CADA PESTANYA ---
+    # Lògica de les pestanyes
     if selected_tab == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_japo(lat_sel, lon_sel, hourly_index_sel)
         
-        # Gestió d'errors: si no hi ha dades, mostra l'error i atura't.
         if data_tuple is None or error_msg:
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
-            # Informa a l'usuari si l'hora de les dades és diferent de la sol·licitada.
             if final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_JAPO)
-                st.warning(f"**Avís:** Dades no disponibles per a l'hora sol·licitada. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+                st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
             
-            # Si tot ha anat bé, mostra la pestanya d'anàlisi vertical.
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
     
     elif selected_tab == "Anàlisi de Mapes":
-        with st.spinner(f"Carregant mapa JMA MSM a {nivell_sel}hPa..."):
+        with st.spinner(f"Carregant mapa JMA GSM a {nivell_sel}hPa..."):
             map_data, error = carregar_dades_mapa_japo(nivell_sel, hourly_index_sel)
         
-        # Gestió d'errors: si no hi ha dades per al mapa, mostra l'error.
         if error or not map_data:
             st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
         else:
-            # Si tot ha anat bé, crea i mostra el mapa.
             fig = crear_mapa_forecast_combinat_japo(
                 map_data['lons'], map_data['lats'], map_data['speed_data'], 
                 map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, 
