@@ -5195,10 +5195,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
-    altres_zones = {
-        'catalunya': 'Catalunya', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya', 
-        'italia': 'Itàlia', 'holanda': 'Holanda', 'japo': 'Japó', 'uk': 'Regne Unit', 'canada': 'Canadà'
-    }
+    altres_zones = {'catalunya': 'Catalunya', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya', 'italia': 'Itàlia', 'holanda': 'Holanda', 'japo': 'Japó', 'uk': 'Regne Unit', 'canada': 'Canadà'}
     del altres_zones[zona_activa]
     
     col_text, col_nav, col_back, col_logout = st.columns([0.5, 0.2, 0.15, 0.15])
@@ -5222,8 +5219,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
 
     with st.container(border=True):
         if zona_activa == 'catalunya':
-            # Aquesta part es gestiona a run_catalunya_app per a una lògica més complexa
-            pass
+            pass # Gestionat per run_catalunya_app
         
         elif zona_activa == 'valley_halley':
             col_loc, col_dia, col_hora, col_nivell = st.columns(4)
@@ -5325,7 +5321,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                 st.selectbox("Hora (Central Time):", options=opcions_hora, key="hora_selector_canada")
             with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_CANADA, key="level_canada_main", index=6, format_func=lambda x: f"{x} hPa")
 
-
+            
 @st.cache_resource(ttl=1800, show_spinner=False)
 def generar_mapa_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
     """
@@ -5609,21 +5605,28 @@ def ui_peu_de_pagina():
 
 
 def run_canada_app():
-    # --- PAS 1: INICIALITZACIÓ D'ESTAT ---
+    # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT (LA CLAU DE LA SOLUCIÓ) ---
+    # Assegurem que TOTES les claus existeixen abans de dibuixar res.
     if 'poble_selector_canada' not in st.session_state: st.session_state.poble_selector_canada = "Calgary, AB"
     if 'dia_selector_canada' not in st.session_state: st.session_state.dia_selector_canada = datetime.now(TIMEZONE_CANADA).strftime('%d/%m/%Y')
     if 'hora_selector_canada' not in st.session_state:
-        now_can = datetime.now(TIMEZONE_CANADA); now_cat = now_can.astimezone(TIMEZONE_CAT)
+        now_can = datetime.now(TIMEZONE_CANADA)
+        now_cat = now_can.astimezone(TIMEZONE_CAT)
         st.session_state.hora_selector_canada = f"{now_can.hour:02d}:00h (CAT: {now_cat.day}/{now_cat.month} {now_cat.hour:02d}h)"
     if 'level_canada_main' not in st.session_state: st.session_state.level_canada_main = 850
     if 'active_tab_canada' not in st.session_state: st.session_state.active_tab_canada = "Anàlisi Vertical"
 
-    # --- PAS 2: CAPÇALERA I SELECTORS ---
+    # --- PAS 2: CAPÇALERA I SELECTORS PRINCIPALS ---
+    # Ara podem cridar a aquesta funció amb seguretat, perquè sap que les claus d'estat existeixen.
     ui_capcalera_selectors(None, zona_activa="canada")
     
-    # --- PAS 3: RECOPILACIÓ DE VALORS ---
-    poble_sel, dia_sel_str, hora_sel_str_full, nivell_sel = st.session_state.poble_selector_canada, st.session_state.dia_selector_canada, st.session_state.hora_selector_canada, st.session_state.level_canada_main
+    # --- PAS 3: RECOPILACIÓ DE VALORS I CÀLCULS DE TEMPS ---
+    poble_sel = st.session_state.poble_selector_canada
+    dia_sel_str = st.session_state.dia_selector_canada
+    hora_sel_str_full = st.session_state.hora_selector_canada
     hora_sel_str = hora_sel_str_full.split(' ')[0]
+    
+    nivell_sel = st.session_state.level_canada_main
     lat_sel, lon_sel = CIUTATS_CANADA[poble_sel]['lat'], CIUTATS_CANADA[poble_sel]['lon']
     
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
@@ -5634,13 +5637,15 @@ def run_canada_app():
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_CANADA.zone}) / {cat_dt.strftime('%d/%m, %H:%Mh')} (CAT)"
 
-    # --- PAS 4: MENÚ DE PESTANYES ---
+    # --- PAS 4: MENÚ DE NAVEGACIÓ ENTRE PESTANYES ---
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Satèl·lit (Temps Real)"]
     menu_icons = ["graph-up-arrow", "map-fill", "globe-americas"]
-    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_canada))
+    default_idx = menu_options.index(st.session_state.active_tab_canada)
+
+    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
     st.session_state.active_tab_canada = selected_tab
 
-    # --- PAS 5: LÒGICA DE LES PESTANYES ---
+    # --- PAS 5: LÒGICA PER A CADA PESTANYA ---
     if selected_tab == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig HRDPS per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_canada(lat_sel, lon_sel, hourly_index_sel)
@@ -5654,12 +5659,11 @@ def run_canada_app():
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
     
     elif selected_tab == "Anàlisi de Mapes":
-        # <<<--- LÍNIA CORREGIDA: Passem 'poble_sel' a la funció --->>>
         ui_pestanya_mapes_canada(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
     
     elif selected_tab == "Satèl·lit (Temps Real)":
         ui_pestanya_satelit_usa()
-        
+
 
 def run_catalunya_app():
     # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
