@@ -2688,17 +2688,17 @@ def ui_pestanya_mapes_holanda(hourly_index_sel, timestamp_str, nivell_sel):
 @st.cache_data(ttl=3600, max_entries=20, show_spinner=False)
 def carregar_dades_sondeig_japo(lat, lon, hourly_index):
     """
-    Versió Final (Model JMA GSM): Utilitza el model global 'jma_gsm' que és més
-    complet i estable. Demana 'dew_point' directament per assegurar un perfil robust.
+    Versió Final i Definitiva: Utilitza el model global 'jma_gsm' i demana 'relative_humidity'
+    per assegurar la màxima completesa de dades. Construeix un perfil tolerant que permet
+    forats de dades en variables no essencials per dibuixar el perfil complet.
     """
     try:
-        # Demanem 'dew_point' directament, ja que el model GSM el proporciona de manera fiable
+        # Estratègia més segura: demanar 'relative_humidity' que sol ser més completa.
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
-        press_vars = ["temperature", "dew_point", "wind_speed", "wind_direction", "geopotential_height"]
+        press_vars = ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"]
         h_press = [f"{v}_{p}hPa" for v in press_vars for p in PRESS_LEVELS_JAPO]
         all_requested_vars = h_base + h_press
         
-        # <<<--- CANVI CLAU: Utilitzem el model 'jma_gsm' --->>>
         params = {"latitude": lat, "longitude": lon, "hourly": all_requested_vars, "models": "jma_gsm", "forecast_days": 3}
         
         response = openmeteo.weather_api(API_URL_JAPO, params=params)[0]
@@ -2708,35 +2708,44 @@ def carregar_dades_sondeig_japo(lat, lon, hourly_index):
         if valid_index is None: 
             return None, hourly_index, "No s'han trobat dades vàlides."
 
-        # Construïm el diccionari de manera segura
         hourly_vars = {}
         for i, var_name in enumerate(all_requested_vars):
             try: hourly_vars[var_name] = hourly.Variables(i).ValuesAsNumpy()
-            except Exception: hourly_vars[var_name] = np.array([np.nan])
-        
-        # Construcció del perfil
+            except Exception: hourly_vars[var_name] = np.array([np.nan] * len(hourly.Variables(0).ValuesAsNumpy()))
+
         sfc_data = {v: hourly_vars[v][valid_index] for v in h_base}
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
         p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
 
+        # Bucle de construcció tolerant: afegim el nivell i després les dades que trobem.
         for p_val in PRESS_LEVELS_JAPO:
             if p_val < p_profile[-1]:
-                # Com que demanem dew_point, el perfil serà molt més complet
                 p_profile.append(p_val)
-                T_profile.append(hourly_vars.get(f'temperature_{p_val}hPa', [np.nan])[valid_index])
-                Td_profile.append(hourly_vars.get(f'dew_point_{p_val}hPa', [np.nan])[valid_index])
-                h_profile.append(hourly_vars.get(f'geopotential_height_{p_val}hPa', [np.nan])[valid_index])
                 
+                temp = hourly_vars.get(f'temperature_{p_val}hPa', [np.nan])[valid_index]
+                rh = hourly_vars.get(f'relative_humidity_{p_val}hPa', [np.nan])[valid_index]
                 ws = hourly_vars.get(f'wind_speed_{p_val}hPa', [np.nan])[valid_index]
                 wd = hourly_vars.get(f'wind_direction_{p_val}hPa', [np.nan])[valid_index]
-
+                h = hourly_vars.get(f'geopotential_height_{p_val}hPa', [np.nan])[valid_index]
+                
+                T_profile.append(temp)
+                h_profile.append(h)
+                
+                # Calculem dew_point si tenim T i RH, sinó NaN.
+                if pd.notna(temp) and pd.notna(rh):
+                    Td_profile.append(mpcalc.dewpoint_from_relative_humidity(temp * units.degC, rh * units.percent).m)
+                else:
+                    Td_profile.append(np.nan)
+                
+                # Calculem vent si tenim WS i WD, sinó NaN.
                 if pd.notna(ws) and pd.notna(wd):
                     u, v = mpcalc.wind_components(ws * units('km/h'), wd * units.degrees)
                     u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m)
                 else:
                     u_profile.append(np.nan); v_profile.append(np.nan)
         
-        # Passem el perfil (ara molt més complet) a la funció de processament
+        # Passem el perfil complet (amb possibles forats) a la funció de processament.
+        # Aquesta s'encarregarà de netejar-lo abans dels càlculs i el dibuix.
         processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
         return processed_data, valid_index, error
         
@@ -2744,6 +2753,7 @@ def carregar_dades_sondeig_japo(lat, lon, hourly_index):
         import traceback
         traceback.print_exc()
         return None, hourly_index, f"Error crític en carregar dades del sondeig del Japó: {e}"
+        
 
 def ui_pestanya_satelit_japo():
     st.markdown("#### Imatge de Satèl·lit Himawari-9 (Temps Real)")
