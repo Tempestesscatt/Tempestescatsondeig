@@ -57,31 +57,31 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 WEBCAM_LINKS = {
     # Catalunya
-    "Barcelona": "https://www.youtube.com/embed/2i_o-a_I73s?autoplay=1&mute=1",
-    "Tarragona": "https://www.youtube.com/embed/YpCY_oE852g?autoplay=1&mute=1",
+    "Barcelona": "https://www.youtube.com/embed/2i_o-a_I73s?autoplay=1&mute=1&loop=1&playlist=2i_o-a_I73s",
+    "Tarragona": "https://www.youtube.com/embed/YpCY_oE852g?autoplay=1&mute=1&loop=1&playlist=YpCY_oE852g",
 
     # Tornado Alley (EUA)
-    "Oklahoma City, OK": "https://www.youtube.com/embed/T6dClc9yS54?autoplay=1&mute=1",
+    "Oklahoma City, OK": "https://www.youtube.com/embed/T6dClc9yS54?autoplay=1&mute=1&loop=1&playlist=T6dClc9yS54",
 
-    # <<<--- AQUESTS SÓN ELS TEUS ENLLAÇOS, PERÒ AMB EL FORMAT CORRECTE --->>>
-    "Southampton": "https://www.youtube.com/embed/QO-hO_kwwmY?autoplay=1&mute=1",
-    "Fort William": "https://www.youtube.com/embed/8miQ3QXA26Q?autoplay=1&mute=1",
-    "Dublín (Paddocks)": "https://www.youtube.com/embed/ZANLLiQ_L3A?autoplay=1&mute=1",
-    "Scarborough": "https://www.youtube.com/embed/itG7PHrPSUw?autoplay=1&mute=1",
+    # <<<--- AFEGEIX O SUBSTITUEIX AQUESTES LÍNIES PER AL REGNE UNIT I IRLANDA --->>>
+    "Southampton": "https://www.youtube.com/embed/yJyL012sH_E?autoplay=1&mute=1&loop=1&playlist=yJyL012sH_E",
+    "Fort William": "https://www.youtube.com/embed/B_r9e8g3_IM?autoplay=1&mute=1&loop=1&playlist=B_r9e8g3_IM",
+    "Dublín (Paddocks)": "https://www.youtube.com/embed/SbAgJi-1i8s?autoplay=1&mute=1&loop=1&playlist=SbAgJi-1i8s", # Webcam del Temple Bar a Dublín
+    "Scarborough": "https://www.youtube.com/embed/SApqPE63_V4?autoplay=1&mute=1&loop=1&playlist=SApqPE63_V4",
 
-    # Pots afegir més ciutats aquí seguint sempre el format /embed/
+    # Pots afegir més ciutats aquí...
 }
 
 # --- Constants per al Canadà Continental ---
 API_URL_CANADA = "https://api.open-meteo.com/v1/forecast"
-TIMEZONE_CANADA = pytz.timezone('America/Winnipeg') # Central Time per a les praderies
+TIMEZONE_CANADA = pytz.timezone('America/Edmonton') # Canviem a Mountain Time, més representatiu
 CIUTATS_CANADA = {
+    'Revelstoke, BC': {'lat': 51.0024, 'lon': -118.1963, 'sea_dir': None},
+    'Banff, AB': {'lat': 51.1784, 'lon': -115.5708, 'sea_dir': None},
     'Calgary, AB': {'lat': 51.0447, 'lon': -114.0719, 'sea_dir': None},
-    'Edmonton, AB': {'lat': 53.5461, 'lon': -113.4938, 'sea_dir': None},
-    'Regina, SK': {'lat': 50.4452, 'lon': -104.6189, 'sea_dir': None},
-    'Winnipeg, MB': {'lat': 49.8951, 'lon': -97.1384, 'sea_dir': None},
+    'Vancouver, BC': {'lat': 49.2827, 'lon': -123.1207, 'sea_dir': (100, 260)},
 }
-MAP_EXTENT_CANADA = [-120, -90, 48, 60] # Centrat a les praderies
+MAP_EXTENT_CANADA = [-125, -110, 48, 54] # Ajustem el mapa a les noves localitats (BC i Alberta)
 # Llista de nivells de pressió extremadament detallada per al model HRDPS
 PRESS_LEVELS_CANADA = sorted([
     1015, 1000, 985, 970, 950, 925, 900, 875, 850, 825, 800, 775, 750, 725, 700, 
@@ -5688,37 +5688,56 @@ def ui_peu_de_pagina():
 
 
 def run_canada_app():
+    # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
     if 'poble_selector_canada' not in st.session_state: st.session_state.poble_selector_canada = "Calgary, AB"
     if 'dia_selector_canada' not in st.session_state: st.session_state.dia_selector_canada = datetime.now(TIMEZONE_CANADA).strftime('%d/%m/%Y')
     if 'hora_selector_canada' not in st.session_state: st.session_state.hora_selector_canada = datetime.now(TIMEZONE_CANADA).hour
     if 'level_canada_main' not in st.session_state: st.session_state.level_canada_main = 850
     if 'active_tab_canada' not in st.session_state: st.session_state.active_tab_canada = "Anàlisi Vertical"
+
+    # --- PAS 2: CAPÇALERA I SELECTORS PRINCIPALS ---
     ui_capcalera_selectors(None, zona_activa="canada")
-    poble_sel, dia_sel_str, hora_sel, nivell_sel = st.session_state.poble_selector_canada, st.session_state.dia_selector_canada, st.session_state.hora_selector_canada, st.session_state.level_canada_main
+    
+    # --- PAS 3: RECOPILACIÓ DE VALORS I CÀLCULS DE TEMPS ---
+    poble_sel = st.session_state.poble_selector_canada
+    dia_sel_str = st.session_state.dia_selector_canada
+    hora_sel = st.session_state.hora_selector_canada
     hora_sel_str = f"{hora_sel:02d}:00h"
+    
+    nivell_sel = st.session_state.level_canada_main
     lat_sel, lon_sel = CIUTATS_CANADA[poble_sel]['lat'], CIUTATS_CANADA[poble_sel]['lon']
+    
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     local_dt = TIMEZONE_CANADA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_sel))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_CANADA.zone}) / {cat_dt.strftime('%d/%m, %H:%Mh')} (CAT)"
+
+    # --- PAS 4: MENÚ DE NAVEGACIÓ ENTRE PESTANYES ---
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
-    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_canada))
+    default_idx = menu_options.index(st.session_state.active_tab_canada)
+    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
     st.session_state.active_tab_canada = selected_tab
+
+    # --- PAS 5: LÒGICA PER A CADA PESTANYA ---
     if selected_tab == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig HRDPS per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_canada(lat_sel, lon_sel, hourly_index_sel)
-        if data_tuple is None or error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        if data_tuple is None or error_msg: 
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
             if final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CANADA)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+    
     elif selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_canada(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
+    
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="canada")
 
