@@ -105,8 +105,8 @@ WEBCAM_LINKS = {
 
 
     "Amsterdam": {'type': 'embed', 'url': "https://www.youtube.com/embed/ZnOoxCd7BGU?autoplay=1&mute=1"},
-    "Volendam": {'type': 'embed', 'url': "https://www.youtube.com/embed/U253-j_zO6s?autoplay=1&mute=1"},
-    "Zandvoort": {'type': 'embed', 'url': "https://www.youtube.com/embed/fW6fQ_N_o24?autoplay=1&mute=1"},
+    "Volendam": {'type': 'embed', 'url': "https://www.youtube.com/embed/9UpAVPmtPtA?autoplay=1&mute=1"},
+    "Zandvoort": {'type': 'embed', 'url': "https://www.youtube.com/embed/KiPmDwgTAu0?autoplay=1&mute=1"},
     "Giethoorn": {'type': 'embed', 'url': "https://www.youtube.com/embed/MCdE24L3i-0?autoplay=1&mute=1"},
 }
 
