@@ -6043,8 +6043,10 @@ def run_catalunya_app():
 
 def run_valley_halley_app():
     # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
-    # <<<--- CANVI CLAU: La ciutat per defecte ara és "Dallas, TX", que sí que existeix a la nova llista --->>>
-    if 'poble_selector_usa' not in st.session_state: st.session_state.poble_selector_usa = "Dallas, TX"
+    # <<<--- CORRECCIÓ: Es comprova que el valor guardat a la sessió sigui una clau vàlida --->>>
+    if 'poble_selector_usa' not in st.session_state or st.session_state.poble_selector_usa not in USA_CITIES:
+        st.session_state.poble_selector_usa = "Dallas, TX" # Si no és vàlid, es reinicia al valor per defecte.
+
     if 'dia_selector_usa' not in st.session_state: st.session_state.dia_selector_usa = datetime.now(TIMEZONE_USA).strftime('%d/%m/%Y')
     if 'hora_selector_usa' not in st.session_state: st.session_state.hora_selector_usa = datetime.now(TIMEZONE_USA).hour
     if 'level_usa_main' not in st.session_state: st.session_state.level_usa_main = 850
@@ -6060,6 +6062,7 @@ def run_valley_halley_app():
     hora_sel_str = f"{hora_sel:02d}:00h"
     
     nivell_sel = st.session_state.level_usa_main
+    # Aquesta línia ara és segura gràcies a la comprovació anterior
     lat_sel, lon_sel = USA_CITIES[poble_sel]['lat'], USA_CITIES[poble_sel]['lon']
     
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
@@ -6100,11 +6103,10 @@ def run_valley_halley_app():
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
             
     elif selected_tab == "Anàlisi de Mapes":
-        ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
+        ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel)
         
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="valley_halley")
-
 
 
 def ui_zone_selection():
