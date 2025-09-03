@@ -3312,24 +3312,23 @@ def crear_mapa_forecast_combinat_canada(lons, lats, speed_data, dir_data, dewpoi
     ax.set_title(f"Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
-def ui_pestanya_mapes_canada(hourly_index_sel, timestamp_str, nivell_sel, poble_sel): # <<<--- PARÀMETRE AFEGIT
-    """
-    Versió Corregida: Ara rep 'poble_sel' per poder construir el títol correctament.
-    """
+def ui_pestanya_mapes_canada(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
     st.markdown("#### Mapes de Pronòstic (Model HRDPS)")
-    with st.spinner(f"Carregant mapa HRDPS a {nivell_sel}hPa..."):
+
+    with st.spinner("Carregant mapa HRDPS... El primer cop pot trigar una mica."):
         map_data, error = carregar_dades_mapa_canada(nivell_sel, hourly_index_sel)
     
-    if error or not map_data:
-        st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
-    else:
-        fig = crear_mapa_forecast_combinat_canada(
-            map_data['lons'], map_data['lats'], map_data['speed_data'],
-            map_data['dir_data'], map_data['dewpoint_data'], nivell_sel,
-            timestamp_str.replace(f"{poble_sel} | ", "") # <<<--- ARA AQUESTA LÍNIA FUNCIONA
-        )
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
+        if error or not map_data:
+            st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+        else:
+            timestamp_map_title = timestamp_str.replace(f"{poble_sel} | ", "")
+            fig = crear_mapa_forecast_combinat_canada(
+                map_data['lons'], map_data['lats'], map_data['speed_data'],
+                map_data['dir_data'], map_data['dewpoint_data'], nivell_sel,
+                timestamp_map_title
+            )
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
 
 
 @st.cache_data(ttl=3600)
@@ -3553,24 +3552,22 @@ def trobar_hora_valida_mes_propera(hourly_response, target_index, num_base_vars,
 def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model ICON 2.2km - Itàlia)")
     
-    with st.spinner(f"Carregant mapa ICON-2I a {nivell_sel}hPa..."):
+    with st.spinner("Carregant mapa ICON-2I... El primer cop pot trigar una mica."):
         map_data, error = carregar_dades_mapa_italia(nivell_sel, hourly_index_sel)
     
-    if error:
-        st.error(f"Error en carregar el mapa: {error}")
-    elif map_data:
-        # Si tenim dades, creem i mostrem el mapa
-        fig = crear_mapa_forecast_combinat_italia(
-            map_data['lons'], map_data['lats'], 
-            map_data['speed_data'], map_data['dir_data'], 
-            map_data['dewpoint_data'], nivell_sel, 
-            timestamp_str
-        )
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
-    else:
-        st.warning("No s'han pogut obtenir les dades per generar el mapa.")
-
+        if error:
+            st.error(f"Error en carregar el mapa: {error}")
+        elif map_data:
+            fig = crear_mapa_forecast_combinat_italia(
+                map_data['lons'], map_data['lats'], 
+                map_data['speed_data'], map_data['dir_data'], 
+                map_data['dewpoint_data'], nivell_sel, 
+                timestamp_str
+            )
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
+        else:
+            st.warning("No s'han pogut obtenir les dades per generar el mapa.")
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
@@ -5541,43 +5538,40 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
 
 
 def ui_pestanya_mapes_japo(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
-    """
-    Funció de la interfície d'usuari per a la pestanya de mapes del Japó.
-    """
     st.markdown("#### Mapes de Pronòstic (Model JMA GSM)")
-    with st.spinner(f"Carregant mapa JMA GSM a {nivell_sel}hPa..."):
+
+    with st.spinner("Carregant mapa JMA GSM... El primer cop pot trigar una mica."):
         map_data, error = carregar_dades_mapa_japo(nivell_sel, hourly_index_sel)
     
-    if error or not map_data:
-        st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
-    else:
-        fig = crear_mapa_forecast_combinat_japo(
-            map_data['lons'], map_data['lats'], map_data['speed_data'], 
-            map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, 
-            timestamp_str.replace(f"{poble_sel} | ", "")
-        )
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
-
+        if error or not map_data:
+            st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+        else:
+            timestamp_map_title = timestamp_str.replace(f"{poble_sel} | ", "")
+            fig = crear_mapa_forecast_combinat_japo(
+                map_data['lons'], map_data['lats'], map_data['speed_data'], 
+                map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, 
+                timestamp_map_title
+            )
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
 
 def ui_pestanya_mapes_uk(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
-    """
-    Funció de la interfície d'usuari per a la pestanya de mapes del Regne Unit.
-    """
     st.markdown("#### Mapes de Pronòstic (Model UKMO 2km)")
-    with st.spinner(f"Carregant mapa UKMO a {nivell_sel}hPa..."):
+    
+    with st.spinner("Carregant mapa UKMO... El primer cop pot trigar una mica."):
         map_data, error = carregar_dades_mapa_uk(nivell_sel, hourly_index_sel)
     
-    if error or not map_data:
-        st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
-    else:
-        fig = crear_mapa_forecast_combinat_uk(
-            map_data['lons'], map_data['lats'], map_data['speed_data'], 
-            map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, 
-            timestamp_str.replace(f"{poble_sel} | ", "")
-        )
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
+        if error or not map_data:
+            st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+        else:
+            timestamp_map_title = timestamp_str.replace(f"{poble_sel} | ", "")
+            fig = crear_mapa_forecast_combinat_uk(
+                map_data['lons'], map_data['lats'], map_data['speed_data'], 
+                map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, 
+                timestamp_map_title
+            )
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
 
 
 @st.cache_resource(ttl=1800, show_spinner=False)
@@ -5774,18 +5768,24 @@ def ui_analisi_regims_de_vent(analisi_resultat):
 
         st.divider()
         st.markdown(f"<p style='text-align: center; font-size: 1.1em; padding: 0 15px;'><strong>Veredicte:</strong> {veredicte}</p>", unsafe_allow_html=True)
+        
 def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel):
-    st.markdown("#### Mapes de Pronòstic (Model GFS)")
+    st.markdown("#### Mapes de Pronòstic (Model HRRR)")
     
-    with st.spinner(f"Carregant dades del mapa GFS a {nivell_sel}hPa..."):
+    with st.spinner("Carregant mapa HRRR... El primer cop pot trigar una mica."):
         map_data, error_map = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
     
-    if error_map:
-        st.error(f"Error en carregar el mapa: {error_map}")
-    elif map_data:
-        fig = crear_mapa_forecast_combinat_usa(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str)
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
+        if error_map:
+            st.error(f"Error en carregar el mapa: {error_map}")
+        elif map_data:
+            fig = crear_mapa_forecast_combinat_usa(
+                map_data['lons'], map_data['lats'], map_data['speed_data'], 
+                map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, 
+                timestamp_str
+            )
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
+            
         
 def ui_pestanya_satelit_usa():
     st.markdown("#### Imatge de Satèl·lit GOES-East (Temps Real)")
@@ -6430,24 +6430,22 @@ def run_alemanya_app():
 
 # També necessitem una funció per mostrar el mapa d'Alemanya, que no existia. Afegeix-la al teu codi:
 def ui_pestanya_mapes_alemanya(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
-    """
-    Funció de la interfície d'usuari per a la pestanya de mapes d'Alemanya.
-    """
     st.markdown("#### Mapes de Pronòstic (Model ICON-D2)")
-    with st.spinner(f"Carregant mapa ICON-D2 a {nivell_sel}hPa..."):
+
+    with st.spinner("Carregant mapa ICON-D2... El primer cop pot trigar una mica."):
         map_data, error = carregar_dades_mapa_alemanya(nivell_sel, hourly_index_sel)
     
-    if error or not map_data:
-        st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
-    else:
-        # Reutilitzem la funció de creació de mapes per Alemanya
-        fig = crear_mapa_forecast_combinat_alemanya(
-            map_data['lons'], map_data['lats'], map_data['speed_data'], 
-            map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, 
-            timestamp_str.replace(f"{poble_sel} | ", "")
-        )
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
+        if error or not map_data:
+            st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+        else:
+            timestamp_map_title = timestamp_str.replace(f"{poble_sel} | ", "")
+            fig = crear_mapa_forecast_combinat_alemanya(
+                map_data['lons'], map_data['lats'], map_data['speed_data'], 
+                map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, 
+                timestamp_map_title
+            )
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
 
 
 def run_uk_app():
