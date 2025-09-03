@@ -2910,15 +2910,31 @@ def crear_mapa_forecast_combinat_holanda(lons, lats, speed_data, dir_data, dewpo
     ax.set_title(f"Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
-def ui_pestanya_mapes_holanda(hourly_index_sel, timestamp_str, nivell_sel):
+def ui_pestanya_mapes_holanda(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
+    """
+    Versió Corregida: Ara accepta 'poble_sel' per solucionar el TypeError i
+    per poder construir un títol de mapa més net.
+    """
     st.markdown("#### Mapes de Pronòstic (Model KNMI Harmonie AROME)")
     with st.spinner(f"Carregant mapa KNMI AROME a {nivell_sel}hPa..."):
         map_data, error = carregar_dades_mapa_holanda(nivell_sel, hourly_index_sel)
-    if error: st.error(f"Error en carregar el mapa: {error}")
+    
+    if error: 
+        st.error(f"Error en carregar el mapa: {error}")
     elif map_data:
-        fig = crear_mapa_forecast_combinat_holanda(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str)
-        st.pyplot(fig, use_container_width=True); plt.close(fig)
-    else: st.warning("No s'han pogut obtenir les dades per generar el mapa.")
+        # Creem un timestamp net per al títol del mapa, eliminant el nom del poble
+        timestamp_map_title = timestamp_str.replace(f"{poble_sel} | ", "")
+        
+        fig = crear_mapa_forecast_combinat_holanda(
+            map_data['lons'], map_data['lats'], 
+            map_data['speed_data'], map_data['dir_data'], 
+            map_data['dewpoint_data'], nivell_sel, 
+            timestamp_map_title # <-- Passem el títol netejat
+        )
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
+    else: 
+        st.warning("No s'han pogut obtenir les dades per generar el mapa.")
                 
 @st.cache_data(ttl=3600, max_entries=20, show_spinner=False)
 def carregar_dades_sondeig_japo(lat, lon, hourly_index):
