@@ -1818,25 +1818,45 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     }
     
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
-        # ... (aquesta funció interna no canvia)
-        color = "#FFFFFF"
+        # Variables per a la visualització que podem modificar
+        display_label = label
+        display_value = value
+        color = "#FFFFFF"  # Color per defecte
+
         is_numeric = isinstance(value, (int, float, np.number))
+
         if pd.notna(value) and is_numeric:
+            # <<<--- NOU BLOC DE LÒGICA PER A CONVERGÈNCIA / DIVERGÈNCIA --->>>
             if 'CONV' in param_key:
-                thresholds = [5, 15, 30, 40]
-                colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
-                color = colors[np.searchsorted(thresholds, value)]
+                if value < 0:
+                    # Si el valor és negatiu, és DIVERGÈNCIA
+                    display_label = "Divergència"  # Canviem l'etiqueta
+                    color = "#5bc0de"              # Color blau fluix
+                    display_value = abs(value)     # Mostrem el valor en positiu
+                else:
+                    # Si és positiu, mantenim la lògica de colors per a la CONVERGÈNCIA
+                    thresholds = [5, 15, 30, 40]
+                    colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
+                    color = colors[np.searchsorted(thresholds, value)]
+            # <<<--- FI DEL NOU BLOC --->>>
+            
             elif param_key == 'T_500hPa':
                 thresholds = [-8, -14, -18, -22]
                 colors = ["#2ca02c", "#ffc107", "#fd7e14", "#dc3545", "#b300ff"]
                 color = colors[len(thresholds) - np.searchsorted(thresholds, value, side='right')]
             else:
                 color = get_color_global(value, param_key, reverse_colors)
-        val_str = f"{value:.{precision}f}" if pd.notna(value) and is_numeric else "---"
+            
+            val_str = f"{display_value:.{precision}f}"
+        else:
+            val_str = "---"
+
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
+        
+        # Usem la nova variable 'display_label' per a l'etiqueta
         st.markdown(f"""
         <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
-            <span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit}){tooltip_html}</span><br>
+            <span style="font-size: 0.8em; color: #FAFAFA;">{display_label} ({unit}){tooltip_html}</span><br>
             <strong style="font-size: 1.6em; color: {color};">{val_str}</strong>
         </div>""", unsafe_allow_html=True)
 
