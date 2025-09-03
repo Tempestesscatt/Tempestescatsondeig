@@ -725,28 +725,42 @@ def count_unread_messages(history):
 
 def generar_html_imatge_estatica(image_path, height="180px"):
     """
-    Crea el codi HTML per mostrar una imatge estàtica amb estil, codificada en Base64.
-    Això és molt més lleuger i compatible amb mòbils que un vídeo.
+    Crea el codi HTML per mostrar una imatge estàtica amb un efecte de zoom
+    en passar el ratolí per sobre (hover).
     """
-    # Comprovem que l'arxiu existeix abans de continuar
     if not os.path.exists(image_path):
-        return f"<div style='height: {height}; background-color: #333; display: flex; align-items: center; justify-content: center; border-radius: 10px; margin-bottom: 10px;'><p style='color: red; font-size: 0.8em;'>Imatge no trobada:<br>{os.path.basename(image_path)}</p></div>"
+        return f"<p style='color: red;'>Imatge no trobada: {os.path.basename(image_path)}</p>"
 
     with open(image_path, "rb") as f:
         image_bytes = f.read()
     image_b64 = base64.b64encode(image_bytes).decode()
     
-    # Obtenim l'extensió de l'arxiu per al tipus MIME correcte
     file_extension = os.path.splitext(image_path)[1].lower().replace('.', '')
     mime_type = f"image/{file_extension}"
 
-    # Estils per al contenidor i la imatge
-    container_style = f"width: 100%; height: {height}; border-radius: 10px; overflow: hidden; margin-bottom: 10px;"
-    image_style = "width: 100%; height: 100%; object-fit: cover;"
-
+    # <<<--- CSS PER A L'EFECTE HOVER DIRECTAMENT A LA IMATGE ---
+    # Definim l'estil directament aquí per a més simplicitat.
     html_code = f"""
-    <div style="{container_style}">
-        <img src="data:{mime_type};base64,{image_b64}" style="{image_style}" alt="Previsualització de la zona">
+    <style>
+        .hover-image-container {{
+            overflow: hidden; /* Molt important per a que l'efecte de zoom no se surti del quadre */
+            border-radius: 10px;
+            height: {height};
+            margin-bottom: 10px;
+        }}
+        .hover-image {{
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.3s ease-in-out; /* L'animació suau de l'escalat */
+        }}
+        .hover-image-container:hover .hover-image {{
+            transform: scale(1.1); /* La imatge es fa un 10% més gran */
+        }}
+    </style>
+
+    <div class="hover-image-container">
+        <img src="data:{mime_type};base64,{image_b64}" class="hover-image" alt="Previsualització de la zona">
     </div>
     """
     return html_code
@@ -6102,29 +6116,6 @@ def ui_zone_selection():
     st.markdown("---")
     st.info("🟢(tenen webcams)-🔥(Especialment recomanades) ", icon="🎞")
 
-    # <<<--- PAS 1: INJECTEM EL CSS PER A L'EFECTE HOVER ---
-    # Aquest codi defineix com es comportarà la nostra targeta personalitzada.
-    st.markdown("""
-    <style>
-    /* Definim la classe per a la nostra targeta de zona */
-    .zone-card {
-        padding: 1rem;
-        border-radius: 11px; /* Un píxel més que el botó per a un millor efecte visual */
-        background-color: #262730; /* Simula el contenidor de Streamlit */
-        border: 1px solid #31333F;
-        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out; /* Animació suau */
-        height: 100%; /* Assegura que totes les targetes de la fila tinguin la mateixa alçada */
-    }
-
-    /* Aquí està la màgia: què passa quan passem el ratolí per sobre */
-    .zone-card:hover {
-        transform: scale(1.04); /* La fem una mica més gran */
-        box-shadow: 0 8px 30px rgba(0,0,0,0.4); /* Afegim una ombra per donar profunditat */
-        border: 1px solid #777;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
     paths = {
         'cat': "catalunya_preview.png", 'usa': "usa_preview.png", 'ale': "alemanya_preview.png",
         'ita': "italia_preview.png", 'hol': "holanda_preview.png", 'japo': "japo_preview.png",
@@ -6136,13 +6127,11 @@ def ui_zone_selection():
     row1_col1, row1_col2, row1_col3, row1_col4 = st.columns(4)
     row2_col1, row2_col2, row2_col3, row2_col4 = st.columns(4)
 
-    # <<<--- PAS 2: MODIFIQUEM LA FUNCIÓ QUE CREA ELS BOTONS ---
-    # Ara, en lloc d'usar 'st.container', embolcallem tot en un div amb la nostra classe CSS.
+    # Aquesta funció auxiliar ara torna a ser simple com abans
     def create_zone_button(col, path, title, key, zone_id, type="secondary"):
-        with col:
-            # Embolcallem tot el contingut en un 'div' amb la classe 'zone-card'
-            st.markdown('<div class="zone-card">', unsafe_allow_html=True)
+        with col, st.container(border=True): # Tornem a fer servir el contenidor de Streamlit
             
+            # La crida a aquesta funció ja inclou tot el necessari per a l'efecte
             st.markdown(generar_html_imatge_estatica(path, height="160px"), unsafe_allow_html=True)
             
             display_title = title
@@ -6156,9 +6145,6 @@ def ui_zone_selection():
             if st.button(f"Analitzar {title}", key=key, use_container_width=True, type=type):
                 st.session_state['zone_selected'] = zone_id
                 st.rerun()
-            
-            # Tanquem el 'div'
-            st.markdown('</div>', unsafe_allow_html=True)
 
     create_zone_button(row1_col1, paths['cat'], "Catalunya", "btn_cat", "catalunya", "primary")
     create_zone_button(row1_col2, paths['usa'], "Tornado Alley", "btn_usa", "valley_halley")
