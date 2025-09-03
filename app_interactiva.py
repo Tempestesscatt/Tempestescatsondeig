@@ -6019,22 +6019,21 @@ def run_catalunya_app():
 
 
 def run_valley_halley_app():
-    # --- PAS 1: INICIALITZACIÓ D'ESTAT ---
-    # <<<--- CANVI: La ciutat per defecte ara és Dallas, TX --->>>
-    if 'poble_selector_usa' not in st.session_state: st.session_state.poble_selector_usa = "Dallas, TX"
+    # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
+    if 'poble_selector_usa' not in st.session_state: st.session_state.poble_selector_usa = "Oklahoma City, OK"
     if 'dia_selector_usa' not in st.session_state: st.session_state.dia_selector_usa = datetime.now(TIMEZONE_USA).strftime('%d/%m/%Y')
     if 'hora_selector_usa' not in st.session_state: st.session_state.hora_selector_usa = datetime.now(TIMEZONE_USA).hour
     if 'level_usa_main' not in st.session_state: st.session_state.level_usa_main = 850
     if 'active_tab_usa' not in st.session_state: st.session_state.active_tab_usa = "Anàlisi Vertical"
 
-    # --- PAS 2: CAPÇALERA I SELECTORS ---
+    # --- PAS 2: CAPÇALERA I SELECTORS PRINCIPALS ---
     ui_capcalera_selectors(None, zona_activa="valley_halley")
     
-    # --- PAS 3: RECOPILACIÓ DE VALORS ---
+    # --- PAS 3: RECOPILACIÓ DE VALORS I CÀLCULS DE TEMPS ---
     poble_sel = st.session_state.poble_selector_usa
     dia_sel_str = st.session_state.dia_selector_usa
-    hora_sel = st.session_state.hora_selector_usa
-    hora_sel_str = f"{hora_sel:02d}:00h"
+    hora_sel = st.session_state.hora_selector_usa # Llegeix l'hora com un enter (ex: 14)
+    hora_sel_str = f"{hora_sel:02d}:00h"          # Crea el text per a visualització
     
     nivell_sel = st.session_state.level_usa_main
     lat_sel, lon_sel = USA_CITIES[poble_sel]['lat'], USA_CITIES[poble_sel]['lon']
@@ -6047,36 +6046,40 @@ def run_valley_halley_app():
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (CST) / {cat_dt.strftime('%d/%m, %H:%Mh')} (CAT)"
 
-    # --- PAS 4: MENÚ DE PESTANYES ---
+    # --- PAS 4: MENÚ DE NAVEGACIÓ ENTRE PESTANYES ---
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
     default_idx = menu_options.index(st.session_state.active_tab_usa)
     selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
     st.session_state.active_tab_usa = selected_tab
 
-    # --- PAS 5: LÒGICA DE PESTANYES ---
+    # --- PAS 5: LÒGICA PER A CADA PESTANYA ---
     if selected_tab == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig HRRR per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_usa(lat_sel, lon_sel, hourly_index_sel)
-        if data_tuple is None or error_msg: 
+        
+        if data_tuple is None or error_msg:
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
             if final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_USA)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+            
+            # Calculem la convergència abans de mostrar la pestanya
+            params_calc = data_tuple[1]
+            with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
+                map_data_conv, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
+            if map_data_conv:
+                conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+                if pd.notna(conv_value):
+                    params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
+            
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
             
     elif selected_tab == "Anàlisi de Mapes":
-        st.markdown("#### Mapes de Pronòstic (Model HRRR)")
-        with st.spinner(f"Carregant mapa HRRR a {nivell_sel}hPa..."):
-            map_data, error = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
-        if error or not map_data: 
-            st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
-        else:
-            fig = crear_mapa_forecast_combinat_usa(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str.replace(f"{poble_sel} | ", ""))
-            st.pyplot(fig, use_container_width=True); plt.close(fig)
-            
+        ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
+        
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="valley_halley")
 
