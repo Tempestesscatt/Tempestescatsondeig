@@ -2080,6 +2080,70 @@ def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
     return diagnostics
 
 
+
+
+
+def mostrar_video_transicio():
+    """
+    Mostra un vídeo de transició a pantalla completa, el reprodueix,
+    i després actualitza l'estat per continuar a la pàgina d'anàlisi.
+    """
+    video_file = 'zoom_earth.mp4'
+    if not os.path.exists(video_file):
+        st.error("El vídeo de transició 'zoom_earth.mp4' no s'ha trobat.")
+        # Si no hi ha vídeo, desactivem la transició i continuem
+        st.session_state.show_transition_video = False
+        st.rerun()
+        return
+
+    with open(video_file, "rb") as video:
+        video_bytes = video.read()
+    
+    video_b64 = base64.b64encode(video_bytes).decode()
+    
+    video_html = f"""
+    <style>
+    /* Ocultem l'aplicació principal mentre es mostra el vídeo */
+    .stApp {{
+        visibility: hidden;
+    }}
+    #transition-video-container {{
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 9999; /* Assegurem que estigui per sobre de tot */
+        background-color: black;
+    }}
+    #transition-video {{
+        width: 100%;
+        height: 100%;
+        object-fit: cover; /* El vídeo s'ajusta per cobrir tota la pantalla */
+    }}
+    </style>
+    <div id="transition-video-container">
+        <video autoplay muted id="transition-video">
+            <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
+        </video>
+    </div>
+    """
+    st.markdown(video_html, unsafe_allow_html=True)
+    
+    # Esperem un temps fixat (ajusta-ho a la durada del teu vídeo)
+    time.sleep(4)
+    
+    # Un cop el vídeo ha acabat, desactivem la bandera de transició i recarreguem
+    st.session_state.show_transition_video = False
+    st.rerun()
+
+
+def start_transition(zone_id):
+    """Callback per iniciar la transició de vídeo."""
+    st.session_state['zone_selected'] = zone_id
+    st.session_state['show_transition_video'] = True
+
+
 def degrees_to_cardinal_ca(d):
     """Converteix graus a punts cardinals en català."""
     if not isinstance(d, (int, float, np.number)) or pd.isna(d):
@@ -6128,32 +6192,38 @@ def ui_zone_selection():
     row2_col1, row2_col2, row2_col3, row2_col4 = st.columns(4)
 
     # Aquesta funció auxiliar ara torna a ser simple com abans
-    def create_zone_button(col, path, title, key, zone_id, type="secondary"):
-        with col, st.container(border=True): # Tornem a fer servir el contenidor de Streamlit
-            
-            # La crida a aquesta funció ja inclou tot el necessari per a l'efecte
-            st.markdown(generar_html_imatge_estatica(path, height="160px"), unsafe_allow_html=True)
-            
-            display_title = title
-            if zone_id == 'italia':
-                display_title += " 🔥"
-            elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya', 'holanda', 'catalunya']:
-                display_title += " 🟢"
-            
-            st.subheader(display_title)
-            
-            if st.button(f"Analitzar {title}", key=key, use_container_width=True, type=type):
-                st.session_state['zone_selected'] = zone_id
-                st.rerun()
+def main():
+    inject_custom_css()
+    hide_streamlit_style()
+    
+    # <<<--- NOU BLOC D'INTERCEPCIÓ DE LA TRANSICIÓ ---
+    # Aquest és el primer que es comprova. Si s'ha d'activar el vídeo, es fa
+    # i s'atura l'execució de la resta de l'app per a aquest cicle.
+    if st.session_state.get('show_transition_video', False):
+        mostrar_video_transicio()
+        return # Aturem aquí fins que el vídeo acabi i es faci el rerun.
+    # <<<--- FI DEL NOU BLOC ---
 
-    create_zone_button(row1_col1, paths['cat'], "Catalunya", "btn_cat", "catalunya", "primary")
-    create_zone_button(row1_col2, paths['usa'], "Tornado Alley", "btn_usa", "valley_halley")
-    create_zone_button(row1_col3, paths['ale'], "Alemanya", "btn_ale", "alemanya")
-    create_zone_button(row1_col4, paths['ita'], "Itàlia", "btn_ita", "italia")
-    create_zone_button(row2_col1, paths['hol'], "Holanda", "btn_hol", "holanda")
-    create_zone_button(row2_col2, paths['japo'], "Japó", "btn_japo", "japo")
-    create_zone_button(row2_col3, paths['uk'], "Regne Unit", "btn_uk", "uk")
-    create_zone_button(row2_col4, paths['can'], "Canadà", "btn_can", "canada")
+    if 'logged_in' not in st.session_state: st.session_state.logged_in = False
+    
+    if not st.session_state.logged_in:
+        afegir_slideshow_de_fons()
+        show_login_page()
+        return
+
+    if 'zone_selected' not in st.session_state or st.session_state.zone_selected is None:
+        ui_zone_selection()
+        return
+
+    # La lògica principal que ja tenies es manté igual
+    if st.session_state.zone_selected == 'catalunya': run_catalunya_app()
+    elif st.session_state.zone_selected == 'valley_halley': run_valley_halley_app()
+    elif st.session_state.zone_selected == 'alemanya': run_alemanya_app()
+    elif st.session_state.zone_selected == 'italia': run_italia_app()
+    elif st.session_state.zone_selected == 'holanda': run_holanda_app()
+    elif st.session_state.zone_selected == 'japo': run_japo_app()
+    elif st.session_state.zone_selected == 'uk': run_uk_app()
+    elif st.session_state.zone_selected == 'canada': run_canada_app()
 
 
 @st.cache_data(ttl=3600)
@@ -6554,6 +6624,14 @@ def main():
     inject_custom_css()
     hide_streamlit_style()
     
+    # <<<--- NOU BLOC D'INTERCEPCIÓ DE LA TRANSICIÓ ---
+    # Aquest és el primer que es comprova. Si s'ha d'activar el vídeo, es fa
+    # i s'atura l'execució de la resta de l'app per a aquest cicle.
+    if st.session_state.get('show_transition_video', False):
+        mostrar_video_transicio()
+        return # Aturem aquí fins que el vídeo acabi i es faci el rerun.
+    # <<<--- FI DEL NOU BLOC ---
+
     if 'logged_in' not in st.session_state: st.session_state.logged_in = False
     
     if not st.session_state.logged_in:
@@ -6565,7 +6643,7 @@ def main():
         ui_zone_selection()
         return
 
-    # Lògica principal que crida la funció de l'app corresponent a la zona seleccionada
+    # La lògica principal que ja tenies es manté igual
     if st.session_state.zone_selected == 'catalunya': run_catalunya_app()
     elif st.session_state.zone_selected == 'valley_halley': run_valley_halley_app()
     elif st.session_state.zone_selected == 'alemanya': run_alemanya_app()
@@ -6574,6 +6652,7 @@ def main():
     elif st.session_state.zone_selected == 'japo': run_japo_app()
     elif st.session_state.zone_selected == 'uk': run_uk_app()
     elif st.session_state.zone_selected == 'canada': run_canada_app()
+
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
