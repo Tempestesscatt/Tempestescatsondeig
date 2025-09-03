@@ -102,6 +102,12 @@ WEBCAM_LINKS = {
     "Massa Lubrense": {'type': 'embed', 'url': "https://www.torrecangiani.com/it/massa-lubrense-webcam/"},
     "Capo d'Orlando": {'type': 'embed', 'url': "https://www.youtube.com/embed/PEcs1ghWkaM?autoplay=1&mute=1"},
     "Ajaccio (Còrsega)": {'type': 'embed', 'url': "https://www.vision-environnement.com/livecams/webcam.php?webcam=ajaccio-panorama"},
+
+
+    "Amsterdam": {'type': 'embed', 'url': "https://www.youtube.com/embed/ZnOoxCd7BGU?autoplay=1&mute=1"},
+    "Volendam": {'type': 'embed', 'url': "https://www.youtube.com/embed/U253-j_zO6s?autoplay=1&mute=1"},
+    "Zandvoort": {'type': 'embed', 'url': "https://www.youtube.com/embed/fW6fQ_N_o24?autoplay=1&mute=1"},
+    "Giethoorn": {'type': 'embed', 'url': "https://www.youtube.com/embed/MCdE24L3i-0?autoplay=1&mute=1"},
 }
 
 # --- Constants per al Canadà Continental ---
@@ -153,13 +159,13 @@ PRESS_LEVELS_JAPO = sorted([1000, 925, 850, 700, 500, 400, 300, 250, 200, 150, 1
 API_URL_HOLANDA = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_HOLANDA = pytz.timezone('Europe/Amsterdam')
 CIUTATS_HOLANDA = {
-    'Amsterdam': {'lat': 52.377956, 'lon': 4.897070, 'sea_dir': (220, 320)},
-    'Rotterdam': {'lat': 51.9225, 'lon': 4.47917, 'sea_dir': (220, 320)},
-    'La Haia': {'lat': 52.078663, 'lon': 4.288788, 'sea_dir': (220, 320)},
-    'Utrecht': {'lat': 52.0907, 'lon': 5.1214, 'sea_dir': None},
+    # <<<--- LLISTA DE CIUTATS COMPLETAMENT ACTUALITZADA --->>>
+    'Amsterdam': {'lat': 52.3779, 'lon': 4.8970, 'sea_dir': (220, 320)},
+    'Volendam': {'lat': 52.4946, 'lon': 5.0718, 'sea_dir': (90, 220)},
+    'Zandvoort': {'lat': 52.3725, 'lon': 4.5325, 'sea_dir': (220, 320)},
+    'Giethoorn': {'lat': 52.7417, 'lon': 6.0775, 'sea_dir': None},
 }
-MAP_EXTENT_HOLANDA = [2.5, 7.5, 50.5, 54.0]
-# Nivells de pressió específics disponibles per al model KNMI Harmonie AROME
+MAP_EXTENT_HOLANDA = [3.5, 7.5, 50.7, 53.7] # Ajustat per a les noves localitats
 PRESS_LEVELS_HOLANDA = sorted([1000, 925, 850, 700, 500, 300], reverse=True)
 
 
