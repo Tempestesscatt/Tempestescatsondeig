@@ -3990,6 +3990,53 @@ def generar_animacions_professionals(_params_tuple, timestamp_str, _regenerate_k
     return gifs
 
 
+
+
+def run_arxiu_tempestes_app():
+    """
+    Funció principal per a la secció d'Arxius de Tempestes.
+    Aquesta serà la base per construir la nova funcionalitat.
+    """
+    # Capçalera bàsica per a la nova secció
+    st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Arxius de Situacions de Temps Sever</h1>', unsafe_allow_html=True)
+    
+    # Botó per tornar a la selecció de zona
+    if st.button("⬅️ Tornar a la Selecció de Zona"):
+        st.session_state.zone_selected = None
+        st.rerun()
+    
+    st.divider()
+
+    # --- Contingut Provisional ---
+    st.info("🚧 **Secció en Construcció** 🚧", icon="🛠️")
+    st.write(
+        """
+        Benvingut/da a l'Arxiu de Tempestes!
+        
+        Aquesta secció et permetrà:
+        - Seleccionar una data passada d'un esdeveniment meteorològic important.
+        - Visualitzar els sondejos verticals i els mapes de superfície i alçada d'aquell dia.
+        - Analitzar els paràmetres clau que van donar lloc a la situació de temps sever.
+        
+        Estem treballant per carregar els casos d'estudi més rellevants. Torna aviat!
+        """
+    )
+    
+    # Exemple de com podria funcionar en el futur
+    casos_notables = {
+        "--- Selecciona un cas d'estudi ---": None,
+        "Tornados de l'Ametlla de Mar (17/09/2023)": "2023-09-17",
+        "Esclafit a la Catalunya Central (04/07/2024)": "2024-07-04",
+        "Llevantada històrica (Glòria) (21/01/2020)": "2020-01-21"
+    }
+
+    selected_case = st.selectbox("Casos Notables (Exemple de funcionalitat futura):", options=list(casos_notables.keys()))
+
+    if selected_case and casos_notables[selected_case]:
+        st.success(f"En el futur, aquí es carregarien les dades per a la data: {casos_notables[selected_case]}...")
+        # Aquí aniria la lògica per demanar dades històriques a l'API
+        
+
 def ui_guia_tall_vertical(params, nivell_conv):
     """
     Guia d'usuari actualitzada per interpretar la nova simulació de núvol.
@@ -6308,8 +6355,11 @@ def ui_zone_selection():
         'cat': "catalunya_preview.png", 'usa': "usa_preview.png", 'ale': "alemanya_preview.png",
         'ita': "italia_preview.png", 'hol': "holanda_preview.png", 'japo': "japo_preview.png",
         'uk': "uk_preview.png", 'can': "canada_preview.png",
-        'nor': "noruega_preview.png" # <<<--- AFEGEIX EL CAMÍ A LA IMATGE DE NORUEGA
+        'nor': "noruega_preview.png",
+        'arxiu': "arxiu_preview.png"  # <<<--- AFEGEIX AQUESTA LÍNIA
     }
+    
+    # ... (la resta de la funció es manté igual fins al final)
     
     with st.spinner('Carregant entorns geoespacials...'): time.sleep(1)
 
@@ -6671,8 +6721,6 @@ def main():
     inject_custom_css()
     hide_streamlit_style()
 
-
-    # El reste del codi es manté exactament igual
     if 'logged_in' not in st.session_state: st.session_state.logged_in = False
     
     if not st.session_state.logged_in:
@@ -6693,6 +6741,8 @@ def main():
     elif st.session_state.zone_selected == 'uk': run_uk_app()
     elif st.session_state.zone_selected == 'canada': run_canada_app()
     elif st.session_state.zone_selected == 'noruega': run_noruega_app()
+    elif st.session_state.zone_selected == 'arxiu_tempestes':
+        run_arxiu_tempestes_app()
 
 
 
