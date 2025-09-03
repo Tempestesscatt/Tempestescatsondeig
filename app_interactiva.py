@@ -692,28 +692,30 @@ def count_unread_messages(history):
 
 
 
-def generar_html_video_animacio(video_path, height="250px"):
+def generar_html_imatge_estatica(image_path, height="180px"):
     """
-    Crea el codi HTML per mostrar un vídeo en bucle com una animació
-    dins d'un contenidor amb cantonades arrodonides.
+    Crea el codi HTML per mostrar una imatge estàtica amb estil, codificada en Base64.
+    Això és molt més lleuger i compatible amb mòbils que un vídeo.
     """
-    if not os.path.exists(video_path):
-        return f"<p style='color: red;'>Error: No es troba el vídeo a '{video_path}'</p>"
+    # Comprovem que l'arxiu existeix abans de continuar
+    if not os.path.exists(image_path):
+        return f"<div style='height: {height}; background-color: #333; display: flex; align-items: center; justify-content: center; border-radius: 10px; margin-bottom: 10px;'><p style='color: red; font-size: 0.8em;'>Imatge no trobada:<br>{os.path.basename(image_path)}</p></div>"
 
-    with open(video_path, "rb") as f:
-        video_bytes = f.read()
-    video_b64 = base64.b64encode(video_bytes).decode()
+    with open(image_path, "rb") as f:
+        image_bytes = f.read()
+    image_b64 = base64.b64encode(image_bytes).decode()
     
-    # Estils per al contenidor i el vídeo
+    # Obtenim l'extensió de l'arxiu per al tipus MIME correcte
+    file_extension = os.path.splitext(image_path)[1].lower().replace('.', '')
+    mime_type = f"image/{file_extension}"
+
+    # Estils per al contenidor i la imatge
     container_style = f"width: 100%; height: {height}; border-radius: 10px; overflow: hidden; margin-bottom: 10px;"
-    video_style = "width: 100%; height: 100%; object-fit: cover;"
+    image_style = "width: 100%; height: 100%; object-fit: cover;"
 
     html_code = f"""
     <div style="{container_style}">
-        <video autoplay loop muted playsinline style="{video_style}">
-            <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
-            El teu navegador no suporta vídeos HTML5.
-        </video>
+        <img src="data:{mime_type};base64,{image_b64}" style="{image_style}" alt="Previsualització de la zona">
     </div>
     """
     return html_code
@@ -6032,34 +6034,30 @@ def run_valley_halley_app():
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
-    
-    # <<<--- NOU: Afegim una llegenda per a l'emoji --->>>
-    st.info("💡 Les zones marcades amb un cercle verd 🟢 disposen de webcams en directe pre-configurades.", icon="📷")
+    st.info("💡 Les zones marcades amb 🟢 disposen de webcams en directe pre-configurades.", icon="📷")
 
-    # Definim tots els camins de vídeo
+    # Definim els camins a les IMATGES de previsualització
     paths = {
-        'cat': "catalunya_anim.mp4", 'usa': "tornado_alley_anim.mp4", 'ale': "germany_anim.mp4",
-        'ita': "italy_anim.mp4", 'hol': "netherlands_anim.mp4", 'japo': "japan_anim.mp4",
-        'uk': "uk_anim.mp4", 'can': "canada_anim.mp4"
+        'cat': "catalunya_preview.png", 'usa': "usa_preview.png", 'ale': "alemanya_preview.png",
+        'ita': "italia_preview.png", 'hol': "holanda_preview.png", 'japo': "japo_preview.png",
+        'uk': "uk_preview.png", 'can': "canada_preview.png"
     }
     
     with st.spinner('Carregant entorns geoespacials...'): time.sleep(1)
 
-    # Dissenye 4x2
     row1_col1, row1_col2, row1_col3, row1_col4 = st.columns(4)
     row2_col1, row2_col2, row2_col3, row2_col4 = st.columns(4)
 
     def create_zone_button(col, path, title, key, zone_id, type="secondary"):
         with col, st.container(border=True):
-            st.markdown(generar_html_video_animacio(path, height="160px"), unsafe_allow_html=True)
+            # Cridem a la nova funció d'imatges
+            st.markdown(generar_html_imatge_estatica(path, height="160px"), unsafe_allow_html=True)
             
-            # <<<--- CANVI PRINCIPAL AQUÍ: Afegim l'emoji si la zona té webcams --->>>
             display_title = title
-            if zone_id in ['japo', 'uk', 'canada']:
+            if zone_id in ['japo', 'uk', 'canada', 'valley_halley']: # Afegim EUA a la llista de webcams
                 display_title += " 🟢"
             
             st.subheader(display_title)
-            
             if st.button(f"Analitzar {title}", key=key, use_container_width=True, type=type):
                 st.session_state['zone_selected'] = zone_id
                 st.rerun()
