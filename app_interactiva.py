@@ -3344,12 +3344,12 @@ def crear_mapa_forecast_combinat_canada(lons, lats, speed_data, dir_data, dewpoi
 
 def ui_pestanya_mapes_canada(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
     st.markdown("#### Mapes de Pronòstic (Model HRDPS)")
-
     with st.spinner("Carregant mapa HRDPS... El primer cop pot trigar una mica."):
         map_data, error = carregar_dades_mapa_canada(nivell_sel, hourly_index_sel)
     
         if error or not map_data:
-            st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+            # <<<--- CORRECCIÓ AQUÍ --->>>
+            st.error(f"Error en carregar el mapa: {error if error else 'No s''han rebut dades.'}")
         else:
             timestamp_map_title = timestamp_str.replace(f"{poble_sel} | ", "")
             fig = crear_mapa_forecast_combinat_canada(
@@ -3359,7 +3359,6 @@ def ui_pestanya_mapes_canada(hourly_index_sel, timestamp_str, nivell_sel, poble_
             )
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
-
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_cat(nivell, hourly_index):
@@ -4643,7 +4642,8 @@ def ui_pestanya_mapes_noruega(hourly_index_sel, timestamp_str, nivell_sel, poble
         map_data, error = carregar_dades_mapa_noruega(nivell_sel, hourly_index_sel)
     
         if error or not map_data:
-            st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+            # <<<--- CORRECCIÓ AQUÍ --->>>
+            st.error(f"Error en carregar el mapa: {error if error else 'No s''han rebut dades.'}")
         else:
             timestamp_map_title = timestamp_str.replace(f"{poble_sel} | ", "")
             fig = crear_mapa_forecast_combinat_noruega(
@@ -5708,12 +5708,12 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
 
 def ui_pestanya_mapes_japo(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
     st.markdown("#### Mapes de Pronòstic (Model JMA GSM)")
-
     with st.spinner("Carregant mapa JMA GSM... El primer cop pot trigar una mica."):
         map_data, error = carregar_dades_mapa_japo(nivell_sel, hourly_index_sel)
     
         if error or not map_data:
-            st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+            # <<<--- CORRECCIÓ AQUÍ --->>>
+            st.error(f"Error en carregar el mapa: {error if error else 'No s''han rebut dades.'}")
         else:
             timestamp_map_title = timestamp_str.replace(f"{poble_sel} | ", "")
             fig = crear_mapa_forecast_combinat_japo(
@@ -5726,12 +5726,12 @@ def ui_pestanya_mapes_japo(hourly_index_sel, timestamp_str, nivell_sel, poble_se
 
 def ui_pestanya_mapes_uk(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
     st.markdown("#### Mapes de Pronòstic (Model UKMO 2km)")
-    
     with st.spinner("Carregant mapa UKMO... El primer cop pot trigar una mica."):
         map_data, error = carregar_dades_mapa_uk(nivell_sel, hourly_index_sel)
     
         if error or not map_data:
-            st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+            # <<<--- CORRECCIÓ AQUÍ --->>>
+            st.error(f"Error en carregar el mapa: {error if error else 'No s''han rebut dades.'}")
         else:
             timestamp_map_title = timestamp_str.replace(f"{poble_sel} | ", "")
             fig = crear_mapa_forecast_combinat_uk(
@@ -6533,12 +6533,12 @@ def run_alemanya_app():
 # També necessitem una funció per mostrar el mapa d'Alemanya, que no existia. Afegeix-la al teu codi:
 def ui_pestanya_mapes_alemanya(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
     st.markdown("#### Mapes de Pronòstic (Model ICON-D2)")
-
     with st.spinner("Carregant mapa ICON-D2... El primer cop pot trigar una mica."):
         map_data, error = carregar_dades_mapa_alemanya(nivell_sel, hourly_index_sel)
     
         if error or not map_data:
-            st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+            # <<<--- CORRECCIÓ AQUÍ --->>>
+            st.error(f"Error en carregar el mapa: {error if error else 'No s''han rebut dades.'}")
         else:
             timestamp_map_title = timestamp_str.replace(f"{poble_sel} | ", "")
             fig = crear_mapa_forecast_combinat_alemanya(
