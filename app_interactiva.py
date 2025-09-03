@@ -1818,45 +1818,45 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     }
     
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
-        # Variables per a la visualització que podem modificar
         display_label = label
-        display_value = value
-        color = "#FFFFFF"  # Color per defecte
+        color = "#FFFFFF"
+        val_str = "---" # Valor per defecte
 
         is_numeric = isinstance(value, (int, float, np.number))
 
         if pd.notna(value) and is_numeric:
-            # <<<--- NOU BLOC DE LÒGICA PER A CONVERGÈNCIA / DIVERGÈNCIA --->>>
             if 'CONV' in param_key:
+                # <<<--- LÒGICA ACTUALITZADA --->>>
                 if value < 0:
-                    # Si el valor és negatiu, és DIVERGÈNCIA
-                    display_label = "Divergència"  # Canviem l'etiqueta
-                    color = "#5bc0de"              # Color blau fluix
-                    display_value = abs(value)     # Mostrem el valor en positiu
+                    # Si és DIVERGÈNCIA, només mostrem text
+                    color = "#5bc0de"  # Blau fluix
+                    val_str = "Divergència"
+                    display_label = "Moviment Vertical" # Etiqueta més genèrica
                 else:
-                    # Si és positiu, mantenim la lògica de colors per a la CONVERGÈNCIA
+                    # Si és CONVERGÈNCIA, mostrem el número amb la seva escala de colors
                     thresholds = [5, 15, 30, 40]
                     colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
                     color = colors[np.searchsorted(thresholds, value)]
-            # <<<--- FI DEL NOU BLOC --->>>
+                    val_str = f"{value:.{precision}f}"
+                # <<<--- FI DE LA LÒGICA ACTUALITZADA --->>>
             
             elif param_key == 'T_500hPa':
                 thresholds = [-8, -14, -18, -22]
                 colors = ["#2ca02c", "#ffc107", "#fd7e14", "#dc3545", "#b300ff"]
                 color = colors[len(thresholds) - np.searchsorted(thresholds, value, side='right')]
+                val_str = f"{value:.{precision}f}"
             else:
                 color = get_color_global(value, param_key, reverse_colors)
-            
-            val_str = f"{display_value:.{precision}f}"
-        else:
-            val_str = "---"
-
+                val_str = f"{value:.{precision}f}"
+        
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         
-        # Usem la nova variable 'display_label' per a l'etiqueta
+        # Ocultem la unitat (10⁻⁵ s⁻¹) quan mostrem la paraula "Divergència"
+        unit_display = f"({unit})" if "Divergència" not in val_str else ""
+
         st.markdown(f"""
         <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
-            <span style="font-size: 0.8em; color: #FAFAFA;">{display_label} ({unit}){tooltip_html}</span><br>
+            <span style="font-size: 0.8em; color: #FAFAFA;">{display_label} {unit_display}{tooltip_html}</span><br>
             <strong style="font-size: 1.6em; color: {color};">{val_str}</strong>
         </div>""", unsafe_allow_html=True)
 
