@@ -6791,7 +6791,7 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
         with col_img:
             try:
-                st.image(case_data['image'], caption=f"Imatge de: {selected_case}", use_column_width=True)
+                st.image(case_data['image'], caption=f"Imatge de: {selected_case}", use_container_width=True)
             except FileNotFoundError:
                 st.error(f"Error: No s'ha trobat la imatge '{case_data['image']}'. Assegura't que estigui a la carpeta 'arxiu_images'.")
             except Exception as e:
