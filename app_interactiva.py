@@ -843,62 +843,19 @@ def show_login_page():
     st.markdown("<h1 style='text-align: center;'>Tempestes.cat</h1>", unsafe_allow_html=True)
     st.markdown("---")
 
-    if 'view' not in st.session_state:
-        st.session_state.view = 'login'
+    # <<<--- ELIMINATS ELS FORMULARIS DE LOGIN I REGISTRE --->>>
+    # Ara anem directament a les opcions d'accés ràpid
 
-    if st.session_state.view == 'login':
-        st.subheader("Inicia Sessió")
-        with st.form("login_form"):
-            username = st.text_input("Nom d'usuari", key="login_user")
-            password = st.text_input("Contrasenya", type="password", key="login_pass")
-            
-            if st.form_submit_button("Entra", use_container_width=True, type="primary"):
-                users = load_json_file(USERS_FILE)
-                if username in users and users[username] == get_hashed_password(password):
-                    # Assegurem que la selecció de zona estigui neta abans de continuar.
-                    st.session_state['zone_selected'] = None
-                    st.session_state.update({'logged_in': True, 'username': username, 'guest_mode': False})
-                    st.rerun()
-                else:
-                    st.error("Nom d'usuari o contrasenya incorrectes.")
-        
-        if st.button("No tens un compte? Registra't aquí"):
-            st.session_state.view = 'register'
-            st.rerun()
+    st.markdown("<p style='text-align: center; font-size: 1.2em;'>Selecciona un mètode d'accés</p>", unsafe_allow_html=True)
 
-    elif st.session_state.view == 'register':
-        st.subheader("Crea un nou compte")
-        with st.form("register_form"):
-            new_username = st.text_input("Tria un nom d'usuari", key="reg_user")
-            new_password = st.text_input("Tria una contrasenya", type="password", key="reg_pass")
-            
-            if st.form_submit_button("Registra'm", use_container_width=True):
-                users = load_json_file(USERS_FILE)
-                if not new_username or not new_password:
-                    st.error("El nom d'usuari i la contrasenya no poden estar buits.")
-                elif new_username in users:
-                    st.error("Aquest nom d'usuari ja existeix.")
-                elif len(new_password) < 6:
-                    st.error("La contrasenya ha de tenir com a mínim 6 caràcters.")
-                else:
-                    users[new_username] = get_hashed_password(new_password)
-                    save_json_file(users, USERS_FILE)
-                    st.success("Compte creat amb èxit! Ara pots iniciar sessió.")
-        
-        if st.button("Ja tens un compte? Inicia sessió"):
-            st.session_state.view = 'login'
-            st.rerun()
-    
-    st.divider()
-    st.markdown("<p style='text-align: center;'>O si ho prefereixes...</p>", unsafe_allow_html=True)
-
-    # Botón para entrar como convidat
-    if st.button("Entrar com a Convidat (simple i ràpid)", use_container_width=True, type="secondary"):
+    # Botó principal per entrar com a Convidat
+    if st.button("Entrar a la Terminal (Accés General)", use_container_width=True, type="primary"):
         st.session_state['zone_selected'] = None
+        # Definim 'guest_mode' per si en el futur hi ha funcionalitats restringides
         st.session_state.update({'guest_mode': True, 'logged_in': True})
         st.rerun()
     
-    # Separador para el modo desarrollador
+    # Separador per al mode desenvolupador
     st.divider()
     st.markdown("<p style='text-align: center;'>Accés per a desenvolupadors</p>", unsafe_allow_html=True)
     
@@ -907,16 +864,17 @@ def show_login_page():
         dev_password = st.text_input("Contrasenya de desenvolupador", type="password", key="dev_pass")
         
         if st.form_submit_button("🚀 Accés Mode Desenvolupador", use_container_width=True):
+            # Assegura't de tenir aquesta clau als teus secrets de Streamlit
             if dev_password == st.secrets["app_secrets"]["moderator_password"]:
                 st.session_state['zone_selected'] = None
                 st.session_state.update({
                     'logged_in': True, 
                     'developer_mode': True,
-                    'username': 'Desenvolupador',
+                    'username': 'Desenvolupador', # Assignem un nom per consistència
                     'guest_mode': False
                 })
-                st.success("Mode desenvolupador activat! Preguntes il·limitades a la IA.")
-                time.sleep(1)  # Pequeña pausa para mostrar el mensaje
+                st.success("Mode desenvolupador activat!")
+                time.sleep(1)
                 st.rerun()
             else:
                 st.error("Contrasenya de desenvolupador incorrecta.")
