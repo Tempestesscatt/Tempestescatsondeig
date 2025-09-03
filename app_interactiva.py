@@ -90,6 +90,18 @@ WEBCAM_LINKS = {
     "Múnich (Marienplatz)": {'type': 'embed', 'url': "https://www.youtube.com/embed/KxWuwC7R5kY?autoplay=1&mute=1"},  # Vista de Marienplatz :contentReference[oaicite:2]{index=2}
     "Bensersiel (Costa Nord)": {'type': 'embed', 'url': "https://www.youtube.com/embed/aYtgGjMDagw?autoplay=1&mute=1"}, # Spotting en Frankfurt Airport :contentReference[oaicite:3]{index=3}
     "Harz (Hahnenklee)": {'type': 'direct', 'url': "https://www.youtube.com/live/hM6G0VuAWtg?autoplay=1&mute=1"}, 
+
+
+    "Pavullo nel Frignano": {'type': 'embed', 'url': "https://www.youtube.com/embed/sikejsb2a-w?autoplay=1&mute=1"},
+    "Castel San Pietro": {'type': 'embed', 'url': "https://www.youtube.com/embed/J8yQUl55LoE?autoplay=1&mute=1"},
+    "Brescia": {'type': 'embed', 'url': "https://www.youtube.com/embed/qT4p4gQSXgE?autoplay=1&mute=1"},
+    "Stresa (Lago Maggiore)": {'type': 'embed', 'url': "https://www.youtube.com/embed/52s54yL5gXg?autoplay=1&mute=1"},
+    "Cingoli": {'type': 'embed', 'url': "https://www.youtube.com/embed/Kz4f2zY5p3I?autoplay=1&mute=1"},
+    "Roma": {'type': 'embed', 'url': "https://www.youtube.com/embed/3R-dOS_5i-g?autoplay=1&mute=1"},
+    "Florència": {'type': 'embed', 'url': "https://www.youtube.com/embed/2iX-14j2_Yc?autoplay=1&mute=1"},
+    "Massa Lubrense": {'type': 'embed', 'url': "https://www.youtube.com/embed/8bH-2248g-I?autoplay=1&mute=1"},
+    "Capo d'Orlando": {'type': 'embed', 'url': "https://www.youtube.com/embed/Tq_00pl7Y3s?autoplay=1&mute=1"},
+    "Ajaccio (Còrsega)": {'type': 'embed', 'url': "https://www.youtube.com/embed/Vd-4Vb0b-oA?autoplay=1&mute=1"},
 }
 
 # --- Constants per al Canadà Continental ---
@@ -154,14 +166,21 @@ PRESS_LEVELS_HOLANDA = sorted([1000, 925, 850, 700, 500, 300], reverse=True)
 API_URL_ITALIA = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_ITALIA = pytz.timezone('Europe/Rome')
 CIUTATS_ITALIA = {
+    # <<<--- LLISTA DE CIUTATS COMPLETAMENT ACTUALITZADA --->>>
+    'Pavullo nel Frignano': {'lat': 44.3315, 'lon': 10.8344, 'sea_dir': None},
+    'Castel San Pietro': {'lat': 44.3989, 'lon': 11.5910, 'sea_dir': None},
+    'Brescia': {'lat': 45.5388, 'lon': 10.2205, 'sea_dir': None},
+    'Stresa (Lago Maggiore)': {'lat': 45.8856, 'lon': 8.5283, 'sea_dir': None},
+    'Cingoli': {'lat': 43.3751, 'lon': 13.2185, 'sea_dir': (10, 100)},
     'Roma': {'lat': 41.9028, 'lon': 12.4964, 'sea_dir': (190, 280)},
-    'Milà': {'lat': 45.4642, 'lon': 9.1900, 'sea_dir': None},
-    'Nàpols': {'lat': 40.8518, 'lon': 14.2681, 'sea_dir': (180, 270)},
     'Florència': {'lat': 43.7696, 'lon': 11.2558, 'sea_dir': None},
+    'Massa Lubrense': {'lat': 40.6105, 'lon': 14.3467, 'sea_dir': (180, 300)},
+    "Capo d'Orlando": {'lat': 38.1504, 'lon': 14.7397, 'sea_dir': (270, 360)},
+    'Ajaccio (Còrsega)': {'lat': 41.9268, 'lon': 8.7369, 'sea_dir': (180, 300)},
 }
 MAP_EXTENT_ITALIA = [6.5, 18.5, 36.5, 47.0]
-# Nivells de pressió específics disponibles per a aquest model italià
 PRESS_LEVELS_ITALIA = sorted([1000, 925, 850, 700, 500, 250], reverse=True)
+
 
 API_URL_ALEMANYA = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_ALEMANYA = pytz.timezone('Europe/Berlin')
