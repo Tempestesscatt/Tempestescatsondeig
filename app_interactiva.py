@@ -6180,6 +6180,12 @@ def ui_zone_selection():
     st.markdown("---")
     st.info("🟢(tenen webcams)-🔥(Especialment recomanades) ", icon="🎞")
 
+    # Aquesta petita funció de callback és la que s'activa en clicar un botó
+    def start_transition(zone_id):
+        """Callback per iniciar la transició de vídeo."""
+        st.session_state['zone_selected'] = zone_id
+        st.session_state['show_transition_video'] = True
+
     paths = {
         'cat': "catalunya_preview.png", 'usa': "usa_preview.png", 'ale': "alemanya_preview.png",
         'ita': "italia_preview.png", 'hol': "holanda_preview.png", 'japo': "japo_preview.png",
@@ -6191,40 +6197,34 @@ def ui_zone_selection():
     row1_col1, row1_col2, row1_col3, row1_col4 = st.columns(4)
     row2_col1, row2_col2, row2_col3, row2_col4 = st.columns(4)
 
-    # Aquesta funció auxiliar ara torna a ser simple com abans
-def main():
-    inject_custom_css()
-    hide_streamlit_style()
-    
-    # <<<--- NOU BLOC D'INTERCEPCIÓ DE LA TRANSICIÓ ---
-    # Aquest és el primer que es comprova. Si s'ha d'activar el vídeo, es fa
-    # i s'atura l'execució de la resta de l'app per a aquest cicle.
-    if st.session_state.get('show_transition_video', False):
-        mostrar_video_transicio()
-        return # Aturem aquí fins que el vídeo acabi i es faci el rerun.
-    # <<<--- FI DEL NOU BLOC ---
+    # La funció auxiliar ara utilitza 'on_click' per cridar a 'start_transition'
+    def create_zone_button(col, path, title, key, zone_id, type="secondary"):
+        with col, st.container(border=True):
+            
+            st.markdown(generar_html_imatge_estatica(path, height="160px"), unsafe_allow_html=True)
+            
+            display_title = title
+            if zone_id == 'italia':
+                display_title += " 🔥"
+            elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya', 'holanda', 'catalunya']:
+                display_title += " 🟢"
+            
+            st.subheader(display_title)
+            
+            # El canvi clau està aquí: en lloc de la lògica dins d'un 'if',
+            # assignem la nostra funció 'start_transition' a l'esdeveniment 'on_click'.
+            st.button(f"Analitzar {title}", key=key, use_container_width=True, type=type,
+                      on_click=start_transition, args=(zone_id,))
 
-    if 'logged_in' not in st.session_state: st.session_state.logged_in = False
-    
-    if not st.session_state.logged_in:
-        afegir_slideshow_de_fons()
-        show_login_page()
-        return
-
-    if 'zone_selected' not in st.session_state or st.session_state.zone_selected is None:
-        ui_zone_selection()
-        return
-
-    # La lògica principal que ja tenies es manté igual
-    if st.session_state.zone_selected == 'catalunya': run_catalunya_app()
-    elif st.session_state.zone_selected == 'valley_halley': run_valley_halley_app()
-    elif st.session_state.zone_selected == 'alemanya': run_alemanya_app()
-    elif st.session_state.zone_selected == 'italia': run_italia_app()
-    elif st.session_state.zone_selected == 'holanda': run_holanda_app()
-    elif st.session_state.zone_selected == 'japo': run_japo_app()
-    elif st.session_state.zone_selected == 'uk': run_uk_app()
-    elif st.session_state.zone_selected == 'canada': run_canada_app()
-
+    # Creació de tots els botons de zona
+    create_zone_button(row1_col1, paths['cat'], "Catalunya", "btn_cat", "catalunya", "primary")
+    create_zone_button(row1_col2, paths['usa'], "Tornado Alley", "btn_usa", "valley_halley")
+    create_zone_button(row1_col3, paths['ale'], "Alemanya", "btn_ale", "alemanya")
+    create_zone_button(row1_col4, paths['ita'], "Itàlia", "btn_ita", "italia")
+    create_zone_button(row2_col1, paths['hol'], "Holanda", "btn_hol", "holanda")
+    create_zone_button(row2_col2, paths['japo'], "Japó", "btn_japo", "japo")
+    create_zone_button(row2_col3, paths['uk'], "Regne Unit", "btn_uk", "uk")
+    create_zone_button(row2_col4, paths['can'], "Canadà", "btn_can", "canada")
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_italia(nivell, hourly_index):
