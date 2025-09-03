@@ -2785,15 +2785,16 @@ def afegir_etiquetes_ciutats(ax, map_extent):
 
         
 
-def mostrar_video_transicio():
+def mostrar_video_transicio(zone_id):
     """
     Mostra un vídeo de transició i, quan acaba, utilitza JavaScript per navegar
-    a una URL amb un paràmetre de consulta, trencant el bucle de manera segura.
+    a una URL que inclou la zona seleccionada, trencant el bucle de manera segura.
     """
     video_file = 'zoom_earth.mp4'
     if not os.path.exists(video_file):
         st.error(f"Error Crític: No s'ha trobat el fitxer de vídeo '{video_file}'.")
         st.session_state.show_transition_video = False
+        st.session_state['zone_selected'] = zone_id # Assegurem que no es perd la selecció
         time.sleep(2)
         st.rerun()
         return
@@ -2819,13 +2820,12 @@ def mostrar_video_transicio():
             <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
         </video>
 
-        <!-- AQUEST SCRIPT ÉS LA SOLUCIÓ DEFINITIVA -->
         <script>
             const video = document.getElementById('transition-video');
             video.addEventListener('ended', function() {{
-                // En lloc de recarregar, naveguem a la mateixa pàgina
-                // afegint un paràmetre a la URL per indicar que la transició ha acabat.
-                window.location.href = window.location.pathname + '?transition=done';
+                // <<<--- CANVI CLAU: ARA AFEGIM LA ZONA A LA URL ---
+                // Naveguem a una URL que conté la informació de la zona seleccionada.
+                window.location.href = window.location.pathname + '?transition=done&zone={zone_id}';
             }});
         </script>
     </body>
@@ -2834,8 +2834,6 @@ def mostrar_video_transicio():
     
     st.components.v1.html(video_html, height=st.query_params.get("height", 800))
     st.stop()
-                
-
 
 
 
@@ -6626,19 +6624,30 @@ def main():
     inject_custom_css()
     hide_streamlit_style()
 
-    # <<<--- NOU BLOC PER GESTIONAR EL FINAL DE LA TRANSICIÓ ---
-    # Aquesta comprovació es fa al principi de tot.
-    # Si la URL conté '?transition=done', significa que el vídeo ha acabat.
+    # --- NOU BLOC DE GESTIÓ DE LA TRANSICIÓ (MÉS INTEL·LIGENT) ---
     if "transition" in st.query_params and st.query_params["transition"] == "done":
-        # Desactivem la bandera del vídeo i netegem la URL per si l'usuari recarrega manualment.
+        # El vídeo ha acabat. Desactivem la bandera.
         st.session_state['show_transition_video'] = False
+        # <<<--- CANVI CLAU: LLEGIM LA ZONA DE LA URL I LA GUARDEM A LA SESSIÓ ---
+        if 'zone' in st.query_params:
+            st.session_state['zone_selected'] = st.query_params['zone']
+        # Netegem la URL per a que, si l'usuari recarrega manualment, no torni a entrar aquí.
         st.query_params.clear()
 
-    # Aquesta lògica ara funciona perfectament. Només s'activa la primera vegada.
+    # Aquesta lògica ara funciona perfectament
     if st.session_state.get('show_transition_video', False):
-        mostrar_video_transicio()
-        return
+        # Passem la zona seleccionada a la funció del vídeo per a que la pugui posar a la URL.
+        # Aquest valor va ser guardat pel botó 'on_click'.
+        zone_to_show = st.session_state.get('zone_selected')
+        if zone_to_show:
+            mostrar_video_transicio(zone_to_show)
+        else:
+            # Si per alguna raó no hi ha zona, cancelem la transició per evitar errors.
+            st.session_state['show_transition_video'] = False
+            st.rerun()
+        return # Aturem l'execució aquí fins que el vídeo acabi.
 
+    # El reste del codi es manté exactament igual
     if 'logged_in' not in st.session_state: st.session_state.logged_in = False
     
     if not st.session_state.logged_in:
@@ -6650,7 +6659,6 @@ def main():
         ui_zone_selection()
         return
 
-    # La resta de la lògica de l'aplicació continua com sempre
     if st.session_state.zone_selected == 'catalunya': run_catalunya_app()
     elif st.session_state.zone_selected == 'valley_halley': run_valley_halley_app()
     elif st.session_state.zone_selected == 'alemanya': run_alemanya_app()
