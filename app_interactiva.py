@@ -991,9 +991,9 @@ def calcular_mlcape_robusta(p, T, Td):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Final i Definitiva: Gestiona de manera intel·ligent la falta de dades
-    de punt de rosada a gran alçada, substituint els 'NaN' per un valor molt baix.
-    Això assegura que el perfil es dibuixi fins al nivell més alt possible.
+    Versió Definitiva i Corregida: Gestiona de manera intel·ligent les dades parcials a gran alçada.
+    Només descarta un nivell si les dades de Pressió o Temperatura (les essencials) són invàlides.
+    La resta de dades que falten (Td, vent) es gestionen de manera que no trenquin el gràfic.
     """
     if len(p_profile) < 4: 
         return None, "Perfil atmosfèric massa curt."
@@ -1005,23 +1005,30 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     v = np.array(v_profile) * units('m/s')
     heights = np.array(h_profile) * units.meter
     
-    # <<<--- CANVI CLAU I SOLUCIÓ DEFINITIVA --->>>
-    # Si el Punt de Rosada (Td) és un valor 'NaN', el substituïm per -100°C.
-    # Això passa sovint a nivells alts on l'aire és extremadament sec.
-    # Aquesta línia evita que el nostre filtre de neteja descarti els nivells superiors.
-    Td[np.isnan(Td)] = -100 * units.degC
-    
-    # El filtre estricte ara pot funcionar correctament sense truncar el perfil.
-    valid_indices = ~np.isnan(p.m) & ~np.isnan(T.m) & ~np.isnan(Td.m) & ~np.isnan(u.m) & ~np.isnan(v.m)
+    # --- LÒGICA DE FILTRATGE CORREGIDA ---
+    # 1. El filtre principal NOMÉS es basa en Pressió i Temperatura, que són essencials per al dibuix.
+    valid_indices = ~np.isnan(p.m) & ~np.isnan(T.m)
     p, T, Td, u, v, heights = p[valid_indices], T[valid_indices], Td[valid_indices], u[valid_indices], v[valid_indices], heights[valid_indices]
+    
+    # 2. Per a les dades NO essencials, substituïm els NaN per valors manejables
+    #    en lloc de descartar tot el nivell.
+    # Per al Punt de Rosada, un valor molt baix és físicament correcte a gran alçada i evita errors.
+    Td[np.isnan(Td.m)] = -100 * units.degC
+    # Per al vent, MetPy gestiona bé els NaNs. Els càlculs i el dibuix de barbes
+    # simplement ignoraran els nivells on faltin dades, però no es tallarà el gràfic.
+    # --- FI DE LA CORRECCIÓ ---
     
     if len(p) < 3: 
         return None, "No hi ha prou dades vàlides."
     
+    # Assegurem que el perfil estigui ordenat correctament
     sort_idx = np.argsort(p.m)[::-1]
     p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
-    params_calc = {}; heights_agl = heights - heights[0]
+    
+    params_calc = {}
+    heights_agl = heights - heights[0]
 
+    # La resta de la funció amb els càlculs de MetPy es manté igual
     with parcel_lock:
         sfc_prof, ml_prof = None, None
         try: 
