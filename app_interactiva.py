@@ -92,12 +92,12 @@ WEBCAM_LINKS = {
     "Harz (Hahnenklee)": {'type': 'direct', 'url': "https://www.youtube.com/live/hM6G0VuAWtg?autoplay=1&mute=1"}, 
 
 
-    "Pavullo nel Frignano": {'type': 'embed', 'url': "https://www.youtube.com/embed/sikejsb2a-w?autoplay=1&mute=1"},
-    "Castel San Pietro": {'type': 'embed', 'url': "https://www.youtube.com/embed/J8yQUl55LoE?autoplay=1&mute=1"},
+    "Pavullo nel Frignano": {'type': 'embed', 'url': "https://www.youtube.com/embed/xqJpFlttsf8?autoplay=1&mute=1"},
+    "Castel San Pietro": {'type': 'embed', 'url': "https://www.youtube.com/embed/c2seGcq0u0o?autoplay=1&mute=1"},
     "Brescia": {'type': 'embed', 'url': "https://www.youtube.com/embed/edyIH3pVyRE?autoplay=1&mute=1"},
-    "Stresa (Lago Maggiore)": {'type': 'embed', 'url': "https://www.youtube.com/embed/52s54yL5gXg?autoplay=1&mute=1"},
-    "Cingoli": {'type': 'embed', 'url': "https://www.youtube.com/embed/Kz4f2zY5p3I?autoplay=1&mute=1"},
-    "Roma": {'type': 'embed', 'url': "https://www.youtube.com/embed/3R-dOS_5i-g?autoplay=1&mute=1"},
+    "Stresa (Lago Maggiore)": {'type': 'embed', 'url': "https://www.youtube.com/embed/edyIH3pVyRE?autoplay=1&mute=1"},
+    "Cingoli": {'type': 'embed', 'url': "https://www.youtube.com/watch?v=pv5PQ1EtKBE"},
+    "Roma": {'type': 'embed', 'url': "https://www.youtube.com/embed/RDqrx6S2z20?autoplay=1&mute=1"},
     "Florència": {'type': 'embed', 'url': "https://www.youtube.com/embed/2iX-14j2_Yc?autoplay=1&mute=1"},
     "Massa Lubrense": {'type': 'embed', 'url': "https://www.youtube.com/embed/8bH-2248g-I?autoplay=1&mute=1"},
     "Capo d'Orlando": {'type': 'embed', 'url': "https://www.youtube.com/embed/Tq_00pl7Y3s?autoplay=1&mute=1"},
