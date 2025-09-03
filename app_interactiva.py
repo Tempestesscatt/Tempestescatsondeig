@@ -94,7 +94,7 @@ WEBCAM_LINKS = {
 
     "Pavullo nel Frignano": {'type': 'embed', 'url': "https://www.youtube.com/embed/sikejsb2a-w?autoplay=1&mute=1"},
     "Castel San Pietro": {'type': 'embed', 'url': "https://www.youtube.com/embed/J8yQUl55LoE?autoplay=1&mute=1"},
-    "Brescia": {'type': 'embed', 'url': "https://www.youtube.com/embed/qT4p4gQSXgE?autoplay=1&mute=1"},
+    "Brescia": {'type': 'embed', 'url': "https://www.youtube.com/embed/edyIH3pVyRE?autoplay=1&mute=1"},
     "Stresa (Lago Maggiore)": {'type': 'embed', 'url': "https://www.youtube.com/embed/52s54yL5gXg?autoplay=1&mute=1"},
     "Cingoli": {'type': 'embed', 'url': "https://www.youtube.com/embed/Kz4f2zY5p3I?autoplay=1&mute=1"},
     "Roma": {'type': 'embed', 'url': "https://www.youtube.com/embed/3R-dOS_5i-g?autoplay=1&mute=1"},
