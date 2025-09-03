@@ -6735,7 +6735,7 @@ def run_arxiu_tempestes_app():
         # --- EXEMPLE DE CAS 1 ---
         "Llevantada històrica (Glòria) (21/01/2020)": {
             "data": "20-23 de Gener de 2020",
-            "image": "arxiu_images/gloria_2020.jpg", # Camí a la imatge
+            "image": "arxiu_spbcn.jpg", # Camí a la imatge
             "description": """
             El temporal **Glòria** va ser un dels fenòmens meteorològics més severs de les últimes dècades a Catalunya. 
             Es va caracteritzar per:
@@ -6891,10 +6891,3 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
