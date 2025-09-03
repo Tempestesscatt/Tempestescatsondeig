@@ -1377,12 +1377,12 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str, zoom_ca
     skew.plot_mixing_lines(color='limegreen', linestyle='--', alpha=0.5)
     
     if prof is not None:
-        skew.shade_cape(p, T, prof, color='red', alpha=0.2)
-        skew.shade_cin(p, T, prof, color='blue', alpha=0.2)
-        skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la (SFC)', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+        skew.shade_cape(p, T, prof, color='yellow', alpha=0.5)
+        skew.shade_cin(p, T, prof, color='gray', alpha=0.5)
+        skew.plot(p, prof, 'k', linewidth=1, label='Trajectòria Parcel·la (SFC)', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
 
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
-    skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
+    skew.plot(p, Td, 'blue', lw=2.5, label='Punt de Rosada')
         
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
     
@@ -1394,7 +1394,7 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str, zoom_ca
         p_lvl = params_calc.get(key)
         if p_lvl is not None and not np.isnan(p_lvl):
             p_val = p_lvl.m if hasattr(p_lvl, 'm') else p_lvl
-            skew.ax.axhline(p_val, color='blue', linestyle='--', linewidth=1.5)
+            skew.ax.axhline(p_val, color='black', linestyle='--', linewidth=1.5)
 
     skew.ax.legend()
     return fig
