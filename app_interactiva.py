@@ -2085,14 +2085,15 @@ def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
 
 def mostrar_video_transicio():
     """
-    Mostra un vídeo de transició a pantalla completa, el reprodueix,
-    i després actualitza l'estat per continuar a la pàgina d'anàlisi.
+    Mostra un vídeo de transició a pantalla completa i, quan acaba,
+    utilitza JavaScript per recarregar la pàgina i continuar a l'app.
+    Aquest mètode és el més robust.
     """
     video_file = 'zoom_earth.mp4'
     if not os.path.exists(video_file):
-        st.error("El vídeo de transició 'zoom_earth.mp4' no s'ha trobat.")
-        # Si no hi ha vídeo, desactivem la transició i continuem
+        st.error(f"Error Crític: No s'ha trobat el fitxer de vídeo '{video_file}'.")
         st.session_state.show_transition_video = False
+        time.sleep(2)
         st.rerun()
         return
 
@@ -2101,41 +2102,46 @@ def mostrar_video_transicio():
     
     video_b64 = base64.b64encode(video_bytes).decode()
     
+    # Aquest HTML ara inclou un petit script de JavaScript
     video_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
     <style>
-    /* Ocultem l'aplicació principal mentre es mostra el vídeo */
-    .stApp {{
-        visibility: hidden;
-    }}
-    #transition-video-container {{
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        z-index: 9999; /* Assegurem que estigui per sobre de tot */
-        background-color: black;
-    }}
-    #transition-video {{
-        width: 100%;
-        height: 100%;
-        object-fit: cover; /* El vídeo s'ajusta per cobrir tota la pantalla */
-    }}
+        body {{ margin: 0; overflow: hidden; background-color: black; }}
+        #transition-video {{
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;
+        }}
     </style>
-    <div id="transition-video-container">
+    </head>
+    <body>
         <video autoplay muted id="transition-video">
             <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
         </video>
-    </div>
+
+        <!-- AQUEST SCRIPT ÉS LA CLAU DE LA SOLUCIÓ -->
+        <script>
+            // 1. Trobem l'element de vídeo
+            const video = document.getElementById('transition-video');
+
+            // 2. Afegim un 'event listener' que s'activarà quan el vídeo acabi
+            video.addEventListener('ended', function() {{
+                // 3. Quan el vídeo acaba, recarreguem la pàgina
+                window.location.reload();
+            }});
+        </script>
+    </body>
+    </html>
     """
-    st.markdown(video_html, unsafe_allow_html=True)
     
-    # Esperem un temps fixat (ajusta-ho a la durada del teu vídeo)
-    time.sleep(4)
+    # Utilitzem st.components.v1.html per renderitzar la nostra pàgina HTML completa
+    st.components.v1.html(video_html, height=st.experimental_get_query_params().get("height", 800))
     
-    # Un cop el vídeo ha acabat, desactivem la bandera de transició i recarreguem
+    # Preparem l'estat per a la següent càrrega de pàgina
     st.session_state.show_transition_video = False
-    st.rerun()
+    
+    # Aturem l'script de Python aquí. El JavaScript s'encarregarà de la recàrrega.
+    st.stop()
 
 
 def start_transition(zone_id):
