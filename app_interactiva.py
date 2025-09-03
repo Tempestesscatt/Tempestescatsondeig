@@ -6559,7 +6559,6 @@ def run_japo_app():
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
     default_idx = menu_options.index(st.session_state.active_tab_japo)
     selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
-    ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, ajustar_limit_superior=True)
     st.session_state.active_tab_japo = selected_tab
 
     if selected_tab == "Anàlisi Vertical":
@@ -6585,7 +6584,7 @@ def run_japo_app():
                     params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
             # <<<--- FI DEL BLOC AFEGIT --->>>
             
-            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, ajustar_limit_superior=True)
 
     elif selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_japo(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
