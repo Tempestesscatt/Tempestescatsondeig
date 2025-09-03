@@ -69,7 +69,7 @@ WEBCAM_LINKS = {
     # Regne Unit i Irlanda (Aquests permeten 'embed')
     "Southampton": {'type': 'embed', 'url': "https://www.youtube.com/embed/QO-hO_kwwmY?autoplay=1&mute=1"},
     "Fort William": {'type': 'direct', 'url': "https://www.youtube.com/live/8miQ3QXA26Q?autoplay=1&mute=1"},
-    "Dublín (Paddocks)": {'type': 'embed', 'url': "https://www.youtube.com/embed/g1r59JJqY60?autoplay=1&mute=1"},
+    "Dublín (Collins Ave)": {'type': 'embed', 'url': "https://www.youtube.com/embed/g1r59JJqY60?autoplay=1&mute=1"},
     "Weymouth": {'type': 'embed', 'url': "https://www.youtube.com/embed/vw6m4ORi1KI?autoplay=1&mute=1"},
 
     # Canadà (Aquests permeten 'embed')
@@ -133,7 +133,7 @@ TIMEZONE_UK = pytz.timezone('Europe/London')
 CIUTATS_UK = {
     'Southampton': {'lat': 50.9097, 'lon': -1.4044, 'sea_dir': (135, 225)},
     'Fort William': {'lat': 56.8167, 'lon': -5.1121, 'sea_dir': (200, 250)},
-    'Dublín (Paddocks)': {'lat': 53.3498, 'lon': -6.2603, 'sea_dir': (50, 150)},
+    'Dublín (Collins Ave)': {'lat': 53.3498, 'lon': -6.2603, 'sea_dir': (50, 150)},
     'Weymouth': {'lat': 50.6144, 'lon': -2.4551, 'sea_dir': (135, 225)},
 }
 MAP_EXTENT_UK = [-11, 2, 49, 59]
