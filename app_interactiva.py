@@ -85,7 +85,7 @@ WEBCAM_LINKS = {
     "Hakodate": {'type': 'embed', 'url': "https://www.youtube.com/embed/sE1bH-zc9Pg?autoplay=1&mute=1"},
 
     # Alemanya – ciutats (permiten 'embed')
-    "Berlín (Alexanderplatz)": {'type': 'embed', 'url': "https://www.youtube.com/embed/IRqboacDNFg?autoplay=1&mute=1"},  # Webcam panorámica desde Alexanderplatz :contentReference[oaicite:0]{index=0}
+    "Berlín (Alexanderplatz)": {'type': 'embed', 'url': "www.youtube.com/embed/LAJiFSw2ICc?autoplay=1&mute=1"},  # Webcam panorámica desde Alexanderplatz :contentReference[oaicite:0]{index=0}
     "Hamburg (St. Michaelis)": {'type': 'embed', 'url': "https://www.youtube.com/embed/2_IpYA8apCE?autoplay=1&mute=1"},  # Vista desde la iglesia St. Michaelis :contentReference[oaicite:1]{index=1}
     "Múnich (Marienplatz)": {'type': 'embed', 'url': "https://www.youtube.com/embed/dOnesWNFwdw?autoplay=1&mute=1"},  # Vista de Marienplatz :contentReference[oaicite:2]{index=2}
     "Frankfurt (Airport spotting)": {'type': 'embed', 'url': "https://www.youtube.com/embed/0FBFZfZA5R4?autoplay=1&mute=1"},  # Spotting en Frankfurt Airport :contentReference[oaicite:3]{index=3}
