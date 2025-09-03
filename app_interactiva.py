@@ -114,7 +114,7 @@ WEBCAM_LINKS = {
     "Oslo": {'type': 'embed', 'url': "https://www.youtube.com/embed/f1ZvS1Kuwhw?autoplay=1&mute=1"},
     "Bergen": {'type': 'embed', 'url': "https://www.youtube.com/embed/Z2SiE-MSfVY?autoplay=1&mute=1"},
     "Tromsø": {'type': 'embed', 'url': "https://www.youtube.com/embed/TRcvF87YVK0?autoplay=1&mute=1"},
-    "Stavanger":  {'type': 'embed', 'url': "url': "https://www.youtube.com/embed/RA6Jm7sv_F4?autoplay=1&mute=1"},
+    "Stavanger":  {'type': 'embed', 'url': "https://www.youtube.com/embed/RA6Jm7sv_F4?autoplay=1&mute=1"},
 
 
 
