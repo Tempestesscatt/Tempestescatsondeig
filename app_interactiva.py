@@ -111,9 +111,13 @@ WEBCAM_LINKS = {
 
 
       # Noruega (Aquests permeten 'embed')
-    "Oslo": {'type': 'embed', 'url': "https://www.youtube.com/embed/f9K7d-31Ed4?autoplay=1&mute=1"},
-    "Bergen": {'type': 'embed', 'url': "https://www.youtube.com/embed/CSrq9g8Q2aY?autoplay=1&mute=1"},
-    "Tromsø": {'type': 'embed', 'url': "https://www.youtube.com/embed/D3V9cAc52aM?autoplay=1&mute=1"},
+    "Oslo": {'type': 'embed', 'url': "https://www.youtube.com/embed/f1ZvS1Kuwhw?autoplay=1&mute=1"},
+    "Bergen": {'type': 'embed', 'url': "https://www.youtube.com/embed/Z2SiE-MSfVY?autoplay=1&mute=1"},
+    "Tromsø": {'type': 'embed', 'url': "https://www.youtube.com/embed/TRcvF87YVK0?autoplay=1&mute=1"},
+    "Stavanger":  {'type': 'embed', 'url': "https://www.youtube.com/embed/f1ZvS1Kuwhw?autoplay=1&mute=1"},
+
+
+
 
 }
 
