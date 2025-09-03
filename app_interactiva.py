@@ -98,9 +98,9 @@ WEBCAM_LINKS = {
     "Stresa (Lago Maggiore)": {'type': 'embed', 'url': "https://www.youtube.com/embed/hc6e8Bf2-a0?autoplay=1&mute=1"},
     "Cingoli": {'type': 'embed', 'url': "https://www.youtube.com/embed/pv5PQ1EtKBE?autoplay=1&mute=1"},
     "Roma": {'type': 'embed', 'url': "https://www.youtube.com/embed/RDqrx6S2z20?autoplay=1&mute=1"},
-    "Florència": {'type': 'embed', 'url': "https://www.youtube.com/embed/2iX-14j2_Yc?autoplay=1&mute=1"},
-    "Massa Lubrense": {'type': 'embed', 'url': "https://www.youtube.com/embed/8bH-2248g-I?autoplay=1&mute=1"},
-    "Capo d'Orlando": {'type': 'embed', 'url': "https://www.youtube.com/embed/Tq_00pl7Y3s?autoplay=1&mute=1"},
+    "Florència": {'type': 'embed', 'url': "https://www.youtube.com/embed/4eNyDCa1DBU?autoplay=1&mute=1"},
+    "Massa Lubrense": {'type': 'embed', 'url': "https://www.torrecangiani.com/it/massa-lubrense-webcam/"},
+    "Capo d'Orlando": {'type': 'embed', 'url': "https://www.youtube.com/embed/PEcs1ghWkaM?autoplay=1&mute=1"},
     "Ajaccio (Còrsega)": {'type': 'embed', 'url': "https://www.vision-environnement.com/livecams/webcam.php?webcam=ajaccio-panorama"},
 }
 
