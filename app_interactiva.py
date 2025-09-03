@@ -166,13 +166,13 @@ PRESS_LEVELS_ITALIA = sorted([1000, 925, 850, 700, 500, 250], reverse=True)
 API_URL_ALEMANYA = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_ALEMANYA = pytz.timezone('Europe/Berlin')
 CIUTATS_ALEMANYA = {
-    'Berlín': {'lat': 52.5200, 'lon': 13.4050, 'sea_dir': None},
-    'Munic': {'lat': 48.1351, 'lon': 11.5820, 'sea_dir': None},
-    'Hamburg': {'lat': 53.5511, 'lon': 9.9937, 'sea_dir': (290, 360)}, 
-    'Frankfurt': {'lat': 50.1109, 'lon': 8.6821, 'sea_dir': None},
+    # <<<--- NOMS ACTUALITZATS PERQUÈ COINCIDEIXIN AMB WEBCAM_LINKS --->>>
+    'Berlín (Alexanderplatz)': {'lat': 52.5219, 'lon': 13.4132, 'sea_dir': None},
+    'Múnich (Marienplatz)': {'lat': 48.1374, 'lon': 11.5755, 'sea_dir': None},
+    'Hamburg (St. Michaelis)': {'lat': 53.5484, 'lon': 9.9788, 'sea_dir': (290, 360)}, 
+    'Frankfurt (Airport spotting)': {'lat': 50.0507, 'lon': 8.5705, 'sea_dir': None},
 }
 MAP_EXTENT_ALEMANYA = [5.5, 15.5, 47.0, 55.5]
-# Llista de nivells de pressió ACTUALITZADA per al model ICON
 PRESS_LEVELS_ICON = sorted([1000, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 
 
@@ -6238,26 +6238,42 @@ def run_italia_app():
 
 
 def run_alemanya_app():
-    if 'poble_selector_alemanya' not in st.session_state: st.session_state.poble_selector_alemanya = "Berlín"
+    # --- PAS 1: INICIALITZACIÓ D'ESTAT ---
+    # <<<--- CANVI: La ciutat per defecte ara és el nou nom complet --->>>
+    if 'poble_selector_alemanya' not in st.session_state: st.session_state.poble_selector_alemanya = "Berlín (Alexanderplatz)"
     if 'dia_selector_alemanya' not in st.session_state: st.session_state.dia_selector_alemanya = datetime.now(TIMEZONE_ALEMANYA).strftime('%d/%m/%Y')
     if 'hora_selector_alemanya' not in st.session_state: st.session_state.hora_selector_alemanya = datetime.now(TIMEZONE_ALEMANYA).hour
     if 'level_alemanya_main' not in st.session_state: st.session_state.level_alemanya_main = 850
     if 'active_tab_alemanya' not in st.session_state: st.session_state.active_tab_alemanya = "Anàlisi Vertical"
+
+    # --- PAS 2: CAPÇALERA I SELECTORS ---
     ui_capcalera_selectors(None, zona_activa="alemanya")
-    poble_sel, dia_sel_str, hora_sel, nivell_sel = st.session_state.poble_selector_alemanya, st.session_state.dia_selector_alemanya, st.session_state.hora_selector_alemanya, st.session_state.level_alemanya_main
+    
+    # --- PAS 3: RECOPILACIÓ DE VALORS ---
+    poble_sel = st.session_state.poble_selector_alemanya
+    dia_sel_str = st.session_state.dia_selector_alemanya
+    hora_sel = st.session_state.hora_selector_alemanya
     hora_sel_str = f"{hora_sel:02d}:00h"
+    
+    nivell_sel = st.session_state.level_alemanya_main
     lat_sel, lon_sel = CIUTATS_ALEMANYA[poble_sel]['lat'], CIUTATS_ALEMANYA[poble_sel]['lon']
+    
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     local_dt = TIMEZONE_ALEMANYA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_sel))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_ALEMANYA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+
+    # --- PAS 4: MENÚ DE PESTANYES ---
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
     default_idx = menu_options.index(st.session_state.active_tab_alemanya)
     selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
     st.session_state.active_tab_alemanya = selected_tab
+
+    # --- PAS 5: LÒGICA DE PESTANYES ---
     if selected_tab == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_alemanya(lat_sel, lon_sel, hourly_index_sel)
@@ -6268,13 +6284,11 @@ def run_alemanya_app():
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_ALEMANYA)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+            
     elif selected_tab == "Anàlisi de Mapes":
-        with st.spinner(f"Carregant mapa ICON-D2 a {nivell_sel}hPa..."):
-            map_data, error = carregar_dades_mapa_alemanya(nivell_sel, hourly_index_sel)
-        if error or not map_data: st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
-        else:
-            fig = crear_mapa_forecast_combinat_alemanya(map_data['lons'], map_data['lats'], map_data['speed_data'], map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, timestamp_str.replace(f"{poble_sel} | ", ""))
-            st.pyplot(fig, use_container_width=True); plt.close(fig)
+        st.info("La visualització de mapes per al model d'Alemanya (ICON-D2) està en desenvolupament.")
+        # Aquí aniria la crida a la funció de mapes d'Alemanya
+    
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="alemanya")
 
