@@ -6085,9 +6085,7 @@ def run_valley_halley_app():
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
-    
-    # <<<--- NOU: Actualitzem la llegenda per explicar els dos emojis --->>>
-    st.info("💡 Les zones marcades amb 🟢 tenen webcams disponibles. Les marcades amb 🔥 són especialment recomanades per al seguiment visual!", icon="📷")
+    st.info("🟢(tenen webcams)-🔥(Especialment recomanades) ", icon="")
 
     # Definim els camins a les IMATGES de previsualització
     paths = {
@@ -6105,11 +6103,11 @@ def ui_zone_selection():
         with col, st.container(border=True):
             st.markdown(generar_html_imatge_estatica(path, height="160px"), unsafe_allow_html=True)
             
-            # <<<--- CANVI PRINCIPAL AQUÍ: Lògica per als dos emojis --->>>
+            # <<<--- CANVI PRINCIPAL AQUÍ: Afegim 'holanda' a la llista --->>>
             display_title = title
-            if zone_id == 'italia': # Cas especial per a Itàlia, que és "top"
+            if zone_id == 'italia':
                 display_title += " 🔥"
-            elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya']: # La resta de zones amb webcam
+            elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya', 'holanda']:
                 display_title += " 🟢"
             
             st.subheader(display_title)
