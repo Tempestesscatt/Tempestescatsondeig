@@ -40,6 +40,7 @@ import folium
 from streamlit_folium import st_folium
 import geopandas as gpd
 from shapely.geometry import Point
+from st_javascript import st_javascript
 
 
 
@@ -2785,19 +2786,14 @@ def afegir_etiquetes_ciutats(ax, map_extent):
 
 def mostrar_video_transicio():
     """
-    Mostra un vídeo de transició a pantalla completa utilitzant una meta-etiqueta
-    de refresc. Aquesta versió és robusta i soluciona el problema del bucle i la pèrdua de sessió.
+    Mostra un vídeo de transició i utilitza un callback de JavaScript
+    per comunicar-se amb Python quan acaba, forçant un rerun sense
+    perdre l'estat de la sessió. Aquesta és la solució definitiva.
     """
-    # <<<--- AJUSTA AQUEST VALOR ---
-    # Posa la durada real del teu vídeo en segons i suma-li un petit marge (ex: 0.5s).
-    # Si el teu vídeo dura 4 segons, posa 4.5
-    REFRESH_DELAY_SEGONS = 4.5
-
     video_file = 'zoom_earth.mp4'
     if not os.path.exists(video_file):
-        st.error(f"Error Crític: No s'ha trobat el fitxer de vídeo '{video_file}'.")
+        st.error(f"Error: No s'ha trobat el fitxer de vídeo '{video_file}'.")
         st.session_state['show_transition_video'] = False
-        time.sleep(2)
         st.rerun()
         return
 
@@ -2806,28 +2802,44 @@ def mostrar_video_transicio():
     
     video_b64 = base64.b64encode(video_bytes).decode()
     
+    # HTML i CSS per al vídeo a pantalla completa
     video_html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <!-- La clau: El navegador recarregarà la pàgina després del retard segur -->
-    <meta http-equiv="refresh" content="{REFRESH_DELAY_SEGONS}">
     <style>
+        .stApp {{ visibility: hidden; }} /* Amaguem l'app de fons */
         body {{ margin: 0; overflow: hidden; background-color: black; }}
+        #transition-video-container {{
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999;
+        }}
         #transition-video {{
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;
+            width: 100%; height: 100%; object-fit: cover;
         }}
     </style>
-    </head>
-    <body>
+    <div id="transition-video-container">
         <video autoplay muted playsinline id="transition-video">
             <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
         </video>
-    </body>
-    </html>
+    </div>
     """
-    
-    st.components.v1.html(video_html, height=st.query_params.get("height", 800))
+    st.markdown(video_html, unsafe_allow_html=True)
+
+    # El component de JavaScript que escoltarà el final del vídeo
+    # Quan el vídeo acabi, retornarà el valor "ended" a la variable 'video_status'
+    video_status = st_javascript("""
+        const video = document.getElementById('transition-video');
+        if (video) {
+            video.addEventListener('ended', () => {
+                window.streamlitApi.setComponentValue('ended');
+            });
+        }
+    """, key="video_transition_key")
+
+    # Aquesta és la màgia: Streamlit es quedarà esperant fins que 'video_status'
+    # rebi el valor 'ended' des del navegador.
+    if video_status == 'ended':
+        # Quan el vídeo ha acabat, desactivem la bandera i fem un rerun.
+        # Com que és un rerun intern, l'estat de la sessió es conserva perfectament.
+        st.session_state.show_transition_video = False
+        st.rerun()
 
 
 
@@ -6619,24 +6631,13 @@ def main():
     inject_custom_css()
     hide_streamlit_style()
 
-    # --- LÒGICA DE LA TRANSICIÓ (ROBUSTA I A PROVA DE BUCLES) ---
-    # Comprovem si la bandera de transició està activa
+    # La lògica de transició ara és molt més simple
     if st.session_state.get('show_transition_video', False):
-        
-        # MOLT IMPORTANT: Desactivem la bandera IMMEDIATAMENT.
-        # D'aquesta manera, quan la pàgina es recarregui després del vídeo,
-        # aquesta condició ja serà falsa i l'app continuarà normalment.
-        st.session_state.show_transition_video = False
-        
-        # Mostrem la pàgina del vídeo. Aquesta funció no aturarà l'script,
-        # simplement renderitzarà l'HTML.
         mostrar_video_transicio()
-        
-        # Aturem l'execució de la resta de l'script de Python per a aquesta càrrega.
-        # Només volem que es vegi el vídeo.
-        st.stop()
+        # Important: Aturem l'execució aquí per no renderitzar res més
+        return
 
-    # El reste de la lògica de l'aplicació continua com sempre
+    # El reste del codi es manté exactament igual
     if 'logged_in' not in st.session_state: st.session_state.logged_in = False
     
     if not st.session_state.logged_in:
@@ -6656,7 +6657,7 @@ def main():
     elif st.session_state.zone_selected == 'japo': run_japo_app()
     elif st.session_state.zone_selected == 'uk': run_uk_app()
     elif st.session_state.zone_selected == 'canada': run_canada_app()
-    
+
 
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
@@ -6735,3 +6736,9 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
