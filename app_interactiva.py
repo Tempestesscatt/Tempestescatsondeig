@@ -6559,6 +6559,7 @@ def run_japo_app():
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
     default_idx = menu_options.index(st.session_state.active_tab_japo)
     selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
+    ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, ajustar_limit_superior=True)
     st.session_state.active_tab_japo = selected_tab
 
     if selected_tab == "Anàlisi Vertical":
