@@ -6313,20 +6313,60 @@ def run_alemanya_app():
     default_idx = menu_options.index(st.session_state.active_tab_alemanya)
     selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
     st.session_state.active_tab_alemanya = selected_tab
+    
     if selected_tab == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_alemanya(lat_sel, lon_sel, hourly_index_sel)
-        if data_tuple is None or error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        
+        if data_tuple is None or error_msg: 
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
             if final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_ALEMANYA)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+
+            # <<<--- BLOC DE CODI AFEGIT PER CALCULAR LA CONVERGÈNCIA --->>>
+            params_calc = data_tuple[1]
+            with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
+                map_data_conv, _ = carregar_dades_mapa_alemanya(nivell_sel, hourly_index_sel)
+            
+            if map_data_conv:
+                conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+                if pd.notna(conv_value):
+                    # Afegim el valor de la convergència al diccionari de paràmetres
+                    params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
+            # <<<--- FI DEL BLOC AFEGIT --->>>
+            
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+
     elif selected_tab == "Anàlisi de Mapes":
-        st.info("La visualització de mapes per al model d'Alemanya (ICON-D2) està en desenvolupament.")
+        # <<<--- CORRECCIÓ: Ara cridem la funció correcta del mapa d'Alemanya --->>>
+        ui_pestanya_mapes_alemanya(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
+
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="alemanya")
+
+# També necessitem una funció per mostrar el mapa d'Alemanya, que no existia. Afegeix-la al teu codi:
+def ui_pestanya_mapes_alemanya(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
+    """
+    Funció de la interfície d'usuari per a la pestanya de mapes d'Alemanya.
+    """
+    st.markdown("#### Mapes de Pronòstic (Model ICON-D2)")
+    with st.spinner(f"Carregant mapa ICON-D2 a {nivell_sel}hPa..."):
+        map_data, error = carregar_dades_mapa_alemanya(nivell_sel, hourly_index_sel)
+    
+    if error or not map_data:
+        st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+    else:
+        # Reutilitzem la funció de creació de mapes per Alemanya
+        fig = crear_mapa_forecast_combinat_alemanya(
+            map_data['lons'], map_data['lats'], map_data['speed_data'], 
+            map_data['dir_data'], map_data['dewpoint_data'], nivell_sel, 
+            timestamp_str.replace(f"{poble_sel} | ", "")
+        )
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
 
 
 def run_uk_app():
