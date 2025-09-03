@@ -6060,7 +6060,7 @@ def run_valley_halley_app():
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
-    st.info("💡 Les zones marcades amb 🟢 disposen de webcams en directe pre-configurades.", icon="📷")
+    st.info("💡 Les zones marcades amb un cercle verd 🟢 disposen de webcams en directe pre-configurades.", icon="📷")
 
     # Definim els camins a les IMATGES de previsualització
     paths = {
@@ -6076,11 +6076,11 @@ def ui_zone_selection():
 
     def create_zone_button(col, path, title, key, zone_id, type="secondary"):
         with col, st.container(border=True):
-            # Cridem a la nova funció d'imatges
             st.markdown(generar_html_imatge_estatica(path, height="160px"), unsafe_allow_html=True)
             
+            # <<<--- CANVI PRINCIPAL AQUÍ: Afegim 'alemanya' a la llista --->>>
             display_title = title
-            if zone_id in ['japo', 'uk', 'canada', 'valley_halley']: # Afegim EUA a la llista de webcams
+            if zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya']:
                 display_title += " 🟢"
             
             st.subheader(display_title)
