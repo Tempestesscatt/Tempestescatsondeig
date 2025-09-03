@@ -2929,19 +2929,16 @@ def ui_pestanya_mapes_holanda(hourly_index_sel, timestamp_str, nivell_sel, poble
 @st.cache_data(ttl=3600, max_entries=20, show_spinner=False)
 def carregar_dades_sondeig_japo(lat, lon, hourly_index):
     """
-    Versió Final i Definitiva: Utilitza el model global 'jma_gsm' i demana 'relative_humidity'
-    per assegurar la màxima completesa de dades. Construeix un perfil tolerant que permet
-    forats de dades en variables no essencials per dibuixar el perfil complet.
+    Versió Definitiva v2.0: Gestiona correctament els sondeigs a gran alçada,
+    com el del Mont Fuji, evitant afegir nivells de pressió subterranis i
+    construint un perfil atmosfèric coherent.
     """
     try:
-        # Estratègia més segura: demanar 'relative_humidity' que sol ser més completa.
-        h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
+        h_base = ["temperature_2m", "relative_humidity_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
         press_vars = ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"]
         h_press = [f"{v}_{p}hPa" for v in press_vars for p in PRESS_LEVELS_JAPO]
-        all_requested_vars = h_base + h_press
         
-        params = {"latitude": lat, "longitude": lon, "hourly": all_requested_vars, "models": "jma_gsm", "forecast_days": 3}
-        
+        params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "jma_gsm", "forecast_days": 3}
         response = openmeteo.weather_api(API_URL_JAPO, params=params)[0]
         hourly = response.Hourly()
 
@@ -2949,18 +2946,30 @@ def carregar_dades_sondeig_japo(lat, lon, hourly_index):
         if valid_index is None: 
             return None, hourly_index, "No s'han trobat dades vàlides."
 
+        # Llegim totes les dades en un diccionari per a un accés segur
         hourly_vars = {}
+        all_requested_vars = h_base + h_press
         for i, var_name in enumerate(all_requested_vars):
             try: hourly_vars[var_name] = hourly.Variables(i).ValuesAsNumpy()
-            except Exception: hourly_vars[var_name] = np.array([np.nan] * len(hourly.Variables(0).ValuesAsNumpy()))
+            except Exception: hourly_vars[var_name] = np.array([np.nan])
 
         sfc_data = {v: hourly_vars[v][valid_index] for v in h_base}
-        sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
-        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
+        sfc_pressure = sfc_data.get("surface_pressure")
+        # Comprovació de seguretat: si no tenim pressió de superfície, no podem continuar
+        if pd.isna(sfc_pressure):
+            return None, hourly_index, "Dades de superfície invàlides (possiblement punt fora del model)."
 
-        # Bucle de construcció tolerant: afegim el nivell i després les dades que trobem.
+        sfc_dew_point = mpcalc.dewpoint_from_relative_humidity(sfc_data["temperature_2m"] * units.degC, sfc_data["relative_humidity_2m"] * units.percent).m
+        sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
+        
+        # Inicialitzem els perfils amb les dades de superfície
+        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_pressure], [sfc_data["temperature_2m"]], [sfc_dew_point], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
+
+        # --- LÒGICA DE CONSTRUCCIÓ TOLERANT I CONSCIENT DE L'ALTITUD ---
         for p_val in PRESS_LEVELS_JAPO:
-            if p_val < p_profile[-1]:
+            # AQUESTA ÉS LA CONDICIÓ CLAU: Només afegim un nivell si la seva pressió
+            # és MENOR que la pressió a la superfície (és a dir, si està a l'aire).
+            if p_val < sfc_pressure:
                 p_profile.append(p_val)
                 
                 temp = hourly_vars.get(f'temperature_{p_val}hPa', [np.nan])[valid_index]
@@ -2972,21 +2981,17 @@ def carregar_dades_sondeig_japo(lat, lon, hourly_index):
                 T_profile.append(temp)
                 h_profile.append(h)
                 
-                # Calculem dew_point si tenim T i RH, sinó NaN.
                 if pd.notna(temp) and pd.notna(rh):
                     Td_profile.append(mpcalc.dewpoint_from_relative_humidity(temp * units.degC, rh * units.percent).m)
-                else:
-                    Td_profile.append(np.nan)
+                else: Td_profile.append(np.nan)
                 
-                # Calculem vent si tenim WS i WD, sinó NaN.
                 if pd.notna(ws) and pd.notna(wd):
                     u, v = mpcalc.wind_components(ws * units('km/h'), wd * units.degrees)
                     u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m)
                 else:
                     u_profile.append(np.nan); v_profile.append(np.nan)
+        # --- FI DE LA LÒGICA ---
         
-        # Passem el perfil complet (amb possibles forats) a la funció de processament.
-        # Aquesta s'encarregarà de netejar-lo abans dels càlculs i el dibuix.
         processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
         return processed_data, valid_index, error
         
@@ -2995,8 +3000,6 @@ def carregar_dades_sondeig_japo(lat, lon, hourly_index):
         traceback.print_exc()
         return None, hourly_index, f"Error crític en carregar dades del sondeig del Japó: {e}"
     
-
-
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_uk(nivell, hourly_index):
     """
