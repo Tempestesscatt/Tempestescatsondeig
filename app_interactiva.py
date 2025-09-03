@@ -2465,7 +2465,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             st.components.v1.html(f'<iframe src="{radar_url}" width="100%" height="410" frameborder="0" style="border:0;"></iframe>', height=410)
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
-        
+
 
 def debug_convergence_calculation(map_data, llista_ciutats):
     """
@@ -6467,7 +6467,6 @@ def run_uk_app():
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_UK)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
 
-            # <<<--- BLOC DE CODI AFEGIT PER CALCULAR LA CONVERGÈNCIA --->>>
             params_calc = data_tuple[1]
             with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
                 map_data_conv, _ = carregar_dades_mapa_uk(nivell_sel, hourly_index_sel)
@@ -6476,9 +6475,9 @@ def run_uk_app():
                 conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
                 if pd.notna(conv_value):
                     params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
-            # <<<--- FI DEL BLOC AFEGIT --->>>
             
-            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+            # <<<--- CANVI CLAU: Activem el paràmetre només aquí --->>>
+            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, ajustar_limit_superior=True)
 
     elif selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_uk(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
