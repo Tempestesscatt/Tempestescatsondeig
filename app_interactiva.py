@@ -1817,29 +1817,40 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         'AMENACA_LLAMPS': "Potencial d'activitat elèctrica. S'estima a partir de la inestabilitat (LI) i la profunditat de la tempesta (EL_Hgt)."
     }
     
+    
+
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
         display_label = label
         color = "#FFFFFF"
-        val_str = "---" # Valor per defecte
+        val_str = "---"
 
         is_numeric = isinstance(value, (int, float, np.number))
 
         if pd.notna(value) and is_numeric:
             if 'CONV' in param_key:
-                # <<<--- LÒGICA ACTUALITZADA --->>>
+                # <<<--- LÒGICA DEFINITIVA AMB RANGS DE TEXT --->>>
                 if value < 0:
-                    # Si és DIVERGÈNCIA, només mostrem text
-                    color = "#5bc0de"  # Blau fluix
-                    val_str = "Divergència"
-                    display_label = "Moviment Vertical" # Etiqueta més genèrica
+                    # DIVERGÈNCIA: Mostrem text en lloc de números
+                    color = "#5bc0de"  # Blau fluix per a tota la divergència
+                    display_label = "Dinàmica Vertical" # Etiqueta més neutra
+                    
+                    # Definim els rangs per al text
+                    abs_val = abs(value)
+                    if abs_val >= 30:
+                        val_str = "Divergència Forta"
+                    elif abs_val >= 15:
+                        val_str = "Divergència Moderada"
+                    else:
+                        val_str = "Divergència Feble"
                 else:
-                    # Si és CONVERGÈNCIA, mostrem el número amb la seva escala de colors
+                    # CONVERGÈNCIA: Mostrem el número, colorejat per rangs
+                    display_label = "Convergència"
                     thresholds = [5, 15, 30, 40]
                     colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
                     color = colors[np.searchsorted(thresholds, value)]
                     val_str = f"{value:.{precision}f}"
-                # <<<--- FI DE LA LÒGICA ACTUALITZADA --->>>
-            
+                # <<<--- FI DE LA LÒGICA --->>>
+
             elif param_key == 'T_500hPa':
                 thresholds = [-8, -14, -18, -22]
                 colors = ["#2ca02c", "#ffc107", "#fd7e14", "#dc3545", "#b300ff"]
@@ -1851,8 +1862,8 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         
-        # Ocultem la unitat (10⁻⁵ s⁻¹) quan mostrem la paraula "Divergència"
-        unit_display = f"({unit})" if "Divergència" not in val_str else ""
+        # Ocultem la unitat si estem mostrant text en lloc d'un número
+        unit_display = f"({unit})" if val_str.replace('.', '', 1).isdigit() else ""
 
         st.markdown(f"""
         <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
