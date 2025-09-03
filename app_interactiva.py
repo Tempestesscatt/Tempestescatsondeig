@@ -6734,7 +6734,7 @@ def run_arxiu_tempestes_app():
         
         # --- EXEMPLE DE CAS 1 ---
         "Tempesta litoral central (SPC) (01/09/2025)": {
-            "": "",
+            "data": "1 de Set. del 2025",
             "image": "arxiu_spbcn.jpg", # Camí a la imatge
             "description": """
             L'entorn atmosfèric (El Sondeig):
