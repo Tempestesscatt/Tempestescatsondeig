@@ -67,10 +67,10 @@ WEBCAM_LINKS = {
     "Kansas City, MO": {'type': 'direct', 'url': "https://www.youtube.com/watch?v=Ezm7jMHsx5A"},
 
     # Regne Unit i Irlanda (Aquests permeten 'embed')
-    "Southampton": {'type': 'embed', 'url': "https://www.youtube.com/embed/yJyL012sH_E?autoplay=1&mute=1"},
-    "Fort William": {'type': 'embed', 'url': "https://www.youtube.com/embed/B_r9e8g3_IM?autoplay=1&mute=1"},
+    "Southampton": {'type': 'embed', 'url': "https://www.youtube.com/embed/QO-hO_kwwmY?autoplay=1&mute=1"},
+    "Fort William": {'type': 'embed', 'url': "https://www.youtube.com/live/8miQ3QXA26Q?autoplay=1&mute=1"},
     "Dublín (Paddocks)": {'type': 'embed', 'url': "https://www.youtube.com/embed/g1r59JJqY60?autoplay=1&mute=1"},
-    "Scarborough": {'type': 'embed', 'url': "https://www.youtube.com/embed/SApqPE63_V4?autoplay=1&mute=1"},
+    "Weymouth": {'type': 'embed', 'url': "https://www.youtube.com/embed/vw6m4ORi1KI?autoplay=1&mute=1"},
 
     # Canadà (Aquests permeten 'embed')
     "Revelstoke, BC": {'type': 'embed', 'url': "https://www.youtube.com/embed/fIMbMz2P7Bs?autoplay=1&mute=1"},
@@ -86,9 +86,9 @@ WEBCAM_LINKS = {
 
     # Alemanya – ciutats (permiten 'embed')
     "Berlín (Alexanderplatz)": {'type': 'direct', 'url': "https://www.youtube.com/watch?v=IRqboacDNFg"},
-    "Hamburg (St. Michaelis)": {'type': 'direct', 'url': "https://www.youtube.com/live/mfpdquRilCk?autoplay=1&mute=1"},  # Vista desde la iglesia St. Michaelis :contentReference[oaicite:1]{index=1}
-    "Múnich (Marienplatz)": {'type': 'embed', 'url': "https://www.youtube.com/embed/KxWuwC7R5kY?autoplay=1&mute=1"},  # Vista de Marienplatz :contentReference[oaicite:2]{index=2}
-    "Bensersiel (Costa Nord)": {'type': 'embed', 'url': "https://www.youtube.com/embed/aYtgGjMDagw?autoplay=1&mute=1"}, # Spotting en Frankfurt Airport :contentReference[oaicite:3]{index=3}
+    "Hamburg (St. Michaelis)": {'type': 'direct', 'url': "https://www.youtube.com/live/mfpdquRilCk?autoplay=1&mute=1"},  
+    "Múnich (Marienplatz)": {'type': 'embed', 'url': "https://www.youtube.com/embed/KxWuwC7R5kY?autoplay=1&mute=1"}, 
+    "Bensersiel (Costa Nord)": {'type': 'embed', 'url': "https://www.youtube.com/embed/aYtgGjMDagw?autoplay=1&mute=1"}, 
     "Harz (Hahnenklee)": {'type': 'direct', 'url': "https://www.youtube.com/live/hM6G0VuAWtg?autoplay=1&mute=1"}, 
 
 
@@ -134,7 +134,7 @@ CIUTATS_UK = {
     'Southampton': {'lat': 50.9097, 'lon': -1.4044, 'sea_dir': (135, 225)},
     'Fort William': {'lat': 56.8167, 'lon': -5.1121, 'sea_dir': (200, 250)},
     'Dublín (Paddocks)': {'lat': 53.3498, 'lon': -6.2603, 'sea_dir': (50, 150)},
-    'Scarborough': {'lat': 54.2831, 'lon': -0.3997, 'sea_dir': (45, 135)},
+    'Weymouth': {'lat': 50.6144, 'lon': -2.4551, 'sea_dir': (135, 225)},
 }
 MAP_EXTENT_UK = [-11, 2, 49, 59]
 PRESS_LEVELS_UK = sorted([
