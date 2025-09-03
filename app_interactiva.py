@@ -1010,33 +1010,25 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     sort_idx = np.argsort(p.m)[::-1]
     p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
 
-    # 2. Preparar les dades per al GRÀFIC (perfil complet)
-    #    MetPy i Matplotlib gestionaran els NaNs creant buits a les línies, que és el correcte.
+    # 2. Preparar les dades per al GRÀFIC (perfil complet amb possibles forats)
     p_plot, T_plot, Td_plot, u_plot, v_plot, h_plot = p, T, Td, u, v, heights
 
     # 3. Preparar dades per als CÀLCULS (només la part contínua i vàlida des de la superfície)
-    #    Trobem l'índex de l'últim nivell consecutiu que té totes les dades necessàries.
     last_valid_idx = -1
     for i in range(len(p)):
-        if any(np.isnan(var[i].m) for var in [p, T, Td, u, v]): # L'alçada pot tenir NaNs
+        if any(np.isnan(var[i].m) for var in [p, T, Td, u, v]):
             break
         last_valid_idx = i
     
-    if last_valid_idx < 2: # Necessitem almenys 3 nivells vàlids per als càlculs
-        # Encara que no puguem calcular, podem intentar dibuixar
+    if last_valid_idx < 2:
         try:
-            sfc_prof_plot = mpcalc.parcel_profile(p_plot, T_plot[0], T_plot[0]).to('degC') # Perfil "sec" de referència
+            sfc_prof_plot = mpcalc.parcel_profile(p_plot, T_plot[0], T_plot[0] if pd.notna(Td_plot[0].m) else T_plot[0]).to('degC')
             return ((p_plot, T_plot, Td_plot, u_plot, v_plot, h_plot, sfc_prof_plot), {}), "Dades insuficients per a càlculs."
         except:
              return None, "Dades insuficients per a càlculs i dibuix."
 
-    # Creem un subconjunt de dades net per a MetPy
-    p_calc = p[:last_valid_idx + 1]
-    T_calc = T[:last_valid_idx + 1]
-    Td_calc = Td[:last_valid_idx + 1]
-    u_calc = u[:last_valid_idx + 1]
-    v_calc = v[:last_valid_idx + 1]
-    heights_calc = h_plot[:last_valid_idx + 1]
+    p_calc, T_calc, Td_calc = p[:last_valid_idx + 1], T[:last_valid_idx + 1], Td[:last_valid_idx + 1]
+    u_calc, v_calc, heights_calc = u[:last_valid_idx + 1], v[:last_valid_idx + 1], h_plot[:last_valid_idx + 1]
     heights_agl_calc = heights_calc - heights_calc[0]
 
     # 4. Realitzar tots els càlculs amb les dades netes (_calc)
@@ -1045,16 +1037,13 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         sfc_prof_plot = None
         try:
             sfc_prof_calc = mpcalc.parcel_profile(p_calc, T_calc[0], Td_calc[0]).to('degC')
-            # Per al gràfic, calculem la trajectòria amb el perfil complet per veure fins on arriba
             sfc_prof_plot = mpcalc.parcel_profile(p_plot, T_plot[0], Td_plot[0]).to('degC')
         except Exception:
-            # Si falla, intentem crear un perfil "sec" per al dibuix, si és possible
             try:
                 sfc_prof_plot = mpcalc.parcel_profile(p_plot, T_plot[0], T_plot[0]).to('degC')
-            except:
-                return None, "Error crític en calcular la trajectòria de la parcel·la."
+            except: pass
 
-        # Iniciem els càlculs robustos amb les dades _calc
+        # Iniciem els càlculs robustos (tots amb les variables _calc)
         try: 
             rh = mpcalc.relative_humidity_from_dewpoint(T_calc, Td_calc) * 100
             params_calc['RH_CAPES'] = {
@@ -1064,8 +1053,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             }
         except: params_calc['RH_CAPES'] = {}
 
-        try: 
-            params_calc['PWAT'] = float(mpcalc.precipitable_water(p_calc, Td_calc).to('mm').m)
+        try: params_calc['PWAT'] = float(mpcalc.precipitable_water(p_calc, Td_calc).to('mm').m)
         except: params_calc['PWAT'] = np.nan
 
         try:
@@ -1080,20 +1068,14 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             else: params_calc['T_500hPa'] = np.nan
         except: params_calc['T_500hPa'] = np.nan
 
-        try:
-            sbcape, sbcin = mpcalc.cape_cin(p_calc, T_calc, Td_calc)
-            params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m)
-            params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if sbcape.m > 0 else 0.0
-        except: params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
-
-        try:
-            mlcape, mlcin = calcular_mlcape_robusta(p_calc, T_calc, Td_calc)
-            params_calc['MLCAPE'] = mlcape; params_calc['MLCIN'] = mlcin
-        except: params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
-
         if sfc_prof_calc is not None:
-            try: 
-                params_calc['LI'] = float(mpcalc.lifted_index(p_calc, T_calc, sfc_prof_calc).m)
+            try:
+                sbcape, sbcin = mpcalc.cape_cin(p_calc, T_calc, Td_calc, sfc_prof_calc)
+                params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m)
+                params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if sbcape.m > 0 else 0.0
+            except: params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
+
+            try: params_calc['LI'] = float(mpcalc.lifted_index(p_calc, T_calc, sfc_prof_calc).m)
             except: params_calc['LI'] = np.nan
             try:
                 lfc_p, _ = mpcalc.lfc(p_calc, T_calc, Td_calc)
@@ -1105,6 +1087,11 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                 params_calc['EL_p'] = float(el_p.m)
                 params_calc['EL_Hgt'] = float(np.interp(el_p.m, p_calc.m[::-1], heights_agl_calc.m[::-1]))
             except: params_calc.update({'EL_p': np.nan, 'EL_Hgt': np.nan})
+
+        try:
+            mlcape, mlcin = calcular_mlcape_robusta(p_calc, T_calc, Td_calc)
+            params_calc['MLCAPE'] = mlcape; params_calc['MLCIN'] = mlcin
+        except: params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
 
         try:
             mucape, mucin = mpcalc.most_unstable_cape_cin(p_calc, T_calc, Td_calc)
