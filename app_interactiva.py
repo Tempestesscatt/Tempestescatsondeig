@@ -5641,7 +5641,9 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
+    # Afegim Noruega a la llista per a la navegació
     altres_zones = {'catalunya': 'Catalunya', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya', 'italia': 'Itàlia', 'holanda': 'Holanda', 'japo': 'Japó', 'uk': 'Regne Unit', 'canada': 'Canadà', 'noruega': 'Noruega'}
+    del altres_zones[zona_activa]
     
     col_text, col_nav, col_back, col_logout = st.columns([0.5, 0.2, 0.15, 0.15])
     
@@ -5662,8 +5664,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
 
     with st.container(border=True):
         if zona_activa == 'catalunya':
-            # La lògica complexa de selecció per comarques de Catalunya es queda aquí
-            # però ja no hi ha la crida recursiva.
+            # La secció de Catalunya té una lògica de selecció diferent i es gestiona a run_catalunya_app
             pass
         
         elif zona_activa == 'valley_halley':
@@ -5758,7 +5759,23 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
                     return f"{h:02d}:00h (CAT: {cat_dt.day}/{cat_dt.month} {cat_dt.hour:02d}h)"
                 st.selectbox("Hora (Central Time):", options=list(range(24)), key="hora_selector_canada", format_func=format_hora_canada)
             with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_CANADA, key="level_canada_main", index=6, format_func=lambda x: f"{x} hPa")
-
+        
+        # <<<--- BLOC AFEGIT PER A NORUEGA ---
+        elif zona_activa == 'noruega':
+            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
+            with col_loc:
+                st.selectbox("Ciutat:", options=sorted(list(CIUTATS_NORUEGA.keys())), key="poble_selector_noruega")
+            with col_dia:
+                st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_NORUEGA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_noruega")
+            with col_hora:
+                def format_hora_noruega(h):
+                    target_date = datetime.strptime(st.session_state.dia_selector_noruega, '%d/%m/%Y').date()
+                    local_dt = TIMEZONE_NORUEGA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
+                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+                    return f"{h:02d}:00h (CAT: {cat_dt.day}/{cat_dt.month} {cat_dt.hour:02d}h)"
+                st.selectbox("Hora (CET/CEST):", options=list(range(24)), key="hora_selector_noruega", format_func=format_hora_noruega)
+            with col_nivell:
+                st.selectbox("Nivell:", PRESS_LEVELS_NORUEGA, key="level_noruega_main", index=5, format_func=lambda x: f"{x} hPa")
 
 
 def ui_pestanya_mapes_japo(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
