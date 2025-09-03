@@ -2083,62 +2083,7 @@ def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
 
 
 
-def mostrar_video_transicio():
-    """
-    Mostra un vídeo de transició a pantalla completa utilitzant una meta-etiqueta
-    de refresc amb un retard segur per garantir la visualització completa.
-    Aquesta versió és robusta i soluciona el problema del bucle.
-    """
-    # <<<--- AJUSTA AQUESTS VALORS ---
-    # Posa la durada real del teu vídeo en segons.
-    DURADA_REAL_VIDEO_SEGONS = 4 
-    # Afegim un marge de seguretat per donar temps a carregar i evitar talls.
-    REFRESH_DELAY_SEGONS = DURADA_REAL_VIDEO_SEGONS + 1 
 
-    video_file = 'zoom_earth.mp4'
-    if not os.path.exists(video_file):
-        st.error(f"Error Crític: No s'ha trobat el fitxer de vídeo '{video_file}'.")
-        st.session_state.show_transition_video = False
-        time.sleep(2)
-        st.rerun()
-        return
-
-    with open(video_file, "rb") as video:
-        video_bytes = video.read()
-    
-    video_b64 = base64.b64encode(video_bytes).decode()
-    
-    video_html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <!-- La clau: El navegador recarregarà la pàgina després del retard segur -->
-    <meta http-equiv="refresh" content="{REFRESH_DELAY_SEGONS}">
-    <style>
-        body {{ margin: 0; overflow: hidden; background-color: black; }}
-        #transition-video {{
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;
-        }}
-    </style>
-    </head>
-    <body>
-        <video autoplay muted playsinline id="transition-video">
-            <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
-        </video>
-    </body>
-    </html>
-    """
-    
-    # <<<--- CORRECCIÓ DE L'AVÍS D'OBSOLESCÈNCIA ---
-    # Canviem st.experimental_get_query_params per st.query_params
-    st.components.v1.html(video_html, height=st.query_params.get("height", 800))
-    
-    # Preparem l'estat per a la següent càrrega de pàgina.
-    # Això s'executa immediatament al servidor.
-    st.session_state.show_transition_video = False
-    
-    # Aturem l'script de Python aquí. El navegador gestionarà la recàrrega.
-    st.stop()
 
 
 def start_transition(zone_id):
@@ -2835,6 +2780,60 @@ def afegir_etiquetes_ciutats(ax, map_extent):
                         transform=ccrs.PlateCarree(), 
                         zorder=2,
                         path_effects=[path_effects.withStroke(linewidth=2.5, foreground='gray')])
+
+
+
+        
+
+def mostrar_video_transicio():
+    """
+    Mostra un vídeo de transició i, quan acaba, utilitza JavaScript per navegar
+    a una URL amb un paràmetre de consulta, trencant el bucle de manera segura.
+    """
+    video_file = 'zoom_earth.mp4'
+    if not os.path.exists(video_file):
+        st.error(f"Error Crític: No s'ha trobat el fitxer de vídeo '{video_file}'.")
+        st.session_state.show_transition_video = False
+        time.sleep(2)
+        st.rerun()
+        return
+
+    with open(video_file, "rb") as video:
+        video_bytes = video.read()
+    
+    video_b64 = base64.b64encode(video_bytes).decode()
+    
+    video_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <style>
+        body {{ margin: 0; overflow: hidden; background-color: black; }}
+        #transition-video {{
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;
+        }}
+    </style>
+    </head>
+    <body>
+        <video autoplay muted playsinline id="transition-video">
+            <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
+        </video>
+
+        <!-- AQUEST SCRIPT ÉS LA SOLUCIÓ DEFINITIVA -->
+        <script>
+            const video = document.getElementById('transition-video');
+            video.addEventListener('ended', function() {{
+                // En lloc de recarregar, naveguem a la mateixa pàgina
+                // afegint un paràmetre a la URL per indicar que la transició ha acabat.
+                window.location.href = window.location.pathname + '?transition=done';
+            }});
+        </script>
+    </body>
+    </html>
+    """
+    
+    st.components.v1.html(video_html, height=st.query_params.get("height", 800))
+    st.stop()
                 
 
 
@@ -6626,14 +6625,19 @@ def run_japo_app():
 def main():
     inject_custom_css()
     hide_streamlit_style()
-    
-    # <<<--- NOU BLOC D'INTERCEPCIÓ DE LA TRANSICIÓ ---
-    # Aquest és el primer que es comprova. Si s'ha d'activar el vídeo, es fa
-    # i s'atura l'execució de la resta de l'app per a aquest cicle.
+
+    # <<<--- NOU BLOC PER GESTIONAR EL FINAL DE LA TRANSICIÓ ---
+    # Aquesta comprovació es fa al principi de tot.
+    # Si la URL conté '?transition=done', significa que el vídeo ha acabat.
+    if "transition" in st.query_params and st.query_params["transition"] == "done":
+        # Desactivem la bandera del vídeo i netegem la URL per si l'usuari recarrega manualment.
+        st.session_state['show_transition_video'] = False
+        st.query_params.clear()
+
+    # Aquesta lògica ara funciona perfectament. Només s'activa la primera vegada.
     if st.session_state.get('show_transition_video', False):
         mostrar_video_transicio()
-        return # Aturem aquí fins que el vídeo acabi i es faci el rerun.
-    # <<<--- FI DEL NOU BLOC ---
+        return
 
     if 'logged_in' not in st.session_state: st.session_state.logged_in = False
     
@@ -6646,7 +6650,7 @@ def main():
         ui_zone_selection()
         return
 
-    # La lògica principal que ja tenies es manté igual
+    # La resta de la lògica de l'aplicació continua com sempre
     if st.session_state.zone_selected == 'catalunya': run_catalunya_app()
     elif st.session_state.zone_selected == 'valley_halley': run_valley_halley_app()
     elif st.session_state.zone_selected == 'alemanya': run_alemanya_app()
