@@ -2085,10 +2085,16 @@ def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
 
 def mostrar_video_transicio():
     """
-    Mostra un vídeo de transició a pantalla completa i, quan acaba,
-    utilitza JavaScript per recarregar la pàgina i continuar a l'app.
-    Aquest mètode és el més robust.
+    Mostra un vídeo de transició a pantalla completa utilitzant una meta-etiqueta
+    de refresc amb un retard segur per garantir la visualització completa.
+    Aquesta versió és robusta i soluciona el problema del bucle.
     """
+    # <<<--- AJUSTA AQUESTS VALORS ---
+    # Posa la durada real del teu vídeo en segons.
+    DURADA_REAL_VIDEO_SEGONS = 4 
+    # Afegim un marge de seguretat per donar temps a carregar i evitar talls.
+    REFRESH_DELAY_SEGONS = DURADA_REAL_VIDEO_SEGONS + 1 
+
     video_file = 'zoom_earth.mp4'
     if not os.path.exists(video_file):
         st.error(f"Error Crític: No s'ha trobat el fitxer de vídeo '{video_file}'.")
@@ -2102,11 +2108,12 @@ def mostrar_video_transicio():
     
     video_b64 = base64.b64encode(video_bytes).decode()
     
-    # Aquest HTML ara inclou un petit script de JavaScript
     video_html = f"""
     <!DOCTYPE html>
     <html>
     <head>
+    <!-- La clau: El navegador recarregarà la pàgina després del retard segur -->
+    <meta http-equiv="refresh" content="{REFRESH_DELAY_SEGONS}">
     <style>
         body {{ margin: 0; overflow: hidden; background-color: black; }}
         #transition-video {{
@@ -2115,32 +2122,22 @@ def mostrar_video_transicio():
     </style>
     </head>
     <body>
-        <video autoplay muted id="transition-video">
+        <video autoplay muted playsinline id="transition-video">
             <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
         </video>
-
-        <!-- AQUEST SCRIPT ÉS LA CLAU DE LA SOLUCIÓ -->
-        <script>
-            // 1. Trobem l'element de vídeo
-            const video = document.getElementById('transition-video');
-
-            // 2. Afegim un 'event listener' que s'activarà quan el vídeo acabi
-            video.addEventListener('ended', function() {{
-                // 3. Quan el vídeo acaba, recarreguem la pàgina
-                window.location.reload();
-            }});
-        </script>
     </body>
     </html>
     """
     
-    # Utilitzem st.components.v1.html per renderitzar la nostra pàgina HTML completa
-    st.components.v1.html(video_html, height=st.experimental_get_query_params().get("height", 800))
+    # <<<--- CORRECCIÓ DE L'AVÍS D'OBSOLESCÈNCIA ---
+    # Canviem st.experimental_get_query_params per st.query_params
+    st.components.v1.html(video_html, height=st.query_params.get("height", 800))
     
-    # Preparem l'estat per a la següent càrrega de pàgina
+    # Preparem l'estat per a la següent càrrega de pàgina.
+    # Això s'executa immediatament al servidor.
     st.session_state.show_transition_video = False
     
-    # Aturem l'script de Python aquí. El JavaScript s'encarregarà de la recàrrega.
+    # Aturem l'script de Python aquí. El navegador gestionarà la recàrrega.
     st.stop()
 
 
