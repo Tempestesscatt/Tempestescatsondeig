@@ -101,7 +101,7 @@ WEBCAM_LINKS = {
     "Florència": {'type': 'embed', 'url': "https://www.youtube.com/embed/2iX-14j2_Yc?autoplay=1&mute=1"},
     "Massa Lubrense": {'type': 'embed', 'url': "https://www.youtube.com/embed/8bH-2248g-I?autoplay=1&mute=1"},
     "Capo d'Orlando": {'type': 'embed', 'url': "https://www.youtube.com/embed/Tq_00pl7Y3s?autoplay=1&mute=1"},
-    "Ajaccio (Còrsega)": {'type': 'embed', 'url': "https://www.youtube.com/embed/Vd-4Vb0b-oA?autoplay=1&mute=1"},
+    "Ajaccio (Còrsega)": {'type': 'embed', 'url': "https://www.vision-environnement.com/livecams/webcam.php?webcam=ajaccio-panorama"},
 }
 
 # --- Constants per al Canadà Continental ---
