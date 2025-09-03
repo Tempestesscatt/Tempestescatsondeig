@@ -109,7 +109,33 @@ WEBCAM_LINKS = {
     "Volendam": {'type': 'embed', 'url': "https://www.youtube.com/embed/9UpAVPmtPtA?autoplay=1&mute=1"},
     "Zandvoort": {'type': 'embed', 'url': "https://www.youtube.com/embed/KiPmDwgTAu0?autoplay=1&mute=1"},
 
+
+      # Noruega (Aquests permeten 'embed')
+    "Oslo": {'type': 'embed', 'url': "https://www.youtube.com/embed/f9K7d-31Ed4?autoplay=1&mute=1"},
+    "Bergen": {'type': 'embed', 'url': "https://www.youtube.com/embed/CSrq9g8Q2aY?autoplay=1&mute=1"},
+    "Tromsø": {'type': 'embed', 'url': "https://www.youtube.com/embed/D3V9cAc52aM?autoplay=1&mute=1"},
+
 }
+
+
+
+
+API_URL_NORUEGA = "https://api.open-meteo.com/v1/forecast"
+TIMEZONE_NORUEGA = pytz.timezone('Europe/Oslo')
+CIUTATS_NORUEGA = {
+    'Oslo': {'lat': 59.9139, 'lon': 10.7522, 'sea_dir': (120, 210)},
+    'Bergen': {'lat': 60.3913, 'lon': 5.3221, 'sea_dir': (200, 340)},
+    'Stavanger': {'lat': 58.9700, 'lon': 5.7331, 'sea_dir': (180, 350)},
+    'Tromsø': {'lat': 69.6492, 'lon': 18.9553, 'sea_dir': (0, 360)},
+}
+MAP_EXTENT_NORUEGA = [4, 32, 57, 71] # Extensió que cobreix des del sud fins al nord
+# Els nivells de pressió del model UKMO Seamless són molt detallats
+PRESS_LEVELS_NORUEGA = sorted([
+    1000, 975, 950, 925, 900, 850, 800, 750, 700, 650, 600, 550, 500, 450, 400, 
+    375, 350, 325, 300, 275, 250, 225, 200, 175, 150, 125, 100
+], reverse=True)
+
+
 
 # --- Constants per al Canadà Continental ---
 API_URL_CANADA = "https://api.open-meteo.com/v1/forecast"
@@ -4144,6 +4170,7 @@ def ui_pestanya_webcams(poble_sel, zona_activa):
         elif zona_activa == 'japo': CIUTATS_DICT = CIUTATS_JAPO
         elif zona_activa == 'uk': CIUTATS_DICT = CIUTATS_UK
         elif zona_activa == 'canada': CIUTATS_DICT = CIUTATS_CANADA
+        elif zona_activa == 'noruega': CIUTATS_DICT = CIUTATS_NORUEGA
         else: CIUTATS_DICT = {}
 
         coords = CIUTATS_DICT.get(poble_sel)
@@ -4465,6 +4492,180 @@ def carregar_dades_mapa_alemanya(nivell, hourly_index):
     except Exception as e: 
         return None, f"Error en carregar dades del mapa ICON-D2: {e}"
     
+
+
+
+
+@st.cache_data(ttl=3600, max_entries=20, show_spinner=False)
+def carregar_dades_sondeig_noruega(lat, lon, hourly_index):
+    try:
+        h_base = ["temperature_2m", "relative_humidity_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
+        press_vars = ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"]
+        h_press = [f"{v}_{p}hPa" for v in press_vars for p in PRESS_LEVELS_NORUEGA]
+        params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "ukmo_seamless", "forecast_days": 2}
+        
+        response = openmeteo.weather_api(API_URL_NORUEGA, params=params)[0]
+        hourly = response.Hourly()
+        valid_index = trobar_hora_valida_mes_propera(hourly, hourly_index, len(h_base))
+        if valid_index is None: return None, hourly_index, "No s'han trobat dades vàlides."
+
+        hourly_vars = {var: hourly.Variables(i).ValuesAsNumpy() for i, var in enumerate(h_base + h_press)}
+        sfc_data = {v: hourly_vars[v][valid_index] for v in h_base}
+        sfc_dew_point = mpcalc.dewpoint_from_relative_humidity(sfc_data["temperature_2m"] * units.degC, sfc_data["relative_humidity_2m"] * units.percent).m
+        sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
+        
+        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_dew_point], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
+
+        for p_val in PRESS_LEVELS_NORUEGA:
+            if p_val < p_profile[-1]:
+                p_profile.append(p_val)
+                temp = hourly_vars.get(f'temperature_{p_val}hPa', [np.nan])[valid_index]
+                rh = hourly_vars.get(f'relative_humidity_{p_val}hPa', [np.nan])[valid_index]
+                ws = hourly_vars.get(f'wind_speed_{p_val}hPa', [np.nan])[valid_index]
+                wd = hourly_vars.get(f'wind_direction_{p_val}hPa', [np.nan])[valid_index]
+                h = hourly_vars.get(f'geopotential_height_{p_val}hPa', [np.nan])[valid_index]
+                
+                T_profile.append(temp); h_profile.append(h)
+                Td_profile.append(mpcalc.dewpoint_from_relative_humidity(temp * units.degC, rh * units.percent).m if pd.notna(temp) and pd.notna(rh) else np.nan)
+                if pd.notna(ws) and pd.notna(wd):
+                    u, v = mpcalc.wind_components(ws * units('km/h'), wd * units.degrees)
+                    u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m)
+                else:
+                    u_profile.append(np.nan); v_profile.append(np.nan)
+
+        return processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
+    except Exception as e:
+        return None, hourly_index, f"Error en carregar dades del sondeig de Noruega: {e}"
+
+@st.cache_data(ttl=3600)
+def carregar_dades_mapa_noruega(nivell, hourly_index):
+    try:
+        variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+        lats, lons = np.linspace(MAP_EXTENT_NORUEGA[2], MAP_EXTENT_NORUEGA[3], 12), np.linspace(MAP_EXTENT_NORUEGA[0], MAP_EXTENT_NORUEGA[1], 12)
+        lon_grid, lat_grid = np.meshgrid(lons, lats)
+        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "ukmo_seamless", "forecast_days": 2}
+        
+        responses = openmeteo.weather_api(API_URL_NORUEGA, params=params)
+        output = {var: [] for var in ["lats", "lons"] + variables}
+        for r in responses:
+            try:
+                vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
+                if not any(np.isnan(v) for v in vals):
+                    output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
+                    for i, var in enumerate(variables): output[var].append(vals[i])
+            except IndexError: continue
+        
+        if not output["lats"]: return None, "No s'han rebut dades."
+        temp_data = np.array(output.pop(f'temperature_{nivell}hPa')) * units.degC
+        rh_data = np.array(output.pop(f'relative_humidity_{nivell}hPa')) * units.percent
+        output['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
+        output['speed_data'] = output.pop(f'wind_speed_{nivell}hPa')
+        output['dir_data'] = output.pop(f'wind_direction_{nivell}hPa')
+        return output, None
+    except Exception as e:
+        return None, f"Error en carregar dades del mapa de Noruega: {e}"
+
+def crear_mapa_forecast_combinat_noruega(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
+    fig, ax = crear_mapa_base(MAP_EXTENT_NORUEGA, projection=ccrs.LambertConformal(central_longitude=10, central_latitude=64))
+    if len(lons) < 4: return fig
+
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_NORUEGA[0], MAP_EXTENT_NORUEGA[1], 200), np.linspace(MAP_EXTENT_NORUEGA[2], MAP_EXTENT_NORUEGA[3], 200))
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic')
+    grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
+    u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    
+    colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
+    speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]
+    custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=4.5, arrowsize=0.5, zorder=4, transform=ccrs.PlateCarree())
+    
+    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat); convergence_scaled = -(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s').magnitude * 1e5
+    convergence_in_humid_areas = np.where(grid_dewpoint >= 5, convergence_scaled, 0) # Llindar de punt de rosada baix per clima fred
+    
+    fill_levels = [5, 10, 15, 25]; fill_colors = ['#ffc107', '#ff9800', '#f44336']
+    line_levels = [5, 10, 15]; line_colors = ['#e65100', '#bf360c', '#b71c1c']
+    
+    ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=fill_colors, alpha=0.6, zorder=5, transform=ccrs.PlateCarree())
+    contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors=line_colors, linestyles='--', linewidths=1.2, zorder=6, transform=ccrs.PlateCarree())
+    ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
+
+    for city, coords in CIUTATS_NORUEGA.items():
+        ax.plot(coords['lon'], coords['lat'], 'o', color='red', markersize=3, markeredgecolor='black', transform=ccrs.PlateCarree(), zorder=10)
+        ax.text(coords['lon'] + 0.2, coords['lat'] + 0.2, city, fontsize=8, transform=ccrs.PlateCarree(), zorder=10, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+
+    ax.set_title(f"Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    return fig
+
+def ui_pestanya_mapes_noruega(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
+    st.markdown("#### Mapes de Pronòstic (Model UKMO Seamless)")
+    with st.spinner("Carregant mapa UKMO... El primer cop pot trigar una mica."):
+        map_data, error = carregar_dades_mapa_noruega(nivell_sel, hourly_index_sel)
+    
+        if error or not map_data:
+            st.error(f"Error en carregar el mapa: {error if error else 'No s`han rebut dades.'}")
+        else:
+            timestamp_map_title = timestamp_str.replace(f"{poble_sel} | ", "")
+            fig = crear_mapa_forecast_combinat_noruega(
+                map_data['lons'], map_data['lats'], map_data['speed_data'],
+                map_data['dir_data'], map_data['dewpoint_data'], nivell_sel,
+                timestamp_map_title
+            )
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
+
+def run_noruega_app():
+    if 'poble_selector_noruega' not in st.session_state: st.session_state.poble_selector_noruega = "Oslo"
+    if 'dia_selector_noruega' not in st.session_state: st.session_state.dia_selector_noruega = datetime.now(TIMEZONE_NORUEGA).strftime('%d/%m/%Y')
+    if 'hora_selector_noruega' not in st.session_state: st.session_state.hora_selector_noruega = datetime.now(TIMEZONE_NORUEGA).hour
+    if 'level_noruega_main' not in st.session_state: st.session_state.level_noruega_main = 850
+    if 'active_tab_noruega' not in st.session_state: st.session_state.active_tab_noruega = "Anàlisi Vertical"
+    ui_capcalera_selectors(None, zona_activa="noruega")
+    
+    poble_sel, dia_sel_str, hora_sel, nivell_sel = st.session_state.poble_selector_noruega, st.session_state.dia_selector_noruega, st.session_state.hora_selector_noruega, st.session_state.level_noruega_main
+    hora_sel_str = f"{hora_sel:02d}:00h"
+    lat_sel, lon_sel = CIUTATS_NORUEGA[poble_sel]['lat'], CIUTATS_NORUEGA[poble_sel]['lon']
+    
+    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
+    local_dt = TIMEZONE_NORUEGA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_sel))
+    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_NORUEGA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+
+    menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
+    menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
+    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_noruega))
+    st.session_state.active_tab_noruega = selected_tab
+
+    if selected_tab == "Anàlisi Vertical":
+        with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
+            data_tuple, final_index, error_msg = carregar_dades_sondeig_noruega(lat_sel, lon_sel, hourly_index_sel)
+        
+        if data_tuple is None or error_msg:
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        else:
+            if final_index != hourly_index_sel:
+                adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+                adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_NORUEGA)
+                st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+            
+            params_calc = data_tuple[1]
+            with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
+                map_data_conv, _ = carregar_dades_mapa_noruega(nivell_sel, hourly_index_sel)
+            if map_data_conv:
+                conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+                if pd.notna(conv_value):
+                    params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
+            
+            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+
+    elif selected_tab == "Anàlisi de Mapes":
+        ui_pestanya_mapes_noruega(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
+    elif selected_tab == "Webcams en Directe":
+        ui_pestanya_webcams(poble_sel, zona_activa="noruega")
 
 
 
@@ -5420,8 +5621,7 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
-    altres_zones = {'catalunya': 'Catalunya', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya', 'italia': 'Itàlia', 'holanda': 'Holanda', 'japo': 'Japó', 'uk': 'Regne Unit', 'canada': 'Canadà'}
-    del altres_zones[zona_activa]
+    altres_zones = {'catalunya': 'Catalunya', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya', 'italia': 'Itàlia', 'holanda': 'Holanda', 'japo': 'Japó', 'uk': 'Regne Unit', 'canada': 'Canadà', 'noruega': 'Noruega'}
     
     col_text, col_nav, col_back, col_logout = st.columns([0.5, 0.2, 0.15, 0.15])
     
@@ -6174,7 +6374,6 @@ def ui_zone_selection():
     st.markdown("---")
     st.info("🟢(tenen webcams)-🔥(Especialment recomanades) ", icon="🎞")
 
-    # Aquesta petita funció de callback és la que s'activa en clicar un botó
     def start_transition(zone_id):
         """Callback per iniciar la transició de vídeo."""
         st.session_state['zone_selected'] = zone_id
@@ -6183,42 +6382,48 @@ def ui_zone_selection():
     paths = {
         'cat': "catalunya_preview.png", 'usa': "usa_preview.png", 'ale': "alemanya_preview.png",
         'ita': "italia_preview.png", 'hol': "holanda_preview.png", 'japo': "japo_preview.png",
-        'uk': "uk_preview.png", 'can': "canada_preview.png"
+        'uk': "uk_preview.png", 'can': "canada_preview.png",
+        'nor': "noruega_preview.png" # <<<--- AFEGEIX EL CAMÍ A LA IMATGE DE NORUEGA
     }
     
     with st.spinner('Carregant entorns geoespacials...'): time.sleep(1)
 
+    # Definim les tres files de columnes
     row1_col1, row1_col2, row1_col3, row1_col4 = st.columns(4)
     row2_col1, row2_col2, row2_col3, row2_col4 = st.columns(4)
+    # <<<--- NOVA FILA PER A NORUEGA (I FUTURES ZONES) ---
+    # Utilitzem st.columns(4) per mantenir la proporció, encara que només en fem servir una.
+    row3_col1, _, _, _ = st.columns(4)
 
-    # La funció auxiliar ara utilitza 'on_click' per cridar a 'start_transition'
+
     def create_zone_button(col, path, title, key, zone_id, type="secondary"):
         with col, st.container(border=True):
-            
             st.markdown(generar_html_imatge_estatica(path, height="160px"), unsafe_allow_html=True)
             
             display_title = title
             if zone_id == 'italia':
                 display_title += " 🔥"
-            elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya', 'holanda', 'catalunya']:
+            elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya', 'holanda', 'catalunya', 'noruega']: # <-- Afegit Noruega
                 display_title += " 🟢"
             
             st.subheader(display_title)
             
-            # El canvi clau està aquí: en lloc de la lògica dins d'un 'if',
-            # assignem la nostra funció 'start_transition' a l'esdeveniment 'on_click'.
             st.button(f"Analitzar {title}", key=key, use_container_width=True, type=type,
                       on_click=start_transition, args=(zone_id,))
 
-    # Creació de tots els botons de zona
+    # Dibuixem els botons a les seves respectives files i columnes
     create_zone_button(row1_col1, paths['cat'], "Catalunya", "btn_cat", "catalunya", "primary")
     create_zone_button(row1_col2, paths['usa'], "Tornado Alley", "btn_usa", "valley_halley")
     create_zone_button(row1_col3, paths['ale'], "Alemanya", "btn_ale", "alemanya")
     create_zone_button(row1_col4, paths['ita'], "Itàlia", "btn_ita", "italia")
+    
     create_zone_button(row2_col1, paths['hol'], "Holanda", "btn_hol", "holanda")
     create_zone_button(row2_col2, paths['japo'], "Japó", "btn_japo", "japo")
     create_zone_button(row2_col3, paths['uk'], "Regne Unit", "btn_uk", "uk")
     create_zone_button(row2_col4, paths['can'], "Canadà", "btn_can", "canada")
+
+    # <<<--- AFEGIM EL BOTÓ DE NORUEGA A LA NOVA FILA ---
+    create_zone_button(row3_col1, paths['nor'], "Noruega", "btn_nor", "noruega")
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_italia(nivell, hourly_index):
@@ -6637,6 +6842,7 @@ def main():
     elif st.session_state.zone_selected == 'japo': run_japo_app()
     elif st.session_state.zone_selected == 'uk': run_uk_app()
     elif st.session_state.zone_selected == 'canada': run_canada_app()
+    elif st.session_state.zone_selected == 'noruega': run_noruega_app()
 
 
 
