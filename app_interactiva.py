@@ -56,35 +56,33 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
 WEBCAM_LINKS = {
-    # Catalunya
-    "Barcelona": "https://www.youtube.com/embed/2i_o-a_I73s?autoplay=1&mute=1",
-    "Tarragona": "https://www.youtube.com/embed/YpCY_oE852g?autoplay=1&mute=1",
+    # Catalunya (Aquests permeten 'embed')
+    "Barcelona": {'type': 'embed', 'url': "https://www.youtube.com/embed/2i_o-a_I73s?autoplay=1&mute=1"},
+    "Tarragona": {'type': 'embed', 'url': "https://www.youtube.com/embed/YpCY_oE852g?autoplay=1&mute=1"},
 
-     # Tornado Alley (EUA) - NOUS ENLLAÇOS VERIFICATS
-    "Dallas, TX": "https://www.youtube.com/embed/AbA8A5k5_v8?autoplay=1&mute=1",      # Skyline Cam
-    "Wichita, KS": "https://www.youtube.com/embed/L1JoA_84o4U?autoplay=1&mute=1",     # Wichita Airport Cam
-    "Houston, TX": "https://www.youtube.com/embed/n7N2NewE7Yc?autoplay=1&mute=1",      # Houston Skyline
-    "Kansas City, MO": "https://www.youtube.com/embed/5KCS_t4i7P4?autoplay=1&mute=1", # Kansas City Downtown Cam
+    # Tornado Alley (EUA) - Aquests NO permeten 'embed', els marquem com a 'direct'
+    "Dallas, TX": {'type': 'direct', 'url': "https://www.youtube.com/watch?v=for_g-h2H6s"},
+    "Wichita, KS": {'type': 'direct', 'url': "https://www.youtube.com/watch?v=Dh_hS-j62a0"},
+    "Houston, TX": {'type': 'direct', 'url': "https://www.youtube.com/watch?v=Bv2tY1e6E3g"},
+    "Kansas City, MO": {'type': 'direct', 'url': "https://www.youtube.com/watch?v=zEa-6yV38so"},
 
-    # Regne Unit i Irlanda
-    "Southampton": "https://www.youtube.com/embed/yJyL012sH_E?autoplay=1&mute=1",
-    "Fort William": "https://www.youtube.com/embed/B_r9e8g3_IM?autoplay=1&mute=1",
-    "Dublín (Paddocks)": "https://www.youtube.com/embed/SbAgJi-1i8s?autoplay=1&mute=1",
-    "Scarborough": "https://www.youtube.com/embed/SApqPE63_V4?autoplay=1&mute=1",
+    # Regne Unit i Irlanda (Aquests permeten 'embed')
+    "Southampton": {'type': 'embed', 'url': "https://www.youtube.com/embed/yJyL012sH_E?autoplay=1&mute=1"},
+    "Fort William": {'type': 'embed', 'url': "https://www.youtube.com/embed/B_r9e8g3_IM?autoplay=1&mute=1"},
+    "Dublín (Paddocks)": {'type': 'embed', 'url': "https://www.youtube.com/embed/SbAgJi-1i8s?autoplay=1&mute=1"},
+    "Scarborough": {'type': 'embed', 'url': "https://www.youtube.com/embed/SApqPE63_V4?autoplay=1&mute=1"},
 
-    # Canadà
-    "Revelstoke, BC": "https://www.youtube.com/embed/fIMbMz2P7Bs?autoplay=1&mute=1",
-    "Banff, AB": "https://www.youtube.com/embed/_0wPODlF9wU?autoplay=1&mute=1",
-    "Calgary, AB": "https://www.youtube.com/embed/MwcqP3ta6RI?autoplay=1&mute=1",
-    "Vancouver, BC": "https://www.youtube.com/embed/-2vwOXTxbkw?autoplay=1&mute=1",
+    # Canadà (Aquests permeten 'embed')
+    "Revelstoke, BC": {'type': 'embed', 'url': "https://www.youtube.com/embed/fIMbMz2P7Bs?autoplay=1&mute=1"},
+    "Banff, AB": {'type': 'embed', 'url': "https://www.youtube.com/embed/_0wPODlF9wU?autoplay=1&mute=1"},
+    "Calgary, AB": {'type': 'embed', 'url': "https://www.youtube.com/embed/MwcqP3ta6RI?autoplay=1&mute=1"},
+    "Vancouver, BC": {'type': 'embed', 'url': "https://www.youtube.com/embed/-2vwOXTxbkw?autoplay=1&mute=1"},
     
-    # Japó
-    "Tòquio": "https://www.youtube.com/embed/_k-5U7IeK8g?autoplay=1&mute=1",
-    "Oshino Hakkai (Fuji)": "https://www.youtube.com/embed/sm3xXTfDtGE?autoplay=1&mute=1",
-    "Hasaki Beach": "https://www.youtube.com/embed/Ntz4h44KTDc?autoplay=1&mute=1",
-    "Hakodate": "https://www.youtube.com/embed/sE1bH-zc9Pg?autoplay=1&mute=1",
-    
-    # Pots afegir més ciutats aquí seguint sempre el format /embed/
+    # Japó (Aquests permeten 'embed')
+    "Tòquio": {'type': 'embed', 'url': "https://www.youtube.com/embed/_k-5U7IeK8g?autoplay=1&mute=1"},
+    "Oshino Hakkai (Fuji)": {'type': 'embed', 'url': "https://www.youtube.com/embed/sm3xXTfDtGE?autoplay=1&mute=1"},
+    "Hasaki Beach": {'type': 'embed', 'url': "https://www.youtube.com/embed/Ntz4h44KTDc?autoplay=1&mute=1"},
+    "Hakodate": {'type': 'embed', 'url': "https://www.youtube.com/embed/sE1bH-zc9Pg?autoplay=1&mute=1"},
 }
 
 # --- Constants per al Canadà Continental ---
@@ -3951,28 +3949,53 @@ def crear_mapa_convergencia_cat(lons, lats, speed_data, dir_data, dewpoint_data,
 
 def ui_pestanya_webcams(poble_sel, zona_activa):
     """
-    Versió Definitiva: Mostra una webcam específica del diccionari WEBCAM_LINKS si existeix.
-    Si no, mostra un mapa interactiu de webcams de Windy.com centrat a la
-    localitat seleccionada com a opció per defecte.
+    Versió Definitiva: Mostra un vídeo incrustat si el tipus és 'embed', un botó
+    per a enllaços de tipus 'direct', o el mapa de Windy si no hi ha cap enllaç.
     """
     st.markdown(f"#### Webcams en Directe per a {poble_sel}")
 
-    # 1. Intentem trobar una webcam específica al nostre diccionari
-    webcam_url = WEBCAM_LINKS.get(poble_sel)
+    webcam_data = WEBCAM_LINKS.get(poble_sel)
     
-    if webcam_url:
-        # Si la trobem, la mostrem
-        st.info("La qualitat i disponibilitat del vídeo depenen de la font externa (ex: YouTube).")
-        st.components.v1.html(
-            f'<iframe width="100%" height="600" src="{webcam_url}" frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>',
-            height=620
-        )
-    else:
-        # 2. Si no hi ha cap enllaç específic, mostrem el mapa de Windy com a fallback
-        st.warning(f"No s'ha configurat cap webcam específica per a **{poble_sel}**.")
-        st.info("Mostrant el mapa de webcams properes de Windy.com. Pots moure't pel mapa, fer zoom i clicar a les icones de càmera 📷 per veure les vistes en directe.")
+    if webcam_data:
+        link_type = webcam_data.get('type')
+        url = webcam_data.get('url')
 
-        # Determinem de quin diccionari hem de treure les coordenades
+        if link_type == 'embed':
+            st.info("La qualitat i disponibilitat del vídeo depenen de la font externa.")
+            st.components.v1.html(
+                f'<iframe width="100%" height="600" src="{url}" frameborder="0" allow="autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>',
+                height=620
+            )
+
+        elif link_type == 'direct':
+            st.warning("El propietari d'aquesta webcam no permet la inserció directa a altres pàgines.")
+            st.info("Fes clic al botó de sota per obrir el vídeo en directe en una nova pestanya de YouTube.")
+            
+            # Creem un botó gran i visible amb HTML
+            button_html = f"""
+            <a href="{url}" target="_blank" rel="noopener noreferrer" style="
+                display: inline-block;
+                padding: 0.75rem 1.5rem;
+                font-size: 1.1rem;
+                font-weight: bold;
+                color: white;
+                background-color: #FF4B4B; /* Color vermell de YouTube */
+                text-decoration: none;
+                border-radius: 8px;
+                text-align: center;
+                margin-top: 15px;
+                margin-bottom: 15px;
+            ">
+                🎥 Obrir la Webcam a YouTube
+            </a>
+            """
+            st.markdown(button_html, unsafe_allow_html=True)
+
+    else:
+        # Si no hi ha cap enllaç al diccionari, mostrem el mapa de Windy com a alternativa
+        st.warning(f"No s'ha configurat cap webcam específica per a **{poble_sel}**.")
+        st.info("Mostrant el mapa de webcams properes de Windy.com. Pots moure't pel mapa i clicar a les icones de càmera 📷.")
+
         if zona_activa == 'catalunya': CIUTATS_DICT = CIUTATS_CATALUNYA
         elif zona_activa == 'valley_halley': CIUTATS_DICT = USA_CITIES
         elif zona_activa == 'alemanya': CIUTATS_DICT = CIUTATS_ALEMANYA
@@ -3989,14 +4012,9 @@ def ui_pestanya_webcams(poble_sel, zona_activa):
             return
 
         lat, lon = coords['lat'], coords['lon']
-        
-        # Construïm l'URL final per a l'iframe de Windy
         windy_url = f"https://embed.windy.com/webcams/map/{lat}/{lon}?overlay=radar"
         
-        st.components.v1.html(
-            f'<iframe width="100%" height="500" src="{windy_url}" frameborder="0"></iframe>',
-            height=520
-        )
+        st.components.v1.html(f'<iframe width="100%" height="500" src="{windy_url}" frameborder="0"></iframe>', height=520)
 
 @st.cache_data(show_spinner="Carregant mapa de selecció...")
 def carregar_dades_geografiques():
