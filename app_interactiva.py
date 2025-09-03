@@ -89,7 +89,7 @@ WEBCAM_LINKS = {
     "Hamburg (St. Michaelis)": {'type': 'direct', 'url': "https://www.youtube.com/live/mfpdquRilCk?autoplay=1&mute=1"},  # Vista desde la iglesia St. Michaelis :contentReference[oaicite:1]{index=1}
     "Múnich (Marienplatz)": {'type': 'embed', 'url': "https://www.youtube.com/embed/dOnesWNFwdw?autoplay=1&mute=1"},  # Vista de Marienplatz :contentReference[oaicite:2]{index=2}
     "Bensersiel (Costa Nord)": {'type': 'embed', 'url': "https://www.youtube.com/embed/aYtgGjMDagw?autoplay=1&mute=1"}, # Spotting en Frankfurt Airport :contentReference[oaicite:3]{index=3}
-    "Harz (Hahnenklee)": {'type': 'embed', 'url': "https://www.youtube.com/live/hM6G0VuAWtg?autoplay=1&mute=1"}, 
+    "Harz (Hahnenklee)": {'type': 'direct', 'url': "https://www.youtube.com/live/hM6G0VuAWtg?autoplay=1&mute=1"}, 
 }
 
 # --- Constants per al Canadà Continental ---
