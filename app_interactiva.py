@@ -1823,29 +1823,38 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         display_label = label
         color = "#FFFFFF"
         val_str = "---"
-        
-        # Variable per controlar la mida de la font dinàmicament
         font_size = "1.6em"
+        # Comencem amb la unitat per defecte per a tots els paràmetres
+        unit_display = f"({unit})"
 
         is_numeric = isinstance(value, (int, float, np.number))
 
         if pd.notna(value) and is_numeric:
             if 'CONV' in param_key:
                 if value < 0:
+                    # DIVERGÈNCIA: Mostrem text, sense unitat
                     color = "#5bc0de"
                     display_label = "Dinàmica Vertical"
-                    # <<<--- CANVI PRINCIPAL: Ajustem la mida de la lletra --->>>
-                    font_size = "1.4em" # Reduïm la mida per al text
+                    font_size = "1.4em"
+                    unit_display = "" # Amaguem la unitat
                     
                     abs_val = abs(value)
-                    if abs_val >= 30:
-                        val_str = "Divergència<br>Forta"
-                    elif abs_val >= 15:
-                        val_str = "Divergència<br>Moderada"
-                    else:
-                        val_str = "Divergència<br>Feble"
+                    if abs_val >= 30: val_str = "Divergència<br>Forta"
+                    elif abs_val >= 15: val_str = "Divergència<br>Moderada"
+                    else: val_str = "Divergència<br>Feble"
                 else:
+                    # CONVERGÈNCIA: Mostrem número i títol amb rang
                     display_label = "Convergència"
+                    
+                    # <<<--- NOU BLOC: Canviem la unitat pel rang de força --->>>
+                    if value < 5: strength_label = "(Calma)"
+                    elif value < 15: strength_label = "(Feble)"
+                    elif value < 30: strength_label = "(Moderada)"
+                    elif value < 40: strength_label = "(Forta)"
+                    else: strength_label = "(Molt Forta)"
+                    unit_display = strength_label # Substituïm la unitat (10⁻⁵ s⁻¹) pel text
+                    # <<<--- FI DEL NOU BLOC --->>>
+
                     thresholds = [5, 15, 30, 40]
                     colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
                     color = colors[np.searchsorted(thresholds, value)]
@@ -1861,9 +1870,11 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
                 val_str = f"{value:.{precision}f}"
         
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
-        unit_display = f"({unit})" if val_str.replace('.', '', 1).replace('<br>', '').isdigit() else ""
+        
+        # Si el text ja és 'Divergència...', no cal mostrar la unitat.
+        if "Divergència" in val_str:
+            unit_display = ""
 
-        # Assegurem que la caixa tingui una alçada mínima per mantenir la consistència del disseny
         st.markdown(f"""
         <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
             <span style="font-size: 0.8em; color: #FAFAFA;">{display_label} {unit_display}{tooltip_html}</span>
