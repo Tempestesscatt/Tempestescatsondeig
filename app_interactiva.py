@@ -6722,45 +6722,96 @@ def main():
 def run_arxiu_tempestes_app():
     """
     Funció principal per a la secció d'Arxius de Tempestes.
-    Aquesta serà la base per construir la nova funcionalitat.
+    Mostra una llista de casos d'estudi i permet visualitzar-ne els detalls.
     """
-    # Capçalera bàsica per a la nova secció
+    
+    # --- 1. BASE DE DADES DELS CASOS D'ESTUDI ---
+    # Aquí és on afegeixes o modifiques els teus arxius de tempestes.
+    # La clau de cada entrada ha de ser el títol que es mostrarà al selector.
+    casos_notables = {
+        # Aquesta és l'opció per defecte, no la toquis.
+        "--- Selecciona un cas d'estudi ---": None,
+        
+        # --- EXEMPLE DE CAS 1 ---
+        "Llevantada històrica (Glòria) (21/01/2020)": {
+            "data": "20-23 de Gener de 2020",
+            "image": "arxiu_images/gloria_2020.jpg", # Camí a la imatge
+            "description": """
+            El temporal **Glòria** va ser un dels fenòmens meteorològics més severs de les últimes dècades a Catalunya. 
+            Es va caracteritzar per:
+            - **Pluges torrencials i persistents** que van causar desbordaments de rius, especialment el Ter i el Tordera.
+            - **Onatge rècord** a la costa, amb onades que van superar els 10 metres d'alçada, causant danys massius a passejos marítims.
+            - **Nevades abundants** a cotes mitjanes i altes, deixant gruixos superiors al metre en alguns punts.
+            - **Ventades fortes** de component est (Llevant).
+            Va ser un cas d'estudi clàssic d'una profunda borrasca mediterrània amb un alt contingut d'humitat i un llarg recorregut marítim.
+            """
+        },
+        
+        # --- EXEMPLE DE CAS 2 ---
+        "Tornados de l'Ametlla de Mar (17/09/2023)": {
+            "data": "17 de Setembre de 2023",
+            "image": "arxiu_images/ametlla_tornados_2023.png",
+            "description": """
+            Una situació de gran inestabilitat a la costa de Tarragona va donar lloc a la formació de **múltiples mànegues marines i tornados**.
+            
+            Les condicions clau van ser:
+            - **Altíssima temperatura de l'aigua del mar**, que aportava una gran quantitat d'energia (CAPE).
+            - **Fort cisallament del vent** a nivells baixos, que va afavorir la rotació de les tempestes (supercèl·lules).
+            - **Convergència de vent** a la línia de la costa que va actuar com a mecanisme de dispar.
+            
+            Diversos tornados van tocar terra a la zona de l'Ametlla de Mar i el Delta de l'Ebre, causant danys en zones agrícoles i forestals.
+            """
+        },
+
+        # --- AFEGEIX ELS TEUS PROPIS CASOS AQUÍ SEGUINT EL MATEIX FORMAT ---
+        # "Títol del teu cas": {
+        #     "data": "La teva data",
+        #     "image": "arxiu_images/la_teva_imatge.jpg",
+        #     "description": "La teva descripció aquí. Pots utilitzar **Markdown** per a negretes, llistes, etc."
+        # },
+    }
+
+    # --- 2. INTERFÍCIE D'USUARI ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Arxius de Situacions de Temps Sever</h1>', unsafe_allow_html=True)
     
-    # Botó per tornar a la selecció de zona
     if st.button("⬅️ Tornar a la Selecció de Zona"):
         st.session_state.zone_selected = None
         st.rerun()
     
     st.divider()
 
-    # --- Contingut Provisional ---
-    st.info("🚧 **Secció en Construcció** 🚧", icon="🛠️")
-    st.write(
-        """
-        Benvingut/da a l'Arxiu de Tempestes!
-        
-        Aquesta secció et permetrà:
-        - Seleccionar una data passada d'un esdeveniment meteorològic important.
-        - Visualitzar els sondejos verticals i els mapes de superfície i alçada d'aquell dia.
-        - Analitzar els paràmetres clau que van donar lloc a la situació de temps sever.
-        
-        Estem treballant per carregar els casos d'estudi més rellevants. Torna aviat!
-        """
+    # Selector per triar el cas d'estudi
+    selected_case = st.selectbox(
+        "Selecciona un cas d'estudi per analitzar:", 
+        options=list(casos_notables.keys())
     )
-    
-    # Exemple de com podria funcionar en el futur
-    casos_notables = {
-        "--- Selecciona un cas d'estudi ---": None,
-        "Tornados de l'Ametlla de Mar (17/09/2023)": "2023-09-17",
-        "Esclafit a la Catalunya Central (04/07/2024)": "2024-07-04",
-        "Llevantada històrica (Glòria) (21/01/2020)": "2020-01-21"
-    }
 
-    selected_case = st.selectbox("Casos Notables (Exemple de funcionalitat futura):", options=list(casos_notables.keys()))
-
+    # --- 3. LÒGICA PER MOSTRAR LA INFORMACIÓ ---
+    # Comprovem si l'usuari ha seleccionat un cas vàlid (no el text per defecte)
     if selected_case and casos_notables[selected_case]:
-        st.success(f"En el futur, aquí es carregarien les dades per a la data: {casos_notables[selected_case]}...")
+        
+        case_data = casos_notables[selected_case]
+        
+        st.markdown("---")
+        
+        # Creem dues columnes per a la imatge i la descripció
+        col_img, col_desc = st.columns([0.5, 0.5], gap="large")
+
+        with col_img:
+            try:
+                st.image(case_data['image'], caption=f"Imatge de: {selected_case}", use_column_width=True)
+            except FileNotFoundError:
+                st.error(f"Error: No s'ha trobat la imatge '{case_data['image']}'. Assegura't que estigui a la carpeta 'arxiu_images'.")
+            except Exception as e:
+                st.error(f"S'ha produït un error en carregar la imatge: {e}")
+
+        with col_desc:
+            st.subheader(selected_case)
+            st.caption(f"**Data de l'esdeveniment:** {case_data['data']}")
+            st.markdown(case_data['description'])
+    else:
+        # Missatge que es mostra quan no s'ha seleccionat res
+        st.info("Selecciona un esdeveniment de la llista superior per veure'n els detalls.", icon="👆")
 
 
 
@@ -6840,3 +6891,10 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+
