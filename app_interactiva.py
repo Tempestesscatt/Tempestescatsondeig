@@ -6085,7 +6085,7 @@ def run_valley_halley_app():
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
-    st.info("🟢(tenen webcams)-🔥(Especialment recomanades) ", icon="")
+    st.info("🟢(tenen webcams)-🔥(Especialment recomanades) ", icon="🎞")
 
     # Definim els camins a les IMATGES de previsualització
     paths = {
