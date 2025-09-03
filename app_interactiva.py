@@ -4638,18 +4638,20 @@ def ui_pestanya_mapes_noruega(hourly_index_sel, timestamp_str, nivell_sel, poble
 
 def run_noruega_app():
     if 'poble_selector_noruega' not in st.session_state: st.session_state.poble_selector_noruega = "Oslo"
-    if 'dia_selector_noruega' not in st.session_state: st.session_state.dia_selector_noruega = datetime.now(TIMEZONE_NORUEGA).strftime('%d/%m/%Y')
-    if 'hora_selector_noruega' not in st.session_state: st.session_state.hora_selector_noruega = datetime.now(TIMEZONE_NORUEGA).hour
-    if 'level_noruega_main' not in st.session_state: st.session_state.level_noruega_main = 850
     if 'active_tab_noruega' not in st.session_state: st.session_state.active_tab_noruega = "Anàlisi Vertical"
+    
     ui_capcalera_selectors(None, zona_activa="noruega")
     
-    poble_sel, dia_sel_str, hora_sel, nivell_sel = st.session_state.poble_selector_noruega, st.session_state.dia_selector_noruega, st.session_state.hora_selector_noruega, st.session_state.level_noruega_main
+    poble_sel = st.session_state.poble_selector_noruega
+
+    now_local = datetime.now(TIMEZONE_NORUEGA)
+    dia_sel_str = now_local.strftime('%d/%m/%Y')
+    hora_sel = now_local.hour
     hora_sel_str = f"{hora_sel:02d}:00h"
-    lat_sel, lon_sel = CIUTATS_NORUEGA[poble_sel]['lat'], CIUTATS_NORUEGA[poble_sel]['lon']
+    nivell_sel = 925
     
-    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
-    local_dt = TIMEZONE_NORUEGA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_sel))
+    lat_sel, lon_sel = CIUTATS_NORUEGA[poble_sel]['lat'], CIUTATS_NORUEGA[poble_sel]['lon']
+    local_dt = now_local.replace(minute=0, second=0, microsecond=0)
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
@@ -4667,7 +4669,7 @@ def run_noruega_app():
         if data_tuple is None or error_msg:
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
-            if final_index != hourly_index_sel:
+            if final_index is not None and final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_NORUEGA)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
@@ -5641,7 +5643,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
-    # Afegim Noruega a la llista per a la navegació
     altres_zones = {'catalunya': 'Catalunya', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya', 'italia': 'Itàlia', 'holanda': 'Holanda', 'japo': 'Japó', 'uk': 'Regne Unit', 'canada': 'Canadà', 'noruega': 'Noruega'}
     del altres_zones[zona_activa]
     
@@ -5663,119 +5664,28 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             st.rerun()
 
     with st.container(border=True):
+        # La secció de Catalunya és l'única que no es mostra aquí,
+        # ja que els seus selectors globals estan a la seva pròpia funció.
         if zona_activa == 'catalunya':
-            # La secció de Catalunya té una lògica de selecció diferent i es gestiona a run_catalunya_app
             pass
         
+        # Per a la resta de zones, només mostrem el selector de ciutat.
         elif zona_activa == 'valley_halley':
-            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
-            with col_loc: st.selectbox("Ciutat:", options=sorted(list(USA_CITIES.keys())), key="poble_selector_usa")
-            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_USA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_usa")
-            with col_hora:
-                def format_hora_usa(h):
-                    target_date = datetime.strptime(st.session_state.dia_selector_usa, '%d/%m/%Y').date()
-                    local_dt = TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
-                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
-                    return f"{h:02d}:00h (CAT: {cat_dt.day}/{cat_dt.month} {cat_dt.hour:02d}h)"
-                st.selectbox("Hora (Central Time):", options=list(range(24)), key="hora_selector_usa", format_func=format_hora_usa)
-            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_HRRR, key="level_usa_main", index=6, format_func=lambda x: f"{x} hPa")
-
+            st.selectbox("Ciutat:", options=sorted(list(USA_CITIES.keys())), key="poble_selector_usa")
         elif zona_activa == 'alemanya':
-            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
-            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ALEMANYA.keys())), key="poble_selector_alemanya")
-            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_ALEMANYA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(3)], key="dia_selector_alemanya")
-            with col_hora:
-                def format_hora_alemanya(h):
-                    target_date = datetime.strptime(st.session_state.dia_selector_alemanya, '%d/%m/%Y').date()
-                    local_dt = TIMEZONE_ALEMANYA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
-                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
-                    return f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)"
-                st.selectbox("Hora:", options=list(range(24)), key="hora_selector_alemanya", format_func=format_hora_alemanya)
-            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_ICON, key="level_alemanya_main", index=6, format_func=lambda x: f"{x} hPa")
-
+            st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ALEMANYA.keys())), key="poble_selector_alemanya")
         elif zona_activa == 'italia':
-            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
-            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ITALIA.keys())), key="poble_selector_italia")
-            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_ITALIA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_italia")
-            with col_hora:
-                def format_hora_italia(h):
-                    target_date = datetime.strptime(st.session_state.dia_selector_italia, '%d/%m/%Y').date()
-                    local_dt = TIMEZONE_ITALIA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
-                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
-                    return f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)"
-                st.selectbox("Hora:", options=list(range(24)), key="hora_selector_italia", format_func=format_hora_italia)
-            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_ITALIA, key="level_italia_main", index=2, format_func=lambda x: f"{x} hPa")
-
+            st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ITALIA.keys())), key="poble_selector_italia")
         elif zona_activa == 'holanda':
-            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
-            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_HOLANDA.keys())), key="poble_selector_holanda")
-            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_HOLANDA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_holanda")
-            with col_hora:
-                def format_hora_holanda(h):
-                    target_date = datetime.strptime(st.session_state.dia_selector_holanda, '%d/%m/%Y').date()
-                    local_dt = TIMEZONE_HOLANDA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
-                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
-                    return f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)"
-                st.selectbox("Hora:", options=list(range(24)), key="hora_selector_holanda", format_func=format_hora_holanda)
-            with col_nivell:
-                nivells_mapa_holanda = [p for p in PRESS_LEVELS_HOLANDA if p != 1000]
-                st.selectbox("Nivell:", nivells_mapa_holanda, key="level_holanda_main", index=1, format_func=lambda x: f"{x} hPa")
-                
+            st.selectbox("Ciutat:", options=sorted(list(CIUTATS_HOLANDA.keys())), key="poble_selector_holanda")
         elif zona_activa == 'japo':
-            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
-            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_JAPO.keys())), key="poble_selector_japo")
-            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_JAPO) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_japo")
-            with col_hora:
-                def format_hora_japo(h):
-                    target_date = datetime.strptime(st.session_state.dia_selector_japo, '%d/%m/%Y').date()
-                    local_dt = TIMEZONE_JAPO.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
-                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
-                    return f"{h:02d}:00h (CAT: {cat_dt.day}/{cat_dt.month} {cat_dt.hour:02d}h)"
-                st.selectbox("Hora:", options=list(range(24)), key="hora_selector_japo", format_func=format_hora_japo)
-            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_JAPO, key="level_japo_main", index=2, format_func=lambda x: f"{x} hPa")
-        
+            st.selectbox("Ciutat:", options=sorted(list(CIUTATS_JAPO.keys())), key="poble_selector_japo")
         elif zona_activa == 'uk':
-            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
-            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_UK.keys())), key="poble_selector_uk")
-            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_UK) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_uk")
-            with col_hora:
-                def format_hora_uk(h):
-                    target_date = datetime.strptime(st.session_state.dia_selector_uk, '%d/%m/%Y').date()
-                    local_dt = TIMEZONE_UK.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
-                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
-                    return f"{h:02d}:00h (CAT: {cat_dt.hour:02d}h)"
-                st.selectbox("Hora (GMT/BST):", options=list(range(24)), key="hora_selector_uk", format_func=format_hora_uk)
-            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_UK, key="level_uk_main", index=5, format_func=lambda x: f"{x} hPa")
-
+            st.selectbox("Ciutat:", options=sorted(list(CIUTATS_UK.keys())), key="poble_selector_uk")
         elif zona_activa == 'canada':
-            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
-            with col_loc: st.selectbox("Ciutat:", options=sorted(list(CIUTATS_CANADA.keys())), key="poble_selector_canada")
-            with col_dia: st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_CANADA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_canada")
-            with col_hora:
-                def format_hora_canada(h):
-                    target_date = datetime.strptime(st.session_state.dia_selector_canada, '%d/%m/%Y').date()
-                    local_dt = TIMEZONE_CANADA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
-                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
-                    return f"{h:02d}:00h (CAT: {cat_dt.day}/{cat_dt.month} {cat_dt.hour:02d}h)"
-                st.selectbox("Hora (Central Time):", options=list(range(24)), key="hora_selector_canada", format_func=format_hora_canada)
-            with col_nivell: st.selectbox("Nivell:", PRESS_LEVELS_CANADA, key="level_canada_main", index=6, format_func=lambda x: f"{x} hPa")
-        
-        # <<<--- BLOC AFEGIT PER A NORUEGA ---
+            st.selectbox("Ciutat:", options=sorted(list(CIUTATS_CANADA.keys())), key="poble_selector_canada")
         elif zona_activa == 'noruega':
-            col_loc, col_dia, col_hora, col_nivell = st.columns(4)
-            with col_loc:
-                st.selectbox("Ciutat:", options=sorted(list(CIUTATS_NORUEGA.keys())), key="poble_selector_noruega")
-            with col_dia:
-                st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_NORUEGA) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector_noruega")
-            with col_hora:
-                def format_hora_noruega(h):
-                    target_date = datetime.strptime(st.session_state.dia_selector_noruega, '%d/%m/%Y').date()
-                    local_dt = TIMEZONE_NORUEGA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=h))
-                    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
-                    return f"{h:02d}:00h (CAT: {cat_dt.day}/{cat_dt.month} {cat_dt.hour:02d}h)"
-                st.selectbox("Hora (CET/CEST):", options=list(range(24)), key="hora_selector_noruega", format_func=format_hora_noruega)
-            with col_nivell:
-                st.selectbox("Nivell:", PRESS_LEVELS_NORUEGA, key="level_noruega_main", index=5, format_func=lambda x: f"{x} hPa")
+            st.selectbox("Ciutat:", options=sorted(list(CIUTATS_NORUEGA.keys())), key="poble_selector_noruega")
 
 
 def ui_pestanya_mapes_japo(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
@@ -6105,20 +6015,25 @@ def ui_peu_de_pagina():
 
 def run_canada_app():
     if 'poble_selector_canada' not in st.session_state: st.session_state.poble_selector_canada = "Calgary, AB"
-    if 'dia_selector_canada' not in st.session_state: st.session_state.dia_selector_canada = datetime.now(TIMEZONE_CANADA).strftime('%d/%m/%Y')
-    if 'hora_selector_canada' not in st.session_state: st.session_state.hora_selector_canada = datetime.now(TIMEZONE_CANADA).hour
-    if 'level_canada_main' not in st.session_state: st.session_state.level_canada_main = 850
     if 'active_tab_canada' not in st.session_state: st.session_state.active_tab_canada = "Anàlisi Vertical"
+    
     ui_capcalera_selectors(None, zona_activa="canada")
-    poble_sel, dia_sel_str, hora_sel, nivell_sel = st.session_state.poble_selector_canada, st.session_state.dia_selector_canada, st.session_state.hora_selector_canada, st.session_state.level_canada_main
+    
+    poble_sel = st.session_state.poble_selector_canada
+
+    now_local = datetime.now(TIMEZONE_CANADA)
+    dia_sel_str = now_local.strftime('%d/%m/%Y')
+    hora_sel = now_local.hour
     hora_sel_str = f"{hora_sel:02d}:00h"
+    nivell_sel = 925
+
     lat_sel, lon_sel = CIUTATS_CANADA[poble_sel]['lat'], CIUTATS_CANADA[poble_sel]['lon']
-    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
-    local_dt = TIMEZONE_CANADA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_sel))
+    local_dt = now_local.replace(minute=0, second=0, microsecond=0)
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_CANADA.zone}) / {cat_dt.strftime('%d/%m, %H:%Mh')} (CAT)"
+
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
     selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_canada))
@@ -6131,27 +6046,23 @@ def run_canada_app():
         if data_tuple is None or error_msg:
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
-            if final_index != hourly_index_sel:
+            if final_index is not None and final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CANADA)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
             
-            # <<<--- BLOC DE CODI AFEGIT PER CALCULAR LA CONVERGÈNCIA --->>>
             params_calc = data_tuple[1]
             with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
                 map_data_conv, _ = carregar_dades_mapa_canada(nivell_sel, hourly_index_sel)
-            
             if map_data_conv:
                 conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
                 if pd.notna(conv_value):
                     params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
-            # <<<--- FI DEL BLOC AFEGIT --->>>
             
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
 
     elif selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_canada(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
-    
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="canada")
 
@@ -6339,52 +6250,42 @@ def run_catalunya_app():
 
 
 def run_valley_halley_app():
-    # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
-    # <<<--- CORRECCIÓ: Es comprova que el valor guardat a la sessió sigui una clau vàlida --->>>
     if 'poble_selector_usa' not in st.session_state or st.session_state.poble_selector_usa not in USA_CITIES:
-        st.session_state.poble_selector_usa = "Dallas, TX" # Si no és vàlid, es reinicia al valor per defecte.
-
-    if 'dia_selector_usa' not in st.session_state: st.session_state.dia_selector_usa = datetime.now(TIMEZONE_USA).strftime('%d/%m/%Y')
-    if 'hora_selector_usa' not in st.session_state: st.session_state.hora_selector_usa = datetime.now(TIMEZONE_USA).hour
-    if 'level_usa_main' not in st.session_state: st.session_state.level_usa_main = 850
+        st.session_state.poble_selector_usa = "Dallas, TX"
     if 'active_tab_usa' not in st.session_state: st.session_state.active_tab_usa = "Anàlisi Vertical"
 
-    # --- PAS 2: CAPÇALERA I SELECTORS ---
     ui_capcalera_selectors(None, zona_activa="valley_halley")
     
-    # --- PAS 3: RECOPILACIÓ DE VALORS ---
     poble_sel = st.session_state.poble_selector_usa
-    dia_sel_str = st.session_state.dia_selector_usa
-    hora_sel = st.session_state.hora_selector_usa
+    
+    # Valors de temps i nivell automàtics
+    now_local = datetime.now(TIMEZONE_USA)
+    dia_sel_str = now_local.strftime('%d/%m/%Y')
+    hora_sel = now_local.hour
     hora_sel_str = f"{hora_sel:02d}:00h"
-    
-    nivell_sel = st.session_state.level_usa_main
-    # Aquesta línia ara és segura gràcies a la comprovació anterior
+    nivell_sel = 925
+
+    # Càlculs basats en els valors automàtics
     lat_sel, lon_sel = USA_CITIES[poble_sel]['lat'], USA_CITIES[poble_sel]['lon']
-    
-    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
-    local_dt = TIMEZONE_USA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_sel))
+    local_dt = now_local.replace(minute=0, second=0, microsecond=0)
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-    
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (CST) / {cat_dt.strftime('%d/%m, %H:%Mh')} (CAT)"
 
-    # --- PAS 4: MENÚ DE PESTANYES ---
+    # Lògica de les pestanyes (sense canvis)
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
-    default_idx = menu_options.index(st.session_state.active_tab_usa)
-    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
+    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_usa))
     st.session_state.active_tab_usa = selected_tab
 
-    # --- PAS 5: LÒGICA DE PESTANYES ---
     if selected_tab == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig HRRR per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_usa(lat_sel, lon_sel, hourly_index_sel)
         if data_tuple is None or error_msg: 
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
-            if final_index != hourly_index_sel:
+            if final_index is not None and final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_USA)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
@@ -6404,7 +6305,6 @@ def run_valley_halley_app():
         
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="valley_halley")
-
 
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
@@ -6564,24 +6464,28 @@ def crear_mapa_forecast_combinat_italia(lons, lats, speed_data, dir_data, dewpoi
 
 def run_italia_app():
     if 'poble_selector_italia' not in st.session_state: st.session_state.poble_selector_italia = "Roma"
-    if 'dia_selector_italia' not in st.session_state: st.session_state.dia_selector_italia = datetime.now(TIMEZONE_ITALIA).strftime('%d/%m/%Y')
-    if 'hora_selector_italia' not in st.session_state: st.session_state.hora_selector_italia = datetime.now(TIMEZONE_ITALIA).hour
-    if 'level_italia_main' not in st.session_state: st.session_state.level_italia_main = 850
     if 'active_tab_italia' not in st.session_state: st.session_state.active_tab_italia = "Anàlisi Vertical"
+
     ui_capcalera_selectors(None, zona_activa="italia")
-    poble_sel, dia_sel_str, hora_sel, nivell_sel = st.session_state.poble_selector_italia, st.session_state.dia_selector_italia, st.session_state.hora_selector_italia, st.session_state.level_italia_main
+    
+    poble_sel = st.session_state.poble_selector_italia
+
+    now_local = datetime.now(TIMEZONE_ITALIA)
+    dia_sel_str = now_local.strftime('%d/%m/%Y')
+    hora_sel = now_local.hour
     hora_sel_str = f"{hora_sel:02d}:00h"
+    nivell_sel = 925
+
     lat_sel, lon_sel = CIUTATS_ITALIA[poble_sel]['lat'], CIUTATS_ITALIA[poble_sel]['lon']
-    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
-    local_dt = TIMEZONE_ITALIA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_sel))
+    local_dt = now_local.replace(minute=0, second=0, microsecond=0)
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_ITALIA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
-    default_idx = menu_options.index(st.session_state.active_tab_italia)
-    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
+    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_italia))
     st.session_state.active_tab_italia = selected_tab
 
     if selected_tab == "Anàlisi Vertical":
@@ -6591,29 +6495,23 @@ def run_italia_app():
         if data_tuple is None or error_msg: 
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
-            if final_index != hourly_index_sel:
+            if final_index is not None and final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_ITALIA)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
-
-            # <<<--- BLOC DE CODI AFEGIT PER CALCULAR LA CONVERGÈNCIA --->>>
+            
             params_calc = data_tuple[1]
             with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
-                # Assegurem que cridem la funció de càrrega de mapes correcta per Itàlia
                 map_data_conv, _ = carregar_dades_mapa_italia(nivell_sel, hourly_index_sel)
-            
             if map_data_conv:
                 conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
                 if pd.notna(conv_value):
-                    # Afegim el valor al diccionari de paràmetres que es passarà a la UI
                     params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
-            # <<<--- FI DEL BLOC AFEGIT --->>>
             
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
 
     elif selected_tab == "Anàlisi de Mapes":
-        ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel) # Corregit per si de cas
-        
+        ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel)
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="italia")
 
@@ -6621,24 +6519,29 @@ def run_italia_app():
 
 def run_alemanya_app():
     if 'poble_selector_alemanya' not in st.session_state: st.session_state.poble_selector_alemanya = "Berlín (Alexanderplatz)"
-    if 'dia_selector_alemanya' not in st.session_state: st.session_state.dia_selector_alemanya = datetime.now(TIMEZONE_ALEMANYA).strftime('%d/%m/%Y')
-    if 'hora_selector_alemanya' not in st.session_state: st.session_state.hora_selector_alemanya = datetime.now(TIMEZONE_ALEMANYA).hour
-    if 'level_alemanya_main' not in st.session_state: st.session_state.level_alemanya_main = 850
     if 'active_tab_alemanya' not in st.session_state: st.session_state.active_tab_alemanya = "Anàlisi Vertical"
+    
     ui_capcalera_selectors(None, zona_activa="alemanya")
-    poble_sel, dia_sel_str, hora_sel, nivell_sel = st.session_state.poble_selector_alemanya, st.session_state.dia_selector_alemanya, st.session_state.hora_selector_alemanya, st.session_state.level_alemanya_main
+
+    poble_sel = st.session_state.poble_selector_alemanya
+    
+    # Valors de temps i nivell automàtics
+    now_local = datetime.now(TIMEZONE_ALEMANYA)
+    dia_sel_str = now_local.strftime('%d/%m/%Y')
+    hora_sel = now_local.hour
     hora_sel_str = f"{hora_sel:02d}:00h"
+    nivell_sel = 925
+
     lat_sel, lon_sel = CIUTATS_ALEMANYA[poble_sel]['lat'], CIUTATS_ALEMANYA[poble_sel]['lon']
-    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
-    local_dt = TIMEZONE_ALEMANYA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_sel))
+    local_dt = now_local.replace(minute=0, second=0, microsecond=0)
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_ALEMANYA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
-    default_idx = menu_options.index(st.session_state.active_tab_alemanya)
-    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
+    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_alemanya))
     st.session_state.active_tab_alemanya = selected_tab
     
     if selected_tab == "Anàlisi Vertical":
@@ -6648,29 +6551,23 @@ def run_alemanya_app():
         if data_tuple is None or error_msg: 
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
-            if final_index != hourly_index_sel:
+            if final_index is not None and final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_ALEMANYA)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
-
-            # <<<--- BLOC DE CODI AFEGIT PER CALCULAR LA CONVERGÈNCIA --->>>
+            
             params_calc = data_tuple[1]
             with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
                 map_data_conv, _ = carregar_dades_mapa_alemanya(nivell_sel, hourly_index_sel)
-            
             if map_data_conv:
                 conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
                 if pd.notna(conv_value):
-                    # Afegim el valor de la convergència al diccionari de paràmetres
                     params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
-            # <<<--- FI DEL BLOC AFEGIT --->>>
             
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
 
     elif selected_tab == "Anàlisi de Mapes":
-        # <<<--- CORRECCIÓ: Ara cridem la funció correcta del mapa d'Alemanya --->>>
         ui_pestanya_mapes_alemanya(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
-
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="alemanya")
 
@@ -6696,24 +6593,28 @@ def ui_pestanya_mapes_alemanya(hourly_index_sel, timestamp_str, nivell_sel, pobl
 
 def run_uk_app():
     if 'poble_selector_uk' not in st.session_state: st.session_state.poble_selector_uk = "Southampton"
-    if 'dia_selector_uk' not in st.session_state: st.session_state.dia_selector_uk = datetime.now(TIMEZONE_UK).strftime('%d/%m/%Y')
-    if 'hora_selector_uk' not in st.session_state: st.session_state.hora_selector_uk = datetime.now(TIMEZONE_UK).hour
-    if 'level_uk_main' not in st.session_state: st.session_state.level_uk_main = 850
     if 'active_tab_uk' not in st.session_state: st.session_state.active_tab_uk = "Anàlisi Vertical"
+    
     ui_capcalera_selectors(None, zona_activa="uk")
-    poble_sel, dia_sel_str, hora_sel, nivell_sel = st.session_state.poble_selector_uk, st.session_state.dia_selector_uk, st.session_state.hora_selector_uk, st.session_state.level_uk_main
+
+    poble_sel = st.session_state.poble_selector_uk
+
+    now_local = datetime.now(TIMEZONE_UK)
+    dia_sel_str = now_local.strftime('%d/%m/%Y')
+    hora_sel = now_local.hour
     hora_sel_str = f"{hora_sel:02d}:00h"
+    nivell_sel = 925
+
     lat_sel, lon_sel = CIUTATS_UK[poble_sel]['lat'], CIUTATS_UK[poble_sel]['lon']
-    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
-    local_dt = TIMEZONE_UK.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_sel))
+    local_dt = now_local.replace(minute=0, second=0, microsecond=0)
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_UK.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
-    default_idx = menu_options.index(st.session_state.active_tab_uk)
-    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
+    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_uk))
     st.session_state.active_tab_uk = selected_tab
 
     if selected_tab == "Anàlisi Vertical":
@@ -6723,51 +6624,51 @@ def run_uk_app():
         if data_tuple is None or error_msg: 
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
-            if final_index != hourly_index_sel:
+            if final_index is not None and final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_UK)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
-
-            # <<<--- BLOC DE CODI AFEGIT PER CALCULAR LA CONVERGÈNCIA --->>>
+            
             params_calc = data_tuple[1]
             with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
                 map_data_conv, _ = carregar_dades_mapa_uk(nivell_sel, hourly_index_sel)
-            
             if map_data_conv:
                 conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
                 if pd.notna(conv_value):
                     params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
-            # <<<--- FI DEL BLOC AFEGIT --->>>
             
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
 
     elif selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_uk(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
-        
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="uk")
 
 
 def run_holanda_app():
     if 'poble_selector_holanda' not in st.session_state: st.session_state.poble_selector_holanda = "Amsterdam"
-    if 'dia_selector_holanda' not in st.session_state: st.session_state.dia_selector_holanda = datetime.now(TIMEZONE_HOLANDA).strftime('%d/%m/%Y')
-    if 'hora_selector_holanda' not in st.session_state: st.session_state.hora_selector_holanda = datetime.now(TIMEZONE_HOLANDA).hour
-    if 'level_holanda_main' not in st.session_state: st.session_state.level_holanda_main = 850
     if 'active_tab_holanda' not in st.session_state: st.session_state.active_tab_holanda = "Anàlisi Vertical"
+
     ui_capcalera_selectors(None, zona_activa="holanda")
-    poble_sel, dia_sel_str, hora_sel, nivell_sel = st.session_state.poble_selector_holanda, st.session_state.dia_selector_holanda, st.session_state.hora_selector_holanda, st.session_state.level_holanda_main
+    
+    poble_sel = st.session_state.poble_selector_holanda
+
+    now_local = datetime.now(TIMEZONE_HOLANDA)
+    dia_sel_str = now_local.strftime('%d/%m/%Y')
+    hora_sel = now_local.hour
     hora_sel_str = f"{hora_sel:02d}:00h"
+    nivell_sel = 925
+
     lat_sel, lon_sel = CIUTATS_HOLANDA[poble_sel]['lat'], CIUTATS_HOLANDA[poble_sel]['lon']
-    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
-    local_dt = TIMEZONE_HOLANDA.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_sel))
+    local_dt = now_local.replace(minute=0, second=0, microsecond=0)
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_HOLANDA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
-    default_idx = menu_options.index(st.session_state.active_tab_holanda)
-    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
+    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_holanda))
     st.session_state.active_tab_holanda = selected_tab
     
     if selected_tab == "Anàlisi Vertical":
@@ -6777,50 +6678,50 @@ def run_holanda_app():
         if data_tuple is None or error_msg: 
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
-            if final_index != hourly_index_sel:
+            if final_index is not None and final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_HOLANDA)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
-
-            # <<<--- BLOC DE CODI AFEGIT PER CALCULAR LA CONVERGÈNCIA --->>>
+            
             params_calc = data_tuple[1]
             with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
                 map_data_conv, _ = carregar_dades_mapa_holanda(nivell_sel, hourly_index_sel)
-            
             if map_data_conv:
                 conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
                 if pd.notna(conv_value):
                     params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
-            # <<<--- FI DEL BLOC AFEGIT --->>>
 
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
 
     elif selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_holanda(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
-        
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="holanda")
 
 def run_japo_app():
     if 'poble_selector_japo' not in st.session_state: st.session_state.poble_selector_japo = "Tòquio"
-    if 'dia_selector_japo' not in st.session_state: st.session_state.dia_selector_japo = datetime.now(TIMEZONE_JAPO).strftime('%d/%m/%Y')
-    if 'hora_selector_japo' not in st.session_state: st.session_state.hora_selector_japo = datetime.now(TIMEZONE_JAPO).hour
-    if 'level_japo_main' not in st.session_state: st.session_state.level_japo_main = 850
     if 'active_tab_japo' not in st.session_state: st.session_state.active_tab_japo = "Anàlisi Vertical"
+    
     ui_capcalera_selectors(None, zona_activa="japo")
-    poble_sel, dia_sel_str, hora_sel, nivell_sel = st.session_state.poble_selector_japo, st.session_state.dia_selector_japo, st.session_state.hora_selector_japo, st.session_state.level_japo_main
+    
+    poble_sel = st.session_state.poble_selector_japo
+
+    now_local = datetime.now(TIMEZONE_JAPO)
+    dia_sel_str = now_local.strftime('%d/%m/%Y')
+    hora_sel = now_local.hour
     hora_sel_str = f"{hora_sel:02d}:00h"
+    nivell_sel = 925
+
     lat_sel, lon_sel = CIUTATS_JAPO[poble_sel]['lat'], CIUTATS_JAPO[poble_sel]['lon']
-    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
-    local_dt = TIMEZONE_JAPO.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_sel))
+    local_dt = now_local.replace(minute=0, second=0, microsecond=0)
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_JAPO.zone}) / {cat_dt.strftime('%d/%m, %H:%Mh')} (CAT)"
+
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
-    default_idx = menu_options.index(st.session_state.active_tab_japo)
-    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
+    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_japo))
     st.session_state.active_tab_japo = selected_tab
 
     if selected_tab == "Anàlisi Vertical":
@@ -6830,27 +6731,23 @@ def run_japo_app():
         if data_tuple is None or error_msg: 
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
-            if final_index != hourly_index_sel:
+            if final_index is not None and final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_JAPO)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
-
-            # <<<--- BLOC DE CODI AFEGIT PER CALCULAR LA CONVERGÈNCIA --->>>
+            
             params_calc = data_tuple[1]
             with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
                 map_data_conv, _ = carregar_dades_mapa_japo(nivell_sel, hourly_index_sel)
-            
             if map_data_conv:
                 conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
                 if pd.notna(conv_value):
                     params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
-            # <<<--- FI DEL BLOC AFEGIT --->>>
             
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
 
     elif selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_japo(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
-        
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="japo")
 
