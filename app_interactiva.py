@@ -6499,18 +6499,35 @@ def run_japo_app():
     default_idx = menu_options.index(st.session_state.active_tab_japo)
     selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
     st.session_state.active_tab_japo = selected_tab
+
     if selected_tab == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_japo(lat_sel, lon_sel, hourly_index_sel)
-        if data_tuple is None or error_msg: st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        
+        if data_tuple is None or error_msg: 
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
             if final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_JAPO)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+
+            # <<<--- BLOC DE CODI AFEGIT PER CALCULAR LA CONVERGÈNCIA --->>>
+            params_calc = data_tuple[1]
+            with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
+                map_data_conv, _ = carregar_dades_mapa_japo(nivell_sel, hourly_index_sel)
+            
+            if map_data_conv:
+                conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+                if pd.notna(conv_value):
+                    params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
+            # <<<--- FI DEL BLOC AFEGIT --->>>
+            
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+
     elif selected_tab == "Anàlisi de Mapes":
         ui_pestanya_mapes_japo(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
+        
     elif selected_tab == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="japo")
 
