@@ -6100,9 +6100,31 @@ def run_valley_halley_app():
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
-    st.info("Tenen webcams en directe! ", icon="🎞")
+    st.info("🟢(tenen webcams)-🔥(Especialment recomanades) ", icon="🎞")
 
-    # Definim els camins a les IMATGES de previsualització
+    # <<<--- PAS 1: INJECTEM EL CSS PER A L'EFECTE HOVER ---
+    # Aquest codi defineix com es comportarà la nostra targeta personalitzada.
+    st.markdown("""
+    <style>
+    /* Definim la classe per a la nostra targeta de zona */
+    .zone-card {
+        padding: 1rem;
+        border-radius: 11px; /* Un píxel més que el botó per a un millor efecte visual */
+        background-color: #262730; /* Simula el contenidor de Streamlit */
+        border: 1px solid #31333F;
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out; /* Animació suau */
+        height: 100%; /* Assegura que totes les targetes de la fila tinguin la mateixa alçada */
+    }
+
+    /* Aquí està la màgia: què passa quan passem el ratolí per sobre */
+    .zone-card:hover {
+        transform: scale(1.04); /* La fem una mica més gran */
+        box-shadow: 0 8px 30px rgba(0,0,0,0.4); /* Afegim una ombra per donar profunditat */
+        border: 1px solid #777;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     paths = {
         'cat': "catalunya_preview.png", 'usa': "usa_preview.png", 'ale': "alemanya_preview.png",
         'ita': "italia_preview.png", 'hol': "holanda_preview.png", 'japo': "japo_preview.png",
@@ -6114,21 +6136,29 @@ def ui_zone_selection():
     row1_col1, row1_col2, row1_col3, row1_col4 = st.columns(4)
     row2_col1, row2_col2, row2_col3, row2_col4 = st.columns(4)
 
+    # <<<--- PAS 2: MODIFIQUEM LA FUNCIÓ QUE CREA ELS BOTONS ---
+    # Ara, en lloc d'usar 'st.container', embolcallem tot en un div amb la nostra classe CSS.
     def create_zone_button(col, path, title, key, zone_id, type="secondary"):
-        with col, st.container(border=True):
+        with col:
+            # Embolcallem tot el contingut en un 'div' amb la classe 'zone-card'
+            st.markdown('<div class="zone-card">', unsafe_allow_html=True)
+            
             st.markdown(generar_html_imatge_estatica(path, height="160px"), unsafe_allow_html=True)
             
-            # <<<--- CANVI PRINCIPAL AQUÍ: Afegim 'holanda' a la llista --->>>
             display_title = title
             if zone_id == 'italia':
                 display_title += " 🔥"
-            elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya', 'holanda']:
+            elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya', 'holanda', 'catalunya']:
                 display_title += " 🟢"
             
             st.subheader(display_title)
+            
             if st.button(f"Analitzar {title}", key=key, use_container_width=True, type=type):
                 st.session_state['zone_selected'] = zone_id
                 st.rerun()
+            
+            # Tanquem el 'div'
+            st.markdown('</div>', unsafe_allow_html=True)
 
     create_zone_button(row1_col1, paths['cat'], "Catalunya", "btn_cat", "catalunya", "primary")
     create_zone_button(row1_col2, paths['usa'], "Tornado Alley", "btn_usa", "valley_halley")
@@ -6138,7 +6168,6 @@ def ui_zone_selection():
     create_zone_button(row2_col2, paths['japo'], "Japó", "btn_japo", "japo")
     create_zone_button(row2_col3, paths['uk'], "Regne Unit", "btn_uk", "uk")
     create_zone_button(row2_col4, paths['can'], "Canadà", "btn_can", "canada")
-
 
 
 @st.cache_data(ttl=3600)
