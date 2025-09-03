@@ -3992,50 +3992,7 @@ def generar_animacions_professionals(_params_tuple, timestamp_str, _regenerate_k
 
 
 
-def run_arxiu_tempestes_app():
-    """
-    Funció principal per a la secció d'Arxius de Tempestes.
-    Aquesta serà la base per construir la nova funcionalitat.
-    """
-    # Capçalera bàsica per a la nova secció
-    st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Arxius de Situacions de Temps Sever</h1>', unsafe_allow_html=True)
-    
-    # Botó per tornar a la selecció de zona
-    if st.button("⬅️ Tornar a la Selecció de Zona"):
-        st.session_state.zone_selected = None
-        st.rerun()
-    
-    st.divider()
 
-    # --- Contingut Provisional ---
-    st.info("🚧 **Secció en Construcció** 🚧", icon="🛠️")
-    st.write(
-        """
-        Benvingut/da a l'Arxiu de Tempestes!
-        
-        Aquesta secció et permetrà:
-        - Seleccionar una data passada d'un esdeveniment meteorològic important.
-        - Visualitzar els sondejos verticals i els mapes de superfície i alçada d'aquell dia.
-        - Analitzar els paràmetres clau que van donar lloc a la situació de temps sever.
-        
-        Estem treballant per carregar els casos d'estudi més rellevants. Torna aviat!
-        """
-    )
-    
-    # Exemple de com podria funcionar en el futur
-    casos_notables = {
-        "--- Selecciona un cas d'estudi ---": None,
-        "Tornados de l'Ametlla de Mar (17/09/2023)": "2023-09-17",
-        "Esclafit a la Catalunya Central (04/07/2024)": "2024-07-04",
-        "Llevantada històrica (Glòria) (21/01/2020)": "2020-01-21"
-    }
-
-    selected_case = st.selectbox("Casos Notables (Exemple de funcionalitat futura):", options=list(casos_notables.keys()))
-
-    if selected_case and casos_notables[selected_case]:
-        st.success(f"En el futur, aquí es carregarien les dades per a la data: {casos_notables[selected_case]}...")
-        # Aquí aniria la lògica per demanar dades històriques a l'API
-        
 
 def ui_guia_tall_vertical(params, nivell_conv):
     """
@@ -6356,18 +6313,14 @@ def ui_zone_selection():
         'ita': "italia_preview.png", 'hol': "holanda_preview.png", 'japo': "japo_preview.png",
         'uk': "uk_preview.png", 'can': "canada_preview.png",
         'nor': "noruega_preview.png",
-        'arxiu': "arxiu_preview.png"  # <<<--- AFEGEIX AQUESTA LÍNIA
+        'arxiu': "arxiu_preview.png"
     }
-    
-    # ... (la resta de la funció es manté igual fins al final)
     
     with st.spinner('Carregant entorns geoespacials...'): time.sleep(1)
 
     # Definim les tres files de columnes
     row1_col1, row1_col2, row1_col3, row1_col4 = st.columns(4)
     row2_col1, row2_col2, row2_col3, row2_col4 = st.columns(4)
-    # <<<--- NOVA FILA PER A NORUEGA (I FUTURES ZONES) ---
-    # Utilitzem st.columns(4) per mantenir la proporció, encara que només en fem servir una.
     row3_col1, _, _, _ = st.columns(4)
 
 
@@ -6378,7 +6331,7 @@ def ui_zone_selection():
             display_title = title
             if zone_id == 'italia':
                 display_title += " 🔥"
-            elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya', 'holanda', 'catalunya', 'noruega']: # <-- Afegit Noruega
+            elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya', 'holanda', 'catalunya', 'noruega']:
                 display_title += " 🟢"
             
             st.subheader(display_title)
@@ -6397,8 +6350,28 @@ def ui_zone_selection():
     create_zone_button(row2_col3, paths['uk'], "Regne Unit", "btn_uk", "uk")
     create_zone_button(row2_col4, paths['can'], "Canadà", "btn_can", "canada")
 
-    # <<<--- AFEGIM EL BOTÓ DE NORUEGA A LA NOVA FILA ---
     create_zone_button(row3_col1, paths['nor'], "Noruega", "btn_nor", "noruega")
+
+    # --- NOVA SECCIÓ D'ARXIUS (OCUPA TOT L'AMPLE) ---
+    st.markdown("---")
+    
+    with st.container(border=True):
+        img_col, content_col = st.columns([0.4, 0.6])
+
+        with img_col:
+            st.markdown(generar_html_imatge_estatica(paths['arxiu'], height="180px"), unsafe_allow_html=True)
+
+        with content_col:
+            st.subheader("Arxius Tempestes ⛈️")
+            st.write(
+                """
+                Explora i analitza els **sondejos i mapes de situacions de temps sever passades**. 
+                Una eina essencial per a l'estudi de casos, la comparació de patrons i l'aprenentatge.
+                """
+            )
+            st.button("Consultar Arxius", key="btn_arxiu", use_container_width=True, type="primary",
+                      on_click=start_transition, args=("arxiu_tempestes",))
+            
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_italia(nivell, hourly_index):
@@ -6743,6 +6716,51 @@ def main():
     elif st.session_state.zone_selected == 'noruega': run_noruega_app()
     elif st.session_state.zone_selected == 'arxiu_tempestes':
         run_arxiu_tempestes_app()
+
+
+
+def run_arxiu_tempestes_app():
+    """
+    Funció principal per a la secció d'Arxius de Tempestes.
+    Aquesta serà la base per construir la nova funcionalitat.
+    """
+    # Capçalera bàsica per a la nova secció
+    st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Arxius de Situacions de Temps Sever</h1>', unsafe_allow_html=True)
+    
+    # Botó per tornar a la selecció de zona
+    if st.button("⬅️ Tornar a la Selecció de Zona"):
+        st.session_state.zone_selected = None
+        st.rerun()
+    
+    st.divider()
+
+    # --- Contingut Provisional ---
+    st.info("🚧 **Secció en Construcció** 🚧", icon="🛠️")
+    st.write(
+        """
+        Benvingut/da a l'Arxiu de Tempestes!
+        
+        Aquesta secció et permetrà:
+        - Seleccionar una data passada d'un esdeveniment meteorològic important.
+        - Visualitzar els sondejos verticals i els mapes de superfície i alçada d'aquell dia.
+        - Analitzar els paràmetres clau que van donar lloc a la situació de temps sever.
+        
+        Estem treballant per carregar els casos d'estudi més rellevants. Torna aviat!
+        """
+    )
+    
+    # Exemple de com podria funcionar en el futur
+    casos_notables = {
+        "--- Selecciona un cas d'estudi ---": None,
+        "Tornados de l'Ametlla de Mar (17/09/2023)": "2023-09-17",
+        "Esclafit a la Catalunya Central (04/07/2024)": "2024-07-04",
+        "Llevantada històrica (Glòria) (21/01/2020)": "2020-01-21"
+    }
+
+    selected_case = st.selectbox("Casos Notables (Exemple de funcionalitat futura):", options=list(casos_notables.keys()))
+
+    if selected_case and casos_notables[selected_case]:
+        st.success(f"En el futur, aquí es carregarien les dades per a la data: {casos_notables[selected_case]}...")
 
 
 
