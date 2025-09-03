@@ -88,7 +88,7 @@ WEBCAM_LINKS = {
     "Berlín (Alexanderplatz)": {'type': 'direct', 'url': "https://www.youtube.com/watch?v=IRqboacDNFg"},
     "Hamburg (St. Michaelis)": {'type': 'embed', 'url': "https://www.youtube.com/embed/2_IpYA8apCE?autoplay=1&mute=1"},  # Vista desde la iglesia St. Michaelis :contentReference[oaicite:1]{index=1}
     "Múnich (Marienplatz)": {'type': 'embed', 'url': "https://www.youtube.com/embed/dOnesWNFwdw?autoplay=1&mute=1"},  # Vista de Marienplatz :contentReference[oaicite:2]{index=2}
-    "Frankfurt (Airport spotting)": {'type': 'embed', 'url': "https://www.youtube.com/embed/0FBFZfZA5R4?autoplay=1&mute=1"},  # Spotting en Frankfurt Airport :contentReference[oaicite:3]{index=3}
+    "Bensersiel (Costa Nord)": {'type': 'embed', 'url': "https://www.youtube.com/embed/y_xYm5-Q2Vw?autoplay=1&mute=1"}, # Spotting en Frankfurt Airport :contentReference[oaicite:3]{index=3}
     
 }
 
@@ -166,11 +166,12 @@ PRESS_LEVELS_ITALIA = sorted([1000, 925, 850, 700, 500, 250], reverse=True)
 API_URL_ALEMANYA = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_ALEMANYA = pytz.timezone('Europe/Berlin')
 CIUTATS_ALEMANYA = {
-    # <<<--- NOMS ACTUALITZATS PERQUÈ COINCIDEIXIN AMB WEBCAM_LINKS --->>>
+    # <<<--- NOMS ACTUALITZATS: HEM CANVIAT LA VISTA GENERAL PER Benseriel --->>>
+    'Bensersiel (Costa Nord)': {'lat': 53.676, 'lon': 7.568, 'sea_dir': (270, 360)},
     'Berlín (Alexanderplatz)': {'lat': 52.5219, 'lon': 13.4132, 'sea_dir': None},
     'Múnich (Marienplatz)': {'lat': 48.1374, 'lon': 11.5755, 'sea_dir': None},
     'Hamburg (St. Michaelis)': {'lat': 53.5484, 'lon': 9.9788, 'sea_dir': (290, 360)}, 
-    'Frankfurt (Airport spotting)': {'lat': 50.0507, 'lon': 8.5705, 'sea_dir': None},
+    'Colònia (Catedral)': {'lat': 50.9413, 'lon': 6.9583, 'sea_dir': None},
 }
 MAP_EXTENT_ALEMANYA = [5.5, 15.5, 47.0, 55.5]
 PRESS_LEVELS_ICON = sorted([1000, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
