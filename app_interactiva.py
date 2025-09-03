@@ -4498,6 +4498,10 @@ def carregar_dades_mapa_alemanya(nivell, hourly_index):
 
 @st.cache_data(ttl=3600, max_entries=20, show_spinner=False)
 def carregar_dades_sondeig_noruega(lat, lon, hourly_index):
+    """
+    Versió Corregida: Assegura que la funció sempre retorna 3 valors
+    (data_tuple, final_index, error_msg) per evitar el ValueError.
+    """
     try:
         h_base = ["temperature_2m", "relative_humidity_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
         press_vars = ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"]
@@ -4507,9 +4511,18 @@ def carregar_dades_sondeig_noruega(lat, lon, hourly_index):
         response = openmeteo.weather_api(API_URL_NORUEGA, params=params)[0]
         hourly = response.Hourly()
         valid_index = trobar_hora_valida_mes_propera(hourly, hourly_index, len(h_base))
-        if valid_index is None: return None, hourly_index, "No s'han trobat dades vàlides."
+        if valid_index is None: 
+            return None, hourly_index, "No s'han trobat dades vàlides."
 
-        hourly_vars = {var: hourly.Variables(i).ValuesAsNumpy() for i, var in enumerate(h_base + h_press)}
+        # Llegim les dades de manera robusta
+        hourly_vars = {}
+        all_requested_vars = h_base + h_press
+        for i, var_name in enumerate(all_requested_vars):
+            try:
+                hourly_vars[var_name] = hourly.Variables(i).ValuesAsNumpy()
+            except Exception:
+                hourly_vars[var_name] = np.array([np.nan])
+
         sfc_data = {v: hourly_vars[v][valid_index] for v in h_base}
         sfc_dew_point = mpcalc.dewpoint_from_relative_humidity(sfc_data["temperature_2m"] * units.degC, sfc_data["relative_humidity_2m"] * units.percent).m
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
@@ -4532,9 +4545,16 @@ def carregar_dades_sondeig_noruega(lat, lon, hourly_index):
                     u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m)
                 else:
                     u_profile.append(np.nan); v_profile.append(np.nan)
+        
+        # <<<--- CORRECCIÓ CLAU AQUÍ ---
+        # 1. Capturem el resultat de 'processar_dades_sondeig'
+        processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
+        # 2. Retornem un tuple amb els 3 valors que s'esperen
+        return processed_data, valid_index, error
+        # <<<--- FI DE LA CORRECCIÓ ---
 
-        return processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
     except Exception as e:
+        # Aquest return ja era correcte (retornava 3 valors)
         return None, hourly_index, f"Error en carregar dades del sondeig de Noruega: {e}"
 
 @st.cache_data(ttl=3600)
