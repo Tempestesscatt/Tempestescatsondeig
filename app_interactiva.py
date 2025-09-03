@@ -40,7 +40,7 @@ import folium
 from streamlit_folium import st_folium
 import geopandas as gpd
 from shapely.geometry import Point
-from st_javascript import st_javascript
+
 
 
 
@@ -2784,62 +2784,6 @@ def afegir_etiquetes_ciutats(ax, map_extent):
 
 
 
-def mostrar_video_transicio():
-    """
-    Mostra un vídeo de transició i utilitza un callback de JavaScript
-    per comunicar-se amb Python quan acaba, forçant un rerun sense
-    perdre l'estat de la sessió. Aquesta és la solució definitiva.
-    """
-    video_file = 'zoom_earth.mp4'
-    if not os.path.exists(video_file):
-        st.error(f"Error: No s'ha trobat el fitxer de vídeo '{video_file}'.")
-        st.session_state['show_transition_video'] = False
-        st.rerun()
-        return
-
-    with open(video_file, "rb") as video:
-        video_bytes = video.read()
-    
-    video_b64 = base64.b64encode(video_bytes).decode()
-    
-    # HTML i CSS per al vídeo a pantalla completa
-    video_html = f"""
-    <style>
-        .stApp {{ visibility: hidden; }} /* Amaguem l'app de fons */
-        body {{ margin: 0; overflow: hidden; background-color: black; }}
-        #transition-video-container {{
-            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999;
-        }}
-        #transition-video {{
-            width: 100%; height: 100%; object-fit: cover;
-        }}
-    </style>
-    <div id="transition-video-container">
-        <video autoplay muted playsinline id="transition-video">
-            <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
-        </video>
-    </div>
-    """
-    st.markdown(video_html, unsafe_allow_html=True)
-
-    # El component de JavaScript que escoltarà el final del vídeo
-    # Quan el vídeo acabi, retornarà el valor "ended" a la variable 'video_status'
-    video_status = st_javascript("""
-        const video = document.getElementById('transition-video');
-        if (video) {
-            video.addEventListener('ended', () => {
-                window.streamlitApi.setComponentValue('ended');
-            });
-        }
-    """, key="video_transition_key")
-
-    # Aquesta és la màgia: Streamlit es quedarà esperant fins que 'video_status'
-    # rebi el valor 'ended' des del navegador.
-    if video_status == 'ended':
-        # Quan el vídeo ha acabat, desactivem la bandera i fem un rerun.
-        # Com que és un rerun intern, l'estat de la sessió es conserva perfectament.
-        st.session_state.show_transition_video = False
-        st.rerun()
 
 
 
@@ -6631,11 +6575,6 @@ def main():
     inject_custom_css()
     hide_streamlit_style()
 
-    # La lògica de transició ara és molt més simple
-    if st.session_state.get('show_transition_video', False):
-        mostrar_video_transicio()
-        # Important: Aturem l'execució aquí per no renderitzar res més
-        return
 
     # El reste del codi es manté exactament igual
     if 'logged_in' not in st.session_state: st.session_state.logged_in = False
@@ -6736,9 +6675,3 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
