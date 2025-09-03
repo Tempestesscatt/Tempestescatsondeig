@@ -4381,12 +4381,14 @@ def carregar_dades_sondeig_alemanya(lat, lon, hourly_index):
             if p_val < p_profile[-1]:
                 p_profile.append(p_val)
                 
+                # Obtenim les dades d'aquest nivell, agafant 'NaN' si no existeixen
                 temp = hourly_vars.get(f'temperature_{p_val}hPa', [np.nan])[valid_index]
                 rh = hourly_vars.get(f'relative_humidity_{p_val}hPa', [np.nan])[valid_index]
                 ws = hourly_vars.get(f'wind_speed_{p_val}hPa', [np.nan])[valid_index]
                 wd = hourly_vars.get(f'wind_direction_{p_val}hPa', [np.nan])[valid_index]
                 h = hourly_vars.get(f'geopotential_height_{p_val}hPa', [np.nan])[valid_index]
                 
+                # Afegim les dades als perfils (poden ser 'NaN')
                 T_profile.append(temp)
                 h_profile.append(h)
                 
