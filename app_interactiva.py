@@ -6043,20 +6043,21 @@ def run_catalunya_app():
 
 def run_valley_halley_app():
     # --- PAS 1: INICIALITZACIÓ ROBUSTA DE L'ESTAT ---
-    if 'poble_selector_usa' not in st.session_state: st.session_state.poble_selector_usa = "Oklahoma City, OK"
+    # <<<--- CANVI CLAU: La ciutat per defecte ara és "Dallas, TX", que sí que existeix a la nova llista --->>>
+    if 'poble_selector_usa' not in st.session_state: st.session_state.poble_selector_usa = "Dallas, TX"
     if 'dia_selector_usa' not in st.session_state: st.session_state.dia_selector_usa = datetime.now(TIMEZONE_USA).strftime('%d/%m/%Y')
     if 'hora_selector_usa' not in st.session_state: st.session_state.hora_selector_usa = datetime.now(TIMEZONE_USA).hour
     if 'level_usa_main' not in st.session_state: st.session_state.level_usa_main = 850
     if 'active_tab_usa' not in st.session_state: st.session_state.active_tab_usa = "Anàlisi Vertical"
 
-    # --- PAS 2: CAPÇALERA I SELECTORS PRINCIPALS ---
+    # --- PAS 2: CAPÇALERA I SELECTORS ---
     ui_capcalera_selectors(None, zona_activa="valley_halley")
     
-    # --- PAS 3: RECOPILACIÓ DE VALORS I CÀLCULS DE TEMPS ---
+    # --- PAS 3: RECOPILACIÓ DE VALORS ---
     poble_sel = st.session_state.poble_selector_usa
     dia_sel_str = st.session_state.dia_selector_usa
-    hora_sel = st.session_state.hora_selector_usa # Llegeix l'hora com un enter (ex: 14)
-    hora_sel_str = f"{hora_sel:02d}:00h"          # Crea el text per a visualització
+    hora_sel = st.session_state.hora_selector_usa
+    hora_sel_str = f"{hora_sel:02d}:00h"
     
     nivell_sel = st.session_state.level_usa_main
     lat_sel, lon_sel = USA_CITIES[poble_sel]['lat'], USA_CITIES[poble_sel]['lon']
@@ -6069,19 +6070,18 @@ def run_valley_halley_app():
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (CST) / {cat_dt.strftime('%d/%m, %H:%Mh')} (CAT)"
 
-    # --- PAS 4: MENÚ DE NAVEGACIÓ ENTRE PESTANYES ---
+    # --- PAS 4: MENÚ DE PESTANYES ---
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
     default_idx = menu_options.index(st.session_state.active_tab_usa)
     selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
     st.session_state.active_tab_usa = selected_tab
 
-    # --- PAS 5: LÒGICA PER A CADA PESTANYA ---
+    # --- PAS 5: LÒGICA DE PESTANYES ---
     if selected_tab == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig HRRR per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_usa(lat_sel, lon_sel, hourly_index_sel)
-        
-        if data_tuple is None or error_msg:
+        if data_tuple is None or error_msg: 
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         else:
             if final_index != hourly_index_sel:
@@ -6089,7 +6089,6 @@ def run_valley_halley_app():
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_USA)
                 st.warning(f"**Avís:** Dades no disponibles. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
             
-            # Calculem la convergència abans de mostrar la pestanya
             params_calc = data_tuple[1]
             with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
                 map_data_conv, _ = carregar_dades_mapa_usa(nivell_sel, hourly_index_sel)
