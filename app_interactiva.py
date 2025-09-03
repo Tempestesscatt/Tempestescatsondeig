@@ -6633,10 +6633,11 @@ def main():
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v28.0 - Lògica Jeràrquica amb LFC.
-    1. Comprova si hi ha inhibició o falta de disparador.
-    2. Comprova si l'LFC és > 3000m (convecció de base alta).
-    3. Només si els filtres anteriors es superen, classifica la tempesta.
+    Sistema de Diagnòstic v29.0 - Afegeix detecció de Nimbostratus.
+    1. Comprova si hi ha saturació per a pluja estratiforme (Nimbostratus).
+    2. Si no, comprova inhibició o falta de disparador per a convecció.
+    3. Si no, comprova si l'LFC és massa alt.
+    4. Si tot es supera, classifica la tempesta convectiva.
     """
     # --- 1. EXTRACCIÓ COMPLETA I ROBUSTA DE PARÀMETRES ---
     sbcape = params.get('SBCAPE', 0) or 0; mlcape = params.get('MLCAPE', 0) or 0; mucape = params.get('MUCAPE', 0) or 0
@@ -6644,6 +6645,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     srh_3km = params.get('SRH_0-3km', 0) or 0
+    pwat = params.get('PWAT', 0) or 0 # PWAT ara s'extreu aquí
     
     rh_capes = params.get('RH_CAPES', {'baixa': 0, 'mitjana': 0, 'alta': 0})
     rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
@@ -6653,8 +6655,24 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
 
-    # --- 2. FILTRE PRINCIPAL: INHIBICIÓ O SENSE DISPARADOR ---
-    # Si hi ha una tapa molt forta o no hi ha un mecanisme d'ascens, no hi haurà tempesta.
+    # --- NOU BLOC: FILTRE PER A NIMBOSTRATUS (PRIORITARI) ---
+    # Comprovem si hi ha una capa molt humida a nivells baixos i mitjans,
+    # condició típica per a la pluja estratiforme contínua.
+    if rh_baixa > 85 and rh_mitjana > 80:
+        # Si hi ha saturació, determinem la intensitat de la pluja amb el PWAT
+        if pwat >= 35: precip_desc = "Pluges fortes / Xàfecs"
+        elif pwat >= 20: precip_desc = "Pluges"
+        else: precip_desc = "Plujims"
+        
+        return {
+            'emoji': "🌧️",
+            'descripcio': f"Nimbostratus ({precip_desc})",
+            'veredicte': "Cel cobert amb precipitació estratiforme generalitzada. Poca o nul·la activitat elèctrica.",
+            'factor_clau': "Saturació a capes baixes i mitjanes."
+        }
+    # --- FI DEL NOU BLOC ---
+
+    # --- 2. FILTRE PRINCIPAL: INHIBICIÓ O SENSE DISPARADOR (ara és el segon pas) ---
     if mucin < -100 or conv < 25:
         if rh_baixa > 80: return {'emoji': "☁️", 'descripcio': "Cel Cobert (Estratus)", 'veredicte': "Capa de núvols baixos sense desenvolupament vertical.", 'factor_clau': "Inhibició o falta de disparador."}
         if rh_mitjana > 70: return {'emoji': "🌥️", 'descripcio': "Núvols Mitjans (Altocúmulus)", 'veredicte': "Cel variable amb núvols a nivells mitjans.", 'factor_clau': "Inhibició o falta de disparador."}
@@ -6662,35 +6680,25 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
         return {'emoji': "☀️", 'descripcio': "Cel Serè", 'veredicte': "Temps estable. Les condicions no són favorables per a la convecció.", 'factor_clau': "Inhibició o falta de disparador."}
 
     # --- 3. FILTRE CLAU: LFC > 3000m (CONVECCIÓ DE BASE ALTA) ---
-    # Si la convecció s'inicia massa amunt, no formarà tempestes organitzades.
     if lfc_hgt > 3000:
         desc = "Altocúmulus Castellanus"
         veredicte = "Potencial per a convecció de base elevada. No s'esperen tempestes organitzades a la superfície."
-        # Si hi ha molta humitat a sota, podrien ser Stratocumulus Castellanus
         if rh_baixa > 70: desc = "Stratocumulus Castellanus"
-        
         return {'emoji': "🌥️", 'descripcio': desc, 'veredicte': veredicte, 'factor_clau': f"LFC elevat ({lfc_hgt:.0f} m)."}
 
     # --- 4. SI ARRIBEM AQUÍ (LFC < 3000m), CLASSIFIQUEM LA TEMPESTA ---
-    # Utilitzem el MUCAPE (el més representatiu) per classificar la intensitat.
-    
-    # Cas 1: Potencial de Supercèl·lula (el més sever)
     if mucape > 1500 and bwd_6km > 35 and srh_3km > 200:
         return {'emoji': "🌪️", 'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Condicions molt favorables per a la formació de tempestes rotatòries i severes.", 'factor_clau': "Alt CAPE, fort cisallament i helicitat."}
     
-    # Cas 2: Potencial de Multicèl·lula Organitzada
     elif mucape > 1000 and bwd_6km > 25:
         return {'emoji': "⛈️", 'descripcio': "Tempestes Organitzades (Multicèl·lula)", 'veredicte': "Potencial per a la formació de grups de tempestes o línies organitzades.", 'factor_clau': "CAPE moderat-alt i cisallament suficient."}
         
-    # Cas 3: Tempesta Aïllada (Cumulonimbus)
     elif mucape > 800:
         return {'emoji': "🌩️", 'descripcio': "Tempesta Aïllada (Cumulonimbus)", 'veredicte': "Condicions favorables per al desenvolupament de tempestes aïllades, possiblement fortes.", 'factor_clau': "CAPE suficient per a un desenvolupament vertical complet."}
 
-    # Cas 4: Xàfecs o Desenvolupament Vertical (Congestus)
     elif mucape > 400:
         return {'emoji': "☁️", 'descripcio': "Desenvolupament Vertical (Congestus)", 'veredicte': "Potencial per a núvols de gran creixement que podrien deixar xàfecs aïllats.", 'factor_clau': "CAPE moderat, suficient per a congestus."}
 
-    # Cas 5: Núvols de Bon Temps (Humilis/Mediocris)
     else: # MUCAPE < 400
         return {'emoji': "🌤️", 'descripcio': "Núvols de Bon Temps (Cúmuls)", 'veredicte': "Es formaran petits cúmuls de bon temps amb poc o cap desenvolupament vertical.", 'factor_clau': "CAPE baix."}
 
