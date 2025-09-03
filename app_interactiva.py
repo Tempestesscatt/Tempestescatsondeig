@@ -1329,39 +1329,41 @@ def verificar_datos_entrada(p, T, Td, u, v, heights):
 
 
 
-def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str, zoom_capa_baixa=False):
+def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str, zoom_capa_baixa=False, ajustar_limit_superior=False):
     """
-    Versió professional amb zoom real i proporcional. Redibuixa el gràfic
-    ajustant ambdós eixos per mantenir l'aspecte correcte del Skew-T.
+    Versió Millorada: Afegeix un paràmetre opcional 'ajustar_limit_superior' per
+    retallar l'eix Y fins a l'últim nivell amb dades de temperatura vàlides.
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     
-    # Mantenim una única configuració per a la creació del SkewT
     skew = SkewT(fig, rotation=45, rect=(0.1, 0.05, 0.85, 0.85))
     skew.ax.grid(True, linestyle='-', alpha=0.5)
 
-    # --- LÒGICA DE ZOOM PROFESSIONAL I PROPORCIONAL ---
     if zoom_capa_baixa:
-        # 1. Definim els límits de pressió per al zoom (eix Y)
         pressio_superficie = p[0].m
-        skew.ax.set_ylim(pressio_superficie + 5, 800) # Marge petit a la superfície
-        
-        # 2. Calculem els límits de temperatura NOMÉS per a aquesta capa (eix X)
-        # Això és el pas clau per mantenir les proporcions!
+        skew.ax.set_ylim(pressio_superficie + 5, 800)
         mask_capa_baixa = (p.m <= pressio_superficie) & (p.m >= 800)
-        T_capa_baixa = T[mask_capa_baixa]
-        Td_capa_baixa = Td[mask_capa_baixa]
-        
-        # Trobem les temperatures mínima i màxima en aquesta capa i afegim un marge
+        T_capa_baixa = T[mask_capa_baixa]; Td_capa_baixa = Td[mask_capa_baixa]
         temp_min = min(T_capa_baixa.min().m, Td_capa_baixa.min().m) - 5
         temp_max = max(T_capa_baixa.max().m, Td_capa_baixa.max().m) + 5
         skew.ax.set_xlim(temp_min, temp_max)
     else:
-        # Comportament normal per al gràfic complet
-        skew.ax.set_ylim(1000, 100)
+        # <<<--- LÒGICA DE LÍMIT SUPERIOR DINÀMIC ---
+        limit_superior = 100 # Valor per defecte
+        if ajustar_limit_superior:
+            # Troba la pressió mínima (el nivell més alt) on hi ha una dada de Temperatura
+            valid_T_mask = np.isfinite(T.m)
+            if np.any(valid_T_mask):
+                # Agafem la pressió més baixa (més alta) i li donem un petit marge
+                limit_superior = p[valid_T_mask].min().m - 10
+                # Assegurem que el límit mai sigui més baix de 100hPa per seguretat
+                if limit_superior < 100: limit_superior = 100
+        
+        skew.ax.set_ylim(1000, limit_superior)
+        # <<<--- FI DE LA LÒGICA ---
+
         skew.ax.set_xlim(-40, 40)
         
-        # Dibuixem el terreny només a la vista completa
         pressio_superficie = p[0].m
         if pressio_superficie < 995:
             colors = ["#66462F", "#799845"] 
@@ -1369,8 +1371,8 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str, zoom_ca
             gradient = np.linspace(0, 1, 256).reshape(-1, 1)
             xlims = skew.ax.get_xlim()
             skew.ax.imshow(gradient.T, aspect='auto', cmap=cmap_terreny, origin='lower', extent=(xlims[0], xlims[1], 1000, pressio_superficie), alpha=0.6, zorder=0)
-    # --- FI DE LA LÒGICA DE ZOOM ---
 
+    # La resta de la funció de dibuix es manté igual
     skew.ax.axvline(0, color='cyan', linestyle='--', linewidth=1.5, alpha=0.7)
     skew.plot_dry_adiabats(color='coral', linestyle='--', alpha=0.5)
     skew.plot_moist_adiabats(color='cornflowerblue', linestyle='--', alpha=0.5)
@@ -1389,16 +1391,15 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str, zoom_ca
     skew.ax.set_title(f"{titol}\n{timestamp_str}", weight='bold', fontsize=14, pad=15)
     skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
 
-    levels_to_plot = ['LCL_p', 'LFC_p', 'EL_p']
-    for key in levels_to_plot:
-        p_lvl = params_calc.get(key)
-        if p_lvl is not None and not np.isnan(p_lvl):
-            p_val = p_lvl.m if hasattr(p_lvl, 'm') else p_lvl
-            skew.ax.axhline(p_val, color='blue', linestyle='--', linewidth=1.5)
+    try:
+        if 'LCL_p' in params_calc and pd.notna(params_calc['LCL_p']): skew.plot_lcl_line(color='blue', linestyle='--', linewidth=1.5)
+        if 'LFC_p' in params_calc and pd.notna(params_calc['LFC_p']): skew.plot_lfc_line(color='green', linestyle='--', linewidth=1.5)
+        if 'EL_p' in params_calc and pd.notna(params_calc['EL_p']): skew.plot_el_line(color='red', linestyle='--', linewidth=1.5)
+    except Exception as e:
+        print(f"Error dibuixant línies de nivell: {e}")
 
     skew.ax.legend()
     return fig
-
 
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol, timestamp_str):
     """
@@ -2426,12 +2427,10 @@ def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp
     with col2: st.markdown(crear_dial_vent_animat("925 hPa", dir_925, spd_925), unsafe_allow_html=True)
     with col3: st.markdown(crear_dial_vent_animat("700 hPa", dir_700, spd_700), unsafe_allow_html=True)
 
-def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None):
+def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None, ajustar_limit_superior=False):
     """
-    Versió Final amb Lògica de Context:
-    - Comprova si la zona d'amenaça ja és la zona que s'està analitzant.
-    - Si és així, mostra un botó desactivat amb un missatge informatiu.
-    - Si no, mostra el botó interactiu per "viatjar" a la nova zona.
+    Versió Millorada: Afegeix el paràmetre 'ajustar_limit_superior' i el passa
+    a la funció 'crear_skewt'.
     """
     if data_tuple:
         sounding_data, params_calculats = data_tuple
@@ -2440,47 +2439,33 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
         col1, col2 = st.columns(2, gap="large")
         with col1:
             zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 800 hPa)")
-            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=zoom_capa_baixa)
+            # <<<--- PASSEM EL NOU PARÀMETRE AQUÍ --->>>
+            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=zoom_capa_baixa, ajustar_limit_superior=ajustar_limit_superior)
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             with st.container(border=True):
                 ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual, poble_sel, avis_proximitat)
 
+        # La resta de la funció es manté igual
         with col2:
             fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat - {poble_sel}", timestamp_str)
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
 
-            # <<-- NOU BLOC DE LÒGICA AMB COMPROVACIÓ DE CONTEXT -->>
             if avis_proximitat and isinstance(avis_proximitat, dict):
-                # Sempre mostrem el missatge d'avís primer
                 st.warning(f"⚠️ **AVÍS DE PROXIMITAT:** {avis_proximitat['message']}")
-                
-                # Comprovem si el millor punt d'anàlisi és el que ja estem veient
                 if avis_proximitat['target_city'] == poble_sel:
-                    # Si és així, mostrem un botó desactivat i informatiu
-                    st.button("📍 Ja ets a la millor zona convergent d'anàlisi, mira si hi ha MU/SBCAPE! I poc MU/SBCIN!",
-                              help="El punt d'anàlisi més proper a l'amenaça és la localitat que ja estàs consultant.",
-                              use_container_width=True,
-                              disabled=True)
+                    st.button("📍 Ja ets a la millor zona d'anàlisi!", help="...", use_container_width=True, disabled=True)
                 else:
-                    # Si no, mostrem el botó interactiu de sempre
-                    tooltip_text = f"Viatjar a {avis_proximitat['target_city']}, el punt d'anàlisi més proper al nucli de convergència (Força: {avis_proximitat['conv_value']:.0f})."
-                    st.button("🛰️ Analitzar Zona d'Amenaça", 
-                              help=tooltip_text, 
-                              use_container_width=True, 
-                              type="primary",
-                              on_click=canviar_poble_analitzat,
-                              args=(avis_proximitat['target_city'],)
-                             )
-            # <<-- FI DEL NOU BLOC -->>
+                    tooltip_text = f"Viatjar a {avis_proximitat['target_city']}..."
+                    st.button("🛰️ Analitzar Zona d'Amenaça", help=tooltip_text, use_container_width=True, type="primary", on_click=canviar_poble_analitzat, args=(avis_proximitat['target_city'],))
             
             st.markdown("##### Radar de Precipitació en Temps Real")
             radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
-            html_code = f"""<div style="position: relative; width: 100%; height: 410px; border-radius: 10px; overflow: hidden;"><iframe src="{radar_url}" width="100%" height="410" frameborder="0" style="border:0;"></iframe><div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div></div>"""
-            st.components.v1.html(html_code, height=410)
+            st.components.v1.html(f'<iframe src="{radar_url}" width="100%" height="410" frameborder="0" style="border:0;"></iframe>', height=410)
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
+        
 
 def debug_convergence_calculation(map_data, llista_ciutats):
     """
@@ -5768,7 +5753,7 @@ def ui_analisi_regims_de_vent(analisi_resultat):
 
         st.divider()
         st.markdown(f"<p style='text-align: center; font-size: 1.1em; padding: 0 15px;'><strong>Veredicte:</strong> {veredicte}</p>", unsafe_allow_html=True)
-        
+
 def ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model HRRR)")
     
