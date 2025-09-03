@@ -2783,18 +2783,20 @@ def afegir_etiquetes_ciutats(ax, map_extent):
 
 
 
-        
+def mostrar_video_transicio():
+    """
+    Mostra un vídeo de transició a pantalla completa utilitzant una meta-etiqueta
+    de refresc. Aquesta versió és robusta i soluciona el problema del bucle i la pèrdua de sessió.
+    """
+    # <<<--- AJUSTA AQUEST VALOR ---
+    # Posa la durada real del teu vídeo en segons i suma-li un petit marge (ex: 0.5s).
+    # Si el teu vídeo dura 4 segons, posa 4.5
+    REFRESH_DELAY_SEGONS = 4.5
 
-def mostrar_video_transicio(zone_id):
-    """
-    Mostra un vídeo de transició i, quan acaba, utilitza JavaScript per navegar
-    a una URL que inclou la zona seleccionada, trencant el bucle de manera segura.
-    """
     video_file = 'zoom_earth.mp4'
     if not os.path.exists(video_file):
         st.error(f"Error Crític: No s'ha trobat el fitxer de vídeo '{video_file}'.")
-        st.session_state.show_transition_video = False
-        st.session_state['zone_selected'] = zone_id # Assegurem que no es perd la selecció
+        st.session_state['show_transition_video'] = False
         time.sleep(2)
         st.rerun()
         return
@@ -2808,6 +2810,8 @@ def mostrar_video_transicio(zone_id):
     <!DOCTYPE html>
     <html>
     <head>
+    <!-- La clau: El navegador recarregarà la pàgina després del retard segur -->
+    <meta http-equiv="refresh" content="{REFRESH_DELAY_SEGONS}">
     <style>
         body {{ margin: 0; overflow: hidden; background-color: black; }}
         #transition-video {{
@@ -2819,21 +2823,12 @@ def mostrar_video_transicio(zone_id):
         <video autoplay muted playsinline id="transition-video">
             <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
         </video>
-
-        <script>
-            const video = document.getElementById('transition-video');
-            video.addEventListener('ended', function() {{
-                // <<<--- CANVI CLAU: ARA AFEGIM LA ZONA A LA URL ---
-                // Naveguem a una URL que conté la informació de la zona seleccionada.
-                window.location.href = window.location.pathname + '?transition=done&zone={zone_id}';
-            }});
-        </script>
     </body>
     </html>
     """
     
     st.components.v1.html(video_html, height=st.query_params.get("height", 800))
-    st.stop()
+
 
 
 
@@ -6624,30 +6619,24 @@ def main():
     inject_custom_css()
     hide_streamlit_style()
 
-    # --- NOU BLOC DE GESTIÓ DE LA TRANSICIÓ (MÉS INTEL·LIGENT) ---
-    if "transition" in st.query_params and st.query_params["transition"] == "done":
-        # El vídeo ha acabat. Desactivem la bandera.
-        st.session_state['show_transition_video'] = False
-        # <<<--- CANVI CLAU: LLEGIM LA ZONA DE LA URL I LA GUARDEM A LA SESSIÓ ---
-        if 'zone' in st.query_params:
-            st.session_state['zone_selected'] = st.query_params['zone']
-        # Netegem la URL per a que, si l'usuari recarrega manualment, no torni a entrar aquí.
-        st.query_params.clear()
-
-    # Aquesta lògica ara funciona perfectament
+    # --- LÒGICA DE LA TRANSICIÓ (ROBUSTA I A PROVA DE BUCLES) ---
+    # Comprovem si la bandera de transició està activa
     if st.session_state.get('show_transition_video', False):
-        # Passem la zona seleccionada a la funció del vídeo per a que la pugui posar a la URL.
-        # Aquest valor va ser guardat pel botó 'on_click'.
-        zone_to_show = st.session_state.get('zone_selected')
-        if zone_to_show:
-            mostrar_video_transicio(zone_to_show)
-        else:
-            # Si per alguna raó no hi ha zona, cancelem la transició per evitar errors.
-            st.session_state['show_transition_video'] = False
-            st.rerun()
-        return # Aturem l'execució aquí fins que el vídeo acabi.
+        
+        # MOLT IMPORTANT: Desactivem la bandera IMMEDIATAMENT.
+        # D'aquesta manera, quan la pàgina es recarregui després del vídeo,
+        # aquesta condició ja serà falsa i l'app continuarà normalment.
+        st.session_state.show_transition_video = False
+        
+        # Mostrem la pàgina del vídeo. Aquesta funció no aturarà l'script,
+        # simplement renderitzarà l'HTML.
+        mostrar_video_transicio()
+        
+        # Aturem l'execució de la resta de l'script de Python per a aquesta càrrega.
+        # Només volem que es vegi el vídeo.
+        st.stop()
 
-    # El reste del codi es manté exactament igual
+    # El reste de la lògica de l'aplicació continua com sempre
     if 'logged_in' not in st.session_state: st.session_state.logged_in = False
     
     if not st.session_state.logged_in:
@@ -6667,6 +6656,7 @@ def main():
     elif st.session_state.zone_selected == 'japo': run_japo_app()
     elif st.session_state.zone_selected == 'uk': run_uk_app()
     elif st.session_state.zone_selected == 'canada': run_canada_app()
+    
 
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
