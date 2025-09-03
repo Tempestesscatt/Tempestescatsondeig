@@ -753,44 +753,97 @@ def generar_html_imatge_estatica(image_path, height="180px"):
 
 
 
-def afegir_video_de_fons():
+def afegir_slideshow_de_fons():
     """
-    Llegeix un arxiu de vídeo local, el codifica en Base64 i l'injecta
-    com un fons de pantalla complet per a la pàgina de login.
+    Crea un slideshow de fons amb 5 imatges que es van alternant amb una
+    transició suau. Les imatges es codifiquen en Base64 per ser incrustades
+    directament a l'HTML.
     """
-    # Assegura't que el vídeo 'llamps.mp4' estigui a la mateixa carpeta que l'script
-    video_file = 'llamps2.mp4'
-
-    if not os.path.exists(video_file):
-        # Si el vídeo no existeix, no facis res per evitar un error
-        return
-
-    with open(video_file, "rb") as video:
-        video_bytes = video.read()
+    # Llista de les imatges que vols utilitzar. Assegura't que existeixen!
+    image_files = [
+        "fons1.jpg", "fons2.jpg", "fons3.jpg", "fons4.jpg", "fons5.jpg"
+    ]
     
-    video_b64 = base64.b64encode(video_bytes).decode()
+    # Temps (en segons) que cada imatge estarà visible i la durada de la transició
+    hold_time = 8  # Segons que la imatge és visible
+    fade_time = 2  # Segons que dura el "cross-fade"
     
-    video_html = f"""
+    # Càlculs per a l'animació CSS
+    total_time_per_image = hold_time + fade_time
+    animation_duration = len(image_files) * total_time_per_image
+    fade_percentage = (fade_time / animation_duration) * 100
+
+    # Generem les regles CSS per a cada imatge
+    css_rules = ""
+    for i, image_file in enumerate(image_files):
+        if os.path.exists(image_file):
+            with open(image_file, "rb") as f:
+                image_b64 = base64.b64encode(f.read()).decode()
+            
+            # Calculem el retard de l'animació per a cada imatge
+            delay = i * total_time_per_image
+            
+            css_rules += f"""
+                .slideshow-image:nth-child({i + 1}) {{
+                    background-image: url("data:image/jpeg;base64,{image_b64}");
+                    animation-delay: {delay}s;
+                }}
+            """
+
+    slideshow_html = f"""
     <style>
+    /* Estil per fer l'app transparent i que es vegi el fons */
     .stApp {{
         background-color: transparent;
     }}
-    #login-bg {{
+
+    /* Contenidor principal del slideshow */
+    #slideshow-container {{
         position: fixed;
         top: 0;
         left: 0;
         width: 100vw;
         height: 100vh;
-        object-fit: cover;
-        z-index: -1;
-        opacity: 0.8; /* Pots ajustar l'opacitat del vídeo aquí */
+        z-index: -1; /* El posem al fons de tot */
+    }}
+
+    /* Estil comú per a totes les imatges del slideshow */
+    .slideshow-image {{
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-size: cover;
+        background-position: center;
+        opacity: 0; /* Comencen invisibles */
+        animation-name: fade;
+        animation-duration: {animation_duration}s;
+        animation-iteration-count: infinite; /* L'animació es repeteix indefinidament */
+    }}
+
+    /* Les regles específiques per a cada imatge (amb el seu fons i retard) */
+    {css_rules}
+
+    /* L'animació de fade in/out */
+    @keyframes fade {{
+        0% {{ opacity: 0; }}
+        {fade_percentage}% {{ opacity: 1; }} /* Fade in */
+        {(100 / len(image_files)) - fade_percentage}% {{ opacity: 1; }} /* Hold */
+        {100 / len(image_files)}% {{ opacity: 0; }} /* Fade out */
+        100% {{ opacity: 0; }}
     }}
     </style>
-    <video autoplay loop muted id="login-bg">
-        <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
-    </video>
+    
+    <div id="slideshow-container">
+        <div class="slideshow-image"></div>
+        <div class="slideshow-image"></div>
+        <div class="slideshow-image"></div>
+        <div class="slideshow-image"></div>
+        <div class="slideshow-image"></div>
+    </div>
     """
-    st.markdown(video_html, unsafe_allow_html=True)
+    st.markdown(slideshow_html, unsafe_allow_html=True)
     
     
 def inject_custom_css():
@@ -6491,7 +6544,7 @@ def main():
     if 'logged_in' not in st.session_state: st.session_state.logged_in = False
     
     if not st.session_state.logged_in:
-        afegir_video_de_fons()
+        afegir_slideshow_de_fons()
         show_login_page()
         return
 
