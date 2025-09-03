@@ -4843,8 +4843,8 @@ def crear_mapa_forecast_combinat_usa(lons, lats, speed_data, dir_data, dewpoint_
 
 def calcular_convergencia_puntual(map_data, lat_sel, lon_sel):
     """
-    Calcula el valor de convergència per a un únic punt geogràfic.
-    És una versió optimitzada de 'calcular_convergencies_per_llista' per a un sol cas.
+    Versió Robusta: Utilitza interpolació 'linear' que és més estable amb
+    graelles de dades poc denses i gestiona millor els valors nuls.
     """
     if not map_data or 'lons' not in map_data or len(map_data['lons']) < 4:
         return np.nan
@@ -4853,34 +4853,34 @@ def calcular_convergencia_puntual(map_data, lat_sel, lon_sel):
         lons, lats = map_data['lons'], map_data['lats']
         speed_data, dir_data = map_data['speed_data'], map_data['dir_data']
 
-        # Crear una graella d'interpolació
-        grid_lon, grid_lat = np.meshgrid(
-            np.linspace(min(lons), max(lons), 100),
-            np.linspace(min(lats), max(lats), 100)
-        )
-
-        # Calcular components U i V i interpolar-los
+        points = np.vstack((lons, lats)).T
         u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
-        grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
-        grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
-
-        # Calcular la convergència a tota la graella
-        with np.errstate(invalid='ignore'):
-            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-            divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
-            convergence_scaled = -divergence.to('1/s').magnitude * 1e5
-
-        # Trobar el punt més proper a les coordenades donades
-        dist_sq = (grid_lat - lat_sel)**2 + (grid_lon - lon_sel)**2
-        min_dist_idx = np.unravel_index(np.argmin(dist_sq, axis=None), dist_sq.shape)
         
-        # Retornar el valor de convergència en aquest punt
-        valor_conv = convergence_scaled[min_dist_idx]
+        # Interpolem directament al punt desitjat, que és més eficient
+        u_interpolated = griddata(points, u_comp.to('m/s').m, (lon_sel, lat_sel), method='linear')
+        v_interpolated = griddata(points, v_comp.to('m/s').m, (lon_sel, lat_sel), method='linear')
         
-        return valor_conv if pd.notna(valor_conv) else np.nan
+        # Per calcular la divergència, necessitem una petita graella al voltant del punt
+        grid_lon, grid_lat = np.meshgrid(
+            np.linspace(lon_sel - 0.1, lon_sel + 0.1, 3),
+            np.linspace(lat_sel - 0.1, lat_sel + 0.1, 3)
+        )
+        
+        grid_u = griddata(points, u_comp.to('m/s').m, (grid_lon, grid_lat), method='linear')
+        grid_v = griddata(points, v_comp.to('m/s').m, (grid_lon, grid_lat), method='linear')
+
+        if np.isnan(grid_u).any() or np.isnan(grid_v).any():
+            return np.nan
+
+        dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+        divergence = mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)
+        
+        # Agafem el valor del centre de la nostra petita graella
+        convergence_scaled = -divergence[1, 1].to('1/s').magnitude * 1e5
+        
+        return convergence_scaled if pd.notna(convergence_scaled) else np.nan
 
     except Exception:
-        # En cas d'error, retornar NaN per no bloquejar l'app
         return np.nan
 
 def hide_streamlit_style():
