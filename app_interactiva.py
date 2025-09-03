@@ -62,9 +62,9 @@ WEBCAM_LINKS = {
 
     # Tornado Alley (EUA) - Aquests NO permeten 'embed', els marquem com a 'direct'
     "Dallas, TX": {'type': 'direct', 'url': "https://www.youtube.com/watch?v=for_g-h2H6s"},
-    "Wichita, KS": {'type': 'direct', 'url': "https://www.youtube.com/watch?v=Dh_hS-j62a0"},
-    "Houston, TX": {'type': 'direct', 'url': "https://www.youtube.com/watch?v=Bv2tY1e6E3g"},
-    "Kansas City, MO": {'type': 'direct', 'url': "https://www.youtube.com/live/SDK_m1_BVJ4?si=n2EqWSKtOIf3XSJN"},
+    "Wichita, KS": {'type': 'direct', 'url': "https://www.youtube.com/watch?v=iN7u2jKbDm0"},
+    "Houston, TX": {'type': 'direct', 'url': "https://www.youtube.com/watch?v=SDK_m1_BVJ4"},
+    "Kansas City, MO": {'type': 'direct', 'url': "https://www.youtube.com/watch?v=Ezm7jMHsx5A"},
 
     # Regne Unit i Irlanda (Aquests permeten 'embed')
     "Southampton": {'type': 'embed', 'url': "https://www.youtube.com/embed/yJyL012sH_E?autoplay=1&mute=1"},
