@@ -6079,7 +6079,9 @@ def run_valley_halley_app():
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
-    st.info("💡 Les zones marcades amb un cercle verd 🟢 disposen de webcams en directe pre-configurades.", icon="📷")
+    
+    # <<<--- NOU: Actualitzem la llegenda per explicar els dos emojis --->>>
+    st.info("💡 Les zones marcades amb 🟢 tenen webcams disponibles. Les marcades amb 🔥 són especialment recomanades per al seguiment visual!", icon="📷")
 
     # Definim els camins a les IMATGES de previsualització
     paths = {
@@ -6097,9 +6099,11 @@ def ui_zone_selection():
         with col, st.container(border=True):
             st.markdown(generar_html_imatge_estatica(path, height="160px"), unsafe_allow_html=True)
             
-            # <<<--- CANVI PRINCIPAL AQUÍ: Afegim 'alemanya' a la llista --->>>
+            # <<<--- CANVI PRINCIPAL AQUÍ: Lògica per als dos emojis --->>>
             display_title = title
-            if zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya']:
+            if zone_id == 'italia': # Cas especial per a Itàlia, que és "top"
+                display_title += " 🔥"
+            elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya']: # La resta de zones amb webcam
                 display_title += " 🟢"
             
             st.subheader(display_title)
@@ -6115,8 +6119,6 @@ def ui_zone_selection():
     create_zone_button(row2_col2, paths['japo'], "Japó", "btn_japo", "japo")
     create_zone_button(row2_col3, paths['uk'], "Regne Unit", "btn_uk", "uk")
     create_zone_button(row2_col4, paths['can'], "Canadà", "btn_can", "canada")
-
-
 
 
 
