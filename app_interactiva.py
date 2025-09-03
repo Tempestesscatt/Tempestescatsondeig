@@ -4328,70 +4328,90 @@ def mostrar_spinner_mapa(mensaje, funcion_carga, *args, **kwargs):
 @st.cache_data(ttl=3600, max_entries=20, show_spinner=False)
 def carregar_dades_sondeig_alemanya(lat, lon, hourly_index):
     """
-    Carrega i processa les dades d'un sondeig vertical per a un punt a Alemanya
-    utilitzant el model d'alta resolució ICON-D2, ara amb nivells fins a 100 hPa.
+    Versió Definitiva: Carrega i processa les dades d'un sondeig vertical per a 
+    Alemanya utilitzant el model ICON-D2 amb el rang complet de nivells fins a 100 hPa.
     """
     try:
-        # La llista de variables es genera dinàmicament a partir de la constant actualitzada
+        # Llista de variables base a la superfície
         h_base = ["temperature_2m", "relative_humidity_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
-        h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS_ICON]
         
+        # Llista de variables que demanarem per a cada nivell de pressió
+        press_vars_names = ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"]
+        
+        # Generem dinàmicament la llista completa de totes les variables en alçada
+        h_press = [f"{var}_{p}hPa" for var in press_vars_names for p in PRESS_LEVELS_ICON]
+        
+        # Construïm la petició a l'API
         params = {
             "latitude": lat, 
             "longitude": lon, 
             "hourly": h_base + h_press, 
             "models": "icon_d2", 
-            "forecast_days": 3
+            "forecast_days": 2 # ICON-D2 té un abast d'unes 48h
         }
         
         response = openmeteo.weather_api(API_URL_ALEMANYA, params=params)[0]
         hourly = response.Hourly()
 
-        # La lògica per trobar l'hora vàlida no canvia
-        valid_index = None
-        total_hours = len(hourly.Variables(0).ValuesAsNumpy())
-        for offset in range(4): # Mirem fins a +/- 3 hores
-            for sign in [1, -1] if offset > 0 else [1]:
-                h_idx = hourly_index + (offset * sign)
-                if 0 <= h_idx < total_hours:
-                    sfc_check = [hourly.Variables(i).ValuesAsNumpy()[h_idx] for i in range(len(h_base))]
-                    if not any(np.isnan(val) for val in sfc_check):
-                        valid_index = h_idx; break
-            if valid_index is not None: break
-        
+        # Trobem l'hora vàlida més propera per evitar errors amb dades no disponibles
+        valid_index = trobar_hora_valida_mes_propera(hourly, hourly_index, len(h_base))
         if valid_index is None:
-            return None, hourly_index, "No s'han trobat dades vàlides properes a l'hora sol·licitada."
+            return None, hourly_index, "No s'han trobat dades vàlides per a les hores properes."
         
-        # La construcció del perfil tampoc canvia, ja que és dinàmica
-        sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[valid_index] for i, v in enumerate(h_base)}
+        # Llegim totes les variables de la resposta de l'API de manera robusta
+        hourly_vars = {}
+        all_requested_vars = h_base + h_press
+        for i, var_name in enumerate(all_requested_vars):
+            try:
+                hourly_vars[var_name] = hourly.Variables(i).ValuesAsNumpy()
+            except Exception:
+                # Si una variable no es pot llegir, la marquem com a buida per evitar errors
+                hourly_vars[var_name] = np.array([np.nan])
+        
+        # Processem les dades de superfície
+        sfc_data = {v: hourly_vars[v][valid_index] for v in h_base}
         sfc_dew_point = mpcalc.dewpoint_from_relative_humidity(sfc_data["temperature_2m"] * units.degC, sfc_data["relative_humidity_2m"] * units.percent).m
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
         
+        # Inicialitzem el perfil del sondeig amb les dades de superfície
         p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_dew_point], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
 
-        p_data = {}
-        var_count = len(h_base)
-        for i, var in enumerate(["T", "RH", "WS", "WD", "H"]):
-            p_data[var] = [hourly.Variables(var_count + i * len(PRESS_LEVELS_ICON) + j).ValuesAsNumpy()[valid_index] for j in range(len(PRESS_LEVELS_ICON))]
-
-        # Aquest bucle ara inclourà automàticament els nivells 200, 150 i 100 hPa
-        for i, p_val in enumerate(PRESS_LEVELS_ICON):
-            if p_val < p_profile[-1] and all(not np.isnan(p_data[v][i]) for v in ["T", "RH", "WS", "WD", "H"]):
+        # Afegim les dades de cada nivell de pressió al perfil
+        for p_val in PRESS_LEVELS_ICON:
+            # Només afegim el nivell si està per sota de la pressió de superfície
+            if p_val < p_profile[-1]:
+                temp = hourly_vars.get(f'temperature_{p_val}hPa', [np.nan])[valid_index]
+                rh = hourly_vars.get(f'relative_humidity_{p_val}hPa', [np.nan])[valid_index]
+                ws = hourly_vars.get(f'wind_speed_{p_val}hPa', [np.nan])[valid_index]
+                wd = hourly_vars.get(f'wind_direction_{p_val}hPa', [np.nan])[valid_index]
+                h = hourly_vars.get(f'geopotential_height_{p_val}hPa', [np.nan])[valid_index]
+                
+                # Afegim les dades (seran NaN si no estaven disponibles)
                 p_profile.append(p_val)
-                T_profile.append(p_data["T"][i])
-                Td_profile.append(mpcalc.dewpoint_from_relative_humidity(p_data["T"][i] * units.degC, p_data["RH"][i] * units.percent).m)
-                u, v = mpcalc.wind_components(p_data["WS"][i] * units('km/h'), p_data["WD"][i] * units.degrees)
-                u_profile.append(u.to('m/s').m)
-                v_profile.append(v.to('m/s').m)
-                h_profile.append(p_data["H"][i])
+                T_profile.append(temp)
+                h_profile.append(h)
+                
+                if pd.notna(temp) and pd.notna(rh):
+                    Td_profile.append(mpcalc.dewpoint_from_relative_humidity(temp * units.degC, rh * units.percent).m)
+                else:
+                    Td_profile.append(np.nan)
+                
+                if pd.notna(ws) and pd.notna(wd):
+                    u, v = mpcalc.wind_components(ws * units('km/h'), wd * units.degrees)
+                    u_profile.append(u.to('m/s').m)
+                    v_profile.append(v.to('m/s').m)
+                else:
+                    u_profile.append(np.nan)
+                    v_profile.append(np.nan)
 
+        # Finalment, processem el perfil complet per a calcular paràmetres i netejar dades
         processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
         return processed_data, valid_index, error
         
     except Exception as e: 
-        return None, hourly_index, f"Error en carregar dades del sondeig ICON-D2: {e}"
-    
-
+        import traceback
+        traceback.print_exc()
+        return None, hourly_index, f"Error crític en carregar dades del sondeig ICON-D2: {e}"
 
 
 @st.cache_data(ttl=3600)
