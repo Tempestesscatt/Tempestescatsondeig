@@ -1823,33 +1823,33 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         display_label = label
         color = "#FFFFFF"
         val_str = "---"
+        
+        # Variable per controlar la mida de la font dinàmicament
+        font_size = "1.6em"
 
         is_numeric = isinstance(value, (int, float, np.number))
 
         if pd.notna(value) and is_numeric:
             if 'CONV' in param_key:
-                # <<<--- LÒGICA DEFINITIVA AMB RANGS DE TEXT --->>>
                 if value < 0:
-                    # DIVERGÈNCIA: Mostrem text en lloc de números
-                    color = "#5bc0de"  # Blau fluix per a tota la divergència
-                    display_label = "Dinàmica Vertical" # Etiqueta més neutra
+                    color = "#5bc0de"
+                    display_label = "Dinàmica Vertical"
+                    # <<<--- CANVI PRINCIPAL: Ajustem la mida de la lletra --->>>
+                    font_size = "1.4em" # Reduïm la mida per al text
                     
-                    # Definim els rangs per al text
                     abs_val = abs(value)
                     if abs_val >= 30:
-                        val_str = "Divergència Forta"
+                        val_str = "Divergència<br>Forta"
                     elif abs_val >= 15:
-                        val_str = "Divergència Moderada"
+                        val_str = "Divergència<br>Moderada"
                     else:
-                        val_str = "Divergència Feble"
+                        val_str = "Divergència<br>Feble"
                 else:
-                    # CONVERGÈNCIA: Mostrem el número, colorejat per rangs
                     display_label = "Convergència"
                     thresholds = [5, 15, 30, 40]
                     colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
                     color = colors[np.searchsorted(thresholds, value)]
                     val_str = f"{value:.{precision}f}"
-                # <<<--- FI DE LA LÒGICA --->>>
 
             elif param_key == 'T_500hPa':
                 thresholds = [-8, -14, -18, -22]
@@ -1861,14 +1861,13 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
                 val_str = f"{value:.{precision}f}"
         
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
-        
-        # Ocultem la unitat si estem mostrant text en lloc d'un número
-        unit_display = f"({unit})" if val_str.replace('.', '', 1).isdigit() else ""
+        unit_display = f"({unit})" if val_str.replace('.', '', 1).replace('<br>', '').isdigit() else ""
 
+        # Assegurem que la caixa tingui una alçada mínima per mantenir la consistència del disseny
         st.markdown(f"""
-        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
-            <span style="font-size: 0.8em; color: #FAFAFA;">{display_label} {unit_display}{tooltip_html}</span><br>
-            <strong style="font-size: 1.6em; color: {color};">{val_str}</strong>
+        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
+            <span style="font-size: 0.8em; color: #FAFAFA;">{display_label} {unit_display}{tooltip_html}</span>
+            <strong style="font-size: {font_size}; color: {color}; line-height: 1.1;">{val_str}</strong>
         </div>""", unsafe_allow_html=True)
 
     def styled_qualitative(label, analysis_dict, tooltip_text=""):
