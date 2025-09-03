@@ -1127,7 +1127,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
 
     # 5. Retornar les dades per al GRÀFIC (perfil complet) i els paràmetres calculats
     return ((p_plot, T_plot, Td_plot, u_plot, v_plot, h_plot, sfc_prof_plot), params_calc), None
-
+    
 def diagnosticar_potencial_tempesta(params):
     """
     Sistema de Diagnòstic Meteorològic Expert v10.0.
