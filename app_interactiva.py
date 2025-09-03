@@ -6733,35 +6733,23 @@ def run_arxiu_tempestes_app():
         "--- Selecciona un cas d'estudi ---": None,
         
         # --- EXEMPLE DE CAS 1 ---
-        "Llevantada històrica (Glòria) (21/01/2020)": {
+        "Tempesta litoral central (SPC) (01/09/2025)": {
             "data": "20-23 de Gener de 2020",
             "image": "arxiu_spbcn.jpg", # Camí a la imatge
             "description": """
-            El temporal **Glòria** va ser un dels fenòmens meteorològics més severs de les últimes dècades a Catalunya. 
-            Es va caracteritzar per:
-            - **Pluges torrencials i persistents** que van causar desbordaments de rius, especialment el Ter i el Tordera.
-            - **Onatge rècord** a la costa, amb onades que van superar els 10 metres d'alçada, causant danys massius a passejos marítims.
-            - **Nevades abundants** a cotes mitjanes i altes, deixant gruixos superiors al metre en alguns punts.
-            - **Ventades fortes** de component est (Llevant).
-            Va ser un cas d'estudi clàssic d'una profunda borrasca mediterrània amb un alt contingut d'humitat i un llarg recorregut marítim.
+            L'entorn atmosfèric (El Sondeig):
+Comencem pel sondeig vertical de L'Hospitalet, que és el diagnòstic de l'atmosfera. El que veiem aquí és un manual de "llibre de text" per a la formació de supercèl·lules.
+Inestabilitat Extrema: La taca rosa, que representa l'Energia Potencial Convectiva Disponible (CAPE), és molt àmplia i robusta. Això indica que qualsevol bombolla d'aire que aconsegueixi ascendir ho farà de manera explosiva, com un globus aerostàtic descontrolat, creant corrents ascendents molt violents.
+Humitat Abundant: La línia del punt de rosada (verda) està molt a prop de la línia de temperatura (vermella) a les capes baixes. Això significa que l'aire és molt humit, la qual cosa fa baixar el nivell de condensació. Aquesta és una característica clau que afavoreix la formació de núvols de paret i tornados.
+Cisallament del Vent Decisiu: Observant els vectors de vent a la dreta, veiem un canvi significatiu tant en direcció com en velocitat amb l'altura. Aquest cisallament vertical del vent és l'ingredient crucial que actua com un motor de rotació horitzontal a l'atmosfera. Els potents corrents ascendents de la tempesta inclinen aquesta rotació i la posen en un eix vertical, donant lloc a un mesocicló, l'embrió d'una supercèl·lula.
+La Tempesta en Acció (El Radar):
+El mapa del radar no mostra una tempesta desorganitzada, sinó un sistema convectiu altament estructurat. La distribució dels ecos, amb nuclis de reflectivitat molt alta (vermells i morats, probablement superiors a 55 dBZ), suggereix la presència de precipitació molt intensa i, amb tota seguretat, calamarsa de mida considerable. La forma i l'extensió de la tempesta són compatibles amb una o diverses cèl·lules de tipus supercel·lular incrustades dins d'un sistema més gran. Aquesta estructura és la conseqüència directa de l'entorn que hem analitzat al sondeig.
+La Manifestació Visual (La Fotografia):
+La imatge superior és la confirmació visual del que les dades ens estaven dient. No és només una tempesta elèctrica. La forma de la base del núvol, amb un descens molt pronunciat i una aparença de rotació (un possible wall cloud o núvol paret), és l'evidència visible del mesocicló. El llamp és un subproducte de la increïble energia vertical de la tempesta. La combinació del núvol paret i la intensa activitat elèctrica és una signatura visual clàssica d'una supercèl·lula en plena maduresa i amb un alt potencial de generar fenòmens severs a la superfície.
             """
         },
         
-        # --- EXEMPLE DE CAS 2 ---
-        "Tornados de l'Ametlla de Mar (17/09/2023)": {
-            "data": "17 de Setembre de 2023",
-            "image": "arxiu_images/ametlla_tornados_2023.png",
-            "description": """
-            Una situació de gran inestabilitat a la costa de Tarragona va donar lloc a la formació de **múltiples mànegues marines i tornados**.
-            
-            Les condicions clau van ser:
-            - **Altíssima temperatura de l'aigua del mar**, que aportava una gran quantitat d'energia (CAPE).
-            - **Fort cisallament del vent** a nivells baixos, que va afavorir la rotació de les tempestes (supercèl·lules).
-            - **Convergència de vent** a la línia de la costa que va actuar com a mecanisme de dispar.
-            
-            Diversos tornados van tocar terra a la zona de l'Ametlla de Mar i el Delta de l'Ebre, causant danys en zones agrícoles i forestals.
-            """
-        },
+   
 
         # --- AFEGEIX ELS TEUS PROPIS CASOS AQUÍ SEGUINT EL MATEIX FORMAT ---
         # "Títol del teu cas": {
