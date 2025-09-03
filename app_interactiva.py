@@ -3412,37 +3412,38 @@ def carregar_dades_sondeig_italia(lat, lon, hourly_index):
         return None, hourly_index, f"Error en carregar dades del sondeig ICON-2I (Itàlia): {e}"
     
 
-def trobar_hora_valida_mes_propera(hourly_response, target_index, num_base_vars, max_offset=6): # <-- Augmentem a 6 hores
+def trobar_hora_valida_mes_propera(hourly_response, target_index, num_base_vars, max_offset=8):
     """
-    Versió millorada: Busca l'índex horari més proper que tingui dades completes,
-    prioritzant les hores passades per assegurar que el model ja s'ha executat.
-    Busca en una finestra més àmplia (per defecte +/- 6 hores).
+    Versió Definitiva: Busca l'índex horari més proper (en qualsevol direcció)
+    que tingui dades completes, buscant en una finestra més àmplia de 8 hores.
     """
-    total_hours = len(hourly_response.Variables(0).ValuesAsNumpy())
+    try:
+        # Comprovació inicial per assegurar que la resposta de l'API és vàlida
+        if hourly_response is None or hourly_response.Variables(0) is None:
+            return None
+        total_hours = len(hourly_response.Variables(0).ValuesAsNumpy())
+    except (AttributeError, IndexError):
+        return None
 
-    # Primer, comprovem l'hora exacta demanada
-    if 0 <= target_index < total_hours:
-        sfc_check = [hourly_response.Variables(i).ValuesAsNumpy()[target_index] for i in range(num_base_vars)]
-        if not any(np.isnan(val) for val in sfc_check):
-            return target_index
+    # Bucle principal: comença amb offset 0 i s'expandeix cap enfora
+    for offset in range(max_offset + 1):
+        # Genera els índexs a comprovar: primer l'hora exacta, després -1, +1, -2, +2, etc.
+        indices_to_check = [target_index] if offset == 0 else [target_index - offset, target_index + offset]
+        
+        for h_idx in indices_to_check:
+            # Comprova que l'índex estigui dins dels límits de les dades rebudes
+            if 0 <= h_idx < total_hours:
+                try:
+                    # Llegeix les variables base per a l'hora candidata
+                    sfc_check = [hourly_response.Variables(i).ValuesAsNumpy()[h_idx] for i in range(num_base_vars)]
+                    # Si cap de les variables base és 'NaN' (no és un número), hem trobat una hora vàlida
+                    if not any(np.isnan(val) for val in sfc_check):
+                        return h_idx  # Retorna l'índex vàlid immediatament
+                except (AttributeError, IndexError):
+                    # Si hi ha un problema llegint les dades per a aquest índex, el saltem i continuem
+                    continue
 
-    # Si no, busquem enrere i endavant, prioritzant enrere
-    for offset in range(1, max_offset + 1):
-        # 1. Mirar enrere (més segur)
-        h_idx_back = target_index - offset
-        if 0 <= h_idx_back < total_hours:
-            sfc_check = [hourly_response.Variables(i).ValuesAsNumpy()[h_idx_back] for i in range(num_base_vars)]
-            if not any(np.isnan(val) for val in sfc_check):
-                return h_idx_back
-
-        # 2. Mirar endavant
-        h_idx_fwd = target_index + offset
-        if 0 <= h_idx_fwd < total_hours:
-            sfc_check = [hourly_response.Variables(i).ValuesAsNumpy()[h_idx_fwd] for i in range(num_base_vars)]
-            if not any(np.isnan(val) for val in sfc_check):
-                return h_idx_fwd
-
-    return None # Si no trobem res, retornem None
+    return None # Si no troba cap hora vàlida dins del rang de cerca, retorna None
 
 def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
     st.markdown("#### Mapes de Pronòstic (Model ICON 2.2km - Itàlia)")
