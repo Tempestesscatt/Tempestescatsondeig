@@ -4330,64 +4330,49 @@ def carregar_dades_sondeig_alemanya(lat, lon, hourly_index):
     """
     Versió Definitiva: Carrega i processa les dades d'un sondeig vertical per a 
     Alemanya utilitzant el model ICON-D2 amb el rang complet de nivells fins a 100 hPa.
+    Aquesta versió és tolerant a dades parcials en nivells superiors.
     """
     try:
-        # Llista de variables base a la superfície
         h_base = ["temperature_2m", "relative_humidity_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
-        
-        # Llista de variables que demanarem per a cada nivell de pressió
         press_vars_names = ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"]
-        
-        # Generem dinàmicament la llista completa de totes les variables en alçada
         h_press = [f"{var}_{p}hPa" for var in press_vars_names for p in PRESS_LEVELS_ICON]
         
-        # Construïm la petició a l'API
-        params = {
-            "latitude": lat, 
-            "longitude": lon, 
-            "hourly": h_base + h_press, 
-            "models": "icon_d2", 
-            "forecast_days": 2 # ICON-D2 té un abast d'unes 48h
-        }
-        
+        params = { "latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "icon_d2", "forecast_days": 2 }
         response = openmeteo.weather_api(API_URL_ALEMANYA, params=params)[0]
         hourly = response.Hourly()
 
-        # Trobem l'hora vàlida més propera per evitar errors amb dades no disponibles
         valid_index = trobar_hora_valida_mes_propera(hourly, hourly_index, len(h_base))
         if valid_index is None:
-            return None, hourly_index, "No s'han trobat dades vàlides per a les hores properes."
-        
-        # Llegim totes les variables de la resposta de l'API de manera robusta
+            return None, hourly_index, "No s'han trobat dades vàlides."
+
         hourly_vars = {}
         all_requested_vars = h_base + h_press
         for i, var_name in enumerate(all_requested_vars):
             try:
                 hourly_vars[var_name] = hourly.Variables(i).ValuesAsNumpy()
             except Exception:
-                # Si una variable no es pot llegir, la marquem com a buida per evitar errors
                 hourly_vars[var_name] = np.array([np.nan])
         
-        # Processem les dades de superfície
         sfc_data = {v: hourly_vars[v][valid_index] for v in h_base}
         sfc_dew_point = mpcalc.dewpoint_from_relative_humidity(sfc_data["temperature_2m"] * units.degC, sfc_data["relative_humidity_2m"] * units.percent).m
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
         
-        # Inicialitzem el perfil del sondeig amb les dades de superfície
         p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_dew_point], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
 
-        # Afegim les dades de cada nivell de pressió al perfil
+        # <<<--- AQUÍ ESTÀ LA CORRECCIÓ: LÒGICA DE CÀRREGA TOLERANT ---
         for p_val in PRESS_LEVELS_ICON:
-            # Només afegim el nivell si està per sota de la pressió de superfície
             if p_val < p_profile[-1]:
+                # Sempre afegim el nivell de pressió
+                p_profile.append(p_val)
+                
+                # Obtenim les dades d'aquest nivell, agafant 'NaN' si no existeixen
                 temp = hourly_vars.get(f'temperature_{p_val}hPa', [np.nan])[valid_index]
                 rh = hourly_vars.get(f'relative_humidity_{p_val}hPa', [np.nan])[valid_index]
                 ws = hourly_vars.get(f'wind_speed_{p_val}hPa', [np.nan])[valid_index]
                 wd = hourly_vars.get(f'wind_direction_{p_val}hPa', [np.nan])[valid_index]
                 h = hourly_vars.get(f'geopotential_height_{p_val}hPa', [np.nan])[valid_index]
                 
-                # Afegim les dades (seran NaN si no estaven disponibles)
-                p_profile.append(p_val)
+                # Afegim les dades als perfils (poden ser 'NaN')
                 T_profile.append(temp)
                 h_profile.append(h)
                 
@@ -4398,13 +4383,11 @@ def carregar_dades_sondeig_alemanya(lat, lon, hourly_index):
                 
                 if pd.notna(ws) and pd.notna(wd):
                     u, v = mpcalc.wind_components(ws * units('km/h'), wd * units.degrees)
-                    u_profile.append(u.to('m/s').m)
-                    v_profile.append(v.to('m/s').m)
+                    u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m)
                 else:
-                    u_profile.append(np.nan)
-                    v_profile.append(np.nan)
+                    u_profile.append(np.nan); v_profile.append(np.nan)
+        # <<<--- FI DE LA CORRECCIÓ ---
 
-        # Finalment, processem el perfil complet per a calcular paràmetres i netejar dades
         processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
         return processed_data, valid_index, error
         
@@ -4412,7 +4395,6 @@ def carregar_dades_sondeig_alemanya(lat, lon, hourly_index):
         import traceback
         traceback.print_exc()
         return None, hourly_index, f"Error crític en carregar dades del sondeig ICON-D2: {e}"
-
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_alemanya(nivell, hourly_index):
