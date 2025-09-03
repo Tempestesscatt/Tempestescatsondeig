@@ -69,7 +69,7 @@ WEBCAM_LINKS = {
     # Regne Unit i Irlanda (Aquests permeten 'embed')
     "Southampton": {'type': 'embed', 'url': "https://www.youtube.com/embed/yJyL012sH_E?autoplay=1&mute=1"},
     "Fort William": {'type': 'embed', 'url': "https://www.youtube.com/embed/B_r9e8g3_IM?autoplay=1&mute=1"},
-    "Dublín (Paddocks)": {'type': 'embed', 'url': "https://www.youtube.com/embed/SbAgJi-1i8s?autoplay=1&mute=1"},
+    "Dublín (Paddocks)": {'type': 'embed', 'url': "https://www.youtube.com/embed/g1r59JJqY60?autoplay=1&mute=1"},
     "Scarborough": {'type': 'embed', 'url': "https://www.youtube.com/embed/SApqPE63_V4?autoplay=1&mute=1"},
 
     # Canadà (Aquests permeten 'embed')
