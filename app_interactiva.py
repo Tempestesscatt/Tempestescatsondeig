@@ -1301,6 +1301,18 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         
     return ((p, T, Td, u, v, heights, sfc_prof), params_calc), None
 
+
+
+
+
+def get_comarca_for_poble(poble_name):
+    """Troba a quina comarca pertany un municipi."""
+    for comarca, pobles in CIUTATS_PER_COMARCA.items():
+        if poble_name in pobles:
+            return comarca
+    return None
+    
+
 def diagnosticar_potencial_tempesta(params):
     """
     Sistema de Diagnòstic Meteorològic Expert v10.0.
@@ -6239,7 +6251,6 @@ def run_catalunya_app():
             menu_icons.append("chat-quote-fill")
         option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key="active_tab_cat", default_index=0)
         
-        # --- INICI DEL BLOC DE PESTANYES D'ANÀLISI (AQUESTA PART FALTAVA) ---
         if st.session_state.active_tab_cat == "Anàlisi de Mapes":
             ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
         else:
@@ -6255,17 +6266,23 @@ def run_catalunya_app():
                 st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
             elif data_tuple:
                 params_calc = data_tuple[1]
-                map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
-                if map_data_conv:
-                    conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
-                    if pd.notna(conv_value): params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
                 
+                # --- CANVI CLAU: TROBAR I AFEGIR LA CONVERGÈNCIA DE LA COMARCA ACTUAL ---
+                comarca_actual = get_comarca_for_poble(poble_sel)
+                if comarca_actual:
+                    conv_comarcal = alertes_zona.get(comarca_actual, 0)
+                    params_calc['CONV_COMARCAL'] = conv_comarcal
+                # --- FI DEL CANVI ---
+
+                # La resta de la lògica per a les pestanyes es manté igual
                 if st.session_state.active_tab_cat == "Anàlisi Vertical":
-                    avis_proximitat = analitzar_amenaça_convergencia_propera(map_data_conv, params_calc, lat_sel, lon_sel, nivell_sel)
-                    ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, avis_proximitat)
+                    # ... (el codi de la pestanya vertical es manté)
+                    ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
                 elif st.session_state.active_tab_cat == "Anàlisi de Vents":
+                    # ... (el codi de la pestanya de vents es manté)
                     ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_sel_str, timestamp_str)
                 elif st.session_state.active_tab_cat == "Simulació de Núvol":
+                    # ... (el codi de la pestanya de simulació es manté)
                     st.markdown(f"#### Simulació del Cicle de Vida per a {poble_sel}")
                     st.caption(timestamp_str)
                     if 'regenerate_key' not in st.session_state: st.session_state.regenerate_key = 0
@@ -6293,13 +6310,11 @@ def run_catalunya_app():
                     interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
                     sounding_data = data_tuple[0] if data_tuple else None
                     ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)
-        # --- FI DEL BLOC DE PESTANYES ---
     
     else: 
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU + BOTONS) ---
         map_output = ui_mapa_display_personalitzat(alertes_zona)
 
-        # Lògica de clic simplificada: només detecta el clic a una zona
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
             if "Comarca:" in raw_tooltip:
@@ -6308,7 +6323,6 @@ def run_catalunya_app():
                     st.session_state.selected_area = clicked_area
                     st.rerun()
 
-        # Dibuixar els botons dels municipis si hi ha una zona seleccionada
         selected_area = st.session_state.get('selected_area')
         if selected_area and "---" not in selected_area:
             st.markdown(f"##### Selecciona una localitat a **{selected_area}**:")
