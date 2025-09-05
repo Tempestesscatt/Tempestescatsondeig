@@ -4248,18 +4248,16 @@ def on_poble_select():
 
 def ui_mapa_display(comarques_en_alerta):
     """
-    Versió amb un disseny visual millorat i més professional.
-    - Fons fosc per a una millor integració amb el tema de l'app.
-    - Estil per defecte neutral i elegant per a les comarques.
-    - Efecte de ressaltat (hover) per a una millor interactivitat.
-    - RETORNA L'OUTPUT DEL MAPA per a fer-lo interactiu.
+    Versió final amb marcadors de text per a localitats.
+    - Dibuixa els noms de les localitats de la comarca seleccionada directament al mapa.
+    - Manté el disseny fosc i l'efecte hover.
+    - Retorna l'output del mapa per a la interactivitat.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
     if gdf is None: return None
 
     comarca_sel = st.session_state.get('comarca_sel')
-    poble_sel = st.session_state.get('poble_selector')
 
     map_center = [41.83, 1.87]; zoom_level = 8
     if comarca_sel and "---" not in comarca_sel:
@@ -4268,7 +4266,6 @@ def ui_mapa_display(comarques_en_alerta):
             map_center = [comarca_shape.geometry.centroid.y.iloc[0], comarca_shape.geometry.centroid.x.iloc[0]]
             zoom_level = 10
 
-    # --- CANVI CLAU: S'ha activat el zoom i el moviment del mapa ---
     m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB dark_matter", scrollWheelZoom=True)
 
     def style_function(feature):
@@ -4289,15 +4286,37 @@ def ui_mapa_display(comarques_en_alerta):
         tooltip=folium.GeoJsonTooltip(fields=['nomcomar'], aliases=['Comarca:'])
     ).add_to(m)
 
-    if poble_sel and "---" not in poble_sel:
-        coords = CIUTATS_CATALUNYA[poble_sel]
-        folium.Marker(
-            location=[coords['lat'], coords['lon']],
-            tooltip=poble_sel,
-            icon=folium.Icon(color='blue', icon='info-sign')
-        ).add_to(m)
+    # --- NOU BLOC: DIBUIXAR ELS NOMS DE LES LOCALITATS ---
+    # Si hi ha una comarca seleccionada, mostrem les seves localitats
+    if comarca_sel and "---" not in comarca_sel:
+        poblacions_a_mostrar = CIUTATS_PER_COMARCA.get(comarca_sel, {})
+        for nom_poble, coords in poblacions_a_mostrar.items():
+            # Creem un marcador personalitzat amb HTML (un text en lloc d'una icona)
+            icon = folium.DivIcon(
+                html=f"""
+                <div style="
+                    font-family: sans-serif;
+                    font-size: 11px;
+                    font-weight: bold;
+                    color: white;
+                    background-color: rgba(0, 0, 0, 0.6);
+                    padding: 2px 6px;
+                    border-radius: 5px;
+                    border: 1px solid white;
+                    white-space: nowrap; /* Evita que el text es trenqui */
+                ">
+                    {nom_poble}
+                </div>
+                """
+            )
+            folium.Marker(
+                location=[coords['lat'], coords['lon']],
+                icon=icon,
+                # El tooltip és el que s'enviarà a Streamlit quan es cliqui
+                tooltip=nom_poble
+            ).add_to(m)
 
-    return st_folium(m, width="100%", height=400, returned_objects=['last_object_clicked_tooltip'])
+    return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
     
 
 @st.cache_data(ttl=1800, show_spinner="Analitzant focus de convergència a tot el territori...")
@@ -6108,17 +6127,13 @@ def run_catalunya_app():
     if 'poble_sel' not in st.session_state:
         st.session_state.poble_sel = "--- Selecciona Localitat ---"
 
-    # --- PAS 3: SELECTORS GLOBALS ---
+    # --- PAS 3: SELECTORS GLOBALS DE TEMPS (ELS DE LLOC S'HAN ELIMINAT) ---
     with st.container(border=True):
         col_dia, col_hora, col_nivell = st.columns(3)
         with col_dia:
             st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_CAT) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector")
         with col_hora:
-            # --- CANVI CLAU: L'índex per defecte és l'hora actual ---
-            st.selectbox("Hora:", 
-                         options=[f"{h:02d}:00h" for h in range(24)], 
-                         key="hora_selector",
-                         index=datetime.now(TIMEZONE_CAT).hour)
+            st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector", index=datetime.now(TIMEZONE_CAT).hour)
         with col_nivell:
             st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
 
@@ -6217,55 +6232,29 @@ def run_catalunya_app():
                     ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)
     
     else: 
-        # --- VISTA DE SELECCIÓ (MAPA I SELECTORS DE LLOC) ---
+        # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
+        st.info("Fes clic en una comarca per veure'n les localitats. Després, clica sobre el nom d'una localitat per analitzar-la.", icon="👆")
         
         map_output = ui_mapa_display(list(alertes_comarca.keys()))
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
             
+            # Comprovem si el que s'ha clicat és una COMARCA
             if "Comarca:" in raw_tooltip:
                 clicked_comarca = raw_tooltip.split(':')[-1].strip()
-                
                 if clicked_comarca != st.session_state.comarca_sel:
                     st.session_state.comarca_sel = clicked_comarca
                     st.session_state.poble_sel = "--- Selecciona Localitat ---"
                     st.rerun()
-        
-        with st.container(border=True):
-            st.markdown("#### Tria una comarca i una localitat per començar")
-            col_comarca, col_poble = st.columns(2)
-            
-            with col_comarca:
-                comarques_options = ["--- Selecciona Comarca ---"] + sorted(list(CIUTATS_PER_COMARCA.keys()))
-                def format_comarca(nom):
-                    if "---" in nom: return nom
-                    valor = alertes_comarca.get(nom)
-                    return f"{nom} (🔴)" if valor and valor >= 50 else f"{nom} (🟠)" if valor else nom
-                
-                comarca_sel_widget = st.selectbox("Comarca:", options=comarques_options, format_func=format_comarca, key="comarca_selector_widget", index=comarques_options.index(st.session_state.comarca_sel))
-
-                if comarca_sel_widget != st.session_state.comarca_sel:
-                    st.session_state.comarca_sel = comarca_sel_widget
-                    st.session_state.poble_sel = "--- Selecciona Localitat ---"
+            # Si no, és una LOCALITAT
+            else:
+                clicked_poble = raw_tooltip.strip()
+                # Comprovem que el nom del poble sigui vàlid
+                if clicked_poble in CIUTATS_CATALUNYA:
+                    st.session_state.poble_sel = clicked_poble
                     st.rerun()
-
-            with col_poble:
-                if st.session_state.comarca_sel and "---" not in st.session_state.comarca_sel:
-                    poblacions_dict = CIUTATS_PER_COMARCA[st.session_state.comarca_sel]
-                    conv_poblacions = calcular_convergencia_per_llista_poblacions(hourly_index_sel, poblacions_dict, nivell_sel)
-                    def format_poblacio_label(nom):
-                        if "---" in nom: return nom
-                        valor = conv_poblacions.get(nom)
-                        return f"{nom} (🔥)" if valor and valor >= 25 else nom
                     
-                    poblacions_options = ["--- Selecciona Localitat ---"] + sorted(list(poblacions_dict.keys()))
-                    poble_sel_widget = st.selectbox("Localitat:", options=poblacions_options, format_func=format_poblacio_label, key="poble_selector_widget", index=poblacions_options.index(st.session_state.poble_sel))
-                    
-                    if poble_sel_widget != st.session_state.poble_sel:
-                        st.session_state.poble_sel = poble_sel_widget
-                        st.rerun()
-
 def run_valley_halley_app():
     if 'poble_selector_usa' not in st.session_state or st.session_state.poble_selector_usa not in USA_CITIES:
         st.session_state.poble_selector_usa = "Dallas, TX"
