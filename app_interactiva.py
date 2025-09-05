@@ -4333,21 +4333,35 @@ def ui_pestanya_webcams(poble_sel, zona_activa):
 @st.cache_data(show_spinner="Carregant mapa de selecció...")
 def carregar_dades_geografiques():
     """
-    Carrega el teu arxiu GeoJSON personalitzat.
+    Versió final i robusta que busca automàticament el mapa personalitzat
+    i, si no el troba, utilitza el mapa de comarques per defecte.
     """
-    try:
-        # --- CANVI CLAU: Utilitzem el nou arxiu ---
-        file_path = "mapa_personalitzat.geojson" 
-        
-        if not os.path.exists(file_path):
-            st.error(f"No s'ha trobat l'arxiu '{file_path}'. Assegura't que estigui a la mateixa carpeta que l'script.")
-            return None
+    # Llista de noms d'arxiu per ordre de prioritat
+    possible_files = ["mapa_personalitzat.geojson", "comarques.geojson"]
+    file_to_load = None
 
-        gdf = gpd.read_file(file_path)
+    # Busca el primer arxiu que existeixi
+    for file in possible_files:
+        if os.path.exists(file):
+            file_to_load = file
+            break
+
+    # Si no en troba cap, mostra un error
+    if file_to_load is None:
+        st.error(
+            "**Error Crític: Mapa no trobat.**\n\n"
+            "No s'ha trobat l'arxiu `mapa_personalitzat.geojson` ni `comarques.geojson` a la carpeta de l'aplicació. "
+            "Assegura't que almenys un d'aquests dos arxius existeixi."
+        )
+        return None
+
+    # Si troba un arxiu, el carrega
+    try:
+        gdf = gpd.read_file(file_to_load)
         gdf = gdf.to_crs("EPSG:4326")
         return gdf
     except Exception as e:
-        st.error(f"Error en carregar l'arxiu '{file_path}'. Detall: {e}")
+        st.error(f"S'ha produït un error en carregar l'arxiu de mapa '{file_to_load}': {e}")
         return None
 
 
