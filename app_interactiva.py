@@ -4248,51 +4248,70 @@ def on_poble_select():
 
 def ui_mapa_display(comarques_en_alerta):
     """
-    Aquesta versió rep un set de comarques en alerta i les pinta de vermell.
-    *** VERSIÓ CORREGIDA PER EVITAR EL KEYERROR ***
+    Versió amb un disseny visual millorat i més professional.
+    - Fons fosc per a una millor integració amb el tema de l'app.
+    - Estil per defecte neutral i elegant per a les comarques.
+    - Efecte de ressaltat (hover) per a una millor interactivitat.
+    - Colors d'alerta i selecció més vius i clars.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
     if gdf is None: return
 
-    comarca_sel = st.session_state.get('selected_comarca')
+    comarca_sel = st.session_state.get('comarca_sel') # Corregit per a llegir la clau correcta
     poble_sel = st.session_state.get('poble_selector')
 
+    # Centrat del mapa i nivell de zoom
     map_center = [41.83, 1.87]; zoom_level = 8
     if comarca_sel and "---" not in comarca_sel:
         comarca_shape = gdf[gdf['nomcomar'] == comarca_sel]
         if not comarca_shape.empty:
             map_center = [comarca_shape.geometry.centroid.y.iloc[0], comarca_shape.geometry.centroid.x.iloc[0]]
             zoom_level = 10
-    
-    m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB positron", scrollWheelZoom=False)
 
+    # --- CANVI: Utilitzem un mapa base fosc ---
+    m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB dark_matter", scrollWheelZoom=False)
+
+    # --- CANVI: Nova funció d'estil millorada ---
     def style_function(feature):
         nom_comarca = feature['properties']['nomcomar']
         # Estil per defecte
-        style = {'fillColor': '#28a745', 'color': 'black', 'weight': 1, 'fillOpacity': 0.15}
-        
-        # Si la comarca està en alerta, la pintem de vermell
+        style = {
+            'fillColor': '#6c757d',  # Gris neutral
+            'color': '#adb5bd',       # Vora gris clar
+            'weight': 1,
+            'fillOpacity': 0.25
+        }
+        # Si la comarca està en alerta, la pintem amb un color d'avís
         if nom_comarca in comarques_en_alerta:
-            style['fillColor'] = '#d9534f' # Vermell d'alerta
+            style['fillColor'] = '#ffc107' # Taronja d'alerta
+            style['color'] = '#ffc107'
             style['fillOpacity'] = 0.6
-            
+            style['weight'] = 2
         # Si la comarca està seleccionada, la ressaltem
         if nom_comarca == comarca_sel:
-            style['color'] = '#0000FF' # Vora blava per a la selecció
-            style['weight'] = 3
-            style['fillOpacity'] = 0.7
-            
+            style['fillColor'] = '#007bff' # Blau de selecció
+            style['color'] = '#ffffff'    # Vora blanca
+            style['weight'] = 2.5
+            style['fillOpacity'] = 0.55
         return style
-    
+
+    # --- NOU: Funció per a l'efecte hover ---
+    highlight_function = lambda x: {
+        'color': '#ffffff',  # Vora blanca
+        'weight': 3,
+        'fillOpacity': 0.4
+    }
+
+    # --- CANVI: Afegim la funció de ressaltat ---
     folium.GeoJson(
-        gdf, 
+        gdf,
         style_function=style_function,
+        highlight_function=highlight_function, # <-- AQUÍ ESTÀ LA MILLORA
         tooltip=folium.GeoJsonTooltip(fields=['nomcomar'], aliases=['Comarca:'])
     ).add_to(m)
 
-    # --- LÍNIA CLAU DE LA CORRECCIÓ ---
-    # Només intentem afegir el marcador si 'poble_sel' és una localitat vàlida.
+    # Mantenim la lògica del marcador
     if poble_sel and "---" not in poble_sel:
         coords = CIUTATS_CATALUNYA[poble_sel]
         folium.Marker(
