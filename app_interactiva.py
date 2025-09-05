@@ -6138,16 +6138,12 @@ def run_catalunya_app():
         lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
         
-        # --- CANVI CLAU: S'HA CANVIAT L'ORDRE DE LES OPCIONS DEL MENÚ ---
-        # "Anàlisi Comarcal" ara és la primera opció. La resta es manté.
         menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi de Mapes", "Simulació de Núvol"]
         menu_icons = ["fullscreen", "graph-up-arrow", "map", "cloud-upload"]
         if not is_guest:
             menu_options.append("💬 Assistent IA")
             menu_icons.append("chat-quote-fill")
-        # El default_index=0 assegura que la primera opció ("Anàlisi Comarcal") estigui seleccionada per defecte.
         option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key="active_tab_cat", default_index=0)
-        # --- FI DEL CANVI ---
         
         with st.spinner(f"Carregant dades del model AROME per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
@@ -6213,7 +6209,11 @@ def run_catalunya_app():
     
     else: 
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU + BOTONS) ---
-        map_output = ui_mapa_display_personalitzat(alertes_zona)
+        
+        # --- CANVI CLAU: S'HA AFEGIT EL SPINNER AQUÍ ---
+        with st.spinner("Carregant mapa de situació de Catalunya..."):
+            map_output = ui_mapa_display_personalitzat(alertes_zona)
+        # --- FI DEL CANVI ---
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
