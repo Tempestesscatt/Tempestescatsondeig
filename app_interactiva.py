@@ -6390,8 +6390,8 @@ CAPITALS_COMARCA = {
 # --- FUNCIÓ MODIFICADA (AMB ESTIL D'ETIQUETA CORREGIT) ---
 def ui_mapa_display_personalitzat(alertes_per_zona):
     """
-    Versió final robusta v10 (Text dins la caixa).
-    - S'ha eliminat 'white-space: nowrap' per permetre que el text llarg s'ajusti.
+    Versió final robusta v11 (Estil d'Alertes Eixamplat).
+    - Augmenta l'amplada de la caixa de l'alerta per a una millor visualització.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
@@ -6460,20 +6460,20 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
         if capital_info:
             bg_color, text_color = get_color_from_convergence(conv_value)
             
-            # --- CANVI CLAU: S'HA ELIMINAT 'white-space: nowrap;' I S'HA AFEGIT 'max-width' ---
+            # --- CANVI CLAU: S'ha ajustat el 'padding' i afegit 'min-width' ---
             icon_html = f"""
             <div style="
                 position: relative; 
                 background-color: {bg_color}; 
                 color: {text_color};
-                padding: 5px 10px; 
+                padding: 6px 12px; /* Més espai als costats */
                 border-radius: 8px; 
                 border: 2px solid {text_color};
                 font-family: sans-serif; 
                 font-size: 13px; 
                 font-weight: bold;
                 text-align: center;
-                max-width: 180px; /* Evita que la caixa sigui excessivament ampla */
+                min-width: 80px; /* Amplada mínima de la caixa */
                 box-shadow: 3px 3px 5px rgba(0,0,0,0.5);
                 transform: translate(-50%, -100%);
             ">
