@@ -6179,10 +6179,9 @@ def run_canada_app():
         ui_pestanya_webcams(poble_sel, zona_activa="canada")
 
 def run_catalunya_app():
-    # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
+    # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL (Sense canvis) ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
-
     col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
     with col_text:
         if not is_guest:
@@ -6200,11 +6199,9 @@ def run_catalunya_app():
             st.rerun()
     st.divider()
 
-    # --- PAS 2: GESTIÓ D'ESTAT ---
+    # --- PAS 2 & 3 & 4 (Sense canvis) ---
     if 'selected_area' not in st.session_state: st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
     if 'poble_sel' not in st.session_state: st.session_state.poble_sel = "--- Selecciona una localitat ---"
-
-    # --- PAS 3: SELECTORS GLOBALS DE TEMPS ---
     with st.container(border=True):
         col_dia, col_hora, col_nivell = st.columns(3)
         with col_dia:
@@ -6214,19 +6211,16 @@ def run_catalunya_app():
             hora_sel_str = st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector", index=datetime.now(TIMEZONE_CAT).hour)
         with col_nivell:
             nivell_sel = st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
-
-    # --- PAS 4: CÀLCUL DE DADES SEMPRE ACTUALITZAT ---
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     hora_num = int(hora_sel_str.split(':')[0])
     local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_num))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-    
     alertes_zona = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
 
-    # --- PAS 5: LÒGICA PRINCIPAL (SELECCIÓ O ANÀLISI) ---
+    # --- PAS 5: LÒGICA PRINCIPAL ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # --- VISTA D'ANÀLISI DETALLADA ---
+        # --- VISTA D'ANÀLISI DETALLADA (Sense canvis interns) ---
         poble_sel = st.session_state.poble_sel
         st.success(f"### Anàlisi per a: **{poble_sel}**")
         if st.button("⬅️ Tornar al mapa de selecció"):
@@ -6234,10 +6228,8 @@ def run_catalunya_app():
             st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
             if 'active_tab_cat' in st.session_state: del st.session_state['active_tab_cat']
             st.rerun()
-
         lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
-        
         menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Anàlisi de Vents", "Simulació de Núvol"]
         menu_icons = ["graph-up-arrow", "map", "wind", "cloud-upload"]
         if not is_guest:
@@ -6245,6 +6237,7 @@ def run_catalunya_app():
             menu_icons.append("chat-quote-fill")
         option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key="active_tab_cat", default_index=0)
         
+        # ... (la resta de la lògica de les pestanyes es manté igual) ...
         if st.session_state.active_tab_cat == "Anàlisi de Mapes":
             ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
         else:
@@ -6312,40 +6305,31 @@ def run_catalunya_app():
 
         map_output = ui_mapa_display_personalitzat(alertes_zona)
 
-        # --- CANVI CLAU: LÒGICA DE CLIC CORREGIDA I AMPLIADA ---
+        # --- CANVI CLAU: NOVA LÒGICA DE CLIC ROBUSTA ---
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
-            
-            zona_clicada = None
-            
-            # CAS 1: L'usuari ha clicat en una ETIQUETA D'ALERTA (ex: "Convergència màx...")
-            if "Convergència màx. a" in raw_tooltip:
-                try:
-                    zona_clicada = raw_tooltip.split(' a ')[1].split(':')[0].strip()
-                except IndexError:
-                    pass # Si el format del text canvia, no fa res per seguretat
 
-            # CAS 2: L'usuari ha clicat en un POLÍGON (ex: "Comarca: Alt Empordà")
-            elif "Zona:" in raw_tooltip or "Comarca:" in raw_tooltip:
-                zona_clicada = raw_tooltip.split(':')[-1].strip().replace('.', '')
+            # CAS 1: S'ha clicat sobre una ETIQUETA DE MUNICIPI
+            if raw_tooltip.startswith("MUN_CLICK:"):
+                clicked_poble = raw_tooltip.split(":", 1)[1]
+                if clicked_poble in CIUTATS_CATALUNYA:
+                    st.session_state.poble_sel = clicked_poble
+                    st.rerun()
 
-            # Si hem identificat que s'ha clicat una ZONA (ja sigui per l'etiqueta o el polígon)
-            if zona_clicada:
-                if zona_clicada != st.session_state.get('selected_area'):
-                    st.session_state.selected_area = zona_clicada
+            # CAS 2: S'ha clicat sobre una ETIQUETA D'ALERTA DE ZONA
+            elif raw_tooltip.startswith("ZONE_CLICK:"):
+                clicked_zona = raw_tooltip.split(":", 1)[1]
+                if clicked_zona != st.session_state.get('selected_area'):
+                    st.session_state.selected_area = clicked_zona
                     st.session_state.poble_sel = "--- Selecciona una localitat ---"
                     st.rerun()
-            
-            # CAS 3: Si no és una zona, llavors és un MUNICIPI.
-            else:
-                clicked_poble_found = None
-                for poble_key in CIUTATS_CATALUNYA.keys():
-                    if poble_key in raw_tooltip:
-                        clicked_poble_found = poble_key
-                        break
-                
-                if clicked_poble_found:
-                    st.session_state.poble_sel = clicked_poble_found
+
+            # CAS 3: S'ha clicat sobre un POLÍGON DE ZONA/COMARCA
+            elif "Comarca:" in raw_tooltip:
+                clicked_zona = raw_tooltip.split(":", 1)[1].strip().replace('.', '')
+                if clicked_zona != st.session_state.get('selected_area'):
+                    st.session_state.selected_area = clicked_zona
+                    st.session_state.poble_sel = "--- Selecciona una localitat ---"
                     st.rerun()
         # --- FI DEL CANVI ---
 
@@ -6396,9 +6380,9 @@ CAPITALS_COMARCA = {
 # --- FUNCIÓ MODIFICADA (AMB TEXT NEGRE ALS MUNICIPIS) ---
 def ui_mapa_display_personalitzat(alertes_per_zona):
     """
-    Versió final robusta v6.
-    - Manté les etiquetes de convergència sobre les capitals.
-    - Mostra els noms dels municipis de la zona seleccionada amb text negre.
+    Versió final robusta v7 (Anti-Bug de Clics).
+    - Afegeix prefixos únics als tooltips per a una identificació de clics sense errors.
+    - Manté el text dels municipis en negre.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
@@ -6411,7 +6395,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
             "Ha de ser `nom_zona`, `nomcomar` o `nom_comar`."
         )
         return None
-    tooltip_alias = 'Zona:' if property_name == 'nom_zona' else 'Comarca:'
+    tooltip_alias = 'Comarca:' # Simplifiquem a un sol tipus per consistència
 
     selected_area = st.session_state.get('selected_area')
 
@@ -6421,7 +6405,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
         zona_shape = gdf[gdf[property_name].str.strip().str.replace('.', '') == cleaned_selected_area]
         if not zona_shape.empty:
             map_center = [zona_shape.geometry.centroid.y.iloc[0], zona_shape.geometry.centroid.x.iloc[0]]
-            zoom_level = 10 if property_name in ['nomcomar', 'nom_comar'] else 9
+            zoom_level = 10
 
     m = folium.Map(
         location=map_center,
@@ -6469,44 +6453,38 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
         tooltip=folium.GeoJsonTooltip(fields=[property_name], aliases=[tooltip_alias])
     ).add_to(m)
 
-    # --- CANVI CLAU: RESTAURAT I AMB TEXT NEGRE ---
-    # Aquest bloc torna a estar actiu. Dibuixa els noms dels municipis quan selecciones una zona.
+    # Dibuixa els noms dels municipis amb un prefix al tooltip
     if selected_area and "---" not in selected_area:
         poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
         poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
         for nom_poble, coords in poblacions_a_mostrar.items():
-            # S'ha canviat el 'color' i la 'border' a #000 (negre)
             icon = folium.DivIcon(
                 html=f"""<div style="font-family: sans-serif; font-size: 11px; font-weight: bold; color: #000; background-color: rgba(255, 255, 255, 0.7); padding: 2px 6px; border-radius: 5px; border: 1.5px solid #000; white-space: nowrap;">{nom_poble}</div>"""
             )
-            folium.Marker(location=[coords['lat'], coords['lon']], icon=icon, tooltip=nom_poble).add_to(m)
-    # --- FI DEL CANVI ---
+            # --- CANVI CLAU: S'afegeix el prefix "MUN_CLICK:" ---
+            folium.Marker(
+                location=[coords['lat'], coords['lon']], 
+                icon=icon, 
+                tooltip=f"MUN_CLICK:{nom_poble}" # Aquest és el codi secret per a municipis
+            ).add_to(m)
 
-    # Dibuixem les etiquetes de convergència sobre les capitals de les zones afectades
+    # Dibuixa les etiquetes de convergència amb un altre prefix al tooltip
     for zona, conv_value in alertes_per_zona.items():
         capital_info = CAPITALS_COMARCA.get(zona)
         if capital_info:
             bg_color, text_color = get_color_from_convergence(conv_value)
             if bg_color:
-                icon_html = f"""
-                <div style="
-                    font-family: sans-serif; font-size: 12px; font-weight: bold;
-                    color: {text_color}; background-color: {bg_color};
-                    padding: 4px 8px; border-radius: 6px;
-                    border: 2px solid {text_color}; white-space: nowrap;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.4);
-                ">
-                    {capital_info['nom']}: {conv_value:.0f}
-                </div>
-                """
+                icon_html = f"""<div style="font-family: sans-serif; font-size: 12px; font-weight: bold; color: {text_color}; background-color: {bg_color}; padding: 4px 8px; border-radius: 6px; border: 2px solid {text_color}; white-space: nowrap; box-shadow: 0 2px 5px rgba(0,0,0,0.4);">{capital_info['nom']}: {conv_value:.0f}</div>"""
                 icon = folium.DivIcon(html=icon_html)
+                # --- CANVI CLAU: S'afegeix el prefix "ZONE_CLICK:" ---
                 folium.Marker(
                     location=[capital_info['lat'], capital_info['lon']],
                     icon=icon,
-                    tooltip=f"Convergència màx. a {zona}: {conv_value:.1f}"
+                    tooltip=f"ZONE_CLICK:{zona}" # Aquest és el codi secret per a zones amb alerta
                 ).add_to(m)
     
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
+    
     
     
 def run_valley_halley_app():
