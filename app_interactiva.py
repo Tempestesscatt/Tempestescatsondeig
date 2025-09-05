@@ -6343,9 +6343,15 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         """, unsafe_allow_html=True)
         
         st.info(f"**Nota:** Aquesta anàlisi es basa en la convergència de vent a **{nivell_sel} hPa**. La formació final de tempestes depèn també de la inestabilitat atmosfèrica (CAPE) i la presència d'inhibició (CIN), que pots consultar a la pestanya 'Anàlisi Vertical' de qualsevol municipi de la zona.", icon="ℹ️")
+
+
 def seleccionar_poble(nom_poble):
-    """Callback segur per als botons que estableix la població seleccionada."""
+    """
+    Callback segur per als botons que estableix la població seleccionada
+    i força un 'rerun' per evitar el bug de la pantalla en negre.
+    """
     st.session_state.poble_sel = nom_poble
+    st.rerun() # Aquesta és la línia clau que soluciona el problema
     
 # --- DICCIONARI DE CAPITALS (Necessari per a les coordenades) ---
 CAPITALS_COMARCA = {
