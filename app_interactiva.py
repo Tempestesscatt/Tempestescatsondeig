@@ -1306,12 +1306,11 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
 
 
 def get_comarca_for_poble(poble_name):
-    """Troba a quina comarca pertany un municipi."""
-    # Primer busca a les zones personalitzades, si existeixen
-    for zona, pobles in CIUTATS_PER_ZONA_PERSONALITZADA.items():
-        if poble_name in pobles:
-            return zona
-    # Si no, busca a les comarques oficials
+    """
+    Troba la comarca OFICIAL a la qual pertany un municipi.
+    Això garanteix que sempre tindrem un nom de geometria vàlid per al mapa.
+    """
+
     for comarca, pobles in CIUTATS_PER_COMARCA.items():
         if poble_name in pobles:
             return comarca
@@ -6139,7 +6138,6 @@ def run_catalunya_app():
         lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
         
-        # --- NOU MENÚ AMB ANÀLISI COMARCAL ---
         menu_options = ["Anàlisi Vertical", "Anàlisi Comarcal", "Anàlisi de Mapes", "Simulació de Núvol"]
         menu_icons = ["graph-up-arrow", "fullscreen", "map", "cloud-upload"]
         if not is_guest:
@@ -6147,7 +6145,6 @@ def run_catalunya_app():
             menu_icons.append("chat-quote-fill")
         option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key="active_tab_cat", default_index=0)
         
-        # Càrrega de dades comuna per a diverses pestanyes
         with st.spinner(f"Carregant dades del model AROME per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
             map_data_conv, error_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
@@ -6167,14 +6164,16 @@ def run_catalunya_app():
                     params_calc[f'CONV_{nivell_sel}hPa'] = conv_puntual
             
             if st.session_state.active_tab_cat == "Anàlisi Vertical":
-                avis_proximitat = analitzar_amenaça_convergencia_propera(map_data_conv, params_calc, lat_sel, lon_sel, nivell_sel)
-                ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, avis_proximitat)
+                ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
             
             elif st.session_state.active_tab_cat == "Anàlisi Comarcal":
                 comarca_actual = get_comarca_for_poble(poble_sel)
-                valor_conv_comarcal = alertes_zona.get(comarca_actual, 0)
-                ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv)
-                
+                if comarca_actual:
+                    valor_conv_comarcal = alertes_zona.get(comarca_actual, 0)
+                    ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv)
+                else:
+                    st.warning(f"No s'ha pogut determinar la comarca per a {poble_sel}.")
+
             elif st.session_state.active_tab_cat == "Anàlisi de Mapes":
                 ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
             
@@ -6225,8 +6224,10 @@ def run_catalunya_app():
             st.markdown(f"##### Selecciona una localitat a **{selected_area}**:")
             
             gdf = carregar_dades_geografiques()
+            # Determina si el mapa és de comarques o de zones personalitzades per saber quin diccionari de poblacions utilitzar
             property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), 'nom_comar')
             poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
+            
             poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
             
             if poblacions_a_mostrar:
@@ -6271,29 +6272,28 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             st.error("No s'ha pogut carregar el mapa de comarques.")
             return
 
-        # Troba la geometria de la comarca actual
-        property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_comarques.columns), 'nom_comar')
+        # Utilitzem 'nomcomar' com a nom de columna estàndard per a comarques oficials
+        property_name = 'nomcomar' if 'nomcomar' in gdf_comarques.columns else 'nom_comar'
+        
         comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
 
         if comarca_shape.empty:
-            st.warning(f"No s'ha trobat la geometria per a la comarca '{comarca}'.")
+            st.warning(f"No s'ha trobat la geometria per a la comarca '{comarca}'. Mostrant mapa general.")
             map_center = [41.83, 1.87]
             zoom_level = 8
         else:
-            # Centra el mapa a la comarca
             centroid = comarca_shape.geometry.centroid.iloc[0]
             map_center = [centroid.y, centroid.x]
             zoom_level = 10
 
         m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB positron")
         
-        # Dibuixa la comarca ressaltada
-        folium.GeoJson(
-            comarca_shape,
-            style_function=lambda x: {'fillColor': '#007bff', 'color': 'black', 'weight': 2, 'fillOpacity': 0.3}
-        ).add_to(m)
+        if not comarca_shape.empty:
+            folium.GeoJson(
+                comarca_shape,
+                style_function=lambda x: {'fillColor': '#007bff', 'color': 'black', 'weight': 2, 'fillOpacity': 0.3}
+            ).add_to(m)
 
-        # Troba i marca el punt de màxima convergència dins de la comarca
         if map_data and valor_conv > 10:
             lons, lats = map_data['lons'], map_data['lats']
             grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100))
@@ -6303,22 +6303,15 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
             convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
             
-            # Converteix la graella de punts a un GeoDataFrame per fer la intersecció
-            points_df = pd.DataFrame({
-                'lat': grid_lat.flatten(),
-                'lon': grid_lon.flatten(),
-                'conv': convergence_scaled.flatten()
-            })
-            gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4258")
+            points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': convergence_scaled.flatten()})
+            gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
             
-            # Filtra els punts que estan dins de la comarca
+            # Assegurem que la projecció sigui la mateixa abans del sjoin
+            comarca_shape = comarca_shape.to_crs(gdf_points.crs)
             points_in_comarca = gpd.sjoin(gdf_points, comarca_shape, how="inner", predicate="within")
             
             if not points_in_comarca.empty:
-                # Troba el punt de màxima convergència
                 max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
-                
-                # Dibuixa un marcador al punt
                 folium.Marker(
                     location=[max_conv_point.geometry.y, max_conv_point.geometry.x],
                     tooltip=f"Focus Màxim: {max_conv_point.conv:.0f}",
@@ -6330,27 +6323,14 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
     with col_diagnostic:
         st.markdown("##### Diagnòstic de la Zona")
         
-        # Determinar el nivell de l'alerta
         if valor_conv >= 60:
-            nivell_alerta = "Molt Alt"
-            color_alerta = "#DC3545"
-            emoji = "🔴"
-            descripcio = f"S'ha detectat un focus de convergència **extremadament fort** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquesta és una senyal molt clara per a la formació imminent de tempestes, possiblement severes i organitzades, a la zona. Cal parar molta atenció."
+            nivell_alerta, color_alerta, emoji, descripcio = "Molt Alt", "#DC3545", "🔴", f"S'ha detectat un focus de convergència **extremadament fort** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquesta és una senyal molt clara per a la formació imminent de tempestes, possiblement severes i organitzades, a la zona. Cal parar molta atenció."
         elif valor_conv >= 40:
-            nivell_alerta = "Alt"
-            color_alerta = "#FD7E14"
-            emoji = "🟠"
-            descripcio = f"Hi ha un focus de convergència **forta** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona. El potencial de temps sever és considerable."
+            nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FD7E14", "🟠", f"Hi ha un focus de convergència **forta** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona. El potencial de temps sever és considerable."
         elif valor_conv >= 20:
-            nivell_alerta = "Moderat"
-            color_alerta = "#28A745"
-            emoji = "🟢"
-            descripcio = f"S'observa una zona de convergència **moderada** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquesta condició pot ser suficient per iniciar tempestes, especialment si l'atmosfera és inestable. Cal vigilar l'evolució."
+            nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#28A745", "🟢", f"S'observa una zona de convergència **moderada** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquesta condició pot ser suficient per iniciar tempestes, especialment si l'atmosfera és inestable. Cal vigilar l'evolució."
         else:
-            nivell_alerta = "Baix"
-            color_alerta = "#6c757d"
-            emoji = "⚪"
-            descripcio = "No es detecten focus de convergència significatius a la comarca. El forçament dinàmic per iniciar tempestes és feble o inexistent en aquesta zona."
+            nivell_alerta, color_alerta, emoji, descripcio = "Baix", "#6c757d", "⚪", "No es detecten focus de convergència significatius a la comarca. El forçament dinàmic per iniciar tempestes és feble o inexistent en aquesta zona."
 
         st.markdown(f"""
         <div style="background-color: #262730; border-left: 8px solid {color_alerta}; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
@@ -6360,7 +6340,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         """, unsafe_allow_html=True)
         
         st.info(f"**Nota:** Aquesta anàlisi es basa en la convergència de vent a **{nivell_sel} hPa**. La formació final de tempestes depèn també de la inestabilitat atmosfèrica (CAPE) i la presència d'inhibició (CIN), que pots consultar a la pestanya 'Anàlisi Vertical' de qualsevol municipi de la zona.", icon="ℹ️")
-
 def seleccionar_poble(nom_poble):
     """Callback segur per als botons que estableix la població seleccionada."""
     st.session_state.poble_sel = nom_poble
