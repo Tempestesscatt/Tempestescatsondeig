@@ -6085,6 +6085,22 @@ def run_canada_app():
         ui_pestanya_webcams(poble_sel, zona_activa="canada")
 
 def run_catalunya_app():
+    # --- NOU BLOC: LÒGICA ANTI-BUG PER FORÇAR EL REDIBUIXAT ---
+    # Aquest codi s'executa a l'inici de cada "rerun".
+    if 'poble_seleccionat_per_boto' in st.session_state:
+        # 1. Agafa el nom del poble de l'estat temporal.
+        nom_poble = st.session_state.poble_seleccionat_per_boto
+        
+        # 2. Esborra l'estat temporal per evitar un bucle infinit.
+        del st.session_state.poble_seleccionat_per_boto
+        
+        # 3. Actualitza l'estat principal que controla la vista.
+        st.session_state.poble_sel = nom_poble
+        
+        # 4. Força un segon "rerun" des del cos principal, que sí que funciona.
+        st.rerun()
+    # --- FI DEL NOU BLOC ---
+
     # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
@@ -6164,7 +6180,8 @@ def run_catalunya_app():
                     params_calc[f'CONV_{nivell_sel}hPa'] = conv_puntual
             
             if st.session_state.active_tab_cat == "Anàlisi Vertical":
-                ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+                avis_proximitat = analitzar_amenaça_convergencia_propera(map_data_conv, params_calc, lat_sel, lon_sel, nivell_sel)
+                ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, avis_proximitat)
             
             elif st.session_state.active_tab_cat == "Anàlisi Comarcal":
                 comarca_actual = get_comarca_for_poble(poble_sel)
@@ -6209,11 +6226,8 @@ def run_catalunya_app():
     
     else: 
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU + BOTONS) ---
-        
-        # --- CANVI CLAU: S'HA AFEGIT EL SPINNER AQUÍ ---
         with st.spinner("Carregant mapa de situació de Catalunya..."):
             map_output = ui_mapa_display_personalitzat(alertes_zona)
-        # --- FI DEL CANVI ---
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
@@ -6346,12 +6360,9 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
 
 def seleccionar_poble(nom_poble):
-    """
-    Callback segur per als botons que estableix la població seleccionada
-    i força un 'rerun' per evitar el bug de la pantalla en negre.
-    """
-    st.session_state.poble_sel = nom_poble
-    st.rerun() # Aquesta és la línia clau que soluciona el problema
+    """Callback segur que estableix la intenció de seleccionar un poble."""
+    # En lloc de canviar 'poble_sel' directament, establim un estat intermedi.
+    st.session_state.poble_seleccionat_per_boto = nom_poble
     
 # --- DICCIONARI DE CAPITALS (Necessari per a les coordenades) ---
 CAPITALS_COMARCA = {
