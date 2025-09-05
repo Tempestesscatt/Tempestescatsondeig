@@ -6372,12 +6372,12 @@ CAPITALS_COMARCA = {
     'Vallès Oriental': {'nom': 'Granollers', 'lat': 41.6083, 'lon': 2.2886}
 }
 
-# --- FUNCIÓ MODIFICADA (AMB ELS NOMS DE POBLES DESACTIVATS) ---
+# --- FUNCIÓ MODIFICADA (AMB TEXT NEGRE ALS MUNICIPIS) ---
 def ui_mapa_display_personalitzat(alertes_per_zona):
     """
-    Versió final robusta v5.
+    Versió final robusta v6.
     - Manté les etiquetes de convergència sobre les capitals.
-    - DESACTIVA els noms de la resta de municipis per a un mapa més net.
+    - Mostra els noms dels municipis de la zona seleccionada amb text negre.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
@@ -6403,8 +6403,8 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
             zoom_level = 10 if property_name in ['nomcomar', 'nom_comar'] else 9
 
     m = folium.Map(
-        location=map_center, 
-        zoom_start=zoom_level, 
+        location=map_center,
+        zoom_start=zoom_level,
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
         attr="Tiles &copy; Esri &mdash; and the GIS User Community",
         scrollWheelZoom=True
@@ -6412,10 +6412,10 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
 
     def get_color_from_convergence(value):
         if not isinstance(value, (int, float)): return None, '#FFFFFF'
-        if value >= 100: return '#9370DB', '#FFFFFF' # Lila, text blanc
-        if value >= 60: return '#DC3545', '#FFFFFF' # Vermell, text blanc
-        if value >= 40: return '#FD7E14', '#FFFFFF' # Taronja, text blanc
-        if value >= 20: return '#28A745', '#FFFFFF' # Verd, text blanc
+        if value >= 100: return '#9370DB', '#FFFFFF'
+        if value >= 60: return '#DC3545', '#FFFFFF'
+        if value >= 40: return '#FD7E14', '#FFFFFF'
+        if value >= 20: return '#28A745', '#FFFFFF'
         return None, '#000000'
 
     def style_function(feature):
@@ -6448,18 +6448,17 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
         tooltip=folium.GeoJsonTooltip(fields=[property_name], aliases=[tooltip_alias])
     ).add_to(m)
 
-    # --- CANVI CLAU: S'HA COMENTAT AQUEST BLOC PER OCULTAR ELS NOMS ---
-    # Aquest codi dibuixava els noms de tots els pobles de la zona seleccionada.
-    # Ara està desactivat per evitar duplicitat amb les alertes de convergència.
-    #
-    # if selected_area and "---" not in selected_area:
-    #     poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
-    #     poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
-    #     for nom_poble, coords in poblacions_a_mostrar.items():
-    #         icon = folium.DivIcon(
-    #             html=f"""<div style="font-family: sans-serif; font-size: 11px; font-weight: bold; color: #111; background-color: rgba(255, 255, 255, 0.7); padding: 2px 6px; border-radius: 5px; border: 1.5px solid #111; white-space: nowrap;">{nom_poble}</div>"""
-    #         )
-    #         folium.Marker(location=[coords['lat'], coords['lon']], icon=icon, tooltip=nom_poble).add_to(m)
+    # --- CANVI CLAU: RESTAURAT I AMB TEXT NEGRE ---
+    # Aquest bloc torna a estar actiu. Dibuixa els noms dels municipis quan selecciones una zona.
+    if selected_area and "---" not in selected_area:
+        poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
+        poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
+        for nom_poble, coords in poblacions_a_mostrar.items():
+            # S'ha canviat el 'color' i la 'border' a #000 (negre)
+            icon = folium.DivIcon(
+                html=f"""<div style="font-family: sans-serif; font-size: 11px; font-weight: bold; color: #000; background-color: rgba(255, 255, 255, 0.7); padding: 2px 6px; border-radius: 5px; border: 1.5px solid #000; white-space: nowrap;">{nom_poble}</div>"""
+            )
+            folium.Marker(location=[coords['lat'], coords['lon']], icon=icon, tooltip=nom_poble).add_to(m)
     # --- FI DEL CANVI ---
 
     # Dibuixem les etiquetes de convergència sobre les capitals de les zones afectades
