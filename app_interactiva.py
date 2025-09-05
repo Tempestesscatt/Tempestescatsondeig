@@ -4256,12 +4256,11 @@ def ui_mapa_display(comarques_en_alerta):
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
-    if gdf is None: return None # <-- CANVI: Retorna None si hi ha error
+    if gdf is None: return None
 
     comarca_sel = st.session_state.get('comarca_sel')
     poble_sel = st.session_state.get('poble_selector')
 
-    # Centrat del mapa i nivell de zoom
     map_center = [41.83, 1.87]; zoom_level = 8
     if comarca_sel and "---" not in comarca_sel:
         comarca_shape = gdf[gdf['nomcomar'] == comarca_sel]
@@ -4269,7 +4268,8 @@ def ui_mapa_display(comarques_en_alerta):
             map_center = [comarca_shape.geometry.centroid.y.iloc[0], comarca_shape.geometry.centroid.x.iloc[0]]
             zoom_level = 10
 
-    m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB dark_matter", scrollWheelZoom=False)
+    # --- CANVI CLAU: S'ha activat el zoom i el moviment del mapa ---
+    m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB dark_matter", scrollWheelZoom=True)
 
     def style_function(feature):
         nom_comarca = feature['properties']['nomcomar']
@@ -4297,7 +4297,6 @@ def ui_mapa_display(comarques_en_alerta):
             icon=folium.Icon(color='blue', icon='info-sign')
         ).add_to(m)
 
-    # --- CANVI CLAU: Retornem l'output del mapa ---
     return st_folium(m, width="100%", height=400, returned_objects=['last_object_clicked_tooltip'])
     
 
@@ -6115,7 +6114,11 @@ def run_catalunya_app():
         with col_dia:
             st.selectbox("Dia:", options=[(datetime.now(TIMEZONE_CAT) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)], key="dia_selector")
         with col_hora:
-            st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector")
+            # --- CANVI CLAU: L'índex per defecte és l'hora actual ---
+            st.selectbox("Hora:", 
+                         options=[f"{h:02d}:00h" for h in range(24)], 
+                         key="hora_selector",
+                         index=datetime.now(TIMEZONE_CAT).hour)
         with col_nivell:
             st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
 
@@ -6133,7 +6136,7 @@ def run_catalunya_app():
 
     # --- PAS 5: LÒGICA PRINCIPAL (SELECCIÓ O ANÀLISI) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # --- VISTA D'ANÀLISI DETALLADA (Aquesta part no canvia) ---
+        # --- VISTA D'ANÀLISI DETALLADA ---
         poble_sel = st.session_state.poble_sel
         st.success(f"### Anàlisi per a: **{poble_sel}**")
         if st.button("⬅️ Tornar al mapa de selecció"):
@@ -6218,13 +6221,10 @@ def run_catalunya_app():
         
         map_output = ui_mapa_display(list(alertes_comarca.keys()))
 
-        # --- BLOC DE CODI CORREGIT I MILLORAT ---
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
             
-            # Comprovem si el que s'ha clicat és una comarca
             if "Comarca:" in raw_tooltip:
-                # Netejem la cadena per obtenir només el nom
                 clicked_comarca = raw_tooltip.split(':')[-1].strip()
                 
                 if clicked_comarca != st.session_state.comarca_sel:
