@@ -1307,6 +1307,11 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
 
 def get_comarca_for_poble(poble_name):
     """Troba a quina comarca pertany un municipi."""
+    # Primer busca a les zones personalitzades, si existeixen
+    for zona, pobles in CIUTATS_PER_ZONA_PERSONALITZADA.items():
+        if poble_name in pobles:
+            return zona
+    # Si no, busca a les comarques oficials
     for comarca, pobles in CIUTATS_PER_COMARCA.items():
         if poble_name in pobles:
             return comarca
@@ -1996,10 +2001,9 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     TOOLTIPS = {
         'SBCAPE': "Energia Potencial Convectiva Disponible (CAPE) des de la Superfície. Mesura el 'combustible' per a les tempestes a partir d'una bombolla d'aire a la superfície.",
         'MUCAPE': "El CAPE més alt possible a l'atmosfera (Most Unstable). Útil per detectar inestabilitat elevada, fins i tot si la superfície és estable.",
-        'CONVERGENCIA': f"Força de la convergència de vent a {nivell_conv}hPa. Actua com el 'disparador' o 'mecanisme de forçament' que obliga l'aire a ascendir, ajudant a iniciar les tempestes.",
+        'CONV_PUNTUAL': f"Força de la convergència de vent EXACTAMENT al punt de {poble_sel}. Actua com el 'disparador' local i és la dada que correspon a aquest sondeig.",
         'SBCIN': "Inhibició Convectiva (CIN) des de la Superfície. És l'energia necessària per vèncer l'estabilitat inicial. Valors molt negatius actuen com una 'tapa' que impedeix les tempestes.",
         'MUCIN': "La CIN associada al MUCAPE.",
-        'POTENCIAL_CACA': "Diagnòstic ràpid que sintetitza si la combinació d'energia (CAPE), disparador (Convergència) i organització (Cisallament) és favorable per a la formació de tempestes que valguin la pena observar o 'caçar'.",
         'LI': "Índex d'Elevació (Lifted Index). Mesura la diferència de temperatura a 500hPa entre l'entorn i una bombolla d'aire elevada. Valors molt negatius indiquen una forta inestabilitat.",
         'PWAT': "Aigua Precipitable Total (Precipitable Water). Quantitat total de vapor d'aigua en la columna atmosfàrica. Valors alts indiquen potencial per a pluges fortes.",
         'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació (LCL). És l'alçada a la qual es formarà la base del núvol. Valors baixos (<1000m) afavoreixen el temps sever.",
@@ -2008,95 +2012,35 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         'BWD_0-6km': "Cisallament del Vent (Bulk Wind Shear) entre 0 i 6 km. Crucial per a l'organització de les tempestes (multicèl·lules, supercèl·lules).",
         'BWD_0-1km': "Cisallament del Vent entre 0 i 1 km. Important per a la rotació a nivells baixos (tornados).",
         'T_500hPa': "Temperatura a 500 hPa (uns 5.500 metres). Temperatures molt fredes en alçada disparen la inestabilitat.",
-        'MAX_UPDRAFT': "Estimació de la velocitat màxima del corrent ascendent. Indicador directe del potencial de calamarsa.",
-        'AMENACA_CALAMARSA': "Probabilitat de calamarsa de mida significativa (>2 cm). Es basa en la potència del corrent ascendent (MAX_UPDRAFT) i l'alçada de la isoterma de 0°C.",
         'PUNTUACIO_TEMPESTA': "Índex de 0 a 10 que valora el potencial global de formació de tempestes, combinant els ingredients clau.",
+        'AMENACA_CALAMARSA': "Probabilitat de calamarsa de mida significativa (>2 cm). Es basa en la potència del corrent ascendent (MAX_UPDRAFT) i l'alçada de la isoterma de 0°C.",
         'AMENACA_LLAMPS': "Potencial d'activitat elèctrica. S'estima a partir de la inestabilitat (LI) i la profunditat de la tempesta (EL_Hgt)."
     }
-    
-    
 
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
-        display_label = label
-        color = "#FFFFFF"
-        val_str = "---"
-        font_size = "1.6em"
-        # Comencem amb la unitat per defecte per a tots els paràmetres
-        unit_display = f"({unit})"
-
+        color = "#FFFFFF"; val_str = "---"
         is_numeric = isinstance(value, (int, float, np.number))
-
         if pd.notna(value) and is_numeric:
+            # Lògica de color específica per a convergència
             if 'CONV' in param_key:
-                if value < 0:
-                    # DIVERGÈNCIA: Mostrem text, sense unitat
-                    color = "#5bc0de"
-                    display_label = "Dinàmica Vertical"
-                    font_size = "1.4em"
-                    unit_display = "" # Amaguem la unitat
-                    
-                    abs_val = abs(value)
-                    if abs_val >= 30: val_str = "Divergència<br>Forta"
-                    elif abs_val >= 15: val_str = "Divergència<br>Moderada"
-                    else: val_str = "Divergència<br>Feble"
-                else:
-                    # CONVERGÈNCIA: Mostrem número i títol amb rang
-                    display_label = "Convergència"
-                    
-                    # <<<--- NOU BLOC: Canviem la unitat pel rang de força --->>>
-                    if value < 5: strength_label = "(Calma)"
-                    elif value < 15: strength_label = "(Feble)"
-                    elif value < 30: strength_label = "(Moderada)"
-                    elif value < 40: strength_label = "(Forta)"
-                    else: strength_label = "(Molt Forta)"
-                    unit_display = strength_label # Substituïm la unitat (10⁻⁵ s⁻¹) pel text
-                    # <<<--- FI DEL NOU BLOC --->>>
-
-                    thresholds = [5, 15, 30, 40]
-                    colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
-                    color = colors[np.searchsorted(thresholds, value)]
-                    val_str = f"{value:.{precision}f}"
-
-            elif param_key == 'T_500hPa':
-                thresholds = [-8, -14, -18, -22]
-                colors = ["#2ca02c", "#ffc107", "#fd7e14", "#dc3545", "#b300ff"]
-                color = colors[len(thresholds) - np.searchsorted(thresholds, value, side='right')]
-                val_str = f"{value:.{precision}f}"
+                conv_thresholds = [5, 15, 30, 40]
+                conv_colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
+                color = conv_colors[np.searchsorted(conv_thresholds, value)]
             else:
                 color = get_color_global(value, param_key, reverse_colors)
-                val_str = f"{value:.{precision}f}"
+            val_str = f"{value:.{precision}f}"
         
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
-        
-        # Si el text ja és 'Divergència...', no cal mostrar la unitat.
-        if "Divergència" in val_str:
-            unit_display = ""
-
         st.markdown(f"""
         <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
-            <span style="font-size: 0.8em; color: #FAFAFA;">{display_label} {unit_display}{tooltip_html}</span>
-            <strong style="font-size: {font_size}; color: {color}; line-height: 1.1;">{val_str}</strong>
+            <span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit}){tooltip_html}</span>
+            <strong style="font-size: 1.6em; color: {color}; line-height: 1.1;">{val_str}</strong>
         </div>""", unsafe_allow_html=True)
 
-    def styled_qualitative(label, analysis_dict, tooltip_text=""):
-        # ... (aquesta funció interna no canvia)
-        text = analysis_dict.get('text', 'N/A')
-        color = analysis_dict.get('color', '#808080')
-        motiu = analysis_dict.get('motiu', '')
-        full_tooltip = f"{tooltip_text} Motiu del diagnòstic: {motiu}" if motiu else tooltip_text
-        tooltip_html = f' <span title="{full_tooltip}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if full_tooltip else ""
-        st.markdown(f"""
-        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
-            <span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br>
-            <strong style="font-size: 1.6em; color: {color};">{text}</strong>
-        </div>""", unsafe_allow_html=True)
-        
-    def styled_threat(label, text, color, tooltip_key):
-        # ... (aquesta funció interna no canvia)
-        tooltip_text = TOOLTIPS.get(tooltip_key, "")
+    def styled_qualitative(label, text, color, tooltip_text=""):
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""
-        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
+        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
             <span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br>
             <strong style="font-size: 1.6em; color: {color};">{text}</strong>
         </div>""", unsafe_allow_html=True)
@@ -2108,64 +2052,21 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
     with cols[2]: 
         conv_key = f'CONV_{nivell_conv}hPa'
-        styled_metric("Convergència", params.get(conv_key, np.nan), "10⁻⁵ s⁻¹", conv_key, precision=1, tooltip_text=TOOLTIPS.get('CONVERGENCIA'))
+        styled_metric("Convergència Puntual", params.get(conv_key, np.nan), "10⁻⁵ s⁻¹", 'CONV_PUNTUAL', precision=1, tooltip_text=TOOLTIPS.get('CONV_PUNTUAL'))
     
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
     with cols[2]:
-        analisi_caca = analitzar_potencial_caca(params, nivell_conv)
-        
-        # --- LÒGICA D'ARREGLAMENT DEFINITIU ---
-        # Si la resposta és "No", construïm un HTML personalitzat
-        # que inclou el motiu directament a la caixa.
-        if analisi_caca['text'] == 'No':
-            motiu = analisi_caca.get('motiu', 'Motiu no especificat.')
-            tooltip_text = TOOLTIPS.get('POTENCIAL_CACA')
-            tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.7em; opacity: 0.7;">❓</span>'
-
-            st.markdown(f"""
-            <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
-                <span style="font-size: 0.8em; color: #FAFAFA;">Val la pena anar-hi?{tooltip_html}</span>
-                <strong style="font-size: 1.4em; color: #dc3545; line-height: 1.2;">No</strong>
-                <span style="font-size: 0.7em; color: #E0E0E0; line-height: 1.1; font-style: italic;">{motiu}</span>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            # Si la resposta és positiva, utilitzem la funció de sempre.
-            styled_qualitative("Val la pena anar-hi?", analisi_caca, tooltip_text=TOOLTIPS.get('POTENCIAL_CACA'))
-
-    cols = st.columns(3)
-    with cols[0]: 
-        li_value = params.get('LI', np.nan)
-        if hasattr(li_value, '__len__') and not isinstance(li_value, str) and len(li_value) > 0: li_value = li_value[0]
-        styled_metric("LI", li_value, "°C", 'LI', precision=1, reverse_colors=True, tooltip_text=TOOLTIPS.get('LI'))
-    with cols[1]: 
-        styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1, tooltip_text=TOOLTIPS.get('PWAT'))
-    with cols[2]:
         analisi_temps = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
-        emoji = analisi_temps['emoji']
-        descripcio = analisi_temps['descripcio']
-
-        if avis_proximitat:
-            background_color = "#fd7e14"
-            title_text = "⚠️ATENCIÓ: FOCUS APROP⚠️"
-            main_text = "Anirá cap a tú"
-            sub_text = f"Actual: {emoji} {descripcio}"
-            st.markdown(f"""
-            <div class="blinking-alert" style="text-align: center; padding: 5px; border-radius: 10px; background-color: {background_color}; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
-                <span style="font-size: 0.8em; color: #FFFFFF; font-weight: bold;">{title_text}</span>
-                <strong style="font-size: 1.2em; color: #FFFFFF; line-height: 1.2;">{main_text}</strong>
-                <span style="font-size: 0.7em; color: #FFFFFF; opacity: 0.9;">{sub_text}</span>
-            </div>""", unsafe_allow_html=True)
-        else:
-            st.markdown(f"""
+        emoji = analisi_temps['emoji']; descripcio = analisi_temps['descripcio']
+        st.markdown(f"""
             <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
                 <span style="font-size: 0.8em; color: #FAFAFA;">Tipus de Cel Previst</span>
                 <strong style="font-size: 1.8em; line-height: 1;">{emoji}</strong>
                 <span style="font-size: 0.8em; color: #E0E0E0;">{descripcio}</span>
             </div>""", unsafe_allow_html=True)
-        
+
     cols = st.columns(3)
     with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
     with cols[1]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
@@ -2174,22 +2075,16 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     cols = st.columns(3)
     with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km', tooltip_text=TOOLTIPS.get('BWD_0-6km'))
     with cols[1]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km', tooltip_text=TOOLTIPS.get('BWD_0-1km'))
-    with cols[2]: 
-        styled_metric("T 500hPa", params.get('T_500hPa', np.nan), "°C", 'T_500hPa', precision=1, tooltip_text=TOOLTIPS.get('T_500hPa'))
+    with cols[2]: styled_metric("T 500hPa", params.get('T_500hPa', np.nan), "°C", 'T_500hPa', precision=1, tooltip_text=TOOLTIPS.get('T_500hPa'))
 
     st.markdown("##### Potencial d'Amenaces Severes")
     amenaces = analitzar_amenaces_especifiques(params)
-    
     puntuacio_resultat = calcular_puntuacio_tempesta(sounding_data, params, nivell_conv)
     
     cols = st.columns(3)
-    with cols[0]:
-        styled_threat("Calamarsa Gran (>2cm)", amenaces['calamarsa']['text'], amenaces['calamarsa']['color'], 'AMENACA_CALAMARSA')
-    with cols[1]:
-        score_text = f"{puntuacio_resultat['score']} / 10"
-        styled_threat("Índex de Potencial", score_text, puntuacio_resultat['color'], 'PUNTUACIO_TEMPESTA')
-    with cols[2]:
-        styled_threat("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], 'AMENACA_LLAMPS')
+    with cols[0]: styled_qualitative("Calamarsa Gran (>2cm)", amenaces['calamarsa']['text'], amenaces['calamarsa']['color'], tooltip_text=TOOLTIPS.get('AMENACA_CALAMARSA'))
+    with cols[1]: styled_qualitative("Índex de Potencial", f"{puntuacio_resultat['score']} / 10", puntuacio_resultat['color'], tooltip_text=TOOLTIPS.get('PUNTUACIO_TEMPESTA'))
+    with cols[2]: styled_qualitative("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], tooltip_text=TOOLTIPS.get('AMENACA_LLAMPS'))
 
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
     """
@@ -6244,81 +6139,74 @@ def run_catalunya_app():
         lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
         
-        menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Anàlisi de Vents", "Simulació de Núvol"]
-        menu_icons = ["graph-up-arrow", "map", "wind", "cloud-upload"]
+        # --- NOU MENÚ AMB ANÀLISI COMARCAL ---
+        menu_options = ["Anàlisi Vertical", "Anàlisi Comarcal", "Anàlisi de Mapes", "Simulació de Núvol"]
+        menu_icons = ["graph-up-arrow", "fullscreen", "map", "cloud-upload"]
         if not is_guest:
             menu_options.append("💬 Assistent IA")
             menu_icons.append("chat-quote-fill")
         option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key="active_tab_cat", default_index=0)
         
-        if st.session_state.active_tab_cat == "Anàlisi de Mapes":
-            ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
-        else:
-            with st.spinner(f"Carregant dades del sondeig AROME per a {poble_sel}..."):
-                data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
-            
-            if final_index is not None and final_index != hourly_index_sel and not error_msg:
-                adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
-                adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
-                st.warning(f"**Avís:** Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
-            
-            if error_msg: 
-                st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
-            elif data_tuple:
-                params_calc = data_tuple[1]
-                
-                # --- BLOC DE CODI RESTAURAT I MILLORAT ---
-                # Primer, carreguem les dades del mapa per a la convergència
-                with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
-                    map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
-                
-                if map_data_conv:
-                    # 1. Calculem la convergència PUNTUAL per al sondeig i els seus càlculs interns
-                    conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
-                    if pd.notna(conv_puntual):
-                        params_calc[f'CONV_{nivell_sel}hPa'] = conv_puntual
+        # Càrrega de dades comuna per a diverses pestanyes
+        with st.spinner(f"Carregant dades del model AROME per a {poble_sel}..."):
+            data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+            map_data_conv, error_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
 
-                # 2. Busquem la convergència MÀXIMA a la comarca per mostrar-la a la UI
+        if final_index is not None and final_index != hourly_index_sel and not error_msg:
+            adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+            adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
+            st.warning(f"**Avís:** Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+        
+        if error_msg: 
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        elif data_tuple:
+            params_calc = data_tuple[1]
+            if map_data_conv:
+                conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+                if pd.notna(conv_puntual):
+                    params_calc[f'CONV_{nivell_sel}hPa'] = conv_puntual
+            
+            if st.session_state.active_tab_cat == "Anàlisi Vertical":
+                avis_proximitat = analitzar_amenaça_convergencia_propera(map_data_conv, params_calc, lat_sel, lon_sel, nivell_sel)
+                ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, avis_proximitat)
+            
+            elif st.session_state.active_tab_cat == "Anàlisi Comarcal":
                 comarca_actual = get_comarca_for_poble(poble_sel)
-                if comarca_actual:
-                    conv_comarcal = alertes_zona.get(comarca_actual, 0)
-                    params_calc['CONV_COMARCAL'] = conv_comarcal
-                # --- FI DEL BLOC RESTAURAT ---
+                valor_conv_comarcal = alertes_zona.get(comarca_actual, 0)
+                ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv)
+                
+            elif st.session_state.active_tab_cat == "Anàlisi de Mapes":
+                ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
+            
+            elif st.session_state.active_tab_cat == "Simulació de Núvol":
+                st.markdown(f"#### Simulació del Cicle de Vida per a {poble_sel}")
+                st.caption(timestamp_str)
+                if 'regenerate_key' not in st.session_state: st.session_state.regenerate_key = 0
+                if st.button("🔄 Regenerar Totes les Animacions"): forcar_regeneracio_animacio()
+                with st.spinner("Generant simulacions visuals..."):
+                    params_tuple = tuple(sorted(params_calc.items()))
+                    gifs = generar_animacions_professionals(params_tuple, timestamp_str, st.session_state.regenerate_key)
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.markdown("<h5 style='text-align: center;'>1. Iniciació</h5>", unsafe_allow_html=True)
+                    if gifs['iniciacio']: st.image(gifs['iniciacio'])
+                    else: st.info("Condicions estables.")
+                with col2:
+                    st.markdown("<h5 style='text-align: center;'>2. Maduresa</h5>", unsafe_allow_html=True)
+                    if gifs['maduresa']: st.image(gifs['maduresa'])
+                    else: st.info("Sense energia per a tempesta.")
+                with col3:
+                    st.markdown("<h5 style='text-align: center;'>3. Dissipació</h5>", unsafe_allow_html=True)
+                    if gifs['dissipacio']: st.image(gifs['dissipacio'])
+                    else: st.info("Sense fase final.")
+                st.divider()
+                ui_guia_tall_vertical(params_calc, nivell_sel)
 
-                # La resta de la lògica per a les pestanyes es manté igual
-                if st.session_state.active_tab_cat == "Anàlisi Vertical":
-                    avis_proximitat = analitzar_amenaça_convergencia_propera(map_data_conv, params_calc, lat_sel, lon_sel, nivell_sel)
-                    ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, avis_proximitat)
-                elif st.session_state.active_tab_cat == "Anàlisi de Vents":
-                    ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_sel_str, timestamp_str)
-                elif st.session_state.active_tab_cat == "Simulació de Núvol":
-                    st.markdown(f"#### Simulació del Cicle de Vida per a {poble_sel}")
-                    st.caption(timestamp_str)
-                    if 'regenerate_key' not in st.session_state: st.session_state.regenerate_key = 0
-                    if st.button("🔄 Regenerar Totes les Animacions"): forcar_regeneracio_animacio()
-                    with st.spinner("Generant simulacions visuals..."):
-                        params_tuple = tuple(sorted(params_calc.items()))
-                        gifs = generar_animacions_professionals(params_tuple, timestamp_str, st.session_state.regenerate_key)
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.markdown("<h5 style='text-align: center;'>1. Iniciació</h5>", unsafe_allow_html=True)
-                        if gifs['iniciacio']: st.image(gifs['iniciacio'])
-                        else: st.info("Condicions estables.")
-                    with col2:
-                        st.markdown("<h5 style='text-align: center;'>2. Maduresa</h5>", unsafe_allow_html=True)
-                        if gifs['maduresa']: st.image(gifs['maduresa'])
-                        else: st.info("Sense energia per a tempesta.")
-                    with col3:
-                        st.markdown("<h5 style='text-align: center;'>3. Dissipació</h5>", unsafe_allow_html=True)
-                        if gifs['dissipacio']: st.image(gifs['dissipacio'])
-                        else: st.info("Sense fase final.")
-                    st.divider()
-                    ui_guia_tall_vertical(params_calc, nivell_sel)
-                elif st.session_state.active_tab_cat == "💬 Assistent IA" and not is_guest:
-                    analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
-                    interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
-                    sounding_data = data_tuple[0] if data_tuple else None
-                    ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)
+            elif st.session_state.active_tab_cat == "💬 Assistent IA" and not is_guest:
+                analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
+                interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
+                sounding_data = data_tuple[0] if data_tuple else None
+                ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)
     
     else: 
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU + BOTONS) ---
@@ -6362,6 +6250,116 @@ def run_catalunya_app():
                 st.rerun()
         else:
              st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
+
+
+
+
+
+def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data):
+    """
+    NOVA PESTANYA: Mostra una anàlisi detallada de la convergència a nivell comarcal.
+    """
+    st.markdown(f"#### Anàlisi de Convergència per a la Comarca: **{comarca}**")
+    st.caption(timestamp_str.replace(poble_sel, comarca))
+
+    col_mapa, col_diagnostic = st.columns([0.6, 0.4], gap="large")
+
+    with col_mapa:
+        st.markdown("##### Focus de Convergència a la Zona")
+        gdf_comarques = carregar_dades_geografiques()
+        if gdf_comarques is None:
+            st.error("No s'ha pogut carregar el mapa de comarques.")
+            return
+
+        # Troba la geometria de la comarca actual
+        property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_comarques.columns), 'nom_comar')
+        comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
+
+        if comarca_shape.empty:
+            st.warning(f"No s'ha trobat la geometria per a la comarca '{comarca}'.")
+            map_center = [41.83, 1.87]
+            zoom_level = 8
+        else:
+            # Centra el mapa a la comarca
+            centroid = comarca_shape.geometry.centroid.iloc[0]
+            map_center = [centroid.y, centroid.x]
+            zoom_level = 10
+
+        m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB positron")
+        
+        # Dibuixa la comarca ressaltada
+        folium.GeoJson(
+            comarca_shape,
+            style_function=lambda x: {'fillColor': '#007bff', 'color': 'black', 'weight': 2, 'fillOpacity': 0.3}
+        ).add_to(m)
+
+        # Troba i marca el punt de màxima convergència dins de la comarca
+        if map_data and valor_conv > 10:
+            lons, lats = map_data['lons'], map_data['lats']
+            grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100))
+            u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
+            grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+            grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+            convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
+            
+            # Converteix la graella de punts a un GeoDataFrame per fer la intersecció
+            points_df = pd.DataFrame({
+                'lat': grid_lat.flatten(),
+                'lon': grid_lon.flatten(),
+                'conv': convergence_scaled.flatten()
+            })
+            gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4258")
+            
+            # Filtra els punts que estan dins de la comarca
+            points_in_comarca = gpd.sjoin(gdf_points, comarca_shape, how="inner", predicate="within")
+            
+            if not points_in_comarca.empty:
+                # Troba el punt de màxima convergència
+                max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
+                
+                # Dibuixa un marcador al punt
+                folium.Marker(
+                    location=[max_conv_point.geometry.y, max_conv_point.geometry.x],
+                    tooltip=f"Focus Màxim: {max_conv_point.conv:.0f}",
+                    icon=folium.Icon(color='red', icon='bolt')
+                ).add_to(m)
+
+        st_folium(m, width="100%", height=450)
+
+    with col_diagnostic:
+        st.markdown("##### Diagnòstic de la Zona")
+        
+        # Determinar el nivell de l'alerta
+        if valor_conv >= 60:
+            nivell_alerta = "Molt Alt"
+            color_alerta = "#DC3545"
+            emoji = "🔴"
+            descripcio = f"S'ha detectat un focus de convergència **extremadament fort** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquesta és una senyal molt clara per a la formació imminent de tempestes, possiblement severes i organitzades, a la zona. Cal parar molta atenció."
+        elif valor_conv >= 40:
+            nivell_alerta = "Alt"
+            color_alerta = "#FD7E14"
+            emoji = "🟠"
+            descripcio = f"Hi ha un focus de convergència **forta** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona. El potencial de temps sever és considerable."
+        elif valor_conv >= 20:
+            nivell_alerta = "Moderat"
+            color_alerta = "#28A745"
+            emoji = "🟢"
+            descripcio = f"S'observa una zona de convergència **moderada** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquesta condició pot ser suficient per iniciar tempestes, especialment si l'atmosfera és inestable. Cal vigilar l'evolució."
+        else:
+            nivell_alerta = "Baix"
+            color_alerta = "#6c757d"
+            emoji = "⚪"
+            descripcio = "No es detecten focus de convergència significatius a la comarca. El forçament dinàmic per iniciar tempestes és feble o inexistent en aquesta zona."
+
+        st.markdown(f"""
+        <div style="background-color: #262730; border-left: 8px solid {color_alerta}; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+            <div style="font-size: 1.1em; font-weight: bold; color: {color_alerta}; margin-bottom: 8px;">{emoji} Potencial de Dispar: {nivell_alerta}</div>
+            <div style="font-size: 1em; color: #a0a0b0; line-height: 1.6;">{descripcio}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.info(f"**Nota:** Aquesta anàlisi es basa en la convergència de vent a **{nivell_sel} hPa**. La formació final de tempestes depèn també de la inestabilitat atmosfèrica (CAPE) i la presència d'inhibició (CIN), que pots consultar a la pestanya 'Anàlisi Vertical' de qualsevol municipi de la zona.", icon="ℹ️")
 
 def seleccionar_poble(nom_poble):
     """Callback segur per als botons que estableix la població seleccionada."""
