@@ -6283,7 +6283,10 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data):
     """
-    NOVA PESTANYA: Mostra una anàlisi detallada de la convergència a nivell comarcal.
+    PESTANYA D'ANÀLISI COMARCAL (V. FINAL).
+    - Mostra un mapa estàtic i "congelat" de la comarca.
+    - El mapa s'ajusta automàticament als límits de la comarca.
+    - Tota la interacció (zoom, moviment) està desactivada.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: **{comarca}**")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6297,28 +6300,33 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             st.error("No s'ha pogut carregar el mapa de comarques.")
             return
 
-        # Utilitzem 'nomcomar' com a nom de columna estàndard per a comarques oficials
-        property_name = 'nomcomar' if 'nomcomar' in gdf_comarques.columns else 'nom_comar'
-        
+        property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_comarques.columns), 'nom_comar')
         comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
 
-        if comarca_shape.empty:
-            st.warning(f"No s'ha trobat la geometria per a la comarca '{comarca}'. Mostrant mapa general.")
-            map_center = [41.83, 1.87]
-            zoom_level = 8
-        else:
-            centroid = comarca_shape.geometry.centroid.iloc[0]
-            map_center = [centroid.y, centroid.x]
-            zoom_level = 10
-
-        m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB positron")
+        # --- CANVI CLAU: MAPA "CONGELAT" ---
+        # Creem un mapa inicial sense zoom ni centre, i amb tota la interacció desactivada.
+        m = folium.Map(
+            tiles="CartoDB positron",
+            zoom_control=False,
+            scrollWheelZoom=False,
+            dragging=False,
+            doubleClickZoom=False
+        )
         
-        if not comarca_shape.empty:
+        if comarca_shape.empty:
+            st.warning(f"No s'ha trobat la geometria per a la comarca '{comarca}'.")
+        else:
+            # Dibuixem la comarca ressaltada
             folium.GeoJson(
                 comarca_shape,
                 style_function=lambda x: {'fillColor': '#007bff', 'color': 'black', 'weight': 2, 'fillOpacity': 0.3}
             ).add_to(m)
+            
+            # Ajustem els límits del mapa a la geometria de la comarca
+            bounds = comarca_shape.total_bounds
+            m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
 
+        # Troba i marca el punt de màxima convergència dins de la comarca
         if map_data and valor_conv > 10:
             lons, lats = map_data['lons'], map_data['lats']
             grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100))
@@ -6331,7 +6339,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': convergence_scaled.flatten()})
             gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
             
-            # Assegurem que la projecció sigui la mateixa abans del sjoin
             comarca_shape = comarca_shape.to_crs(gdf_points.crs)
             points_in_comarca = gpd.sjoin(gdf_points, comarca_shape, how="inner", predicate="within")
             
@@ -6365,7 +6372,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         """, unsafe_allow_html=True)
         
         st.info(f"**Nota:** Aquesta anàlisi es basa en la convergència de vent a **{nivell_sel} hPa**. La formació final de tempestes depèn també de la inestabilitat atmosfèrica (CAPE) i la presència d'inhibició (CIN), que pots consultar a la pestanya 'Anàlisi Vertical' de qualsevol municipi de la zona.", icon="ℹ️")
-
 
 def seleccionar_poble(nom_poble):
     """Callback segur que estableix la intenció de seleccionar un poble."""
