@@ -6421,12 +6421,11 @@ CAPITALS_COMARCA = {
     "Vallès Oriental": {"nom": "Granollers", "lat": 41.6083, "lon": 2.2886}
 }
 
-# --- FUNCIÓ MODIFICADA (ETIQUETA AMB NOM DE COMARCA) ---
 def ui_mapa_display_personalitzat(alertes_per_zona):
     """
-    Versió final robusta v13 (Mapa Principal Congelat).
-    - Impedeix navegar fora dels límits de Catalunya.
-    - Si se selecciona una comarca, el mapa es congela en aquesta vista.
+    Versió final robusta v14 (Límits de Zoom).
+    - Afegeix un nivell de zoom mínim per impedir sortir de Catalunya.
+    - Manté el mapa congelat quan se selecciona una comarca.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
@@ -6440,9 +6439,9 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
 
     selected_area = st.session_state.get('selected_area')
     
-    # --- CANVI CLAU: PREPAREM ELS PARÀMETRES DEL MAPA ---
+    # --- CANVI CLAU: PARÀMETRES DEL MAPA REVISATS ---
     map_params = {
-        "location": [41.83, 1.87], # Centre de Catalunya per defecte
+        "location": [41.83, 1.87],
         "zoom_start": 8,
         "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
         "attr": "Tiles &copy; Esri &mdash; and the GIS User Community",
@@ -6450,7 +6449,9 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
         "dragging": True,
         "zoom_control": True,
         "doubleClickZoom": True,
-        "max_bounds": [[40.4, 0.0], [42.9, 3.5]] # Límits per no sortir de Catalunya
+        "max_bounds": [[40.4, 0.0], [42.9, 3.5]],
+        "min_zoom": 8, # <-- NOU: Impedeix fer "unzoom" excessiu
+        "max_zoom": 12  # <-- NOU: Limita el zoom màxim per consistència
     }
 
     if selected_area and "---" not in selected_area:
@@ -6460,14 +6461,12 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
             centroid = zona_shape.geometry.centroid.iloc[0]
             map_params["location"] = [centroid.y, centroid.x]
             map_params["zoom_start"] = 10
-            # CONGELEM EL MAPA QUAN HI HA UNA COMARCA SELECCIONADA
             map_params["scrollWheelZoom"] = False
             map_params["dragging"] = False
             map_params["zoom_control"] = False
             map_params["doubleClickZoom"] = False
             bounds = zona_shape.total_bounds
             map_params["max_bounds"] = [[bounds[1], bounds[0]], [bounds[3], bounds[2]]]
-
 
     m = folium.Map(**map_params)
     # --- FI DEL CANVI ---
