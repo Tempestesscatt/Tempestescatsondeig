@@ -6312,28 +6312,38 @@ def run_catalunya_app():
 
         map_output = ui_mapa_display_personalitzat(alertes_zona)
 
-        # --- CANVI CLAU: LÒGICA DE CLIC CORREGIDA ---
+        # --- CANVI CLAU: LÒGICA DE CLIC CORREGIDA I AMPLIADA ---
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
             
-            # Comprova si el que s'ha clicat és una zona (conté "Zona:" o "Comarca:")
-            if "Zona:" in raw_tooltip or "Comarca:" in raw_tooltip:
-                clicked_area = raw_tooltip.split(':')[-1].strip().replace('.', '')
-                if clicked_area != st.session_state.get('selected_area'):
-                    st.session_state.selected_area = clicked_area
+            zona_clicada = None
+            
+            # CAS 1: L'usuari ha clicat en una ETIQUETA D'ALERTA (ex: "Convergència màx...")
+            if "Convergència màx. a" in raw_tooltip:
+                try:
+                    zona_clicada = raw_tooltip.split(' a ')[1].split(':')[0].strip()
+                except IndexError:
+                    pass # Si el format del text canvia, no fa res per seguretat
+
+            # CAS 2: L'usuari ha clicat en un POLÍGON (ex: "Comarca: Alt Empordà")
+            elif "Zona:" in raw_tooltip or "Comarca:" in raw_tooltip:
+                zona_clicada = raw_tooltip.split(':')[-1].strip().replace('.', '')
+
+            # Si hem identificat que s'ha clicat una ZONA (ja sigui per l'etiqueta o el polígon)
+            if zona_clicada:
+                if zona_clicada != st.session_state.get('selected_area'):
+                    st.session_state.selected_area = zona_clicada
                     st.session_state.poble_sel = "--- Selecciona una localitat ---"
                     st.rerun()
-            # Si no és una zona, llavors és un municipi. Busquem una coincidència.
+            
+            # CAS 3: Si no és una zona, llavors és un MUNICIPI.
             else:
-                # Iterem sobre tots els noms de municipis possibles
                 clicked_poble_found = None
                 for poble_key in CIUTATS_CATALUNYA.keys():
-                    # Si el nom del municipi està dins del text del tooltip, l'hem trobat
                     if poble_key in raw_tooltip:
                         clicked_poble_found = poble_key
-                        break # Parem quan trobem la primera coincidència
+                        break
                 
-                # Si hem trobat un municipi vàlid, canviem a la vista d'anàlisi
                 if clicked_poble_found:
                     st.session_state.poble_sel = clicked_poble_found
                     st.rerun()
