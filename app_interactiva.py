@@ -6344,7 +6344,7 @@ def seleccionar_poble(nom_poble):
     """Callback segur per als botons que estableix la població seleccionada."""
     st.session_state.poble_sel = nom_poble
     
-# --- DICCIONARI DE CAPITALS (CORREGIT AMB NOMS) ---
+# --- DICCIONARI DE CAPITALS (Necessari per a les coordenades) ---
 CAPITALS_COMARCA = {
     "Alt Camp": {"nom": "Valls", "lat": 41.2872, "lon": 1.2505},
     "Alt Empordà": {"nom": "Figueres", "lat": 42.2662, "lon": 2.9622},
@@ -6387,11 +6387,11 @@ CAPITALS_COMARCA = {
     "Vallès Oriental": {"nom": "Granollers", "lat": 41.6083, "lon": 2.2886}
 }
 
-# --- FUNCIÓ MODIFICADA (AMB ESTIL D'ETIQUETA EIXAMPLAT) ---
+# --- FUNCIÓ MODIFICADA (ETIQUETA AMB NOM DE COMARCA) ---
 def ui_mapa_display_personalitzat(alertes_per_zona):
     """
-    Versió final robusta v11 (Estil d'Alertes Eixamplat).
-    - Augmenta l'amplada de la caixa de l'alerta per a una millor visualització.
+    Versió final robusta v12 (Etiqueta amb nom de comarca).
+    - La caixa de l'alerta mostra el nom de la comarca en lloc de la capital.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
@@ -6460,9 +6460,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
         if capital_info:
             bg_color, text_color = get_color_from_convergence(conv_value)
             
-            # Utilitzem el nom de la capital del diccionari
-            nom_capital = capital_info['nom']
-
+            # --- CANVI CLAU: Utilitzem 'zona' en lloc de 'capital_info['nom']' ---
             icon_html = f"""
             <div style="
                 position: relative; 
@@ -6498,9 +6496,10 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
                     border-top: 10px solid {text_color};
                     z-index: -1;
                 "></div>
-                {nom_capital}: {conv_value:.0f}
+                {zona}: {conv_value:.0f}
             </div>
             """
+            # --- FI DEL CANVI ---
 
             icon = folium.DivIcon(html=icon_html)
             folium.Marker(
