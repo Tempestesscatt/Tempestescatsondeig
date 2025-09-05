@@ -6267,22 +6267,31 @@ def run_catalunya_app():
             elif data_tuple:
                 params_calc = data_tuple[1]
                 
-                # --- CANVI CLAU: TROBAR I AFEGIR LA CONVERGÈNCIA DE LA COMARCA ACTUAL ---
+                # --- BLOC DE CODI RESTAURAT I MILLORAT ---
+                # Primer, carreguem les dades del mapa per a la convergència
+                with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
+                    map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
+                
+                if map_data_conv:
+                    # 1. Calculem la convergència PUNTUAL per al sondeig i els seus càlculs interns
+                    conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+                    if pd.notna(conv_puntual):
+                        params_calc[f'CONV_{nivell_sel}hPa'] = conv_puntual
+
+                # 2. Busquem la convergència MÀXIMA a la comarca per mostrar-la a la UI
                 comarca_actual = get_comarca_for_poble(poble_sel)
                 if comarca_actual:
                     conv_comarcal = alertes_zona.get(comarca_actual, 0)
                     params_calc['CONV_COMARCAL'] = conv_comarcal
-                # --- FI DEL CANVI ---
+                # --- FI DEL BLOC RESTAURAT ---
 
                 # La resta de la lògica per a les pestanyes es manté igual
                 if st.session_state.active_tab_cat == "Anàlisi Vertical":
-                    # ... (el codi de la pestanya vertical es manté)
-                    ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+                    avis_proximitat = analitzar_amenaça_convergencia_propera(map_data_conv, params_calc, lat_sel, lon_sel, nivell_sel)
+                    ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, avis_proximitat)
                 elif st.session_state.active_tab_cat == "Anàlisi de Vents":
-                    # ... (el codi de la pestanya de vents es manté)
                     ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_sel_str, timestamp_str)
                 elif st.session_state.active_tab_cat == "Simulació de Núvol":
-                    # ... (el codi de la pestanya de simulació es manté)
                     st.markdown(f"#### Simulació del Cicle de Vida per a {poble_sel}")
                     st.caption(timestamp_str)
                     if 'regenerate_key' not in st.session_state: st.session_state.regenerate_key = 0
