@@ -6133,7 +6133,7 @@ def run_catalunya_app():
 
     # --- PAS 5: LÒGICA PRINCIPAL (SELECCIÓ O ANÀLISI) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # --- VISTA D'ANÀLISI DETALLADA ---
+        # --- VISTA D'ANÀLISI DETALLADA (Aquesta part no canvia) ---
         poble_sel = st.session_state.poble_sel
         st.success(f"### Anàlisi per a: **{poble_sel}**")
         if st.button("⬅️ Tornar al mapa de selecció"):
@@ -6151,13 +6151,7 @@ def run_catalunya_app():
             menu_options.append("💬 Assistent IA")
             menu_icons.append("chat-quote-fill")
         
-        option_menu(menu_title=None, 
-                    options=menu_options, 
-                    icons=menu_icons, 
-                    menu_icon="cast", 
-                    orientation="horizontal", 
-                    key="active_tab_cat",
-                    default_index=0)
+        option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key="active_tab_cat", default_index=0)
 
         if st.session_state.active_tab_cat == "Anàlisi de Mapes":
             ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
@@ -6222,16 +6216,21 @@ def run_catalunya_app():
     else: 
         # --- VISTA DE SELECCIÓ (MAPA I SELECTORS DE LLOC) ---
         
-        # Capturem l'output del mapa interactiu
         map_output = ui_mapa_display(list(alertes_comarca.keys()))
 
-        # AFEGIM LA LÒGICA PER REACCIONAR AL CLIC DEL MAPA
+        # --- BLOC DE CODI CORREGIT I MILLORAT ---
         if map_output and map_output.get("last_object_clicked_tooltip"):
-            clicked_comarca = map_output["last_object_clicked_tooltip"]
-            if clicked_comarca != st.session_state.comarca_sel:
-                st.session_state.comarca_sel = clicked_comarca
-                st.session_state.poble_sel = "--- Selecciona Localitat ---"
-                st.rerun()
+            raw_tooltip = map_output["last_object_clicked_tooltip"]
+            
+            # Comprovem si el que s'ha clicat és una comarca
+            if "Comarca:" in raw_tooltip:
+                # Netejem la cadena per obtenir només el nom
+                clicked_comarca = raw_tooltip.split(':')[-1].strip()
+                
+                if clicked_comarca != st.session_state.comarca_sel:
+                    st.session_state.comarca_sel = clicked_comarca
+                    st.session_state.poble_sel = "--- Selecciona Localitat ---"
+                    st.rerun()
         
         with st.container(border=True):
             st.markdown("#### Tria una comarca i una localitat per començar")
@@ -6266,7 +6265,6 @@ def run_catalunya_app():
                     if poble_sel_widget != st.session_state.poble_sel:
                         st.session_state.poble_sel = poble_sel_widget
                         st.rerun()
-
 
 def run_valley_halley_app():
     if 'poble_selector_usa' not in st.session_state or st.session_state.poble_selector_usa not in USA_CITIES:
