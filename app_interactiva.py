@@ -6384,17 +6384,12 @@ CAPITALS_COMARCA = {
     'Vallès Oriental': {'nom': 'Granollers', 'lat': 41.6083, 'lon': 2.2886}
 }
 
-
-def seleccionar_poble(nom_poble):
-    """Callback segur per als botons que estableix la població seleccionada."""
-    st.session_state.poble_sel = nom_poble
-    
-# --- FUNCIÓ MODIFICADA (AMB TEXT NEGRE ALS MUNICIPIS) ---
+# --- FUNCIÓ MODIFICADA (AMB ETIQUETES D'ALERTA REDISSENYADES) ---
 def ui_mapa_display_personalitzat(alertes_per_zona):
     """
-    Versió final v8 (Botons Segurs).
-    - Dibuixa només els polígons i les alertes de convergència.
-    - Els municipis es seleccionaran amb botons externs per a més fiabilitat.
+    Versió final robusta v9 (Estil d'Alertes Millorat).
+    - Les alertes de convergència es mostren com a marcadors personalitzats amb el text a dins.
+    - Els municipis es seleccionen amb botons externs per a fiabilitat màxima.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
@@ -6425,12 +6420,12 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
     )
 
     def get_color_from_convergence(value):
-        if not isinstance(value, (int, float)): return None, '#FFFFFF'
+        if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF' # Color per defecte
         if value >= 100: return '#9370DB', '#FFFFFF'
         if value >= 60: return '#DC3545', '#FFFFFF'
         if value >= 40: return '#FD7E14', '#FFFFFF'
         if value >= 20: return '#28A745', '#FFFFFF'
-        return None, '#000000'
+        return '#6c757d', '#FFFFFF'
 
     def style_function(feature):
         style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
@@ -6458,18 +6453,63 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
         tooltip=folium.GeoJsonTooltip(fields=[property_name], aliases=[tooltip_alias])
     ).add_to(m)
 
+    # Dibuixem les ETIQUETES D'ALERTA amb el nou estil
     for zona, conv_value in alertes_per_zona.items():
         capital_info = CAPITALS_COMARCA.get(zona)
         if capital_info:
             bg_color, text_color = get_color_from_convergence(conv_value)
-            if bg_color:
-                icon_html = f"""<div style="font-family: sans-serif; font-size: 12px; font-weight: bold; color: {text_color}; background-color: {bg_color}; padding: 4px 8px; border-radius: 6px; border: 2px solid {text_color}; white-space: nowrap; box-shadow: 0 2px 5px rgba(0,0,0,0.4);">{capital_info['nom']}: {conv_value:.0f}</div>"""
-                icon = folium.DivIcon(html=icon_html)
-                folium.Marker(
-                    location=[capital_info['lat'], capital_info['lon']],
-                    icon=icon,
-                    tooltip=f"Comarca: {zona}" # Tooltip simplificat per seleccionar la zona
-                ).add_to(m)
+            
+            # --- CANVI CLAU: NOU DISSENY DE L'ETIQUETA AMB CSS ---
+            icon_html = f"""
+            <div style="
+                position: relative; 
+                background-color: {bg_color}; 
+                color: {text_color};
+                padding: 5px 10px; 
+                border-radius: 8px; 
+                border: 2px solid {text_color};
+                font-family: sans-serif; 
+                font-size: 13px; 
+                font-weight: bold;
+                text-align: center;
+                white-space: nowrap;
+                box-shadow: 3px 3px 5px rgba(0,0,0,0.5);
+                transform: translate(-50%, -100%); /* Centra el marcador sobre el punt exacte */
+            ">
+                <!-- Aquest és el triangle de sota, creat amb la tècnica de borders de CSS -->
+                <div style="
+                    position: absolute;
+                    bottom: -10px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    width: 0; height: 0;
+                    border-left: 8px solid transparent;
+                    border-right: 8px solid transparent;
+                    border-top: 8px solid {bg_color};
+                "></div>
+                <!-- Aquest és el contorn del triangle -->
+                <div style="
+                    position: absolute;
+                    bottom: -13.5px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    width: 0; height: 0;
+                    border-left: 10px solid transparent;
+                    border-right: 10px solid transparent;
+                    border-top: 10px solid {text_color};
+                    z-index: -1;
+                "></div>
+                {capital_info['nom']}: {conv_value:.0f}
+            </div>
+            """
+            # --- FI DEL CANVI ---
+
+            icon = folium.DivIcon(html=icon_html)
+            folium.Marker(
+                location=[capital_info['lat'], capital_info['lon']],
+                icon=icon,
+                tooltip=f"Comarca: {zona}" # Mantenim el tooltip simple per seleccionar la zona
+            ).add_to(m)
     
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
     
