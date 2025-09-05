@@ -6329,6 +6329,51 @@ def run_catalunya_app():
                     st.rerun()
 
 
+# --- NOU DICCIONARI: DEFINEIX LES CAPITALS DE COMARCA ---
+# Aquest diccionari és necessari per a la funció que ve a continuació.
+CAPITALS_COMARCA = {
+    'Alt Camp': {'nom': 'Valls', 'lat': 41.2872, 'lon': 1.2505},
+    'Alt Empordà': {'nom': 'Figueres', 'lat': 42.2662, 'lon': 2.9622},
+    'Alt Penedès': {'nom': 'Vilafranca del Penedès', 'lat': 41.3453, 'lon': 1.6995},
+    'Alt Urgell': {'nom': "La Seu d'Urgell", 'lat': 42.3582, 'lon': 1.4593},
+    'Anoia': {'nom': 'Igualada', 'lat': 41.5791, 'lon': 1.6174},
+    'Bages': {'nom': 'Manresa', 'lat': 41.7230, 'lon': 1.8268},
+    'Baix Camp': {'nom': 'Reus', 'lat': 41.1550, 'lon': 1.1075},
+    'Baix Ebre': {'nom': 'Tortosa', 'lat': 40.8126, 'lon': 0.5211},
+    'Baix Empordà': {'nom': "La Bisbal d'Empordà", 'lat': 41.9602, 'lon': 3.0378},
+    'Baix Llobregat': {'nom': 'Sant Feliu de Llobregat', 'lat': 41.3833, 'lon': 2.0500},
+    'Barcelonès': {'nom': 'Barcelona', 'lat': 41.3851, 'lon': 2.1734},
+    'Berguedà': {'nom': 'Berga', 'lat': 42.1051, 'lon': 1.8458},
+    'Cerdanya': {'nom': 'Puigcerdà', 'lat': 42.4331, 'lon': 1.9287},
+    'Conca de Barberà': {'nom': 'Montblanc', 'lat': 41.3761, 'lon': 1.1610},
+    'Garraf': {'nom': 'Vilanova i la Geltrú', 'lat': 41.2241, 'lon': 1.7252},
+    'Garrigues': {'nom': 'Les Borges Blanques', 'lat': 41.5224, 'lon': 0.8674},
+    'Garrotxa': {'nom': 'Olot', 'lat': 42.1818, 'lon': 2.4900},
+    'Gironès': {'nom': 'Girona', 'lat': 41.9831, 'lon': 2.8249},
+    'Maresme': {'nom': 'Mataró', 'lat': 41.5388, 'lon': 2.4449},
+    'Montsià': {'nom': 'Amposta', 'lat': 40.7093, 'lon': 0.5810},
+    'Noguera': {'nom': 'Balaguer', 'lat': 41.7904, 'lon': 0.8066},
+    'Osona': {'nom': 'Vic', 'lat': 41.9301, 'lon': 2.2545},
+    'Pallars Jussà': {'nom': 'Tremp', 'lat': 42.1664, 'lon': 0.8953},
+    'Pallars Sobirà': {'nom': 'Sort', 'lat': 42.4131, 'lon': 1.1278},
+    "Pla de l'Estany": {'nom': 'Banyoles', 'lat': 42.1197, 'lon': 2.7667},
+    'Pla d_Urgell': {'nom': 'Mollerussa', 'lat': 41.6315, 'lon': 0.8931},
+    'Priorat': {'nom': 'Falset', 'lat': 41.1444, 'lon': 0.8208},
+    'Ribera d_Ebre': {'nom': "Móra d'Ebre", 'lat': 41.0945, 'lon': 0.6450},
+    'Ripollès': {'nom': 'Ripoll', 'lat': 42.2013, 'lon': 2.1903},
+    'Segarra': {'nom': 'Cervera', 'lat': 41.6709, 'lon': 1.2721},
+    'Segrià': {'nom': 'Lleida', 'lat': 41.6177, 'lon': 0.6200},
+    'Selva': {'nom': 'Santa Coloma de Farners', 'lat': 41.8596, 'lon': 2.6703},
+    'Solsonès': {'nom': 'Solsona', 'lat': 41.9942, 'lon': 1.5161},
+    'Tarragonès': {'nom': 'Tarragona', 'lat': 41.1189, 'lon': 1.2445},
+    'Terra Alta': {'nom': 'Gandesa', 'lat': 41.0526, 'lon': 0.4337},
+    'Urgell': {'nom': 'Tàrrega', 'lat': 41.6469, 'lon': 1.1415},
+    "Val d'Aran": {'nom': 'Vielha', 'lat': 42.7027, 'lon': 0.7966},
+    'Vallès Occidental': {'nom': 'Sabadell', 'lat': 41.5483, 'lon': 2.1075},
+    'Vallès Oriental': {'nom': 'Granollers', 'lat': 41.6083, 'lon': 2.2886}
+}
+
+# --- FUNCIÓ MODIFICADA QUE UTILITZA EL DICCIONARI ANTERIOR ---
 def ui_mapa_display_personalitzat(alertes_per_zona):
     """
     Versió final robusta v4.
@@ -6414,6 +6459,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
 
     # --- NOU BLOC: DIBUIXAR LES ETIQUETES DE CONVERGÈNCIA ---
     for zona, conv_value in alertes_per_zona.items():
+        # L'ús de .get() evita errors si una zona d'alerta no té capital definida
         capital_info = CAPITALS_COMARCA.get(zona)
         if capital_info:
             bg_color, text_color = get_color_from_convergence(conv_value)
@@ -6438,7 +6484,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
     # --- FI DEL NOU BLOC ---
     
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
-                    
+    
 def run_valley_halley_app():
     if 'poble_selector_usa' not in st.session_state or st.session_state.poble_selector_usa not in USA_CITIES:
         st.session_state.poble_selector_usa = "Dallas, TX"
