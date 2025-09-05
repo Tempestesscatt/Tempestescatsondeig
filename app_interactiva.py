@@ -6356,7 +6356,7 @@ def ui_mapa_display_personalitzat(zones_en_alerta):
             map_center = [zona_shape.geometry.centroid.y.iloc[0], zona_shape.geometry.centroid.x.iloc[0]]
             zoom_level = 10 if property_name in ['nomcomar', 'nom_comar'] else 9
 
-    m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB dark_matter", scrollWheelZoom=True)
+    m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="Stamen Terrain", scrollWheelZoom=True)
 
     def style_function(feature):
         nom_feature = feature.get('properties', {}).get(property_name)
