@@ -6225,7 +6225,6 @@ def run_catalunya_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     
     alertes_zona = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
-    map_output = ui_mapa_display_personalitzat(alertes_zona)
 
     # --- PAS 5: LÒGICA PRINCIPAL (SELECCIÓ O ANÀLISI) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
@@ -6238,7 +6237,6 @@ def run_catalunya_app():
             if 'active_tab_cat' in st.session_state: del st.session_state['active_tab_cat']
             st.rerun()
 
-        # ... (La resta de la lògica de la vista d'anàlisi no canvia i es manté igual) ...
         lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
         menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Anàlisi de Vents", "Simulació de Núvol"]
@@ -6247,15 +6245,18 @@ def run_catalunya_app():
             menu_options.append("💬 Assistent IA")
             menu_icons.append("chat-quote-fill")
         option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key="active_tab_cat", default_index=0)
+        
         if st.session_state.active_tab_cat == "Anàlisi de Mapes":
             ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
         else:
             with st.spinner(f"Carregant dades del sondeig AROME per a {poble_sel}..."):
                 data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+            
             if final_index is not None and final_index != hourly_index_sel and not error_msg:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
                 st.warning(f"**Avís:** Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+            
             if error_msg: 
                 st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
             elif data_tuple:
@@ -6264,6 +6265,7 @@ def run_catalunya_app():
                 if map_data_conv:
                     conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
                     if pd.notna(conv_value): params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
+                
                 if st.session_state.active_tab_cat == "Anàlisi Vertical":
                     avis_proximitat = analitzar_amenaça_convergencia_propera(map_data_conv, params_calc, lat_sel, lon_sel, nivell_sel)
                     ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, avis_proximitat)
@@ -6309,13 +6311,17 @@ def run_catalunya_app():
         else:
              st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
 
-        map_output = ui_mapa_display_personalitzat(list(alertes_zona.keys()))
+        # <<<--- AQUÍ ESTÀ LA CORRECCIÓ CLAU --->>>
+        # Abans: li passàvem list(alertes_zona.keys())
+        # Ara: li passem el diccionari sencer 'alertes_zona'
+        map_output = ui_mapa_display_personalitzat(alertes_zona)
+        # <<<--- FI DE LA CORRECCIÓ --->>>
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
             
             if "Zona:" in raw_tooltip or "Comarca:" in raw_tooltip:
-                clicked_area = raw_tooltip.split(':')[-1].strip()
+                clicked_area = raw_tooltip.split(':')[-1].strip().replace('.', '')
                 if clicked_area != st.session_state.get('selected_area'):
                     st.session_state.selected_area = clicked_area
                     st.session_state.poble_sel = "--- Selecciona una localitat ---"
