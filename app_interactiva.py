@@ -4211,26 +4211,22 @@ def ui_pestanya_webcams(poble_sel, zona_activa):
 @st.cache_data(show_spinner="Carregant mapa de selecció...")
 def carregar_dades_geografiques():
     """
-    Carrega i processa l'arxiu GeoJSON de les comarques per utilitzar-lo al mapa.
-    Aquesta versió utilitza un camí absolut per ser compatible amb Streamlit Cloud.
+    Carrega el teu arxiu GeoJSON personalitzat.
     """
     try:
-        # --- LÍNIES MODIFICADES ---
-        # Troba el directori on s'està executant l'script actual
-        script_dir = os.path.dirname(__file__)
-        # Crea el camí complet i correcte a l'arxiu geojson
-        file_path = os.path.join(script_dir, "comarques.geojson")
-        # --------------------------
+        # --- CANVI CLAU: Utilitzem el nou arxiu ---
+        file_path = "mapa_personalitzat.geojson" 
+        
+        if not os.path.exists(file_path):
+            st.error(f"No s'ha trobat l'arxiu '{file_path}'. Assegura't que estigui a la mateixa carpeta que l'script.")
+            return None
 
-        # Carreguem el fitxer GeoJSON amb el camí complet
         gdf = gpd.read_file(file_path)
-        # Assegurem que la projecció sigui la correcta per a Folium
         gdf = gdf.to_crs("EPSG:4326")
         return gdf
     except Exception as e:
-        st.error(f"Error en carregar l'arxiu 'comarques.geojson'. Assegura't que estigui a la mateixa carpeta que l'script al teu repositori de GitHub. Detall: {e}")
+        st.error(f"Error en carregar l'arxiu '{file_path}'. Detall: {e}")
         return None
-
 
 
 def on_poble_select():
