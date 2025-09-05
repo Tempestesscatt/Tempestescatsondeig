@@ -4242,34 +4242,41 @@ def on_poble_select():
 
 
 
-def ui_mapa_display(comarques_en_alerta):
+def ui_mapa_display(zones_en_alerta):
     """
-    Versió final amb marcadors de text per a localitats.
-    - Dibuixa els noms de les localitats de la comarca seleccionada directament al mapa.
-    - Manté el disseny fosc i l'efecte hover.
-    - Retorna l'output del mapa per a la interactivitat.
+    Versió final i robusta que s'adapta automàticament a l'arxiu GeoJSON.
+    - Detecta si existeix la propietat 'nom_zona' (mapa nou) o 'nomcomar' (mapa antic).
+    - Funciona amb tots dos arxius sense necessitat de canvis.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
     if gdf is None: return None
 
-    comarca_sel = st.session_state.get('comarca_sel')
+    # --- CANVI CLAU: Detecció automàtica de la propietat a utilitzar ---
+    if 'nom_zona' in gdf.columns:
+        property_name = 'nom_zona'
+        tooltip_alias = 'Zona:'
+        zona_sel = st.session_state.get('zona_sel')
+    else:
+        property_name = 'nomcomar'
+        tooltip_alias = 'Comarca:'
+        zona_sel = st.session_state.get('comarca_sel')
 
     map_center = [41.83, 1.87]; zoom_level = 8
-    if comarca_sel and "---" not in comarca_sel:
-        comarca_shape = gdf[gdf['nomcomar'] == comarca_sel]
-        if not comarca_shape.empty:
-            map_center = [comarca_shape.geometry.centroid.y.iloc[0], comarca_shape.geometry.centroid.x.iloc[0]]
-            zoom_level = 10
+    if zona_sel and "---" not in zona_sel:
+        zona_shape = gdf[gdf[property_name] == zona_sel]
+        if not zona_shape.empty:
+            map_center = [zona_shape.geometry.centroid.y.iloc[0], zona_shape.geometry.centroid.x.iloc[0]]
+            zoom_level = 10 if property_name == 'nomcomar' else 9
 
     m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB dark_matter", scrollWheelZoom=True)
 
     def style_function(feature):
-        nom_comarca = feature['properties']['nomcomar']
+        nom_feature = feature['properties'][property_name]
         style = {'fillColor': '#6c757d', 'color': '#adb5bd', 'weight': 1, 'fillOpacity': 0.25}
-        if nom_comarca in comarques_en_alerta:
+        if nom_feature in zones_en_alerta:
             style['fillColor'] = '#ffc107'; style['color'] = '#ffc107'; style['fillOpacity'] = 0.6; style['weight'] = 2
-        if nom_comarca == comarca_sel:
+        if nom_feature == zona_sel:
             style['fillColor'] = '#007bff'; style['color'] = '#ffffff'; style['weight'] = 2.5; style['fillOpacity'] = 0.55
         return style
 
@@ -4279,87 +4286,20 @@ def ui_mapa_display(comarques_en_alerta):
         gdf,
         style_function=style_function,
         highlight_function=highlight_function,
-        tooltip=folium.GeoJsonTooltip(fields=['nomcomar'], aliases=['Comarca:'])
+        tooltip=folium.GeoJsonTooltip(fields=[property_name], aliases=[tooltip_alias])
     ).add_to(m)
 
-    # --- NOU BLOC: DIBUIXAR ELS NOMS DE LES LOCALITATS ---
-    # Si hi ha una comarca seleccionada, mostrem les seves localitats
-    if comarca_sel and "---" not in comarca_sel:
-        poblacions_a_mostrar = CIUTATS_PER_COMARCA.get(comarca_sel, {})
+    if zona_sel and "---" not in zona_sel:
+        # Utilitzem el diccionari corresponent segons el tipus de mapa
+        poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
+        poblacions_a_mostrar = poblacions_dict.get(zona_sel, {})
         for nom_poble, coords in poblacions_a_mostrar.items():
-            # Creem un marcador personalitzat amb HTML (un text en lloc d'una icona)
             icon = folium.DivIcon(
-                html=f"""
-                <div style="
-                    font-family: sans-serif;
-                    font-size: 11px;
-                    font-weight: bold;
-                    color: white;
-                    background-color: rgba(0, 0, 0, 0.6);
-                    padding: 2px 6px;
-                    border-radius: 5px;
-                    border: 1px solid white;
-                    white-space: nowrap; /* Evita que el text es trenqui */
-                ">
-                    {nom_poble}
-                </div>
-                """
+                html=f"""<div style="font-family: sans-serif; font-size: 11px; font-weight: bold; color: white; background-color: rgba(0, 0, 0, 0.6); padding: 2px 6px; border-radius: 5px; border: 1px solid white; white-space: nowrap;">{nom_poble}</div>"""
             )
-            folium.Marker(
-                location=[coords['lat'], coords['lon']],
-                icon=icon,
-                # El tooltip és el que s'enviarà a Streamlit quan es cliqui
-                tooltip=nom_poble
-            ).add_to(m)
+            folium.Marker(location=[coords['lat'], coords['lon']], icon=icon, tooltip=nom_poble).add_to(m)
 
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
-    
-
-@st.cache_data(ttl=1800, show_spinner="Analitzant focus de convergència a tot el territori...")
-def calcular_alertes_per_comarca(hourly_index, nivell):
-    """
-    Retorna un diccionari amb el valor MÀXIM de convergència per a cada comarca.
-    *** VERSIÓ CORREGIDA: Ara accepta l'índex horari i el nivell. ***
-    """
-    CONV_THRESHOLD = 25
-    
-    # Utilitzem el 'nivell' que rebem com a paràmetre
-    map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
-    gdf_comarques = carregar_dades_geografiques()
-
-    if error or not map_data or gdf_comarques is None or len(map_data['lons']) < 4:
-        return {}
-
-    try:
-        lons, lats = map_data['lons'], map_data['lats']
-        grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 150), np.linspace(min(lats), max(lats), 150))
-        u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
-        grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-        grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-
-        with np.errstate(invalid='ignore'):
-            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-            convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
-        
-        punts_calents_idx = np.argwhere(convergence_scaled > CONV_THRESHOLD)
-        if len(punts_calents_idx) == 0: return {}
-            
-        punts_lats = grid_lat[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
-        punts_lons = grid_lon[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
-        punts_vals = convergence_scaled[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
-        
-        gdf_punts = gpd.GeoDataFrame({'value': punts_vals}, geometry=[Point(lon, lat) for lon, lat in zip(punts_lons, punts_lats)], crs="EPSG:4326")
-        punts_dins_comarques = gpd.sjoin(gdf_punts, gdf_comarques, how="inner", predicate="within")
-        
-        if punts_dins_comarques.empty: return {}
-            
-        max_conv_per_comarca = punts_dins_comarques.groupby('nomcomar')['value'].max()
-        return max_conv_per_comarca.to_dict()
-        
-    except Exception as e:
-        # Afegim un print per a depuració en cas que hi hagi un altre error
-        print(f"Error dins de calcular_alertes_per_comarca: {e}")
-        return {}
     
 
 
