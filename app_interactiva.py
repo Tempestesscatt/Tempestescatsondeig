@@ -4338,7 +4338,7 @@ def carregar_dades_geografiques():
     Aquesta versió corregeix el NameError.
     """
     # Llista de noms d'arxiu per ordre de prioritat
-    noms_possibles = ["mapes_personalitzat.geojson", "comarques.geojson"]
+    noms_possibles = ["mapa_personalitzat.geojson", "comarques.geojson"]
     file_to_load = None
 
     # Busca el primer arxiu que existeixi
@@ -4914,21 +4914,26 @@ def carregar_dades_sondeig_usa(lat, lon, hourly_index):
 @st.cache_data(ttl=1800, show_spinner="Analitzant focus de convergència a tot el territori...")
 def calcular_alertes_per_comarca(hourly_index, nivell):
     """
-    Versió robusta que s'adapta a qualsevol GeoJSON (amb 'nomcomar' o 'nom_zona').
-    Retorna un diccionari amb el valor MÀXIM de convergència per a cada zona/comarca.
+    Versió millorada que retorna un diccionari amb el valor MÀXIM de
+    convergència per a cada zona/comarca que superi el llindar mínim.
+    Exemple de retorn: {'Barcelonès': 45.7, 'Garraf': 28.1}
     """
-    CONV_THRESHOLD = 25
+    CONV_THRESHOLD = 20 # Llindar mínim per començar a considerar una alerta (verd)
     
     map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
     gdf_zones = carregar_dades_geografiques()
 
+    # Comprovacions de seguretat inicials
     if error or not map_data or gdf_zones is None or 'lons' not in map_data or len(map_data['lons']) < 4:
         return {}
 
     try:
-        # --- LÒGICA DE DETECCIÓ AUTOMÀTICA ---
+        # Detecta automàticament el nom de la propietat ('nom_zona' o 'nomcomar')
         property_name = 'nom_zona' if 'nom_zona' in gdf_zones.columns else 'nomcomar'
+        if 'nom_comar' in gdf_zones.columns: # Afegeix suport per al teu format
+            property_name = 'nom_comar'
 
+        # Càlcul de la convergència a tota la graella
         lons, lats = map_data['lons'], map_data['lats']
         grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 150), np.linspace(min(lats), max(lats), 150))
         u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
@@ -4939,21 +4944,32 @@ def calcular_alertes_per_comarca(hourly_index, nivell):
             dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
             convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
         
+        # Troba els punts on la convergència supera el llindar mínim
         punts_calents_idx = np.argwhere(convergence_scaled > CONV_THRESHOLD)
-        if len(punts_calents_idx) == 0: return {}
+        if len(punts_calents_idx) == 0: 
+            return {}
             
+        # Crea un GeoDataFrame amb els punts calents i els seus valors
         punts_lats = grid_lat[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
         punts_lons = grid_lon[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
         punts_vals = convergence_scaled[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
         
-        gdf_punts = gpd.GeoDataFrame({'value': punts_vals}, geometry=[Point(lon, lat) for lon, lat in zip(punts_lons, punts_lats)], crs="EPSG:4326")
+        gdf_punts = gpd.GeoDataFrame(
+            {'value': punts_vals}, 
+            geometry=[Point(lon, lat) for lon, lat in zip(punts_lons, punts_lats)], 
+            crs="EPSG:4326"
+        )
         
+        # Uneix els punts amb les zones/comarques per saber a quina pertany cada punt
         punts_dins_zones = gpd.sjoin(gdf_punts, gdf_zones, how="inner", predicate="within")
         
-        if punts_dins_zones.empty: return {}
+        if punts_dins_zones.empty: 
+            return {}
             
-        # --- Utilitza el nom de la propietat detectada ---
+        # Agrupa per nom de zona i troba el valor MÀXIM de convergència per a cadascuna
         max_conv_per_zona = punts_dins_zones.groupby(property_name)['value'].max()
+        
+        # Retorna el resultat com un diccionari net
         return max_conv_per_zona.to_dict()
         
     except Exception as e:
@@ -6209,6 +6225,7 @@ def run_catalunya_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     
     alertes_zona = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
+    map_output = ui_mapa_display_personalitzat(alertes_zona)
 
     # --- PAS 5: LÒGICA PRINCIPAL (SELECCIÓ O ANÀLISI) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
@@ -6310,34 +6327,25 @@ def run_catalunya_app():
                     st.rerun()
 
 
-def ui_mapa_display_personalitzat(zones_en_alerta):
+def ui_mapa_display_personalitzat(alertes_per_zona): # Ara rep el diccionari d'alertes
     """
-    Versió final professional.
-    - Utilitza el mapa topogràfic d'Esri.
-    - Accepta 'nom_zona', 'nomcomar', i 'nom_comar' per a màxima flexibilitat.
-    - Neteja els noms de les zones/comarques per assegurar que les alertes i la selecció funcionin correctament.
+    Versió final amb alertes de convergència per colors.
+    - Rep un diccionari: {'nom_comarca': valor_convergencia}.
+    - Pinta els polígons amb una escala de color (verd -> taronja -> vermell -> lila).
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
     if gdf is None: return None
 
-    # --- BLOC DE VALIDACIÓ ROBUST ---
     # Detecta automàticament el nom de la propietat vàlida
-    if 'nom_zona' in gdf.columns:
-        property_name = 'nom_zona'
-        tooltip_alias = 'Zona:'
-    elif 'nom_comar' in gdf.columns:
-        property_name = 'nom_comar'
-        tooltip_alias = 'Comarca:'
-    elif 'nomcomar' in gdf.columns:
-        property_name = 'nomcomar'
-        tooltip_alias = 'Comarca:'
-    else:
+    property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), None)
+    if not property_name:
         st.error(
             "**Error Crític en el Mapa:** L'arxiu GeoJSON no conté una propietat de nom vàlida. "
-            "Assegura't que cada polígon tingui una propietat anomenada `nom_zona`, `nomcomar` o `nom_comar`."
+            "Ha de ser `nom_zona`, `nomcomar` o `nom_comar`."
         )
         return None
+    tooltip_alias = 'Zona:' if property_name == 'nom_zona' else 'Comarca:'
 
     selected_area = st.session_state.get('selected_area')
 
@@ -6348,35 +6356,54 @@ def ui_mapa_display_personalitzat(zones_en_alerta):
             map_center = [zona_shape.geometry.centroid.y.iloc[0], zona_shape.geometry.centroid.x.iloc[0]]
             zoom_level = 10 if property_name in ['nomcomar', 'nom_comar'] else 9
 
-    # <<<--- CANVI A MAPA TOPOGRÀFIC PROFESSIONAL D'ESRI --->>>
     m = folium.Map(
         location=map_center, 
         zoom_start=zoom_level, 
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-        attr="Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, FAO, NPS, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community",
+        attr="Tiles &copy; Esri &mdash; and the GIS User Community",
         scrollWheelZoom=True
     )
 
+    def get_color_from_convergence(value):
+        """Retorna el color corresponent segons el valor de convergència."""
+        if value >= 100:
+            return '#9370DB' # Lila
+        elif value >= 60:
+            return '#DC3545' # Vermell
+        elif value >= 40:
+            return '#FD7E14' # Taronja
+        elif value >= 20:
+            return '#28A745' # Verd
+        return None # Sense color si és menor de 20
+
     def style_function(feature):
-        nom_feature = feature.get('properties', {}).get(property_name)
+        nom_feature_raw = feature.get('properties', {}).get(property_name)
         
-        # <<<--- CORRECCIÓ CLAU PER A LES ALERTES --->>>
-        # Netejem el nom per a una comparació segura (elimina espais i punts)
-        if nom_feature:
-            nom_feature = nom_feature.strip().replace('.', '')
+        style = {'fillColor': '#808080', 'color': '#FFFFFF', 'weight': 0.5, 'fillOpacity': 0.0}
         
-        style = {'fillColor': '#444444', 'color': '#666666', 'weight': 1, 'fillOpacity': 0.1}
-        if nom_feature:
+        if nom_feature_raw:
+            # Netejem el nom per a comparacions segures
+            nom_feature = nom_feature_raw.strip().replace('.', '')
+            
             style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
             
-            # Ara la comparació per a les alertes funcionarà correctament
-            if nom_feature in zones_en_alerta: 
-                style['fillColor'] = '#ffc107'; style['color'] = '#ff9800'; style['fillOpacity'] = 0.6; style['weight'] = 2.5
+            # Comprova si aquesta comarca té una alerta de convergència
+            conv_value = alertes_per_zona.get(nom_feature)
+            if conv_value:
+                color = get_color_from_convergence(conv_value)
+                if color:
+                    style['fillColor'] = color
+                    style['color'] = color
+                    style['fillOpacity'] = 0.55 # Semitransparent
+                    style['weight'] = 2.5
             
-            # Fem el mateix per a la zona seleccionada
+            # Ressalta la zona seleccionada per l'usuari
             cleaned_selected_area = st.session_state.get('selected_area', '').strip().replace('.', '')
             if nom_feature == cleaned_selected_area:
-                style['fillColor'] = '#007bff'; style['color'] = '#ffffff'; style['weight'] = 3; style['fillOpacity'] = 0.55
+                style['fillColor'] = '#007bff'
+                style['color'] = '#ffffff'
+                style['weight'] = 3
+                style['fillOpacity'] = 0.5
         return style
 
     highlight_function = lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5}
@@ -6388,6 +6415,7 @@ def ui_mapa_display_personalitzat(zones_en_alerta):
         tooltip=folium.GeoJsonTooltip(fields=[property_name], aliases=[tooltip_alias])
     ).add_to(m)
 
+    # ... (la part que dibuixa els marcadors de les localitats no canvia) ...
     if selected_area and "---" not in selected_area:
         poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
         poblacions_a_mostrar = poblacions_dict.get(selected_area, {})
@@ -6396,6 +6424,7 @@ def ui_mapa_display_personalitzat(zones_en_alerta):
                 html=f"""<div style="font-family: sans-serif; font-size: 11px; font-weight: bold; color: #111; background-color: rgba(255, 255, 255, 0.7); padding: 2px 6px; border-radius: 5px; border: 1.5px solid #111; white-space: nowrap;">{nom_poble}</div>"""
             )
             folium.Marker(location=[coords['lat'], coords['lon']], icon=icon, tooltip=nom_poble).add_to(m)
+
 
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
     
