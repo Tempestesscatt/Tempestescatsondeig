@@ -6329,8 +6329,7 @@ def run_catalunya_app():
                     st.rerun()
 
 
-# --- NOU DICCIONARI: DEFINEIX LES CAPITALS DE COMARCA ---
-# Aquest diccionari és necessari per a la funció que ve a continuació.
+# --- DICCIONARI DE CAPITALS (Necessari per a la funció) ---
 CAPITALS_COMARCA = {
     'Alt Camp': {'nom': 'Valls', 'lat': 41.2872, 'lon': 1.2505},
     'Alt Empordà': {'nom': 'Figueres', 'lat': 42.2662, 'lon': 2.9622},
@@ -6373,11 +6372,12 @@ CAPITALS_COMARCA = {
     'Vallès Oriental': {'nom': 'Granollers', 'lat': 41.6083, 'lon': 2.2886}
 }
 
-# --- FUNCIÓ MODIFICADA QUE UTILITZA EL DICCIONARI ANTERIOR ---
+# --- FUNCIÓ MODIFICADA (AMB ELS NOMS DE POBLES DESACTIVATS) ---
 def ui_mapa_display_personalitzat(alertes_per_zona):
     """
-    Versió final robusta v4.
-    - AFEGEIX etiquetes amb el valor de convergència sobre les capitals de comarca afectades.
+    Versió final robusta v5.
+    - Manté les etiquetes de convergència sobre les capitals.
+    - DESACTIVA els noms de la resta de municipis per a un mapa més net.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
@@ -6448,18 +6448,22 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
         tooltip=folium.GeoJsonTooltip(fields=[property_name], aliases=[tooltip_alias])
     ).add_to(m)
 
-    if selected_area and "---" not in selected_area:
-        poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
-        poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
-        for nom_poble, coords in poblacions_a_mostrar.items():
-            icon = folium.DivIcon(
-                html=f"""<div style="font-family: sans-serif; font-size: 11px; font-weight: bold; color: #111; background-color: rgba(255, 255, 255, 0.7); padding: 2px 6px; border-radius: 5px; border: 1.5px solid #111; white-space: nowrap;">{nom_poble}</div>"""
-            )
-            folium.Marker(location=[coords['lat'], coords['lon']], icon=icon, tooltip=nom_poble).add_to(m)
+    # --- CANVI CLAU: S'HA COMENTAT AQUEST BLOC PER OCULTAR ELS NOMS ---
+    # Aquest codi dibuixava els noms de tots els pobles de la zona seleccionada.
+    # Ara està desactivat per evitar duplicitat amb les alertes de convergència.
+    #
+    # if selected_area and "---" not in selected_area:
+    #     poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
+    #     poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
+    #     for nom_poble, coords in poblacions_a_mostrar.items():
+    #         icon = folium.DivIcon(
+    #             html=f"""<div style="font-family: sans-serif; font-size: 11px; font-weight: bold; color: #111; background-color: rgba(255, 255, 255, 0.7); padding: 2px 6px; border-radius: 5px; border: 1.5px solid #111; white-space: nowrap;">{nom_poble}</div>"""
+    #         )
+    #         folium.Marker(location=[coords['lat'], coords['lon']], icon=icon, tooltip=nom_poble).add_to(m)
+    # --- FI DEL CANVI ---
 
-    # --- NOU BLOC: DIBUIXAR LES ETIQUETES DE CONVERGÈNCIA ---
+    # Dibuixem les etiquetes de convergència sobre les capitals de les zones afectades
     for zona, conv_value in alertes_per_zona.items():
-        # L'ús de .get() evita errors si una zona d'alerta no té capital definida
         capital_info = CAPITALS_COMARCA.get(zona)
         if capital_info:
             bg_color, text_color = get_color_from_convergence(conv_value)
@@ -6481,9 +6485,9 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
                     icon=icon,
                     tooltip=f"Convergència màx. a {zona}: {conv_value:.1f}"
                 ).add_to(m)
-    # --- FI DEL NOU BLOC ---
     
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
+    
     
 def run_valley_halley_app():
     if 'poble_selector_usa' not in st.session_state or st.session_state.poble_selector_usa not in USA_CITIES:
