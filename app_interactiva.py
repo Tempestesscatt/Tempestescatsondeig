@@ -3785,12 +3785,12 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
         
         # <<-- CANVI CLAU: El llindar ara és 30 -->>
-        effective_convergence = np.where((convergence >= 30) & humid_mask, convergence, 0)
+        effective_convergence = np.where(convergence >= 20 & humid_mask, convergence, 0)
 
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
     
     # <<-- CANVI CLAU: El filtre post-suavitzat també és 30 -->>
-    smoothed_convergence[smoothed_convergence < 30] = 0
+    smoothed_convergence[smoothed_convergence < 20] = 0
     
     # --- 4. DIBUIX DE LA CONVERGÈNCIA (NOVA ESCALA 30-150) ---
     if np.any(smoothed_convergence > 0):
@@ -3807,7 +3807,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
                     zorder=3, transform=ccrs.PlateCarree(), extend='max')
 
         # <<-- CANVI CLAU: Nous nivells per a les línies de contorn -->>
-        line_levels = [30, 50, 70, 90, 120]
+        line_levels = [20,30, 50, 70, 90, 120]
         contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
                               levels=line_levels, 
                               colors='black',
