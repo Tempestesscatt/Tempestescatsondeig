@@ -4679,7 +4679,6 @@ def formatar_missatge_error_api(error_msg):
 
 def run_noruega_app():
     if 'poble_selector_noruega' not in st.session_state: st.session_state.poble_selector_noruega = "Oslo"
-    if 'active_tab_noruega' not in st.session_state: st.session_state.active_tab_noruega = "Anàlisi Vertical"
     ui_capcalera_selectors(None, zona_activa="noruega")
     poble_sel = st.session_state.poble_selector_noruega
     now_local = datetime.now(TIMEZONE_NORUEGA)
@@ -4691,11 +4690,14 @@ def run_noruega_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_NORUEGA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+    
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
-    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_noruega))
-    st.session_state.active_tab_noruega = selected_tab
-    if selected_tab == "Anàlisi Vertical":
+
+    option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
+                orientation="horizontal", key="active_tab_noruega", default_index=0)
+
+    if st.session_state.active_tab_noruega == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_noruega(lat_sel, lon_sel, hourly_index_sel)
         if data_tuple is None or error_msg:
@@ -4711,9 +4713,9 @@ def run_noruega_app():
             if map_data_conv:
                 params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
-    elif selected_tab == "Anàlisi de Mapes":
+    elif st.session_state.active_tab_noruega == "Anàlisi de Mapes":
         ui_pestanya_mapes_noruega(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
-    elif selected_tab == "Webcams en Directe":
+    elif st.session_state.active_tab_noruega == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="noruega")
 
 
@@ -6041,7 +6043,6 @@ def ui_peu_de_pagina():
 
 def run_canada_app():
     if 'poble_selector_canada' not in st.session_state: st.session_state.poble_selector_canada = "Calgary, AB"
-    if 'active_tab_canada' not in st.session_state: st.session_state.active_tab_canada = "Anàlisi Vertical"
     ui_capcalera_selectors(None, zona_activa="canada")
     poble_sel = st.session_state.poble_selector_canada
     now_local = datetime.now(TIMEZONE_CANADA)
@@ -6053,11 +6054,14 @@ def run_canada_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_CANADA.zone}) / {cat_dt.strftime('%d/%m, %H:%Mh')} (CAT)"
+    
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
-    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_canada))
-    st.session_state.active_tab_canada = selected_tab
-    if selected_tab == "Anàlisi Vertical":
+
+    option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
+                orientation="horizontal", key="active_tab_canada", default_index=0)
+
+    if st.session_state.active_tab_canada == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig HRDPS per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_canada(lat_sel, lon_sel, hourly_index_sel)
         if data_tuple is None or error_msg:
@@ -6073,9 +6077,9 @@ def run_canada_app():
             if map_data_conv:
                 params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
-    elif selected_tab == "Anàlisi de Mapes":
+    elif st.session_state.active_tab_canada == "Anàlisi de Mapes":
         ui_pestanya_mapes_canada(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
-    elif selected_tab == "Webcams en Directe":
+    elif st.session_state.active_tab_canada == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="canada")
 
 def run_catalunya_app():
@@ -6090,7 +6094,6 @@ def run_catalunya_app():
     with col_change:
         if st.button("Canviar de Zona", use_container_width=True, help="Torna a la selecció de zona geogràfica"):
             st.session_state.zone_selected = None
-            # Neteja estats específics de Catalunya per evitar conflictes
             keys_to_clear = ['comarca_sel', 'poble_sel', 'active_tab_cat']
             for key in keys_to_clear:
                 if key in st.session_state:
@@ -6103,14 +6106,12 @@ def run_catalunya_app():
     st.divider()
 
     # --- PAS 2: GESTIÓ D'ESTAT INICIAL ---
-    # Assegurem que les variables d'estat sempre existeixin
     if 'comarca_sel' not in st.session_state:
         st.session_state.comarca_sel = "--- Selecciona Comarca ---"
     if 'poble_sel' not in st.session_state:
         st.session_state.poble_sel = "--- Selecciona Localitat ---"
 
-    # --- PAS 3: SELECTORS GLOBALS (SEMPRE VISIBLES) ---
-    # Aquests controls ara estan fora del if/else, per tant, sempre es mostraran.
+    # --- PAS 3: SELECTORS GLOBALS ---
     with st.container(border=True):
         col_dia, col_hora, col_nivell = st.columns(3)
         with col_dia:
@@ -6121,7 +6122,6 @@ def run_catalunya_app():
             st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
 
     # --- PAS 4: CÀLCUL DE DADES GLOBALS ---
-    # Llegim els valors dels selectors que ara són globals.
     dia_sel_str = st.session_state.dia_selector
     hora_sel_str = st.session_state.hora_selector
     nivell_sel = st.session_state.level_cat_main
@@ -6133,9 +6133,8 @@ def run_catalunya_app():
     
     alertes_comarca = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
 
-    # --- PAS 5: LÒGICA PRINCIPAL (SELECCIÓ O ANÀLISi) ---
+    # --- PAS 5: LÒGICA PRINCIPAL (SELECCIÓ O ANÀLISI) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # --- VISTA D'ANÀLISI DETALLADA ---
         poble_sel = st.session_state.poble_sel
         st.success(f"### Anàlisi per a: **{poble_sel}**")
         if st.button("⬅️ Tornar al mapa de selecció"):
@@ -6153,14 +6152,17 @@ def run_catalunya_app():
             menu_options.append("💬 Assistent IA")
             menu_icons.append("chat-quote-fill")
         
-        saved_tab = st.session_state.get('active_tab_cat', "Anàlisi Vertical")
-        if saved_tab not in menu_options: saved_tab = "Anàlisi Vertical"
-        default_idx = menu_options.index(saved_tab)
+        # --- LÒGICA DEL MENÚ CORREGIDA ---
+        option_menu(menu_title=None, 
+                    options=menu_options, 
+                    icons=menu_icons, 
+                    menu_icon="cast", 
+                    orientation="horizontal", 
+                    key="active_tab_cat", # S'utilitza 'key' per a la gestió automàtica
+                    default_index=0)
 
-        selected_tab = option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=default_idx)
-        st.session_state.active_tab_cat = selected_tab
-
-        if selected_tab == "Anàlisi de Mapes":
+        # La pestanya seleccionada es llegeix de st.session_state.active_tab_cat
+        if st.session_state.active_tab_cat == "Anàlisi de Mapes":
             ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
         else:
             with st.spinner(f"Carregant dades del sondeig AROME per a {poble_sel}..."):
@@ -6181,14 +6183,14 @@ def run_catalunya_app():
                     if pd.notna(conv_value):
                         params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
                 
-                if selected_tab == "Anàlisi Vertical":
+                if st.session_state.active_tab_cat == "Anàlisi Vertical":
                     avis_proximitat = analitzar_amenaça_convergencia_propera(map_data_conv, params_calc, lat_sel, lon_sel, nivell_sel)
                     ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, avis_proximitat)
                 
-                elif selected_tab == "Anàlisi de Vents":
+                elif st.session_state.active_tab_cat == "Anàlisi de Vents":
                     ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_sel_str, timestamp_str)
 
-                elif selected_tab == "Simulació de Núvol":
+                elif st.session_state.active_tab_cat == "Simulació de Núvol":
                     st.markdown(f"#### Simulació del Cicle de Vida per a {poble_sel}")
                     st.caption(timestamp_str)
                     if 'regenerate_key' not in st.session_state: st.session_state.regenerate_key = 0
@@ -6214,7 +6216,7 @@ def run_catalunya_app():
                     st.divider()
                     ui_guia_tall_vertical(params_calc, nivell_sel)
 
-                elif selected_tab == "💬 Assistent IA" and not is_guest:
+                elif st.session_state.active_tab_cat == "💬 Assistent IA" and not is_guest:
                     analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
                     interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
                     sounding_data = data_tuple[0] if data_tuple else None
@@ -6259,12 +6261,9 @@ def run_catalunya_app():
                         st.rerun()
 
 
-
-
 def run_valley_halley_app():
     if 'poble_selector_usa' not in st.session_state or st.session_state.poble_selector_usa not in USA_CITIES:
         st.session_state.poble_selector_usa = "Dallas, TX"
-    if 'active_tab_usa' not in st.session_state: st.session_state.active_tab_usa = "Anàlisi Vertical"
     ui_capcalera_selectors(None, zona_activa="valley_halley")
     poble_sel = st.session_state.poble_selector_usa
     now_local = datetime.now(TIMEZONE_USA)
@@ -6276,11 +6275,14 @@ def run_valley_halley_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (CST) / {cat_dt.strftime('%d/%m, %H:%Mh')} (CAT)"
+    
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
-    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_usa))
-    st.session_state.active_tab_usa = selected_tab
-    if selected_tab == "Anàlisi Vertical":
+    
+    option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
+                orientation="horizontal", key="active_tab_usa", default_index=0)
+
+    if st.session_state.active_tab_usa == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig HRRR per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_usa(lat_sel, lon_sel, hourly_index_sel)
         if data_tuple is None or error_msg:
@@ -6296,10 +6298,12 @@ def run_valley_halley_app():
             if map_data_conv:
                 params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
-    elif selected_tab == "Anàlisi de Mapes":
+    elif st.session_state.active_tab_usa == "Anàlisi de Mapes":
         ui_pestanya_mapes_usa(hourly_index_sel, timestamp_str, nivell_sel)
-    elif selected_tab == "Webcams en Directe":
+    elif st.session_state.active_tab_usa == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="valley_halley")
+
+
 
 
 def ui_zone_selection():
@@ -6479,7 +6483,6 @@ def crear_mapa_forecast_combinat_italia(lons, lats, speed_data, dir_data, dewpoi
 
 def run_italia_app():
     if 'poble_selector_italia' not in st.session_state: st.session_state.poble_selector_italia = "Roma"
-    if 'active_tab_italia' not in st.session_state: st.session_state.active_tab_italia = "Anàlisi Vertical"
     ui_capcalera_selectors(None, zona_activa="italia")
     poble_sel = st.session_state.poble_selector_italia
     now_local = datetime.now(TIMEZONE_ITALIA)
@@ -6491,11 +6494,14 @@ def run_italia_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_ITALIA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+    
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
-    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_italia))
-    st.session_state.active_tab_italia = selected_tab
-    if selected_tab == "Anàlisi Vertical":
+
+    option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
+                orientation="horizontal", key="active_tab_italia", default_index=0)
+
+    if st.session_state.active_tab_italia == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_italia(lat_sel, lon_sel, hourly_index_sel)
         if data_tuple is None or error_msg:
@@ -6511,16 +6517,14 @@ def run_italia_app():
             if map_data_conv:
                 params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
-    elif selected_tab == "Anàlisi de Mapes":
+    elif st.session_state.active_tab_italia == "Anàlisi de Mapes":
         ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel)
-    elif selected_tab == "Webcams en Directe":
+    elif st.session_state.active_tab_italia == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="italia")
-
 
 
 def run_alemanya_app():
     if 'poble_selector_alemanya' not in st.session_state: st.session_state.poble_selector_alemanya = "Berlín (Alexanderplatz)"
-    if 'active_tab_alemanya' not in st.session_state: st.session_state.active_tab_alemanya = "Anàlisi Vertical"
     ui_capcalera_selectors(None, zona_activa="alemanya")
     poble_sel = st.session_state.poble_selector_alemanya
     now_local = datetime.now(TIMEZONE_ALEMANYA)
@@ -6532,11 +6536,14 @@ def run_alemanya_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_ALEMANYA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+    
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
-    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_alemanya))
-    st.session_state.active_tab_alemanya = selected_tab
-    if selected_tab == "Anàlisi Vertical":
+
+    option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
+                orientation="horizontal", key="active_tab_alemanya", default_index=0)
+
+    if st.session_state.active_tab_alemanya == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_alemanya(lat_sel, lon_sel, hourly_index_sel)
         if data_tuple is None or error_msg:
@@ -6552,9 +6559,9 @@ def run_alemanya_app():
             if map_data_conv:
                 params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
-    elif selected_tab == "Anàlisi de Mapes":
+    elif st.session_state.active_tab_alemanya == "Anàlisi de Mapes":
         ui_pestanya_mapes_alemanya(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
-    elif selected_tab == "Webcams en Directe":
+    elif st.session_state.active_tab_alemanya == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="alemanya")
 
 # També necessitem una funció per mostrar el mapa d'Alemanya, que no existia. Afegeix-la al teu codi:
@@ -6579,7 +6586,6 @@ def ui_pestanya_mapes_alemanya(hourly_index_sel, timestamp_str, nivell_sel, pobl
 
 def run_uk_app():
     if 'poble_selector_uk' not in st.session_state: st.session_state.poble_selector_uk = "Southampton"
-    if 'active_tab_uk' not in st.session_state: st.session_state.active_tab_uk = "Anàlisi Vertical"
     ui_capcalera_selectors(None, zona_activa="uk")
     poble_sel = st.session_state.poble_selector_uk
     now_local = datetime.now(TIMEZONE_UK)
@@ -6591,11 +6597,14 @@ def run_uk_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_UK.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+    
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
-    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_uk))
-    st.session_state.active_tab_uk = selected_tab
-    if selected_tab == "Anàlisi Vertical":
+    
+    option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
+                orientation="horizontal", key="active_tab_uk", default_index=0)
+
+    if st.session_state.active_tab_uk == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_uk(lat_sel, lon_sel, hourly_index_sel)
         if data_tuple is None or error_msg:
@@ -6611,14 +6620,13 @@ def run_uk_app():
             if map_data_conv:
                 params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
-    elif selected_tab == "Anàlisi de Mapes":
+    elif st.session_state.active_tab_uk == "Anàlisi de Mapes":
         ui_pestanya_mapes_uk(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
-    elif selected_tab == "Webcams en Directe":
+    elif st.session_state.active_tab_uk == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="uk")
 
 def run_holanda_app():
     if 'poble_selector_holanda' not in st.session_state: st.session_state.poble_selector_holanda = "Amsterdam"
-    if 'active_tab_holanda' not in st.session_state: st.session_state.active_tab_holanda = "Anàlisi Vertical"
     ui_capcalera_selectors(None, zona_activa="holanda")
     poble_sel = st.session_state.poble_selector_holanda
     now_local = datetime.now(TIMEZONE_HOLANDA)
@@ -6630,11 +6638,14 @@ def run_holanda_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_HOLANDA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+    
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
-    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_holanda))
-    st.session_state.active_tab_holanda = selected_tab
-    if selected_tab == "Anàlisi Vertical":
+
+    option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
+                orientation="horizontal", key="active_tab_holanda", default_index=0)
+
+    if st.session_state.active_tab_holanda == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_holanda(lat_sel, lon_sel, hourly_index_sel)
         if data_tuple is None or error_msg:
@@ -6650,14 +6661,13 @@ def run_holanda_app():
             if map_data_conv:
                 params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
-    elif selected_tab == "Anàlisi de Mapes":
+    elif st.session_state.active_tab_holanda == "Anàlisi de Mapes":
         ui_pestanya_mapes_holanda(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
-    elif selected_tab == "Webcams en Directe":
+    elif st.session_state.active_tab_holanda == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="holanda")
 
 def run_japo_app():
     if 'poble_selector_japo' not in st.session_state: st.session_state.poble_selector_japo = "Tòquio"
-    if 'active_tab_japo' not in st.session_state: st.session_state.active_tab_japo = "Anàlisi Vertical"
     ui_capcalera_selectors(None, zona_activa="japo")
     poble_sel = st.session_state.poble_selector_japo
     now_local = datetime.now(TIMEZONE_JAPO)
@@ -6669,11 +6679,14 @@ def run_japo_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     cat_dt = local_dt.astimezone(TIMEZONE_CAT)
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_JAPO.zone}) / {cat_dt.strftime('%d/%m, %H:%Mh')} (CAT)"
+    
     menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Webcams en Directe"]
     menu_icons = ["graph-up-arrow", "map-fill", "camera-video-fill"]
-    selected_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", default_index=menu_options.index(st.session_state.active_tab_japo))
-    st.session_state.active_tab_japo = selected_tab
-    if selected_tab == "Anàlisi Vertical":
+
+    option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
+                orientation="horizontal", key="active_tab_japo", default_index=0)
+
+    if st.session_state.active_tab_japo == "Anàlisi Vertical":
         with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_japo(lat_sel, lon_sel, hourly_index_sel)
         if data_tuple is None or error_msg:
@@ -6689,9 +6702,9 @@ def run_japo_app():
             if map_data_conv:
                 params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
-    elif selected_tab == "Anàlisi de Mapes":
+    elif st.session_state.active_tab_japo == "Anàlisi de Mapes":
         ui_pestanya_mapes_japo(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
-    elif selected_tab == "Webcams en Directe":
+    elif st.session_state.active_tab_japo == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="japo")
 
 def main():
@@ -6730,16 +6743,11 @@ def run_arxiu_tempestes_app():
     """
     
     # --- 1. BASE DE DADES DELS CASOS D'ESTUDI ---
-    # Aquí és on afegeixes o modifiques els teus arxius de tempestes.
-    # La clau de cada entrada ha de ser el títol que es mostrarà al selector.
     casos_notables = {
-        # Aquesta és l'opció per defecte, no la toquis.
         "--- Selecciona un cas d'estudi ---": None,
-        
-        # --- EXEMPLE DE CAS 1 ---
         "Tempesta litoral central (SPC) (01/09/2025)": {
             "data": "1 de Set. del 2025",
-            "image": "arxiu_spbcn.jpg", # Camí a la imatge
+            "image": "arxiu_spbcn.jpg",
             "description": """
             L'entorn atmosfèric (El Sondeig):
 Comencem pel sondeig vertical de L'Hospitalet, que és el diagnòstic de l'atmosfera. El que veiem aquí és un manual de "llibre de text" per a la formació de supercèl·lules.
@@ -6752,15 +6760,6 @@ La Manifestació Visual (La Fotografia):
 La imatge superior és la confirmació visual del que les dades ens estaven dient. No és només una tempesta elèctrica. La forma de la base del núvol, amb un descens molt pronunciat i una aparença de rotació (un possible wall cloud o núvol paret), és l'evidència visible del mesocicló. El llamp és un subproducte de la increïble energia vertical de la tempesta. La combinació del núvol paret i la intensa activitat elèctrica és una signatura visual clàssica d'una supercèl·lula en plena maduresa i amb un alt potencial de generar fenòmens severs a la superfície.
             """
         },
-        
-   
-
-        # --- AFEGEIX ELS TEUS PROPIS CASOS AQUÍ SEGUINT EL MATEIX FORMAT ---
-        # "Títol del teu cas": {
-        #     "data": "La teva data",
-        #     "image": "arxiu_images/la_teva_imatge.jpg",
-        #     "description": "La teva descripció aquí. Pots utilitzar **Markdown** per a negretes, llistes, etc."
-        # },
     }
 
     # --- 2. INTERFÍCIE D'USUARI ---
@@ -6772,37 +6771,28 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
     
     st.divider()
 
-    # Selector per triar el cas d'estudi
     selected_case = st.selectbox(
         "Selecciona un cas d'estudi per analitzar:", 
         options=list(casos_notables.keys())
     )
 
     # --- 3. LÒGICA PER MOSTRAR LA INFORMACIÓ ---
-    # Comprovem si l'usuari ha seleccionat un cas vàlid (no el text per defecte)
     if selected_case and casos_notables[selected_case]:
-        
         case_data = casos_notables[selected_case]
-        
         st.markdown("---")
-        
-        # Creem dues columnes per a la imatge i la descripció
         col_img, col_desc = st.columns([0.5, 0.5], gap="large")
-
         with col_img:
             try:
                 st.image(case_data['image'], caption=f"Imatge de: {selected_case}", use_container_width=True)
             except FileNotFoundError:
-                st.error(f"Error: No s'ha trobat la imatge '{case_data['image']}'. Assegura't que estigui a la carpeta 'arxiu_images'.")
+                st.error(f"Error: No s'ha trobat la imatge '{case_data['image']}'.")
             except Exception as e:
                 st.error(f"S'ha produït un error en carregar la imatge: {e}")
-
         with col_desc:
             st.subheader(selected_case)
             st.caption(f"**Data de l'esdeveniment:** {case_data['data']}")
             st.markdown(case_data['description'])
     else:
-        # Missatge que es mostra quan no s'ha seleccionat res
         st.info("Selecciona un esdeveniment de la llista superior per veure'n els detalls.", icon="👆")
 
 
