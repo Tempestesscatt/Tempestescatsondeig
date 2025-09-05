@@ -408,6 +408,128 @@ POBLES_MAPA_REFERENCIA = {
     "Riudellots de la Selva": {'lat': 41.9080, 'lon': 2.8099}, "Hostalric": {'lat': 41.7479, 'lon': 2.6360}
 }
 
+
+
+
+
+CIUTATS_PER_ZONA_PERSONALITZADA = {
+    "Pirineu i Pre-Pirineu": {
+        'Vielha': CIUTATS_CATALUNYA['Vielha'],
+        'Sort': CIUTATS_CATALUNYA['Sort'],
+        'Sarroca de Bellera': CIUTATS_CATALUNYA['Sarroca de Bellera'],
+        'Tremp': CIUTATS_CATALUNYA['Tremp'],
+        'La Pobla de Segur': CIUTATS_CATALUNYA['La Pobla de Segur'],
+        'La Seu d\'Urgell': CIUTATS_CATALUNYA['La Seu d\'Urgell'],
+        'Puigcerdà': CIUTATS_CATALUNYA['Puigcerdà'],
+        'Bellver de Cerdanya': CIUTATS_CATALUNYA['Bellver de Cerdanya'],
+        'Ripoll': CIUTATS_CATALUNYA['Ripoll'],
+        'Sant Joan de les Abadesses': CIUTATS_CATALUNYA['Sant Joan de les Abadesses'],
+        'Berga': CIUTATS_CATALUNYA['Berga'],
+        'Solsona': CIUTATS_CATALUNYA['Solsona'],
+        'Olot': CIUTATS_CATALUNYA['Olot'],
+        'Santa Pau': CIUTATS_CATALUNYA['Santa Pau'],
+        'Castellfollit de la Roca': CIUTATS_CATALUNYA['Castellfollit de la Roca'],
+    },
+    "Plana de Lleida i Ponent": {
+        'Lleida': CIUTATS_CATALUNYA['Lleida'],
+        'Soses': CIUTATS_CATALUNYA['Soses'],
+        'Balaguer': CIUTATS_CATALUNYA['Balaguer'],
+        'Agramunt': CIUTATS_CATALUNYA['Agramunt'],
+        'Camarasa': CIUTATS_CATALUNYA['Camarasa'],
+        'Calaf': CIUTATS_CATALUNYA['Calaf'],
+    },
+    "Catalunya Central": {
+        'Manresa': CIUTATS_CATALUNYA['Manresa'],
+        'Cardona': CIUTATS_CATALUNYA['Cardona'],
+        'Igualada': CIUTATS_CATALUNYA['Igualada'],
+        'Capellades': CIUTATS_CATALUNYA['Capellades'],
+        'Vic': CIUTATS_CATALUNYA['Vic'],
+        'Manlleu': CIUTATS_CATALUNYA['Manlleu'],
+        'Centelles': CIUTATS_CATALUNYA['Centelles'],
+        'Vidrà': CIUTATS_CATALUNYA['Vidrà'],
+    },
+    "Litoral i Prelitoral Nord (Girona)": {
+        'Girona': CIUTATS_CATALUNYA['Girona'],
+        'Figueres': CIUTATS_CATALUNYA['Figueres'],
+        'Banyoles': CIUTATS_CATALUNYA['Banyoles'],
+        'La Bisbal d\'Empordà': CIUTATS_CATALUNYA['La Bisbal d\'Empordà'],
+        'Roses': CIUTATS_CATALUNYA['Roses'],
+        'Cadaqués': CIUTATS_CATALUNYA['Cadaqués'],
+        'Llançà': CIUTATS_CATALUNYA['Llançà'],
+        'L\'Escala': CIUTATS_CATALUNYA['L\'Escala'],
+        'Castelló d\'Empúries': CIUTATS_CATALUNYA['Castelló d\'Empúries'],
+        'La Jonquera': CIUTATS_CATALUNYA['La Jonquera'],
+        'Palamós': CIUTATS_CATALUNYA['Palamós'],
+        'Platja d\'Aro': CIUTATS_CATALUNYA['Platja d\'Aro'],
+        'Sant Feliu de Guíxols': CIUTATS_CATALUNYA['Sant Feliu de Guíxols'],
+        'Begur': CIUTATS_CATALUNYA['Begur'],
+        'Pals': CIUTATS_CATALUNYA['Pals'],
+        'Calonge': CIUTATS_CATALUNYA['Calonge'],
+        'Santa Cristina d\'Aro': CIUTATS_CATALUNYA['Santa Cristina d\'Aro'],
+        'Blanes': CIUTATS_CATALUNYA['Blanes'],
+        'Lloret de Mar': CIUTATS_CATALUNYA['Lloret de Mar'],
+        'Santa Coloma de Farners': CIUTATS_CATALUNYA['Santa Coloma de Farners'],
+        'Arbúcies': CIUTATS_CATALUNYA['Arbúcies'],
+        'Hostalric': CIUTATS_CATALUNYA['Hostalric'],
+        'Cassà de la Selva': CIUTATS_CATALUNYA['Cassà de la Selva'],
+        'Llagostera': CIUTATS_CATALUNYA['Llagostera'],
+        'Flaçà': CIUTATS_CATALUNYA['Flaçà'],
+        'Riudellots de la Selva': CIUTATS_CATALUNYA['Riudellots de la Selva'],
+        'Vidreres': CIUTATS_CATALUNYA['Vidreres'],
+    },
+    "Litoral i Prelitoral Central (Barcelona)": {
+        'Barcelona': CIUTATS_CATALUNYA['Barcelona'],
+        'L\'Hospitalet de Llobregat': CIUTATS_CATALUNYA['L\'Hospitalet de Llobregat'],
+        'Santa Coloma de Gramenet': CIUTATS_CATALUNYA['Santa Coloma de Gramenet'],
+        'Sabadell': CIUTATS_CATALUNYA['Sabadell'],
+        'Terrassa': CIUTATS_CATALUNYA['Terrassa'],
+        'Mataró': CIUTATS_CATALUNYA['Mataró'],
+        'Granollers': CIUTATS_CATALUNYA['Granollers'],
+        'Mollet del Vallès': CIUTATS_CATALUNYA['Mollet del Vallès'],
+        'Sant Cugat del Vallès': CIUTATS_CATALUNYA['Sant Cugat del Vallès'],
+        'Rubí': CIUTATS_CATALUNYA['Rubí'],
+        'Viladecans': CIUTATS_CATALUNYA['Viladecans'],
+        'Castellbisbal': CIUTATS_CATALUNYA['Castellbisbal'],
+        'Cerdanyola del Vallès': CIUTATS_CATALUNYA['Cerdanyola del Vallès'],
+        'Montcada i Reixac': CIUTATS_CATALUNYA['Montcada i Reixac'],
+        'Sant Quirze del Vallès': CIUTATS_CATALUNYA['Sant Quirze del Vallès'],
+        'Castellar del Vallès': CIUTATS_CATALUNYA['Castellar del Vallès'],
+        'Cardedeu': CIUTATS_CATALUNYA['Cardedeu'],
+        'Caldes de Montbui': CIUTATS_CATALUNYA['Caldes de Montbui'],
+        'Arenys de Mar': CIUTATS_CATALUNYA['Arenys de Mar'],
+        'Calella': CIUTATS_CATALUNYA['Calella'],
+        'Malgrat de Mar': CIUTATS_CATALUNYA['Malgrat de Mar'],
+        'Pineda de Mar': CIUTATS_CATALUNYA['Pineda de Mar'],
+        'Santa Susanna': CIUTATS_CATALUNYA['Santa Susanna'],
+        'Vilassar de Mar': CIUTATS_CATALUNYA['Vilassar de Mar'],
+        'Alella': CIUTATS_CATALUNYA['Alella'],
+        'Cabrera de Mar': CIUTATS_CATALUNYA['Cabrera de Mar'],
+        'Vilanova i la Geltrú': CIUTATS_CATALUNYA['Vilanova i la Geltrú'],
+        'Sitges': CIUTATS_CATALUNYA['Sitges'],
+        'Vilafranca del Penedès': CIUTATS_CATALUNYA['Vilafranca del Penedès'],
+        'Sant Pere de Ribes': CIUTATS_CATALUNYA['Sant Pere de Ribes'],
+        'Olesa de Montserrat': CIUTATS_CATALUNYA['Olesa de Montserrat'],
+        'Sant Feliu de Llobregat': CIUTATS_CATALUNYA['Sant Feliu de Llobregat'],
+    },
+    "Camp de Tarragona": {
+        'Tarragona': CIUTATS_CATALUNYA['Tarragona'],
+        'Reus': CIUTATS_CATALUNYA['Reus'],
+        'Valls': CIUTATS_CATALUNYA['Valls'],
+        'Salou': CIUTATS_CATALUNYA['Salou'],
+        'Cambrils': CIUTATS_CATALUNYA['Cambrils'],
+        'Altafulla': CIUTATS_CATALUNYA['Altafulla'],
+        'La Selva del Camp': CIUTATS_CATALUNYA['La Selva del Camp'],
+        'Montblanc': CIUTATS_CATALUNYA['Montblanc'],
+    },
+    "Terres de l'Ebre": {
+        'Tortosa': CIUTATS_CATALUNYA['Tortosa'],
+        'Amposta': CIUTATS_CATALUNYA['Amposta'],
+        'Alcanar': CIUTATS_CATALUNYA['Alcanar'],
+        'L\'Ametlla de Mar': CIUTATS_CATALUNYA['L\'Ametlla de Mar'],
+        'La Sénia': CIUTATS_CATALUNYA['La Sénia'],
+    },
+}
+
 POBLES_IMPORTANTS = {
     "Barcelona", "Girona", "Lleida", "Tarragona", "Altafulla", "Agramunt", "Alcanar", 
     "Alella", "Arenys de Mar", "Arenys de Munt", "Balaguer", "Berga", "Banyoles", 
@@ -4242,65 +4364,6 @@ def on_poble_select():
 
 
 
-def ui_mapa_display(zones_en_alerta):
-    """
-    Versió final i robusta que s'adapta automàticament a l'arxiu GeoJSON.
-    - Detecta si existeix la propietat 'nom_zona' (mapa nou) o 'nomcomar' (mapa antic).
-    - Funciona amb tots dos arxius sense necessitat de canvis.
-    """
-    st.markdown("#### Mapa de Situació")
-    gdf = carregar_dades_geografiques()
-    if gdf is None: return None
-
-    # --- CANVI CLAU: Detecció automàtica de la propietat a utilitzar ---
-    if 'nom_zona' in gdf.columns:
-        property_name = 'nom_zona'
-        tooltip_alias = 'Zona:'
-        zona_sel = st.session_state.get('zona_sel')
-    else:
-        property_name = 'nomcomar'
-        tooltip_alias = 'Comarca:'
-        zona_sel = st.session_state.get('comarca_sel')
-
-    map_center = [41.83, 1.87]; zoom_level = 8
-    if zona_sel and "---" not in zona_sel:
-        zona_shape = gdf[gdf[property_name] == zona_sel]
-        if not zona_shape.empty:
-            map_center = [zona_shape.geometry.centroid.y.iloc[0], zona_shape.geometry.centroid.x.iloc[0]]
-            zoom_level = 10 if property_name == 'nomcomar' else 9
-
-    m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB dark_matter", scrollWheelZoom=True)
-
-    def style_function(feature):
-        nom_feature = feature['properties'][property_name]
-        style = {'fillColor': '#6c757d', 'color': '#adb5bd', 'weight': 1, 'fillOpacity': 0.25}
-        if nom_feature in zones_en_alerta:
-            style['fillColor'] = '#ffc107'; style['color'] = '#ffc107'; style['fillOpacity'] = 0.6; style['weight'] = 2
-        if nom_feature == zona_sel:
-            style['fillColor'] = '#007bff'; style['color'] = '#ffffff'; style['weight'] = 2.5; style['fillOpacity'] = 0.55
-        return style
-
-    highlight_function = lambda x: {'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.4}
-
-    folium.GeoJson(
-        gdf,
-        style_function=style_function,
-        highlight_function=highlight_function,
-        tooltip=folium.GeoJsonTooltip(fields=[property_name], aliases=[tooltip_alias])
-    ).add_to(m)
-
-    if zona_sel and "---" not in zona_sel:
-        # Utilitzem el diccionari corresponent segons el tipus de mapa
-        poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
-        poblacions_a_mostrar = poblacions_dict.get(zona_sel, {})
-        for nom_poble, coords in poblacions_a_mostrar.items():
-            icon = folium.DivIcon(
-                html=f"""<div style="font-family: sans-serif; font-size: 11px; font-weight: bold; color: white; background-color: rgba(0, 0, 0, 0.6); padding: 2px 6px; border-radius: 5px; border: 1px solid white; white-space: nowrap;">{nom_poble}</div>"""
-            )
-            folium.Marker(location=[coords['lat'], coords['lon']], icon=icon, tooltip=nom_poble).add_to(m)
-
-    return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
-    
 
 
 
@@ -4836,18 +4899,21 @@ def carregar_dades_sondeig_usa(lat, lon, hourly_index):
 @st.cache_data(ttl=1800, show_spinner="Analitzant focus de convergència a tot el territori...")
 def calcular_alertes_per_comarca(hourly_index, nivell):
     """
-    Retorna un diccionari amb el valor MÀXIM de convergència per a cada comarca.
+    Versió robusta que s'adapta a qualsevol GeoJSON (amb 'nomcomar' o 'nom_zona').
+    Retorna un diccionari amb el valor MÀXIM de convergència per a cada zona/comarca.
     """
     CONV_THRESHOLD = 25
     
     map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
-    gdf_comarques = carregar_dades_geografiques()
+    gdf_zones = carregar_dades_geografiques()
 
-    # Comprovacions de seguretat
-    if error or not map_data or gdf_comarques is None or 'lons' not in map_data or len(map_data['lons']) < 4:
+    if error or not map_data or gdf_zones is None or 'lons' not in map_data or len(map_data['lons']) < 4:
         return {}
 
     try:
+        # --- LÒGICA DE DETECCIÓ AUTOMÀTICA ---
+        property_name = 'nom_zona' if 'nom_zona' in gdf_zones.columns else 'nomcomar'
+
         lons, lats = map_data['lons'], map_data['lats']
         grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 150), np.linspace(min(lats), max(lats), 150))
         u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
@@ -4867,13 +4933,11 @@ def calcular_alertes_per_comarca(hourly_index, nivell):
         
         gdf_punts = gpd.GeoDataFrame({'value': punts_vals}, geometry=[Point(lon, lat) for lon, lat in zip(punts_lons, punts_lats)], crs="EPSG:4326")
         
-        # Determina la propietat a utilitzar (nom_zona o nomcomar)
-        property_name = 'nom_zona' if 'nom_zona' in gdf_comarques.columns else 'nomcomar'
-        
-        punts_dins_zones = gpd.sjoin(gdf_punts, gdf_comarques, how="inner", predicate="within")
+        punts_dins_zones = gpd.sjoin(gdf_punts, gdf_zones, how="inner", predicate="within")
         
         if punts_dins_zones.empty: return {}
             
+        # --- Utilitza el nom de la propietat detectada ---
         max_conv_per_zona = punts_dins_zones.groupby(property_name)['value'].max()
         return max_conv_per_zona.to_dict()
         
@@ -6083,7 +6147,6 @@ def run_canada_app():
     elif st.session_state.active_tab_canada == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="canada")
 
-# SUBSTITUEIX LA TEVA FUNCIÓ run_catalunya_app SENCERA PER AQUESTA
 def run_catalunya_app():
     # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
@@ -6236,45 +6299,53 @@ def run_catalunya_app():
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
             
-            # Comprovem si el que s'ha clicat és una ZONA o una COMARCA
             if "Zona:" in raw_tooltip or "Comarca:" in raw_tooltip:
                 clicked_zona = raw_tooltip.split(':')[-1].strip()
-                # Actualitzem l'estat per a totes dues variables per si de cas
                 if clicked_zona != st.session_state.get('zona_sel') and clicked_zona != st.session_state.get('comarca_sel'):
                     st.session_state.zona_sel = clicked_zona
                     st.session_state.comarca_sel = clicked_zona
                     st.session_state.poble_sel = "--- Selecciona una localitat ---"
                     st.rerun()
-            # Si no, és una LOCALITAT
             else:
                 clicked_poble = raw_tooltip.strip()
                 if clicked_poble in CIUTATS_CATALUNYA:
                     st.session_state.poble_sel = clicked_poble
                     st.rerun()
 
-# --- FINALMENT: Crea aquesta nova funció de mapa que utilitza 'nom_zona' ---
+
 def ui_mapa_display_personalitzat(zones_en_alerta):
+    """
+    Versió final i robusta que s'adapta automàticament a l'arxiu GeoJSON.
+    """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
     if gdf is None: return None
 
-    zona_sel = st.session_state.get('zona_sel')
+    # Detecció automàtica de la propietat a utilitzar
+    if 'nom_zona' in gdf.columns:
+        property_name = 'nom_zona'
+        tooltip_alias = 'Zona:'
+        zona_sel = st.session_state.get('zona_sel')
+    else:
+        property_name = 'nomcomar'
+        tooltip_alias = 'Comarca:'
+        zona_sel = st.session_state.get('comarca_sel')
 
     map_center = [41.83, 1.87]; zoom_level = 8
     if zona_sel and "---" not in zona_sel:
-        zona_shape = gdf[gdf['nom_zona'] == zona_sel] # <-- Llegeix la teva propietat personalitzada
+        zona_shape = gdf[gdf[property_name] == zona_sel]
         if not zona_shape.empty:
             map_center = [zona_shape.geometry.centroid.y.iloc[0], zona_shape.geometry.centroid.x.iloc[0]]
-            zoom_level = 9
+            zoom_level = 10 if property_name == 'nomcomar' else 9
 
     m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB dark_matter", scrollWheelZoom=True)
 
     def style_function(feature):
-        nom_zona = feature['properties']['nom_zona'] # <-- Llegeix la teva propietat personalitzada
+        nom_feature = feature['properties'][property_name]
         style = {'fillColor': '#6c757d', 'color': '#adb5bd', 'weight': 1, 'fillOpacity': 0.25}
-        if nom_zona in zones_en_alerta:
+        if nom_feature in zones_en_alerta:
             style['fillColor'] = '#ffc107'; style['color'] = '#ffc107'; style['fillOpacity'] = 0.6; style['weight'] = 2
-        if nom_zona == zona_sel:
+        if nom_feature == zona_sel:
             style['fillColor'] = '#007bff'; style['color'] = '#ffffff'; style['weight'] = 2.5; style['fillOpacity'] = 0.55
         return style
 
@@ -6284,11 +6355,12 @@ def ui_mapa_display_personalitzat(zones_en_alerta):
         gdf,
         style_function=style_function,
         highlight_function=highlight_function,
-        tooltip=folium.GeoJsonTooltip(fields=['nom_zona'], aliases=['Zona:']) # <-- Mostra el nom de la zona
+        tooltip=folium.GeoJsonTooltip(fields=[property_name], aliases=[tooltip_alias])
     ).add_to(m)
 
     if zona_sel and "---" not in zona_sel:
-        poblacions_a_mostrar = CIUTATS_PER_ZONA_PERSONALITZADA.get(zona_sel, {})
+        poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
+        poblacions_a_mostrar = poblacions_dict.get(zona_sel, {})
         for nom_poble, coords in poblacions_a_mostrar.items():
             icon = folium.DivIcon(
                 html=f"""<div style="font-family: sans-serif; font-size: 11px; font-weight: bold; color: white; background-color: rgba(0, 0, 0, 0.6); padding: 2px 6px; border-radius: 5px; border: 1px solid white; white-space: nowrap;">{nom_poble}</div>"""
