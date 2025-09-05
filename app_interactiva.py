@@ -4338,7 +4338,7 @@ def carregar_dades_geografiques():
     Aquesta versió corregeix el NameError.
     """
     # Llista de noms d'arxiu per ordre de prioritat
-    noms_possibles = ["mapa_personalitzat.geojson", "comarques.geojson"]
+    noms_possibles = ["mapes_personalitzat.geojson", "comarques.geojson"]
     file_to_load = None
 
     # Busca el primer arxiu que existeixi
