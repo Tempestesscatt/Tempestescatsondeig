@@ -6331,10 +6331,8 @@ def run_catalunya_app():
 
 def ui_mapa_display_personalitzat(alertes_per_zona):
     """
-    Versió final robusta v3.
-    - Dibuixa SEMPRE tots els polígons amb un estil base.
-    - Pinta a sobre les alertes de convergència amb l'escala de colors.
-    - Ressalta en blau la zona seleccionada per l'usuari.
+    Versió final robusta v4.
+    - AFEGEIX etiquetes amb el valor de convergència sobre les capitals de comarca afectades.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
@@ -6353,7 +6351,6 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
 
     map_center = [41.83, 1.87]; zoom_level = 8
     if selected_area and "---" not in selected_area:
-        # Netejem el nom seleccionat per a una comparació segura
         cleaned_selected_area = selected_area.strip().replace('.', '')
         zona_shape = gdf[gdf[property_name].str.strip().str.replace('.', '') == cleaned_selected_area]
         if not zona_shape.empty:
@@ -6369,43 +6366,32 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
     )
 
     def get_color_from_convergence(value):
-        if not isinstance(value, (int, float)): return None
-        if value >= 100: return '#9370DB' # Lila
-        if value >= 60: return '#DC3545' # Vermell
-        if value >= 40: return '#FD7E14' # Taronja
-        if value >= 20: return '#28A745' # Verd
-        return None
+        if not isinstance(value, (int, float)): return None, '#FFFFFF'
+        if value >= 100: return '#9370DB', '#FFFFFF' # Lila, text blanc
+        if value >= 60: return '#DC3545', '#FFFFFF' # Vermell, text blanc
+        if value >= 40: return '#FD7E14', '#FFFFFF' # Taronja, text blanc
+        if value >= 20: return '#28A745', '#FFFFFF' # Verd, text blanc
+        return None, '#000000'
 
     def style_function(feature):
-        # <<<--- LÒGICA COMPLETAMENT REVISADA PER A MÀXIMA ROBUSTESA --->>>
-        
-        # 1. Estil base per a TOTS els polígons: gris, semitransparent.
         style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
-        
         nom_feature_raw = feature.get('properties', {}).get(property_name)
         if nom_feature_raw and isinstance(nom_feature_raw, str):
             nom_feature = nom_feature_raw.strip().replace('.', '')
-            
-            # 2. Comprova si té alerta. Si és així, PINTA A SOBRE.
             conv_value = alertes_per_zona.get(nom_feature)
             if conv_value:
-                alert_color = get_color_from_convergence(conv_value)
+                alert_color, _ = get_color_from_convergence(conv_value)
                 if alert_color:
                     style['fillColor'] = alert_color
                     style['color'] = alert_color
                     style['fillOpacity'] = 0.55
                     style['weight'] = 2.5
-            
-            # 3. Comprova si és la seleccionada. Si és així, PINTA A SOBRE DE TOT.
             cleaned_selected_area = st.session_state.get('selected_area', '').strip().replace('.', '')
             if nom_feature == cleaned_selected_area:
                 style['fillColor'] = '#007bff'
                 style['color'] = '#ffffff'
                 style['weight'] = 3
                 style['fillOpacity'] = 0.5
-        
-        # <<<--- CORRECCIÓ CLAU: El 'return' està fora del 'if' --->>>
-        # D'aquesta manera, sempre es retorna un estil, fins i tot per a polígons sense nom.
         return style
 
     highlight_function = lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5}
@@ -6426,6 +6412,31 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
             )
             folium.Marker(location=[coords['lat'], coords['lon']], icon=icon, tooltip=nom_poble).add_to(m)
 
+    # --- NOU BLOC: DIBUIXAR LES ETIQUETES DE CONVERGÈNCIA ---
+    for zona, conv_value in alertes_per_zona.items():
+        capital_info = CAPITALS_COMARCA.get(zona)
+        if capital_info:
+            bg_color, text_color = get_color_from_convergence(conv_value)
+            if bg_color:
+                icon_html = f"""
+                <div style="
+                    font-family: sans-serif; font-size: 12px; font-weight: bold;
+                    color: {text_color}; background-color: {bg_color};
+                    padding: 4px 8px; border-radius: 6px;
+                    border: 2px solid {text_color}; white-space: nowrap;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+                ">
+                    {capital_info['nom']}: {conv_value:.0f}
+                </div>
+                """
+                icon = folium.DivIcon(html=icon_html)
+                folium.Marker(
+                    location=[capital_info['lat'], capital_info['lon']],
+                    icon=icon,
+                    tooltip=f"Convergència màx. a {zona}: {conv_value:.1f}"
+                ).add_to(m)
+    # --- FI DEL NOU BLOC ---
+    
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
                     
 def run_valley_halley_app():
