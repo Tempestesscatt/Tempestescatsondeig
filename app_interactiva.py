@@ -6312,41 +6312,33 @@ def run_catalunya_app():
 
 def ui_mapa_display_personalitzat(zones_en_alerta):
     """
-    Versió final i blindada (v2).
-    - Accepta 'nom_zona', 'nomcomar' i també 'nom_comar' (amb guion bajo).
-    - Mostra un error clar si cap d'aquestes propietats no existeix.
+    Versió final professional.
+    - Utilitza el mapa topogràfic d'Esri.
+    - Accepta 'nom_zona', 'nomcomar', i 'nom_comar' per a màxima flexibilitat.
+    - Neteja els noms de les zones/comarques per assegurar que les alertes i la selecció funcionin correctament.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
     if gdf is None: return None
 
-    # --- BLOC DE VALIDACIÓ AMB SUPORT PER A 'nom_comar' ---
-    # Comprovem quina propietat de nom podem utilitzar en ordre de prioritat.
+    # --- BLOC DE VALIDACIÓ ROBUST ---
+    # Detecta automàticament el nom de la propietat vàlida
     if 'nom_zona' in gdf.columns:
         property_name = 'nom_zona'
         tooltip_alias = 'Zona:'
-    
-    # <<<--- CANVI CLAU AQUÍ: HEM AFEGIT AQUESTA CONDICIÓ --->>>
     elif 'nom_comar' in gdf.columns:
-        property_name = 'nom_comar' # Acceptem la versió amb guion bajo
+        property_name = 'nom_comar'
         tooltip_alias = 'Comarca:'
-    # <<<--- FI DEL CANVI --->>>
-
     elif 'nomcomar' in gdf.columns:
         property_name = 'nomcomar'
         tooltip_alias = 'Comarca:'
     else:
-        # Si no troba cap de les opcions, mostra l'error.
         st.error(
-            "**Error Crític en el Mapa:** L'arxiu GeoJSON que estàs utilitzant "
-            "no conté una propietat de nom vàlida.\n\n"
-            "**Solució:** Assegura't que cada polígon tingui una propietat anomenada "
-            "`nom_zona`, `nomcomar` o `nom_comar`."
+            "**Error Crític en el Mapa:** L'arxiu GeoJSON no conté una propietat de nom vàlida. "
+            "Assegura't que cada polígon tingui una propietat anomenada `nom_zona`, `nomcomar` o `nom_comar`."
         )
-        return None # Aturem l'execució per evitar l'error
+        return None
 
-    # La resta de la funció continua exactament igual, ja que ara utilitzarà
-    # la variable 'property_name' que hem detectat correctament.
     selected_area = st.session_state.get('selected_area')
 
     map_center = [41.83, 1.87]; zoom_level = 8
@@ -6356,24 +6348,38 @@ def ui_mapa_display_personalitzat(zones_en_alerta):
             map_center = [zona_shape.geometry.centroid.y.iloc[0], zona_shape.geometry.centroid.x.iloc[0]]
             zoom_level = 10 if property_name in ['nomcomar', 'nom_comar'] else 9
 
-    m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="Stamen Terrain", scrollWheelZoom=True)
+    # <<<--- CANVI A MAPA TOPOGRÀFIC PROFESSIONAL D'ESRI --->>>
+    m = folium.Map(
+        location=map_center, 
+        zoom_start=zoom_level, 
+        tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+        attr="Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, FAO, NPS, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community",
+        scrollWheelZoom=True
+    )
 
     def style_function(feature):
         nom_feature = feature.get('properties', {}).get(property_name)
-        # Netejem possibles espais en blanc o caràcters estranys del nom
+        
+        # <<<--- CORRECCIÓ CLAU PER A LES ALERTES --->>>
+        # Netejem el nom per a una comparació segura (elimina espais i punts)
         if nom_feature:
             nom_feature = nom_feature.strip().replace('.', '')
         
         style = {'fillColor': '#444444', 'color': '#666666', 'weight': 1, 'fillOpacity': 0.1}
         if nom_feature:
-            style = {'fillColor': '#6c757d', 'color': '#adb5bd', 'weight': 1, 'fillOpacity': 0.25}
-            if nom_feature in zones_en_alerta:
-                style['fillColor'] = '#ffc107'; style['color'] = '#ffc107'; style['fillOpacity'] = 0.6; style['weight'] = 2
-            if nom_feature == selected_area:
-                style['fillColor'] = '#007bff'; style['color'] = '#ffffff'; style['weight'] = 2.5; style['fillOpacity'] = 0.55
+            style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
+            
+            # Ara la comparació per a les alertes funcionarà correctament
+            if nom_feature in zones_en_alerta: 
+                style['fillColor'] = '#ffc107'; style['color'] = '#ff9800'; style['fillOpacity'] = 0.6; style['weight'] = 2.5
+            
+            # Fem el mateix per a la zona seleccionada
+            cleaned_selected_area = st.session_state.get('selected_area', '').strip().replace('.', '')
+            if nom_feature == cleaned_selected_area:
+                style['fillColor'] = '#007bff'; style['color'] = '#ffffff'; style['weight'] = 3; style['fillOpacity'] = 0.55
         return style
 
-    highlight_function = lambda x: {'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.4}
+    highlight_function = lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5}
 
     folium.GeoJson(
         gdf,
@@ -6387,11 +6393,12 @@ def ui_mapa_display_personalitzat(zones_en_alerta):
         poblacions_a_mostrar = poblacions_dict.get(selected_area, {})
         for nom_poble, coords in poblacions_a_mostrar.items():
             icon = folium.DivIcon(
-                html=f"""<div style="font-family: sans-serif; font-size: 11px; font-weight: bold; color: white; background-color: rgba(0, 0, 0, 0.6); padding: 2px 6px; border-radius: 5px; border: 1px solid white; white-space: nowrap;">{nom_poble}</div>"""
+                html=f"""<div style="font-family: sans-serif; font-size: 11px; font-weight: bold; color: #111; background-color: rgba(255, 255, 255, 0.7); padding: 2px 6px; border-radius: 5px; border: 1.5px solid #111; white-space: nowrap;">{nom_poble}</div>"""
             )
             folium.Marker(location=[coords['lat'], coords['lon']], icon=icon, tooltip=nom_poble).add_to(m)
 
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
+    
                     
 def run_valley_halley_app():
     if 'poble_selector_usa' not in st.session_state or st.session_state.poble_selector_usa not in USA_CITIES:
