@@ -4335,12 +4335,14 @@ def carregar_dades_geografiques():
     """
     Versió final i robusta que busca automàticament el mapa personalitzat
     i, si no el troba, utilitza el mapa de comarques per defecte.
+    Aquesta versió corregeix el NameError.
     """
-    # Llista de noms d'arxiu  = ["mapa_personalitzat.geojson"]
+    # Llista de noms d'arxiu per ordre de prioritat
+    noms_possibles = ["mapa_personalitzat.geojson", "comarques.geojson"]
     file_to_load = None
 
     # Busca el primer arxiu que existeixi
-    for file in possible_files:
+    for file in noms_possibles:
         if os.path.exists(file):
             file_to_load = file
             break
