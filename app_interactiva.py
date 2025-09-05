@@ -6424,8 +6424,9 @@ CAPITALS_COMARCA = {
 # --- FUNCIÓ MODIFICADA (ETIQUETA AMB NOM DE COMARCA) ---
 def ui_mapa_display_personalitzat(alertes_per_zona):
     """
-    Versió final robusta v12 (Etiqueta amb nom de comarca).
-    - La caixa de l'alerta mostra el nom de la comarca en lloc de la capital.
+    Versió final robusta v13 (Mapa Principal Congelat).
+    - Impedeix navegar fora dels límits de Catalunya.
+    - Si se selecciona una comarca, el mapa es congela en aquesta vista.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
@@ -6438,22 +6439,38 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
     tooltip_alias = 'Comarca:'
 
     selected_area = st.session_state.get('selected_area')
+    
+    # --- CANVI CLAU: PREPAREM ELS PARÀMETRES DEL MAPA ---
+    map_params = {
+        "location": [41.83, 1.87], # Centre de Catalunya per defecte
+        "zoom_start": 8,
+        "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+        "attr": "Tiles &copy; Esri &mdash; and the GIS User Community",
+        "scrollWheelZoom": True,
+        "dragging": True,
+        "zoom_control": True,
+        "doubleClickZoom": True,
+        "max_bounds": [[40.4, 0.0], [42.9, 3.5]] # Límits per no sortir de Catalunya
+    }
 
-    map_center = [41.83, 1.87]; zoom_level = 8
     if selected_area and "---" not in selected_area:
         cleaned_selected_area = selected_area.strip().replace('.', '')
         zona_shape = gdf[gdf[property_name].str.strip().str.replace('.', '') == cleaned_selected_area]
         if not zona_shape.empty:
-            map_center = [zona_shape.geometry.centroid.y.iloc[0], zona_shape.geometry.centroid.x.iloc[0]]
-            zoom_level = 10
+            centroid = zona_shape.geometry.centroid.iloc[0]
+            map_params["location"] = [centroid.y, centroid.x]
+            map_params["zoom_start"] = 10
+            # CONGELEM EL MAPA QUAN HI HA UNA COMARCA SELECCIONADA
+            map_params["scrollWheelZoom"] = False
+            map_params["dragging"] = False
+            map_params["zoom_control"] = False
+            map_params["doubleClickZoom"] = False
+            bounds = zona_shape.total_bounds
+            map_params["max_bounds"] = [[bounds[1], bounds[0]], [bounds[3], bounds[2]]]
 
-    m = folium.Map(
-        location=map_center,
-        zoom_start=zoom_level,
-        tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-        attr="Tiles &copy; Esri &mdash; and the GIS User Community",
-        scrollWheelZoom=True
-    )
+
+    m = folium.Map(**map_params)
+    # --- FI DEL CANVI ---
 
     def get_color_from_convergence(value):
         if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
@@ -6493,48 +6510,8 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
         capital_info = CAPITALS_COMARCA.get(zona)
         if capital_info:
             bg_color, text_color = get_color_from_convergence(conv_value)
-            
-            # --- CANVI CLAU: Utilitzem 'zona' en lloc de 'capital_info['nom']' ---
-            icon_html = f"""
-            <div style="
-                position: relative; 
-                background-color: {bg_color}; 
-                color: {text_color};
-                padding: 6px 12px;
-                border-radius: 8px; 
-                border: 2px solid {text_color};
-                font-family: sans-serif; 
-                font-size: 13px; 
-                font-weight: bold;
-                text-align: center;
-                min-width: 80px;
-                box-shadow: 3px 3px 5px rgba(0,0,0,0.5);
-                transform: translate(-50%, -100%);
-            ">
-                <div style="
-                    position: absolute;
-                    bottom: -10px; left: 50%;
-                    transform: translateX(-50%);
-                    width: 0; height: 0;
-                    border-left: 8px solid transparent;
-                    border-right: 8px solid transparent;
-                    border-top: 8px solid {bg_color};
-                "></div>
-                <div style="
-                    position: absolute;
-                    bottom: -13.5px; left: 50%;
-                    transform: translateX(-50%);
-                    width: 0; height: 0;
-                    border-left: 10px solid transparent;
-                    border-right: 10px solid transparent;
-                    border-top: 10px solid {text_color};
-                    z-index: -1;
-                "></div>
-                {zona}: {conv_value:.0f}
-            </div>
-            """
-            # --- FI DEL CANVI ---
-
+            nom_capital = capital_info['nom']
+            icon_html = f"""<div style="position: relative; background-color: {bg_color}; color: {text_color}; padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color}; font-family: sans-serif; font-size: 13px; font-weight: bold; text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5); transform: translate(-50%, -100%);"><div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div><div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>{zona}: {conv_value:.0f}</div>"""
             icon = folium.DivIcon(html=icon_html)
             folium.Marker(
                 location=[capital_info['lat'], capital_info['lon']],
