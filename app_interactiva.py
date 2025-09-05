@@ -6159,7 +6159,7 @@ def run_catalunya_app():
     with col_change:
         if st.button("Canviar de Zona", use_container_width=True, help="Torna a la selecció de zona geogràfica"):
             st.session_state.zone_selected = None
-            keys_to_clear = ['zona_sel', 'comarca_sel', 'poble_sel', 'active_tab_cat']
+            keys_to_clear = ['selected_area', 'poble_sel', 'active_tab_cat']
             for key in keys_to_clear:
                 if key in st.session_state: del st.session_state[key]
             st.rerun()
@@ -6169,9 +6169,8 @@ def run_catalunya_app():
             st.rerun()
     st.divider()
 
-    # --- PAS 2: GESTIÓ D'ESTAT INICIAL ---
-    if 'comarca_sel' not in st.session_state: st.session_state.comarca_sel = "--- Selecciona una zona al mapa ---"
-    if 'zona_sel' not in st.session_state: st.session_state.zona_sel = "--- Selecciona una zona al mapa ---"
+    # --- PAS 2: GESTIÓ D'ESTAT UNIFICADA ---
+    if 'selected_area' not in st.session_state: st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
     if 'poble_sel' not in st.session_state: st.session_state.poble_sel = "--- Selecciona una localitat ---"
 
     # --- PAS 3: SELECTORS GLOBALS DE TEMPS ---
@@ -6194,7 +6193,7 @@ def run_catalunya_app():
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     
-    alertes_comarca = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
+    alertes_zona = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
 
     # --- PAS 5: LÒGICA PRINCIPAL (SELECCIÓ O ANÀLISI) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
@@ -6203,33 +6202,28 @@ def run_catalunya_app():
         st.success(f"### Anàlisi per a: **{poble_sel}**")
         if st.button("⬅️ Tornar al mapa de selecció"):
             st.session_state.poble_sel = "--- Selecciona una localitat ---"
-            st.session_state.comarca_sel = "--- Selecciona una zona al mapa ---"
-            st.session_state.zona_sel = "--- Selecciona una zona al mapa ---"
+            st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
             if 'active_tab_cat' in st.session_state: del st.session_state['active_tab_cat']
             st.rerun()
 
+        # ... (La resta de la lògica de la vista d'anàlisi no canvia i es manté igual) ...
         lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
-
         menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Anàlisi de Vents", "Simulació de Núvol"]
         menu_icons = ["graph-up-arrow", "map", "wind", "cloud-upload"]
         if not is_guest:
             menu_options.append("💬 Assistent IA")
             menu_icons.append("chat-quote-fill")
-        
         option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key="active_tab_cat", default_index=0)
-
         if st.session_state.active_tab_cat == "Anàlisi de Mapes":
             ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
         else:
             with st.spinner(f"Carregant dades del sondeig AROME per a {poble_sel}..."):
                 data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
-            
             if final_index is not None and final_index != hourly_index_sel and not error_msg:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
                 st.warning(f"**Avís:** Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
-
             if error_msg: 
                 st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
             elif data_tuple:
@@ -6237,26 +6231,20 @@ def run_catalunya_app():
                 map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
                 if map_data_conv:
                     conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
-                    if pd.notna(conv_value):
-                        params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
-                
+                    if pd.notna(conv_value): params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
                 if st.session_state.active_tab_cat == "Anàlisi Vertical":
                     avis_proximitat = analitzar_amenaça_convergencia_propera(map_data_conv, params_calc, lat_sel, lon_sel, nivell_sel)
                     ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, avis_proximitat)
-                
                 elif st.session_state.active_tab_cat == "Anàlisi de Vents":
                     ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_sel_str, timestamp_str)
-
                 elif st.session_state.active_tab_cat == "Simulació de Núvol":
                     st.markdown(f"#### Simulació del Cicle de Vida per a {poble_sel}")
                     st.caption(timestamp_str)
                     if 'regenerate_key' not in st.session_state: st.session_state.regenerate_key = 0
                     if st.button("🔄 Regenerar Totes les Animacions"): forcar_regeneracio_animacio()
-                    
                     with st.spinner("Generant simulacions visuals..."):
                         params_tuple = tuple(sorted(params_calc.items()))
                         gifs = generar_animacions_professionals(params_tuple, timestamp_str, st.session_state.regenerate_key)
-                    
                     col1, col2, col3 = st.columns(3)
                     with col1:
                         st.markdown("<h5 style='text-align: center;'>1. Iniciació</h5>", unsafe_allow_html=True)
@@ -6272,7 +6260,6 @@ def run_catalunya_app():
                         else: st.info("Sense fase final.")
                     st.divider()
                     ui_guia_tall_vertical(params_calc, nivell_sel)
-
                 elif st.session_state.active_tab_cat == "💬 Assistent IA" and not is_guest:
                     analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
                     interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
@@ -6281,29 +6268,24 @@ def run_catalunya_app():
     
     else: 
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
-        zona_actual_comarca = st.session_state.get('comarca_sel', "---")
-        zona_actual_personalitzada = st.session_state.get('zona_sel', "---")
-
-        if "---" not in zona_actual_comarca or "---" not in zona_actual_personalitzada:
-             zona_mostra = zona_actual_personalitzada if "---" not in zona_actual_personalitzada else zona_actual_comarca
-             st.info(f"Zona seleccionada: **{zona_mostra}**. Fes clic sobre el nom d'una localitat per analitzar-la.", icon="👇")
+        selected_area = st.session_state.get('selected_area')
+        if selected_area and "---" not in selected_area:
+             st.info(f"Zona seleccionada: **{selected_area}**. Fes clic sobre el nom d'una localitat per analitzar-la.", icon="👇")
              if st.button("⬅️ Veure totes les zones"):
-                 st.session_state.zona_sel = "--- Selecciona una zona al mapa ---"
-                 st.session_state.comarca_sel = "--- Selecciona una zona al mapa ---"
+                 st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
                  st.rerun()
         else:
              st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
 
-        map_output = ui_mapa_display_personalitzat(list(alertes_comarca.keys()))
+        map_output = ui_mapa_display_personalitzat(list(alertes_zona.keys()))
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
             
             if "Zona:" in raw_tooltip or "Comarca:" in raw_tooltip:
-                clicked_zona = raw_tooltip.split(':')[-1].strip()
-                if clicked_zona != st.session_state.get('zona_sel') and clicked_zona != st.session_state.get('comarca_sel'):
-                    st.session_state.zona_sel = clicked_zona
-                    st.session_state.comarca_sel = clicked_zona
+                clicked_area = raw_tooltip.split(':')[-1].strip()
+                if clicked_area != st.session_state.get('selected_area'):
+                    st.session_state.selected_area = clicked_area
                     st.session_state.poble_sel = "--- Selecciona una localitat ---"
                     st.rerun()
             else:
@@ -6315,25 +6297,23 @@ def run_catalunya_app():
 
 def ui_mapa_display_personalitzat(zones_en_alerta):
     """
-    Versió final i robusta que s'adapta automàticament a l'arxiu GeoJSON.
+    Versió final i robusta que s'adapta automàticament a l'arxiu GeoJSON
+    i utilitza una única variable d'estat ('selected_area').
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
     if gdf is None: return None
 
     # Detecció automàtica de la propietat a utilitzar
-    if 'nom_zona' in gdf.columns:
-        property_name = 'nom_zona'
-        tooltip_alias = 'Zona:'
-        zona_sel = st.session_state.get('zona_sel')
-    else:
-        property_name = 'nomcomar'
-        tooltip_alias = 'Comarca:'
-        zona_sel = st.session_state.get('comarca_sel')
+    property_name = 'nom_zona' if 'nom_zona' in gdf.columns else 'nomcomar'
+    tooltip_alias = 'Zona:' if property_name == 'nom_zona' else 'Comarca:'
+    
+    # Utilitzem la variable d'estat unificada
+    selected_area = st.session_state.get('selected_area')
 
     map_center = [41.83, 1.87]; zoom_level = 8
-    if zona_sel and "---" not in zona_sel:
-        zona_shape = gdf[gdf[property_name] == zona_sel]
+    if selected_area and "---" not in selected_area:
+        zona_shape = gdf[gdf[property_name] == selected_area]
         if not zona_shape.empty:
             map_center = [zona_shape.geometry.centroid.y.iloc[0], zona_shape.geometry.centroid.x.iloc[0]]
             zoom_level = 10 if property_name == 'nomcomar' else 9
@@ -6345,7 +6325,7 @@ def ui_mapa_display_personalitzat(zones_en_alerta):
         style = {'fillColor': '#6c757d', 'color': '#adb5bd', 'weight': 1, 'fillOpacity': 0.25}
         if nom_feature in zones_en_alerta:
             style['fillColor'] = '#ffc107'; style['color'] = '#ffc107'; style['fillOpacity'] = 0.6; style['weight'] = 2
-        if nom_feature == zona_sel:
+        if nom_feature == selected_area:
             style['fillColor'] = '#007bff'; style['color'] = '#ffffff'; style['weight'] = 2.5; style['fillOpacity'] = 0.55
         return style
 
@@ -6358,9 +6338,9 @@ def ui_mapa_display_personalitzat(zones_en_alerta):
         tooltip=folium.GeoJsonTooltip(fields=[property_name], aliases=[tooltip_alias])
     ).add_to(m)
 
-    if zona_sel and "---" not in zona_sel:
+    if selected_area and "---" not in selected_area:
         poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
-        poblacions_a_mostrar = poblacions_dict.get(zona_sel, {})
+        poblacions_a_mostrar = poblacions_dict.get(selected_area, {})
         for nom_poble, coords in poblacions_a_mostrar.items():
             icon = folium.DivIcon(
                 html=f"""<div style="font-family: sans-serif; font-size: 11px; font-weight: bold; color: white; background-color: rgba(0, 0, 0, 0.6); padding: 2px 6px; border-radius: 5px; border: 1px solid white; white-space: nowrap;">{nom_poble}</div>"""
