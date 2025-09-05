@@ -6344,114 +6344,50 @@ def seleccionar_poble(nom_poble):
     """Callback segur per als botons que estableix la població seleccionada."""
     st.session_state.poble_sel = nom_poble
     
-# --- DICCIONARI DE CAPITALS (Necessari per a la funció) ---
+# --- DICCIONARI DE CAPITALS (CORREGIT AMB NOMS) ---
 CAPITALS_COMARCA = {
-    "Barcelona": {"nom": "", "lat": 41.3851, "lon": 2.1734},
-    "Girona": {"nom": "", "lat": 41.9831, "lon": 2.8249},
-    "Lleida": {"nom": "", "lat": 41.6177, "lon": 0.6200},
-    "Tarragona": {"nom": "", "lat": 41.1189, "lon": 1.2445},
-    "Agramunt": {"nom": "", "lat": 41.7871, "lon": 1.0967},
-    "Alcanar": {"nom": "", "lat": 40.5434, "lon": 0.4820},
-    "Alella": {"nom": "", "lat": 41.4947, "lon": 2.2955},
-    "Altafulla": {"nom": "", "lat": 41.1417, "lon": 1.3750},
-    "Amposta": {"nom": "", "lat": 40.7093, "lon": 0.5810},
-    "Arbúcies": {"nom": "", "lat": 41.8159, "lon": 2.5152},
-    "Arenys de Mar": {"nom": "", "lat": 41.5815, "lon": 2.5504},
-    "Arenys de Munt": {"nom": "", "lat": 41.6094, "lon": 2.5411},
-    "Balaguer": {"nom": "", "lat": 41.7904, "lon": 0.8066},
-    "Banyoles": {"nom": "", "lat": 42.1197, "lon": 2.7667},
-    "Begur": {"nom": "", "lat": 41.9542, "lon": 3.2076},
-    "Bellver de Cerdanya": {"nom": "", "lat": 42.3705, "lon": 1.7770},
-    "Berga": {"nom": "", "lat": 42.1051, "lon": 1.8458},
-    "Blanes": {"nom": "", "lat": 41.6748, "lon": 2.7917},
-    "Cabrera de Mar": {"nom": "", "lat": 41.5275, "lon": 2.3958},
-    "Cadaqués": {"nom": "", "lat": 42.2888, "lon": 3.2770},
-    "Calaf": {"nom": "", "lat": 41.7311, "lon": 1.5126},
-    "Caldes de Montbui": {"nom": "", "lat": 41.6315, "lon": 2.1678},
-    "Calella": {"nom": "", "lat": 41.6146, "lon": 2.6653},
-    "Calonge": {"nom": "", "lat": 41.8601, "lon": 3.0768},
-    "Camarasa": {"nom": "", "lat": 41.8753, "lon": 0.8804},
-    "Cambrils": {"nom": "", "lat": 41.0667, "lon": 1.0500},
-    "Capellades": {"nom": "", "lat": 41.5312, "lon": 1.6874},
-    "Cardedeu": {"nom": "", "lat": 41.6403, "lon": 2.3582},
-    "Cardona": {"nom": "", "lat": 41.9138, "lon": 1.6806},
-    "Cassà de la Selva": {"nom": "", "lat": 41.8893, "lon": 2.8736},
-    "Castellbisbal": {"nom": "", "lat": 41.4776, "lon": 1.9866},
-    "Castellar del Vallès": {"nom": "", "lat": 41.6186, "lon": 2.0875},
-    "Castellfollit de la Roca": {"nom": "", "lat": 42.2201, "lon": 2.5517},
-    "Castelló d'Empúries": {"nom": "", "lat": 42.2582, "lon": 3.0725},
-    "Centelles": {"nom": "", "lat": 41.7963, "lon": 2.2203},
-    "Cerdanyola del Vallès": {"nom": "", "lat": 41.4925, "lon": 2.1415},
-    "Figueres": {"nom": "", "lat": 42.2662, "lon": 2.9622},
-    "Flaçà": {"nom": "", "lat": 42.0494, "lon": 2.9559},
-    "Granollers": {"nom": "", "lat": 41.6083, "lon": 2.2886},
-    "Hostalric": {"nom": "", "lat": 41.7479, "lon": 2.6360},
-    "Igualada": {"nom": "", "lat": 41.5791, "lon": 1.6174},
-    "L'Ametlla de Mar": {"nom": "", "lat": 40.8824, "lon": 0.8016},
-    "L'Escala": {"nom": "", "lat": 42.1235, "lon": 3.1311},
-    "L'Hospitalet de Llobregat": {"nom": "", "lat": 41.3571, "lon": 2.1030},
-    "La Bisbal d'Empordà": {"nom": "", "lat": 41.9602, "lon": 3.0378},
-    "La Jonquera": {"nom": "", "lat": 42.4194, "lon": 2.8752},
-    "La Pobla de Segur": {"nom": "", "lat": 42.2472, "lon": 0.9678},
-    "La Selva del Camp": {"nom": "", "lat": 41.2131, "lon": 1.1384},
-    "La Sénia": {"nom": "", "lat": 40.6322, "lon": 0.2831},
-    "La Seu d'Urgell": {"nom": "", "lat": 42.3582, "lon": 1.4593},
-    "Llagostera": {"nom": "", "lat": 41.8291, "lon": 2.8931},
-    "Llançà": {"nom": "", "lat": 42.3625, "lon": 3.1539},
-    "Lloret de Mar": {"nom": "", "lat": 41.7005, "lon": 2.8450},
-    "Malgrat de Mar": {"nom": "", "lat": 41.6461, "lon": 2.7423},
-    "Manlleu": {"nom": "", "lat": 42.0016, "lon": 2.2844},
-    "Manresa": {"nom": "", "lat": 41.7230, "lon": 1.8268},
-    "Mataró": {"nom": "", "lat": 41.5388, "lon": 2.4449},
-    "Mollet del Vallès": {"nom": "", "lat": 41.5385, "lon": 2.2144},
-    "Montblanc": {"nom": "", "lat": 41.3761, "lon": 1.1610},
-    "Montcada i Reixac": {"nom": "", "lat": 41.4851, "lon": 2.1884},
-    "Olesa de Montserrat": {"nom": "", "lat": 41.5451, "lon": 1.8955},
-    "Olot": {"nom": "", "lat": 42.1818, "lon": 2.4900},
-    "Palamós": {"nom": "", "lat": 41.8465, "lon": 3.1287},
-    "Pals": {"nom": "", "lat": 41.9688, "lon": 3.1458},
-    "Pineda de Mar": {"nom": "", "lat": 41.6277, "lon": 2.6908},
-    "Platja d'Aro": {"nom": "", "lat": 41.8175, "lon": 3.0645},
-    "Puigcerdà": {"nom": "", "lat": 42.4331, "lon": 1.9287},
-    "Reus": {"nom": "", "lat": 41.1550, "lon": 1.1075},
-    "Ripoll": {"nom": "", "lat": 42.2013, "lon": 2.1903},
-    "Riudellots de la Selva": {"nom": "", "lat": 41.9080, "lon": 2.8099},
-    "Roses": {"nom": "", "lat": 42.2619, "lon": 3.1764},
-    "Rubí": {"nom": "", "lat": 41.4936, "lon": 2.0323},
-    "Sabadell": {"nom": "", "lat": 41.5483, "lon": 2.1075},
-    "Salou": {"nom": "", "lat": 41.0763, "lon": 1.1417},
-    "Sant Cugat del Vallès": {"nom": "", "lat": 41.4727, "lon": 2.0863},
-    "Sant Feliu de Guíxols": {"nom": "", "lat": 41.7801, "lon": 3.0278},
-    "Sant Feliu de Llobregat": {"nom": "", "lat": 41.3833, "lon": 2.0500},
-    "Sant Joan de les Abadesses": {"nom": "", "lat": 42.2355, "lon": 2.2858},
-    "Sant Pere de Ribes": {"nom": "", "lat": 41.2599, "lon": 1.7725},
-    "Sant Quirze del Vallès": {"nom": "", "lat": 41.5303, "lon": 2.0831},
-    "Santa Coloma de Farners": {"nom": "", "lat": 41.8596, "lon": 2.6703},
-    "Santa Coloma de Gramenet": {"nom": "", "lat": 41.4550, "lon": 2.2111},
-    "Santa Cristina d'Aro": {"nom": "", "lat": 41.8130, "lon": 2.9976},
-    "Santa Pau": {"nom": "", "lat": 42.1448, "lon": 2.5695},
-    "Santa Susanna": {"nom": "", "lat": 41.6366, "lon": 2.7098},
-    "Sarroca de Bellera": {"nom": "", "lat": 42.3957, "lon": 0.8656},
-    "Sitges": {"nom": "", "lat": 41.2351, "lon": 1.8117},
-    "Solsona": {"nom": "", "lat": 41.9942, "lon": 1.5161},
-    "Sort": {"nom": "", "lat": 42.4131, "lon": 1.1278},
-    "Soses": {"nom": "", "lat": 41.5358, "lon": 0.5186},
-    "Terrassa": {"nom": "", "lat": 41.5615, "lon": 2.0084},
-    "Tortosa": {"nom": "", "lat": 40.8126, "lon": 0.5211},
-    "Tremp": {"nom": "", "lat": 42.1664, "lon": 0.8953},
-    "Valls": {"nom": "", "lat": 41.2872, "lon": 1.2505},
-    "Vic": {"nom": "", "lat": 41.9301, "lon": 2.2545},
-    "Vidrà": {"nom": "", "lat": 42.1226, "lon": 2.3116},
-    "Vidreres": {"nom": "", "lat": 41.7876, "lon": 2.7788},
-    "Vielha": {"nom": "", "lat": 42.7027, "lon": 0.7966},
-    "Vilafranca del Penedès": {"nom": "", "lat": 41.3453, "lon": 1.6995},
-    "Vilanova i la Geltrú": {"nom": "", "lat": 41.2241, "lon": 1.7252},
-    "Viladecans": {"nom": "", "lat": 41.3155, "lon": 2.0194},
-    "Vilassar de Dalt": {"nom": "", "lat": 41.5167, "lon": 2.3583},
-    "Vilassar de Mar": {"nom": "", "lat": 41.5057, "lon": 2.3920}
+    "Alt Camp": {"nom": "Valls", "lat": 41.2872, "lon": 1.2505},
+    "Alt Empordà": {"nom": "Figueres", "lat": 42.2662, "lon": 2.9622},
+    "Alt Penedès": {"nom": "Vilafranca del Penedès", "lat": 41.3453, "lon": 1.6995},
+    "Alt Urgell": {"nom": "La Seu d'Urgell", "lat": 42.3582, "lon": 1.4593},
+    "Anoia": {"nom": "Igualada", "lat": 41.5791, "lon": 1.6174},
+    "Bages": {"nom": "Manresa", "lat": 41.7230, "lon": 1.8268},
+    "Baix Camp": {"nom": "Reus", "lat": 41.1550, "lon": 1.1075},
+    "Baix Ebre": {"nom": "Tortosa", "lat": 40.8126, "lon": 0.5211},
+    "Baix Empordà": {"nom": "La Bisbal d'Empordà", "lat": 41.9602, "lon": 3.0378},
+    "Baix Llobregat": {"nom": "Sant Feliu de Llobregat", "lat": 41.3833, "lon": 2.0500},
+    "Barcelonès": {"nom": "Barcelona", "lat": 41.3851, "lon": 2.1734},
+    "Berguedà": {"nom": "Berga", "lat": 42.1051, "lon": 1.8458},
+    "Cerdanya": {"nom": "Puigcerdà", "lat": 42.4331, "lon": 1.9287},
+    "Conca de Barberà": {"nom": "Montblanc", "lat": 41.3761, "lon": 1.1610},
+    "Garraf": {"nom": "Vilanova i la Geltrú", "lat": 41.2241, "lon": 1.7252},
+    "Garrigues": {"nom": "Les Borges Blanques", "lat": 41.5224, "lon": 0.8674},
+    "Garrotxa": {"nom": "Olot", "lat": 42.1818, "lon": 2.4900},
+    "Gironès": {"nom": "Girona", "lat": 41.9831, "lon": 2.8249},
+    "Maresme": {"nom": "Mataró", "lat": 41.5388, "lon": 2.4449},
+    "Montsià": {"nom": "Amposta", "lat": 40.7093, "lon": 0.5810},
+    "Noguera": {"nom": "Balaguer", "lat": 41.7904, "lon": 0.8066},
+    "Osona": {"nom": "Vic", "lat": 41.9301, "lon": 2.2545},
+    "Pallars Jussà": {"nom": "Tremp", "lat": 42.1664, "lon": 0.8953},
+    "Pallars Sobirà": {"nom": "Sort", "lat": 42.4131, "lon": 1.1278},
+    "Pla de l'Estany": {"nom": "Banyoles", "lat": 42.1197, "lon": 2.7667},
+    "Pla d_Urgell": {"nom": "Mollerussa", "lat": 41.6315, "lon": 0.8931},
+    "Priorat": {"nom": "Falset", "lat": 41.1444, "lon": 0.8208},
+    "Ribera d_Ebre": {"nom": "Móra d'Ebre", "lat": 41.0945, "lon": 0.6450},
+    "Ripollès": {"nom": "Ripoll", "lat": 42.2013, "lon": 2.1903},
+    "Segarra": {"nom": "Cervera", "lat": 41.6709, "lon": 1.2721},
+    "Segrià": {"nom": "Lleida", "lat": 41.6177, "lon": 0.6200},
+    "Selva": {"nom": "Santa Coloma de Farners", "lat": 41.8596, "lon": 2.6703},
+    "Solsonès": {"nom": "Solsona", "lat": 41.9942, "lon": 1.5161},
+    "Tarragonès": {"nom": "Tarragona", "lat": 41.1189, "lon": 1.2445},
+    "Terra Alta": {"nom": "Gandesa", "lat": 41.0526, "lon": 0.4337},
+    "Urgell": {"nom": "Tàrrega", "lat": 41.6469, "lon": 1.1415},
+    "Val d'Aran": {"nom": "Vielha", "lat": 42.7027, "lon": 0.7966},
+    "Vallès Occidental": {"nom": "Sabadell", "lat": 41.5483, "lon": 2.1075},
+    "Vallès Oriental": {"nom": "Granollers", "lat": 41.6083, "lon": 2.2886}
 }
 
-# --- FUNCIÓ MODIFICADA (AMB ESTIL D'ETIQUETA CORREGIT) ---
+# --- FUNCIÓ MODIFICADA (AMB ESTIL D'ETIQUETA EIXAMPLAT) ---
 def ui_mapa_display_personalitzat(alertes_per_zona):
     """
     Versió final robusta v11 (Estil d'Alertes Eixamplat).
@@ -6524,20 +6460,22 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
         if capital_info:
             bg_color, text_color = get_color_from_convergence(conv_value)
             
-            # --- CANVI CLAU: S'ha ajustat el 'padding' i afegit 'min-width' ---
+            # Utilitzem el nom de la capital del diccionari
+            nom_capital = capital_info['nom']
+
             icon_html = f"""
             <div style="
                 position: relative; 
                 background-color: {bg_color}; 
                 color: {text_color};
-                padding: 6px 12px; /* Més espai als costats */
+                padding: 6px 12px;
                 border-radius: 8px; 
                 border: 2px solid {text_color};
                 font-family: sans-serif; 
                 font-size: 13px; 
                 font-weight: bold;
                 text-align: center;
-                min-width: 80px; /* Amplada mínima de la caixa */
+                min-width: 80px;
                 box-shadow: 3px 3px 5px rgba(0,0,0,0.5);
                 transform: translate(-50%, -100%);
             ">
@@ -6560,10 +6498,9 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
                     border-top: 10px solid {text_color};
                     z-index: -1;
                 "></div>
-                {capital_info['nom']}: {conv_value:.0f}
+                {nom_capital}: {conv_value:.0f}
             </div>
             """
-            # --- FI DEL CANVI ---
 
             icon = folium.DivIcon(html=icon_html)
             folium.Marker(
