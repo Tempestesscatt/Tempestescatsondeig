@@ -6353,7 +6353,9 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
 
     map_center = [41.83, 1.87]; zoom_level = 8
     if selected_area and "---" not in selected_area:
-        zona_shape = gdf[gdf[property_name] == selected_area]
+        # Netejem el nom seleccionat per a una comparació segura
+        cleaned_selected_area = selected_area.strip().replace('.', '')
+        zona_shape = gdf[gdf[property_name].str.strip().str.replace('.', '') == cleaned_selected_area]
         if not zona_shape.empty:
             map_center = [zona_shape.geometry.centroid.y.iloc[0], zona_shape.geometry.centroid.x.iloc[0]]
             zoom_level = 10 if property_name in ['nomcomar', 'nom_comar'] else 9
@@ -6377,11 +6379,11 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
     def style_function(feature):
         # <<<--- LÒGICA COMPLETAMENT REVISADA PER A MÀXIMA ROBUSTESA --->>>
         
-        # 1. Estil base per a TOTHOM: gris, semitransparent.
+        # 1. Estil base per a TOTS els polígons: gris, semitransparent.
         style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
         
         nom_feature_raw = feature.get('properties', {}).get(property_name)
-        if nom_feature_raw:
+        if nom_feature_raw and isinstance(nom_feature_raw, str):
             nom_feature = nom_feature_raw.strip().replace('.', '')
             
             # 2. Comprova si té alerta. Si és així, PINTA A SOBRE.
@@ -6401,6 +6403,9 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
                 style['color'] = '#ffffff'
                 style['weight'] = 3
                 style['fillOpacity'] = 0.5
+        
+        # <<<--- CORRECCIÓ CLAU: El 'return' està fora del 'if' --->>>
+        # D'aquesta manera, sempre es retorna un estil, fins i tot per a polígons sense nom.
         return style
 
     highlight_function = lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5}
@@ -6414,7 +6419,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
 
     if selected_area and "---" not in selected_area:
         poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
-        poblacions_a_mostrar = poblacions_dict.get(selected_area, {})
+        poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
         for nom_poble, coords in poblacions_a_mostrar.items():
             icon = folium.DivIcon(
                 html=f"""<div style="font-family: sans-serif; font-size: 11px; font-weight: bold; color: #111; background-color: rgba(255, 255, 255, 0.7); padding: 2px 6px; border-radius: 5px; border: 1.5px solid #111; white-space: nowrap;">{nom_poble}</div>"""
@@ -6422,7 +6427,6 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
             folium.Marker(location=[coords['lat'], coords['lon']], icon=icon, tooltip=nom_poble).add_to(m)
 
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
-    
                     
 def run_valley_halley_app():
     if 'poble_selector_usa' not in st.session_state or st.session_state.poble_selector_usa not in USA_CITIES:
