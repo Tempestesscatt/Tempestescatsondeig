@@ -6384,12 +6384,11 @@ CAPITALS_COMARCA = {
     'Vallès Oriental': {'nom': 'Granollers', 'lat': 41.6083, 'lon': 2.2886}
 }
 
-# --- FUNCIÓ MODIFICADA (AMB ETIQUETES D'ALERTA REDISSENYADES) ---
+# --- FUNCIÓ MODIFICADA (AMB ESTIL D'ETIQUETA CORREGIT) ---
 def ui_mapa_display_personalitzat(alertes_per_zona):
     """
-    Versió final robusta v9 (Estil d'Alertes Millorat).
-    - Les alertes de convergència es mostren com a marcadors personalitzats amb el text a dins.
-    - Els municipis es seleccionen amb botons externs per a fiabilitat màxima.
+    Versió final robusta v10 (Text dins la caixa).
+    - S'ha eliminat 'white-space: nowrap' per permetre que el text llarg s'ajusti.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
@@ -6420,7 +6419,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
     )
 
     def get_color_from_convergence(value):
-        if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF' # Color per defecte
+        if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
         if value >= 100: return '#9370DB', '#FFFFFF'
         if value >= 60: return '#DC3545', '#FFFFFF'
         if value >= 40: return '#FD7E14', '#FFFFFF'
@@ -6453,13 +6452,12 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
         tooltip=folium.GeoJsonTooltip(fields=[property_name], aliases=[tooltip_alias])
     ).add_to(m)
 
-    # Dibuixem les ETIQUETES D'ALERTA amb el nou estil
     for zona, conv_value in alertes_per_zona.items():
         capital_info = CAPITALS_COMARCA.get(zona)
         if capital_info:
             bg_color, text_color = get_color_from_convergence(conv_value)
             
-            # --- CANVI CLAU: NOU DISSENY DE L'ETIQUETA AMB CSS ---
+            # --- CANVI CLAU: S'HA ELIMINAT 'white-space: nowrap;' I S'HA AFEGIT 'max-width' ---
             icon_html = f"""
             <div style="
                 position: relative; 
@@ -6472,26 +6470,22 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
                 font-size: 13px; 
                 font-weight: bold;
                 text-align: center;
-                white-space: nowrap;
+                max-width: 180px; /* Evita que la caixa sigui excessivament ampla */
                 box-shadow: 3px 3px 5px rgba(0,0,0,0.5);
-                transform: translate(-50%, -100%); /* Centra el marcador sobre el punt exacte */
+                transform: translate(-50%, -100%);
             ">
-                <!-- Aquest és el triangle de sota, creat amb la tècnica de borders de CSS -->
                 <div style="
                     position: absolute;
-                    bottom: -10px;
-                    left: 50%;
+                    bottom: -10px; left: 50%;
                     transform: translateX(-50%);
                     width: 0; height: 0;
                     border-left: 8px solid transparent;
                     border-right: 8px solid transparent;
                     border-top: 8px solid {bg_color};
                 "></div>
-                <!-- Aquest és el contorn del triangle -->
                 <div style="
                     position: absolute;
-                    bottom: -13.5px;
-                    left: 50%;
+                    bottom: -13.5px; left: 50%;
                     transform: translateX(-50%);
                     width: 0; height: 0;
                     border-left: 10px solid transparent;
@@ -6508,7 +6502,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
             folium.Marker(
                 location=[capital_info['lat'], capital_info['lon']],
                 icon=icon,
-                tooltip=f"Comarca: {zona}" # Mantenim el tooltip simple per seleccionar la zona
+                tooltip=f"Comarca: {zona}"
             ).add_to(m)
     
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
