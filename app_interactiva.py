@@ -6297,18 +6297,36 @@ def run_catalunya_app():
 
 def ui_mapa_display_personalitzat(zones_en_alerta):
     """
-    Versió final i robusta a prova d'errors.
-    - Gestiona correctament els 'features' del GeoJSON que no tinguin propietats.
-    - Utilitza .get() per evitar el KeyError.
+    Versió final i blindada.
+    - Comprova activament si les propietats necessàries ('nomcomar' o 'nom_zona') existeixen a l'arxiu GeoJSON.
+    - Si no existeixen, mostra un missatge d'error clar en lloc de trencar l'aplicació.
+    - Manté tota la funcionalitat interactiva si l'arxiu és correcte.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
     if gdf is None: return None
 
-    # Detecció automàtica de la propietat a utilitzar
-    property_name = 'nom_zona' if 'nom_zona' in gdf.columns else 'nomcomar'
-    tooltip_alias = 'Zona:' if property_name == 'nom_zona' else 'Comarca:'
-    
+    # --- BLOC DE VALIDACIÓ DEFINITIU ---
+    # Comprovem quina propietat de nom podem utilitzar
+    if 'nom_zona' in gdf.columns:
+        property_name = 'nom_zona'
+        tooltip_alias = 'Zona:'
+    elif 'nomcomar' in gdf.columns:
+        property_name = 'nomcomar'
+        tooltip_alias = 'Comarca:'
+    else:
+        # SI ARRIBEM AQUÍ, L'ARXIU GEOJSON ÉS INVÀLID PER A L'APP
+        st.error(
+            "**Error Crític en el Mapa:** L'arxiu GeoJSON que estàs utilitzant "
+            "no conté una propietat anomenada 'nomcomar' o 'nom_zona'.\n\n"
+            "**Solució:**\n"
+            "1. Obre el teu arxiu GeoJSON a http://geojson.io.\n"
+            "2. Clica sobre un dels polígons.\n"
+            "3. Assegura't que a la taula de la dreta hi hagi una propietat amb el nom correcte (p. ex., 'nomcomar') i un valor (p. ex., 'Garraf')."
+        )
+        return None # Aturem l'execució per evitar l'error
+
+    # Si el codi continua, sabem que 'property_name' és vàlid
     selected_area = st.session_state.get('selected_area')
 
     map_center = [41.83, 1.87]; zoom_level = 8
@@ -6320,16 +6338,10 @@ def ui_mapa_display_personalitzat(zones_en_alerta):
 
     m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB dark_matter", scrollWheelZoom=True)
 
-    # --- FUNCIÓ D'ESTIL A PROVA DE BALES ---
     def style_function(feature):
-        # Utilitzem .get() per accedir de manera segura a les propietats.
-        # Si 'properties' no existeix, retorna un diccionari buit {}.
-        # Si la clau (property_name) no existeix al diccionari, retorna None.
         nom_feature = feature.get('properties', {}).get(property_name)
-        
-        style = {'fillColor': '#444444', 'color': '#666666', 'weight': 1, 'fillOpacity': 0.1} # Estil base per a formes sense nom
-        
-        if nom_feature: # Només apliquem estils si la forma té un nom
+        style = {'fillColor': '#444444', 'color': '#666666', 'weight': 1, 'fillOpacity': 0.1}
+        if nom_feature:
             style = {'fillColor': '#6c757d', 'color': '#adb5bd', 'weight': 1, 'fillOpacity': 0.25}
             if nom_feature in zones_en_alerta:
                 style['fillColor'] = '#ffc107'; style['color'] = '#ffc107'; style['fillOpacity'] = 0.6; style['weight'] = 2
