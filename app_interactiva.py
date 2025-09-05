@@ -6196,7 +6196,6 @@ def run_catalunya_app():
             st.rerun()
     with col_logout:
         if st.button("Sortir" if is_guest else "Tanca Sessió", use_container_width=True):
-            # <<<--- AQUÍ ESTAVA L'ERROR, ARA CORREGIT --->>>
             st.session_state.clear()
             st.rerun()
     st.divider()
@@ -6313,20 +6312,32 @@ def run_catalunya_app():
 
         map_output = ui_mapa_display_personalitzat(alertes_zona)
 
+        # --- CANVI CLAU: LÒGICA DE CLIC CORREGIDA ---
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
             
+            # Comprova si el que s'ha clicat és una zona (conté "Zona:" o "Comarca:")
             if "Zona:" in raw_tooltip or "Comarca:" in raw_tooltip:
                 clicked_area = raw_tooltip.split(':')[-1].strip().replace('.', '')
                 if clicked_area != st.session_state.get('selected_area'):
                     st.session_state.selected_area = clicked_area
                     st.session_state.poble_sel = "--- Selecciona una localitat ---"
                     st.rerun()
+            # Si no és una zona, llavors és un municipi. Busquem una coincidència.
             else:
-                clicked_poble = raw_tooltip.strip()
-                if clicked_poble in CIUTATS_CATALUNYA:
-                    st.session_state.poble_sel = clicked_poble
+                # Iterem sobre tots els noms de municipis possibles
+                clicked_poble_found = None
+                for poble_key in CIUTATS_CATALUNYA.keys():
+                    # Si el nom del municipi està dins del text del tooltip, l'hem trobat
+                    if poble_key in raw_tooltip:
+                        clicked_poble_found = poble_key
+                        break # Parem quan trobem la primera coincidència
+                
+                # Si hem trobat un municipi vàlid, canviem a la vista d'anàlisi
+                if clicked_poble_found:
+                    st.session_state.poble_sel = clicked_poble_found
                     st.rerun()
+        # --- FI DEL CANVI ---
 
 
 # --- DICCIONARI DE CAPITALS (Necessari per a la funció) ---
