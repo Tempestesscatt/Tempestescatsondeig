@@ -4336,8 +4336,7 @@ def carregar_dades_geografiques():
     Versió final i robusta que busca automàticament el mapa personalitzat
     i, si no el troba, utilitza el mapa de comarques per defecte.
     """
-    # Llista de noms d'arxiu per ordre de prioritat
-    possible_files = ["mapa_personalitzat.geojson"]
+    # Llista de noms d'arxiu  = ["mapa_personalitzat.geojson"]
     file_to_load = None
 
     # Busca el primer arxiu que existeixi
