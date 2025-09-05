@@ -6138,12 +6138,16 @@ def run_catalunya_app():
         lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
         
-        menu_options = ["Anàlisi Vertical", "Anàlisi Comarcal", "Anàlisi de Mapes", "Simulació de Núvol"]
-        menu_icons = ["graph-up-arrow", "fullscreen", "map", "cloud-upload"]
+        # --- CANVI CLAU: S'HA CANVIAT L'ORDRE DE LES OPCIONS DEL MENÚ ---
+        # "Anàlisi Comarcal" ara és la primera opció. La resta es manté.
+        menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi de Mapes", "Simulació de Núvol"]
+        menu_icons = ["fullscreen", "graph-up-arrow", "map", "cloud-upload"]
         if not is_guest:
             menu_options.append("💬 Assistent IA")
             menu_icons.append("chat-quote-fill")
+        # El default_index=0 assegura que la primera opció ("Anàlisi Comarcal") estigui seleccionada per defecte.
         option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key="active_tab_cat", default_index=0)
+        # --- FI DEL CANVI ---
         
         with st.spinner(f"Carregant dades del model AROME per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
@@ -6224,7 +6228,6 @@ def run_catalunya_app():
             st.markdown(f"##### Selecciona una localitat a **{selected_area}**:")
             
             gdf = carregar_dades_geografiques()
-            # Determina si el mapa és de comarques o de zones personalitzades per saber quin diccionari de poblacions utilitzar
             property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), 'nom_comar')
             poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
             
