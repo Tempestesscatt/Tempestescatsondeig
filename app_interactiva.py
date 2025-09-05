@@ -4832,6 +4832,55 @@ def carregar_dades_sondeig_usa(lat, lon, hourly_index):
         return None, hourly_index, f"Error crític en carregar dades del sondeig HRRR: {e}"
 
 
+
+@st.cache_data(ttl=1800, show_spinner="Analitzant focus de convergència a tot el territori...")
+def calcular_alertes_per_comarca(hourly_index, nivell):
+    """
+    Retorna un diccionari amb el valor MÀXIM de convergència per a cada comarca.
+    """
+    CONV_THRESHOLD = 25
+    
+    map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
+    gdf_comarques = carregar_dades_geografiques()
+
+    # Comprovacions de seguretat
+    if error or not map_data or gdf_comarques is None or 'lons' not in map_data or len(map_data['lons']) < 4:
+        return {}
+
+    try:
+        lons, lats = map_data['lons'], map_data['lats']
+        grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 150), np.linspace(min(lats), max(lats), 150))
+        u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
+        grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+        grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+
+        with np.errstate(invalid='ignore'):
+            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+            convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
+        
+        punts_calents_idx = np.argwhere(convergence_scaled > CONV_THRESHOLD)
+        if len(punts_calents_idx) == 0: return {}
+            
+        punts_lats = grid_lat[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
+        punts_lons = grid_lon[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
+        punts_vals = convergence_scaled[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
+        
+        gdf_punts = gpd.GeoDataFrame({'value': punts_vals}, geometry=[Point(lon, lat) for lon, lat in zip(punts_lons, punts_lats)], crs="EPSG:4326")
+        
+        # Determina la propietat a utilitzar (nom_zona o nomcomar)
+        property_name = 'nom_zona' if 'nom_zona' in gdf_comarques.columns else 'nomcomar'
+        
+        punts_dins_zones = gpd.sjoin(gdf_punts, gdf_comarques, how="inner", predicate="within")
+        
+        if punts_dins_zones.empty: return {}
+            
+        max_conv_per_zona = punts_dins_zones.groupby(property_name)['value'].max()
+        return max_conv_per_zona.to_dict()
+        
+    except Exception as e:
+        print(f"Error dins de calcular_alertes_per_comarca: {e}")
+        return {}
+
 def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str, map_extent):
     fig, ax = crear_mapa_base(map_extent)
     grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 200), np.linspace(map_extent[2], map_extent[3], 200))
