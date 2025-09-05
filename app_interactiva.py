@@ -6312,36 +6312,41 @@ def run_catalunya_app():
 
 def ui_mapa_display_personalitzat(zones_en_alerta):
     """
-    Versió final i blindada.
-    - Comprova activament si les propietats necessàries ('nomcomar' o 'nom_zona') existeixen a l'arxiu GeoJSON.
-    - Si no existeixen, mostra un missatge d'error clar en lloc de trencar l'aplicació.
-    - Manté tota la funcionalitat interactiva si l'arxiu és correcte.
+    Versió final i blindada (v2).
+    - Accepta 'nom_zona', 'nomcomar' i també 'nom_comar' (amb guion bajo).
+    - Mostra un error clar si cap d'aquestes propietats no existeix.
     """
     st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
     if gdf is None: return None
 
-    # --- BLOC DE VALIDACIÓ DEFINITIU ---
-    # Comprovem quina propietat de nom podem utilitzar
+    # --- BLOC DE VALIDACIÓ AMB SUPORT PER A 'nom_comar' ---
+    # Comprovem quina propietat de nom podem utilitzar en ordre de prioritat.
     if 'nom_zona' in gdf.columns:
         property_name = 'nom_zona'
         tooltip_alias = 'Zona:'
+    
+    # <<<--- CANVI CLAU AQUÍ: HEM AFEGIT AQUESTA CONDICIÓ --->>>
+    elif 'nom_comar' in gdf.columns:
+        property_name = 'nom_comar' # Acceptem la versió amb guion bajo
+        tooltip_alias = 'Comarca:'
+    # <<<--- FI DEL CANVI --->>>
+
     elif 'nomcomar' in gdf.columns:
         property_name = 'nomcomar'
         tooltip_alias = 'Comarca:'
     else:
-        # SI ARRIBEM AQUÍ, L'ARXIU GEOJSON ÉS INVÀLID PER A L'APP
+        # Si no troba cap de les opcions, mostra l'error.
         st.error(
             "**Error Crític en el Mapa:** L'arxiu GeoJSON que estàs utilitzant "
-            "no conté una propietat anomenada 'nomcomar' o 'nom_zona'.\n\n"
-            "**Solució:**\n"
-            "1. Obre el teu arxiu GeoJSON a http://geojson.io.\n"
-            "2. Clica sobre un dels polígons.\n"
-            "3. Assegura't que a la taula de la dreta hi hagi una propietat amb el nom correcte (p. ex., 'nomcomar') i un valor (p. ex., 'Garraf')."
+            "no conté una propietat de nom vàlida.\n\n"
+            "**Solució:** Assegura't que cada polígon tingui una propietat anomenada "
+            "`nom_zona`, `nomcomar` o `nom_comar`."
         )
         return None # Aturem l'execució per evitar l'error
 
-    # Si el codi continua, sabem que 'property_name' és vàlid
+    # La resta de la funció continua exactament igual, ja que ara utilitzarà
+    # la variable 'property_name' que hem detectat correctament.
     selected_area = st.session_state.get('selected_area')
 
     map_center = [41.83, 1.87]; zoom_level = 8
@@ -6349,12 +6354,16 @@ def ui_mapa_display_personalitzat(zones_en_alerta):
         zona_shape = gdf[gdf[property_name] == selected_area]
         if not zona_shape.empty:
             map_center = [zona_shape.geometry.centroid.y.iloc[0], zona_shape.geometry.centroid.x.iloc[0]]
-            zoom_level = 10 if property_name == 'nomcomar' else 9
+            zoom_level = 10 if property_name in ['nomcomar', 'nom_comar'] else 9
 
     m = folium.Map(location=map_center, zoom_start=zoom_level, tiles="CartoDB dark_matter", scrollWheelZoom=True)
 
     def style_function(feature):
         nom_feature = feature.get('properties', {}).get(property_name)
+        # Netejem possibles espais en blanc o caràcters estranys del nom
+        if nom_feature:
+            nom_feature = nom_feature.strip().replace('.', '')
+        
         style = {'fillColor': '#444444', 'color': '#666666', 'weight': 1, 'fillOpacity': 0.1}
         if nom_feature:
             style = {'fillColor': '#6c757d', 'color': '#adb5bd', 'weight': 1, 'fillOpacity': 0.25}
@@ -6383,7 +6392,6 @@ def ui_mapa_display_personalitzat(zones_en_alerta):
             folium.Marker(location=[coords['lat'], coords['lon']], icon=icon, tooltip=nom_poble).add_to(m)
 
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
-    
                     
 def run_valley_halley_app():
     if 'poble_selector_usa' not in st.session_state or st.session_state.poble_selector_usa not in USA_CITIES:
