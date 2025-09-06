@@ -3930,10 +3930,10 @@ def carregar_dades_geografiques_peninsula():
 def calcular_alertes_per_zona_peninsula(hourly_index, nivell):
     """
     Calcula els valors màxims de convergència per a cada zona de la península.
-    (Versió amb llindar de detecció ajustat a 15)
+    (Versió amb llindar de detecció rebaixat a 10 per capturar focus febles)
     """
     # --- LÍNIA CORREGIDA ---
-    CONV_THRESHOLD = 15 # Llindar mínim per començar a considerar una alerta, igual que a Catalunya.
+    CONV_THRESHOLD = 10 # Llindar mínim per començar a detectar un focus d'interès.
     
     map_data, error = carregar_dades_mapa_est_peninsula(nivell, hourly_index)
     gdf_zones = carregar_dades_geografiques_peninsula()
@@ -3942,7 +3942,7 @@ def calcular_alertes_per_zona_peninsula(hourly_index, nivell):
         return {}
 
     try:
-        property_name = 'NAME_2' # Assegura't que aquest sigui el nom correcte
+        property_name = 'NAME_2'
         lons, lats = map_data['lons'], map_data['lats']
         grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 150), np.linspace(min(lats), max(lats), 150))
         u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
@@ -3960,11 +3960,7 @@ def calcular_alertes_per_zona_peninsula(hourly_index, nivell):
         punts_lons = grid_lon[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
         punts_vals = convergence_scaled[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
         
-        gdf_punts = gpd.GeoDataFrame(
-            {'value': punts_vals}, 
-            geometry=[Point(lon, lat) for lon, lat in zip(punts_lons, punts_lats)], 
-            crs="EPSG:4326"
-        )
+        gdf_punts = gpd.GeoDataFrame({'value': punts_vals}, geometry=[Point(lon, lat) for lon, lat in zip(punts_lons, punts_lats)], crs="EPSG:4326")
         
         punts_dins_zones = gpd.sjoin(gdf_punts, gdf_zones, how="inner", predicate="within")
         if punts_dins_zones.empty: return {}
@@ -3975,7 +3971,6 @@ def calcular_alertes_per_zona_peninsula(hourly_index, nivell):
     except Exception as e:
         print(f"Error dins de calcular_alertes_per_zona_peninsula: {e}")
         return {}
-
 
 
 
@@ -7363,7 +7358,7 @@ def format_slider_label(offset, now_hour):
 def preparar_dades_mapa_peninsula_cachejat(alertes_tuple, selected_area_str, show_labels):
     """
     Funció CACHEADA que prepara les dades per al mapa de la península,
-    amb diagnòstic de columnes i nova lògica de color gris per a convergència feble.
+    amb diagnòstic de columnes i nova lògica de color per a focus febles.
     """
     alertes_per_zona = dict(alertes_tuple)
     
@@ -7386,8 +7381,8 @@ def preparar_dades_mapa_peninsula_cachejat(alertes_tuple, selected_area_str, sho
         if value >= 60: return '#DC3545', '#FFFFFF'  # Molt Alt
         if value >= 40: return '#FD7E14', '#FFFFFF'  # Alt
         if value >= 20: return '#28A745', '#FFFFFF'  # Moderat
-        if value >= 15: return '#808080', '#FFFFFF'  # **NOU: Gris per a convergència feble (15-19)**
-        return '#6c757d', '#FFFFFF' # Per sota de 15, torna al color per defecte
+        if value >= 10: return '#6495ED', '#FFFFFF'  # NOU: Blau clar per a focus d'interès (10-19)
+        return '#6c757d', '#FFFFFF' # Per sota de 10, torna al color per defecte
     # --- FI DE LA MODIFICACIÓ ---
 
     styles_dict = {}
@@ -7398,13 +7393,12 @@ def preparar_dades_mapa_peninsula_cachejat(alertes_tuple, selected_area_str, sho
             conv_value = alertes_per_zona.get(nom_feature)
             alert_color, _ = get_color_from_convergence(conv_value)
             
-            # Apliquem una opacitat una mica més alta per al nou color gris
-            fill_opacity = 0.55 if conv_value and conv_value >= 15 else 0.25
+            fill_opacity = 0.55 if conv_value and conv_value >= 10 else 0.25
             
             styles_dict[nom_feature] = {
                 'fillColor': alert_color, 'color': alert_color,
                 'fillOpacity': fill_opacity,
-                'weight': 2.5 if conv_value and conv_value >= 15 else 1
+                'weight': 2.5 if conv_value and conv_value >= 10 else 1
             }
 
     markers_data = []
