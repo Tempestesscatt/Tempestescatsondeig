@@ -40,68 +40,9 @@ import folium
 from streamlit_folium import st_folium
 import geopandas as gpd
 from shapely.geometry import Point
-import topojson
-from streamlit_option_menu import option_menu
-from folium.plugins import HeatMap
 
 
 
-
-
-
-
-
-
-
-GEOJSON_COMARQUES = {
-    "type": "FeatureCollection",
-    "features": [
-        {"type": "Feature", "properties": {"codicomar": "01", "nomcomar": "Alt Camp"}, "geometry": {"type": "Polygon", "coordinates": [[[1.332, 41.401], [1.369, 41.338], [1.327, 41.319], [1.248, 41.316], [1.23, 41.258], [1.168, 41.257], [1.13, 41.294], [1.155, 41.319], [1.127, 41.362], [1.198, 41.419], [1.293, 41.442], [1.332, 41.401]]]}},
-        {"type": "Feature", "properties": {"codicomar": "02", "nomcomar": "Alt Empordà"}, "geometry": {"type": "Polygon", "coordinates": [[[2.884, 42.435], [2.955, 42.43], [3.053, 42.385], [3.16, 42.392], [3.235, 42.33], [3.277, 42.289], [3.177, 42.262], [3.084, 42.235], [3.131, 42.124], [3.073, 42.046], [2.972, 42.14], [2.85, 42.222], [2.77, 42.316], [2.884, 42.435]]]}},
-        {"type": "Feature", "properties": {"codicomar": "03", "nomcomar": "Alt Penedès"}, "geometry": {"type": "Polygon", "coordinates": [[[1.55, 41.455], [1.638, 41.446], [1.705, 41.385], [1.792, 41.378], [1.812, 41.312], [1.772, 41.26], [1.699, 41.345], [1.605, 41.318], [1.536, 41.374], [1.55, 41.455]]]}},
-        {"type": "Feature", "properties": {"codicomar": "04", "nomcomar": "Alt Urgell"}, "geometry": {"type": "Polygon", "coordinates": [[[1.252, 42.43], [1.459, 42.49], [1.61, 42.411], [1.731, 42.31], [1.65, 42.217], [1.459, 42.17], [1.341, 42.23], [1.218, 42.358], [1.252, 42.43]]]}},
-        {"type": "Feature", "properties": {"codicomar": "05", "nomcomar": "Anoia"}, "geometry": {"type": "Polygon", "coordinates": [[[1.413, 41.74], [1.513, 41.731], [1.614, 41.67], [1.745, 41.56], [1.687, 41.531], [1.617, 41.579], [1.52, 41.503], [1.428, 41.565], [1.32, 41.65], [1.413, 41.74]]]}},
-        {"type": "Feature", "properties": {"codicomar": "06", "nomcomar": "Bages"}, "geometry": {"type": "Polygon", "coordinates": [[[1.63, 41.98], [1.84, 42.02], [2.01, 41.93], [2.05, 41.8], [1.895, 41.68], [1.827, 41.723], [1.7, 41.71], [1.62, 41.8], [1.63, 41.98]]]}},
-        {"type": "Feature", "properties": {"codicomar": "07", "nomcomar": "Baix Camp"}, "geometry": {"type": "Polygon", "coordinates": [[[0.83, 41.25], [1.02, 41.26], [1.138, 41.213], [1.107, 41.155], [1.142, 41.076], [1.05, 41.067], [0.9, 41.1], [0.81, 41.18], [0.83, 41.25]]]}},
-        {"type": "Feature", "properties": {"codicomar": "08", "nomcomar": "Baix Ebre"}, "geometry": {"type": "Polygon", "coordinates": [[[0.42, 40.95], [0.55, 40.98], [0.73, 40.9], [0.802, 40.882], [0.8, 40.82], [0.521, 40.813], [0.45, 40.75], [0.35, 40.85], [0.42, 40.95]]]}},
-        {"type": "Feature", "properties": {"codicomar": "09", "nomcomar": "Baix Empordà"}, "geometry": {"type": "Polygon", "coordinates": [[[2.9, 42.05], [3.038, 42.05], [3.146, 41.969], [3.208, 41.954], [3.129, 41.846], [3.028, 41.78], [2.893, 41.829], [2.87, 41.95], [2.9, 42.05]]]}},
-        {"type": "Feature", "properties": {"codicomar": "10", "nomcomar": "Baix Llobregat"}, "geometry": {"type": "Polygon", "coordinates": [[[1.8, 41.52], [1.987, 41.478], [2.12, 41.45], [2.15, 41.37], [2.02, 41.315], [1.9, 41.35], [1.8, 41.42], [1.8, 41.52]]]}},
-        {"type": "Feature", "properties": {"codicomar": "11", "nomcomar": "Barcelonès"}, "geometry": {"type": "Polygon", "coordinates": [[[2.1, 41.48], [2.211, 41.455], [2.22, 41.4], [2.173, 41.385], [2.103, 41.357], [2.1, 41.48]]]}},
-        {"type": "Feature", "properties": {"codicomar": "12", "nomcomar": "Berguedà"}, "geometry": {"type": "Polygon", "coordinates": [[[1.7, 42.3], [1.85, 42.25], [2.05, 42.2], [2.0, 42.05], [1.846, 42.105], [1.7, 42.0], [1.6, 42.15], [1.7, 42.3]]]}},
-        {"type": "Feature", "properties": {"codicomar": "13", "nomcomar": "Cerdanya"}, "geometry": {"type": "Polygon", "coordinates": [[[1.7, 42.5], [1.929, 42.433], [2.0, 42.4], [1.8, 42.3], [1.7, 42.35], [1.7, 42.5]]]}},
-        {"type": "Feature", "properties": {"codicomar": "14", "nomcomar": "Conca de Barberà"}, "geometry": {"type": "Polygon", "coordinates": [[[0.9, 41.45], [1.161, 41.48], [1.25, 41.4], [1.1, 41.25], [1.0, 41.3], [0.9, 41.45]]]}},
-        {"type": "Feature", "properties": {"codicomar": "15", "nomcomar": "Garraf"}, "geometry": {"type": "Polygon", "coordinates": [[[1.7, 41.3], [1.812, 41.312], [1.9, 41.25], [1.812, 41.235], [1.725, 41.224], [1.7, 41.3]]]}},
-        {"type": "Feature", "properties": {"codicomar": "16", "nomcomar": "Garrigues"}, "geometry": {"type": "Polygon", "coordinates": [[[0.7, 41.55], [0.867, 41.522], [1.0, 41.5], [0.9, 41.35], [0.75, 41.3], [0.6, 41.4], [0.7, 41.55]]]}},
-        {"type": "Feature", "properties": {"codicomar": "17", "nomcomar": "Garrotxa"}, "geometry": {"type": "Polygon", "coordinates": [[[2.3, 42.3], [2.55, 42.35], [2.65, 42.25], [2.552, 42.22], [2.49, 42.182], [2.35, 42.1], [2.3, 42.2], [2.3, 42.3]]]}},
-        {"type": "Feature", "properties": {"codicomar": "18", "nomcomar": "Gironès"}, "geometry": {"type": "Polygon", "coordinates": [[[2.7, 42.1], [2.825, 42.12], [2.95, 42.05], [2.89, 41.9], [2.825, 41.983], [2.7, 41.9], [2.7, 42.1]]]}},
-        {"type": "Feature", "properties": {"codicomar": "19", "nomcomar": "Maresme"}, "geometry": {"type": "Polygon", "coordinates": [[[2.3, 41.65], [2.5, 41.68], [2.742, 41.646], [2.6, 41.55], [2.445, 41.539], [2.3, 41.5], [2.3, 41.65]]]}},
-        {"type": "Feature", "properties": {"codicomar": "20", "nomcomar": "Montsià"}, "geometry": {"type": "Polygon", "coordinates": [[[0.4, 40.75], [0.581, 40.709], [0.8, 40.6], [0.6, 40.52], [0.482, 40.543], [0.4, 40.6], [0.4, 40.75]]]}},
-        {"type": "Feature", "properties": {"codicomar": "21", "nomcomar": "Noguera"}, "geometry": {"type": "Polygon", "coordinates": [[[0.6, 42.1], [0.8, 42.15], [1.0, 42.0], [1.1, 41.8], [0.807, 41.79], [0.65, 41.85], [0.6, 42.1]]]}},
-        {"type": "Feature", "properties": {"codicomar": "22", "nomcomar": "Osona"}, "geometry": {"type": "Polygon", "coordinates": [[[2.1, 42.2], [2.31, 42.25], [2.5, 42.1], [2.254, 41.93], [2.1, 41.8], [2.1, 42.2]]]}},
-        {"type": "Feature", "properties": {"codicomar": "23", "nomcomar": "Pallars Jussà"}, "geometry": {"type": "Polygon", "coordinates": [[[0.7, 42.4], [0.95, 42.45], [1.1, 42.25], [0.895, 42.166], [0.7, 42.1], [0.7, 42.4]]]}},
-        {"type": "Feature", "properties": {"codicomar": "24", "nomcomar": "Pallars Sobirà"}, "geometry": {"type": "Polygon", "coordinates": [[[1.0, 42.7], [1.2, 42.75], [1.4, 42.5], [1.128, 42.413], [1.0, 42.5], [1.0, 42.7]]]}},
-        {"type": "Feature", "properties": {"codicomar": "25", "nomcomar": "Pla de l'Estany"}, "geometry": {"type": "Polygon", "coordinates": [[[2.7, 42.2], [2.8, 42.2], [2.85, 42.1], [2.767, 42.12], [2.7, 42.15], [2.7, 42.2]]]}},
-        {"type": "Feature", "properties": {"codicomar": "26", "nomcomar": "Pla d'Urgell"}, "geometry": {"type": "Polygon", "coordinates": [[[0.8, 41.7], [0.893, 41.72], [1.0, 41.65], [0.893, 41.631], [0.8, 41.6], [0.8, 41.7]]]}},
-        {"type": "Feature", "properties": {"codicomar": "27", "nomcomar": "Priorat"}, "geometry": {"type": "Polygon", "coordinates": [[[0.6, 41.25], [0.821, 41.28], [0.9, 41.2], [0.821, 41.144], [0.7, 41.1], [0.6, 41.15], [0.6, 41.25]]]}},
-        {"type": "Feature", "properties": {"codicomar": "28", "nomcomar": "Ribera d'Ebre"}, "geometry": {"type": "Polygon", "coordinates": [[[0.4, 41.2], [0.645, 41.22], [0.75, 41.1], [0.645, 41.094], [0.5, 41.0], [0.4, 41.05], [0.4, 41.2]]]}},
-        {"type": "Feature", "properties": {"codicomar": "29", "nomcomar": "Ripollès"}, "geometry": {"type": "Polygon", "coordinates": [[[2.0, 42.4], [2.19, 42.45], [2.4, 42.3], [2.286, 42.235], [2.19, 42.201], [2.0, 42.25], [2.0, 42.4]]]}},
-        {"type": "Feature", "properties": {"codicomar": "30", "nomcomar": "Segarra"}, "geometry": {"type": "Polygon", "coordinates": [[[1.1, 41.8], [1.272, 41.82], [1.4, 41.7], [1.272, 41.671], [1.1, 41.7], [1.1, 41.8]]]}},
-        {"type": "Feature", "properties": {"codicomar": "31", "nomcomar": "Segrià"}, "geometry": {"type": "Polygon", "coordinates": [[[0.3, 41.7], [0.62, 41.75], [0.75, 41.6], [0.62, 41.618], [0.5, 41.5], [0.3, 41.55], [0.3, 41.7]]]}},
-        {"type": "Feature", "properties": {"codicomar": "32", "nomcomar": "Selva"}, "geometry": {"type": "Polygon", "coordinates": [[[2.5, 41.95], [2.7, 42.0], [2.8, 41.9], [2.792, 41.7], [2.67, 41.86], [2.5, 41.8], [2.5, 41.95]]]}},
-        {"type": "Feature", "properties": {"codicomar": "33", "nomcomar": "Solsonès"}, "geometry": {"type": "Polygon", "coordinates": [[[1.3, 42.1], [1.516, 42.15], [1.65, 42.0], [1.516, 41.994], [1.4, 41.85], [1.3, 41.9], [1.3, 42.1]]]}},
-        {"type": "Feature", "properties": {"codicomar": "34", "nomcomar": "Tarragonès"}, "geometry": {"type": "Polygon", "coordinates": [[[1.1, 41.2], [1.244, 41.22], [1.375, 41.142], [1.244, 41.119], [1.1, 41.15], [1.1, 41.2]]]}},
-        {"type": "Feature", "properties": {"codicomar": "35", "nomcomar": "Terra Alta"}, "geometry": {"type": "Polygon", "coordinates": [[[0.25, 41.15], [0.434, 41.18], [0.55, 41.05], [0.434, 41.053], [0.3, 40.95], [0.25, 41.0], [0.25, 41.15]]]}},
-        {"type": "Feature", "properties": {"codicomar": "36", "nomcomar": "Urgell"}, "geometry": {"type": "Polygon", "coordinates": [[[1.0, 41.7], [1.141, 41.72], [1.25, 41.6], [1.141, 41.647], [1.0, 41.6], [1.0, 41.7]]]}},
-        {"type": "Feature", "properties": {"codicomar": "37", "nomcomar": "Val d'Aran"}, "geometry": {"type": "Polygon", "coordinates": [[[0.6, 42.8], [0.797, 42.82], [1.0, 42.7], [0.797, 42.703], [0.65, 42.65], [0.6, 42.8]]]}},
-        {"type": "Feature", "properties": {"codicomar": "38", "nomcomar": "Vallès Occidental"}, "geometry": {"type": "Polygon", "coordinates": [[[1.9, 41.65], [2.008, 41.68], [2.15, 41.6], [2.107, 41.548], [2.086, 41.473], [1.9, 41.55], [1.9, 41.65]]]}},
-        {"type": "Feature", "properties": {"codicomar": "39", "nomcomar": "Vallès Oriental"}, "geometry": {"type": "Polygon", "coordinates": [[[2.1, 41.8], [2.25, 41.85], [2.4, 41.75], [2.289, 41.608], [2.15, 41.58], [2.1, 41.7], [2.1, 41.8]]]}}
-    ]
-}
-
-# Dades dels municipis en format TopoJSON (enganxa aquí el teu text complet)
-TOPOJSON_DATA_STRING = """
-{"type":"Topology","objects":{"municipis":{"type":"GeometryCollection","bbox":[0.1594132380070182,40.52302501726089,3.3325423169129,42.86149650296012],"geometries":[{"type":"Polygon","properties":{"nom":"Bausen","comarca":"39","provincia":"25","sup":17.72},"id":250450,"arcs":[[0,1,2]]},{"type":"Polygon","properties":{"nom":"Canejan","comarca":"39","provincia":"25","sup":48.32},"id":250637,"arcs":[[3,-2,4,5,6]]},{"type":"Polygon","properties":{"nom":"Les","comarca":"39","provincia":"25","sup":23.45},"id":251214,"arcs":[[7,-3,-4,8,9]]},{"type":"Polygon","properties":{"nom":"Naut Aran","comarca":"39","provincia":"25","sup":255.76},"id":250254,"arcs":[[10,11,12,13,-6,14,15]]},{"type":"Polygon","properties":{"nom":"Bossòst","comarca":"39","provincia":"25","sup":28.17},"id":250595,"arcs":[[16,-10,17,18]]},{"type":"Polygon","properties":{"nom":"Vielha e Mijaran","comarca":"39","provincia":"25","sup":211.74},"id":252430,"arcs":[[19,20,21,22,-7,-14]]},{"type":"Polygon","properties":{"nom":"Alt Àneu","comarca":"26","provincia":"25","sup":217.78},"id":250241,"arcs":[[23,24,25,26,-16]]},{"type":"Polygon","properties":{"nom":"Arres","comarca":"39","provincia":"25","sup":11.57},"id":250313,"arcs":[[27,-19,28,29]]},{"type":"MultiPolygon","properties":{"nom":"Es Bòrdes","comarca":"39","provincia":"25","sup":21.44},"id":250576,"arcs":[[[-22,30,31,32]],[[33,34,-30,35]]]},{"type":"MultiPolygon","properties":{"nom":"Vilamòs","comarca":"39","provincia":"25","sup":15.44},"id":252477,"arcs":[[[-29,-18,-9,-23,-33,-36]],[[-32,36,-34]]]},{"type":"Polygon","properties":{"nom":"Lladorre","comarca":"26","provincia":"25","sup":146.98},"id":251235,"arcs":[[37,38,39,40,41]]},{"type":"Polygon","properties":{"nom":"la Guingueta d'Àneu","comarca":"26","provincia":"25","sup":108.42},"id":259031,"arcs":[[42,43,-25,-41,44,45,46]]},{"type":"Polygon","properties":{"nom":"Alins","comarca":"26","provincia":"25","sup":183.19},"id":250175,"arcs":[[47,48,-38,49,50,51,52]]},{"type":"Polygon","properties":{"nom":"Vall de Cardós","comarca":"26","provincia":"25","sup":56.2},"id":259010,"arcs":[[53,54,-45,-40,55,-48]]},{"type":"Polygon","properties":{"nom":"Esterri d'Àneu","comarca":"26","provincia":"25","sup":8.47},"id":250864,"arcs":[[-26,-44,56]]},{"type":"Polygon","properties":{"nom":"la Vall de Boí","comarca":"5","provincia":"25","sup":219.5},"id":250432,"arcs":[[-12,57,58,59,60,61]]},{"type":"Polygon","properties":{"nom":"Vilaller","comarca":"5","provincia":"25","sup":59.23},"id":252458,"arcs":[[-62,62,63,-20,-13],[64]]},{"type":"Polygon","properties":{"nom":"Espot","comarca":"26","provincia":"25","sup":97.3},"id":250827,"arcs":[[65,66,67,-58,-11,-27,-57,-43]]},{"type":"Polygon","properties":{"nom":"Esterri de Cardós","comarca":"26","provincia":"25","sup":16.55},"id":250870,"arcs":[[-39,-49,-56]]},{"type":"Polygon","properties":{"nom":"la Torre de Cabdella","comarca":"25","provincia":"25","sup":165.27},"id":252271,"arcs":[[68,69,70,-59,-68,71,72,73]]},{"type":"Polygon","properties":{"nom":"Llavorsí","comarca":"26","provincia":"25","sup":68.51},"id":251266,"arcs":[[74,75,76,-46,-55,77,78]]},{"type":"Polygon","properties":{"nom":"Sort","comarca":"26","provincia":"25","sup":105.05},"id":252094,"arcs":[[79,80,81,-72,-67]]},{"type":"Polygon","properties":{"nom":"Tírvia","comarca":"26","provincia":"25","sup":8.5},"id":252213,"arcs":[[82,-78,-54,-53]]},{"type":"Polygon","properties":{"nom":"Rialp","comarca":"26","provincia":"25","sup":63.3},"id":251832,"arcs":[[-66,-47,-77,83,-80]]},{"type":"Polygon","properties":{"nom":"Farrera","comarca":"26","provincia":"25","sup":61.87},"id":250899,"arcs":[[-83,-52,84,85,-79]]},{"type":"Polygon","properties":{"nom":"Lles de Cerdanya","comarca":"15","provincia":"25","sup":102.79},"id":251272,"arcs":[[86,87,88,89,90,91,92]]},{"type":"Polygon","properties":{"nom":"Sarroca de Bellera","comarca":"25","provincia":"25","sup":87.54},"id":252015,"arcs":[[93,94,95,-71,96]]},{"type":"Polygon","properties":{"nom":"el Pont de Suert","comarca":"5","provincia":"25","sup":148.14},"id":251736,"arcs":[[97,98,99,-64,100,101,-94]]},{"type":"Polygon","properties":{"nom":"Soriguera","comarca":"26","provincia":"25","sup":106.39},"id":252101,"arcs":[[-81,-84,-76,102]]},{"type":"Polygon","properties":{"nom":"Baix Pallars","comarca":"26","provincia":"25","sup":129.41},"id":250404,"arcs":[[-103,-75,-74,-70,103,104,105]]},{"type":"Polygon","properties":{"nom":"Conca de Dalt","comarca":"25","provincia":"25","sup":128.84},"id":251614,"arcs":[[-104,-96,106]]},{"type":"Polygon","properties":{"nom":"Abella de la Conca","comarca":"25","provincia":"25","sup":78.27},"id":250019,"arcs":[[-107,107,108]]},{"type":"Polygon","properties":{"nom":"Salàs de Pallars","comarca":"25","provincia":"25","sup":20.27},"id":251909,"arcs":[[-106,-101,109,110]]},{"type":"Polygon","properties":{"nom":"Isona i Conca Dellà","comarca":"25","provincia":"25","sup":139.43},"id":251151,"arcs":[[-109,111,112]]},{"type":"Polygon","properties":{"nom":"Tremp","comarca":"25","provincia":"25","sup":302.82},"id":252265,"arcs":[[-95,-102,113,114,115,116]]},{"type":"Polygon","properties":{"nom":"Talarn","comarca":"25","provincia":"25","sup":27.86},"id":252156,"arcs":[[-111,-110,117]]}]},"transform":{"scale":[0.000318044711317585,0.0002342898730990425],"translate":[0.1594132380070182,40.52302501726089]},"arcs":[]}
-"""
 
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
@@ -4297,6 +4238,56 @@ def ui_pestanya_webcams(poble_sel, zona_activa):
 
 
 
+@st.cache_data(show_spinner="Carregant geometries municipals...")
+def carregar_dades_municipis():
+    """
+    Carrega el fitxer GeoJSON amb les geometries de tots els municipis de Catalunya.
+    """
+    try:
+        # Aquesta línia llegeix el teu arxiu de municipis
+        gdf_municipis = gpd.read_file("municipis.geojson")
+        gdf_municipis = gdf_municipis.to_crs("EPSG:4326")
+        # Convertim el codi de comarca a número per assegurar la compatibilitat
+        gdf_municipis['comarca'] = pd.to_numeric(gdf_municipis['comarca'])
+        return gdf_municipis
+    except Exception as e:
+        st.error(f"Error crític: No s'ha pogut carregar l'arxiu 'municipis.geojson'. Assegura't que existeix. Detall: {e}")
+        return None
+
+@st.cache_data(show_spinner="Carregant mapa de selecció...")
+def carregar_dades_geografiques():
+    """
+    Versió final i robusta que busca automàticament el mapa personalitzat
+    i, si no el troba, utilitza el mapa de comarques per defecte.
+    Aquesta versió corregeix el NameError.
+    """
+    # Llista de noms d'arxiu per ordre de prioritat
+    noms_possibles = ["mapes_personalitzat.geojson", "comarques.geojson"]
+    file_to_load = None
+
+    # Busca el primer arxiu que existeixi
+    for file in noms_possibles:
+        if os.path.exists(file):
+            file_to_load = file
+            break
+
+    # Si no en troba cap, mostra un error
+    if file_to_load is None:
+        st.error(
+            "**Error Crític: Mapa no trobat.**\n\n"
+            "No s'ha trobat l'arxiu `mapa_personalitzat.geojson` ni `comarques.geojson` a la carpeta de l'aplicació. "
+            "Assegura't que almenys un d'aquests dos arxius existeixi."
+        )
+        return None
+
+    # Si troba un arxiu, el carrega
+    try:
+        gdf = gpd.read_file(file_to_load)
+        gdf = gdf.to_crs("EPSG:4326")
+        return gdf
+    except Exception as e:
+        st.error(f"S'ha produït un error en carregar l'arxiu de mapa '{file_to_load}': {e}")
+        return None
 
 
 def on_poble_select():
@@ -4544,61 +4535,6 @@ def carregar_dades_sondeig_noruega(lat, lon, hourly_index):
     except Exception as e:
         # Aquest return ja era correcte (retornava 3 valors)
         return None, hourly_index, f"Error en carregar dades del sondeig de Noruega: {e}"
-
-
-
-@st.cache_data(show_spinner="Carregant dades geogràfiques...")
-def carregar_dades_geografiques_i_mapeig():
-    """
-    Carrega el mapa de comarques des de la variable GeoJSON integrada i crea un
-    diccionari per mapejar el nom de la comarca al seu codi numèric.
-    """
-    try:
-        # Llegeix les dades directament de la variable GEOJSON_COMARQUES
-        gdf_comarques = gpd.GeoDataFrame.from_features(GEOJSON_COMARQUES['features'])
-        gdf_comarques.set_crs("EPSG:4326", inplace=True)
-
-        # Creem el diccionari de mapeig (nom -> codi)
-        if 'nomcomar' in gdf_comarques.columns and 'codicomar' in gdf_comarques.columns:
-            gdf_comarques['codicomar'] = pd.to_numeric(gdf_comarques['codicomar'])
-            comarca_map = pd.Series(gdf_comarques.codicomar.values, index=gdf_comarques.nomcomar).to_dict()
-        else:
-            comarca_map = {}
-            st.warning("Les dades de comarques integrades no tenen el format esperat.")
-
-        return gdf_comarques, comarca_map
-    except Exception as e:
-        st.error(f"Error en carregar les dades de comarques: {e}")
-        return None, {}
-
-@st.cache_data(show_spinner="Carregant geometries municipals...")
-def carregar_dades_municipis():
-    """
-    Carrega les dades dels municipis des de la variable TopoJSON integrada,
-    les converteix a GeoDataFrame i els assigna el sistema de coordenades correcte (CRS).
-    """
-    try:
-        # Carreguem el JSON des del text
-        topo_data = json.loads(TOPOJSON_DATA_STRING)
-        
-        # Convertim de TopoJSON a un format GeoJSON estàndard (a la memòria)
-        municipis_geojson = topojson.feature(topo_data, topo_data['objects']['municipis'])
-
-        # Llegim el GeoJSON amb GeoPandas
-        gdf_municipis = gpd.GeoDataFrame.from_features(municipis_geojson['features'])
-        
-        # --- PAS CRÍTIC: ASSIGNAR EL SISTEMA DE COORDENADES ---
-        # Li diem a GeoPandas que les coordenades són latitud/longitud (WGS84)
-        gdf_municipis.set_crs("EPSG:4326", inplace=True)
-        
-        # Convertim la columna 'comarca' a un tipus numèric per poder filtrar
-        gdf_municipis['comarca'] = pd.to_numeric(gdf_municipis['comarca'], errors='coerce')
-        
-        return gdf_municipis
-    except Exception as e:
-        st.error(f"Error crític en processar les dades dels municipis: {e}")
-        return None
-                                                       
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_noruega(nivell, hourly_index):
@@ -4909,7 +4845,7 @@ def calcular_alertes_per_comarca(hourly_index, nivell):
     CONV_THRESHOLD = 20 # Llindar mínim per començar a considerar una alerta (verd)
     
     map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
-    gdf_zones = carregar_dades_geografiques_i_mapeig()
+    gdf_zones = carregar_dades_geografiques()
 
     # Comprovacions de seguretat inicials
     if error or not map_data or gdf_zones is None or 'lons' not in map_data or len(map_data['lons']) < 4:
@@ -6167,16 +6103,18 @@ def run_canada_app():
         ui_pestanya_webcams(poble_sel, zona_activa="canada")
 
 def run_catalunya_app():
-    # --- LÒGICA ANTI-BUG PER FORÇAR EL REDIBUIXAT EN SELECCIONAR POBLE ---
+    # --- NOU BLOC: LÒGICA ANTI-BUG PER FORÇAR EL REDIBUIXAT ---
     if 'poble_seleccionat_per_boto' in st.session_state:
         nom_poble = st.session_state.poble_seleccionat_per_boto
         del st.session_state.poble_seleccionat_per_boto
         st.session_state.poble_sel = nom_poble
+        # Important: Reiniciem la pestanya per defecte perquè el missatge aparegui
         if 'active_tab_cat' in st.session_state:
             del st.session_state['active_tab_cat']
         st.rerun()
+    # --- FI DEL NOU BLOC ---
 
-    # --- CAPÇALERA I NAVEGACIÓ GLOBAL ---
+    # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
@@ -6194,7 +6132,7 @@ def run_catalunya_app():
             st.rerun()
     st.divider()
 
-    # --- GESTIÓ D'ESTAT I SELECTORS GLOBALS ---
+    # --- PAS 2, 3, 4 (Gestió d'estat i selectors) ---
     if 'selected_area' not in st.session_state: st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
     if 'poble_sel' not in st.session_state: st.session_state.poble_sel = "--- Selecciona una localitat ---"
     
@@ -6213,10 +6151,11 @@ def run_catalunya_app():
     local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_num))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    alertes_zona = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
 
-    # --- LÒGICA PRINCIPAL DE VISUALITZACIÓ ---
+    # --- PAS 5: LÒGICA PRINCIPAL ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # --- VISTA D'ANÀLISI DETALLADA (QUAN UN POBLE ESTÀ SELECCIONAT) ---
+        # --- VISTA D'ANÀLISI DETALLADA ---
         poble_sel = st.session_state.poble_sel
         st.success(f"### Anàlisi per a: **{poble_sel}**")
         if st.button("⬅️ Tornar al mapa de selecció"):
@@ -6234,14 +6173,20 @@ def run_catalunya_app():
             menu_options.append("💬 Assistent IA")
             menu_icons.append("chat-quote-fill")
 
+        # Gestió de la pestanya per defecte
         if 'active_tab_cat' not in st.session_state:
-            st.session_state.active_tab_cat_index = 0
+            st.session_state.active_tab_cat_index = 0 # Comença a la primera
         
         active_tab = option_menu(
-            menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", 
-            orientation="horizontal", key='option_menu_widget',
+            menu_title=None, 
+            options=menu_options, 
+            icons=menu_icons, 
+            menu_icon="cast", 
+            orientation="horizontal",
+            key='option_menu_widget', # Clau única per al widget
             default_index=st.session_state.active_tab_cat_index
         )
+        # Actualitza l'estat si l'usuari canvia de pestanya
         st.session_state.active_tab_cat = active_tab
 
         if 'poble_sel' in st.session_state and st.session_state.poble_sel != "--- Selecciona una localitat ---":
@@ -6268,9 +6213,7 @@ def run_catalunya_app():
                 elif active_tab == "Anàlisi Comarcal":
                     comarca_actual = get_comarca_for_poble(poble_sel)
                     if comarca_actual:
-                        # Obtenim un valor de convergència representatiu per a la comarca
-                        heatmap_data = preparar_dades_heatmap(hourly_index_sel, nivell_sel)
-                        valor_conv_comarcal = max([p[2] for p in heatmap_data]) if heatmap_data else 0 # Simplificació
+                        valor_conv_comarcal = alertes_zona.get(comarca_actual, 0)
                         ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv)
                     else:
                         st.warning(f"No s'ha pogut determinar la comarca per a {poble_sel}.")
@@ -6281,33 +6224,22 @@ def run_catalunya_app():
                     st.caption(timestamp_str)
                     if 'regenerate_key' not in st.session_state: st.session_state.regenerate_key = 0
                     if st.button("🔄 Regenerar Totes les Animacions"): forcar_regeneracio_animacio()
-                    
                     with st.spinner("Generant simulacions visuals..."):
                         params_tuple = tuple(sorted(params_calc.items()))
                         gifs = generar_animacions_professionals(params_tuple, timestamp_str, st.session_state.regenerate_key)
-                    
                     col1, col2, col3 = st.columns(3)
-                    
                     with col1:
                         st.markdown("<h5 style='text-align: center;'>1. Iniciació</h5>", unsafe_allow_html=True)
-                        if gifs['iniciacio']:
-                            st.image(gifs['iniciacio'])
-                        else:
-                            st.info("Condicions estables.")
-                    
+                        if gifs['iniciacio']: st.image(gifs['iniciacio'])
+                        else: st.info("Condicions estables.")
                     with col2:
                         st.markdown("<h5 style='text-align: center;'>2. Maduresa</h5>", unsafe_allow_html=True)
-                        if gifs['maduresa']:
-                            st.image(gifs['maduresa'])
-                        else:
-                            st.info("Sense energia per a tempesta.")
-                    
+                        if gifs['maduresa']: st.image(gifs['maduresa'])
+                        else: st.info("Sense energia per a tempesta.")
                     with col3:
                         st.markdown("<h5 style='text-align: center;'>3. Dissipació</h5>", unsafe_allow_html=True)
-                        if gifs['dissipacio']:
-                            st.image(gifs['dissipacio'])
-                        else:
-                            st.info("Sense fase final.")
+                        if gifs['dissipacio']: st.image(gifs['dissipacio'])
+                        else: st.info("Sense fase final.")
                     st.divider()
                     ui_guia_tall_vertical(params_calc, nivell_sel)
                 elif active_tab == "💬 Assistent IA" and not is_guest:
@@ -6321,24 +6253,12 @@ def run_catalunya_app():
     else: 
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU + BOTONS) ---
         with st.spinner("Carregant mapa de situació de Catalunya..."):
-            # Carreguem totes les dades geogràfiques necessàries
-            gdf_comarques, comarca_map = carregar_dades_geografiques_i_mapeig()
-            gdf_municipis = carregar_dades_municipis()
-            heatmap_data = preparar_dades_heatmap(hourly_index_sel, nivell_sel)
-            
-            # --- LÍNIA CORREGIDA: Passem TOTS els arguments necessaris ---
-            map_output = ui_mapa_display_personalitzat(
-                heatmap_data,
-                gdf_comarques,
-                gdf_municipis,
-                comarca_map,
-                st.session_state.get('selected_area')
-            )
+            map_output = ui_mapa_display_personalitzat(alertes_zona)
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
             if "Comarca:" in raw_tooltip:
-                clicked_area = raw_tooltip.split(':')[-1].strip()
+                clicked_area = raw_tooltip.split(':')[-1].strip().replace('.', '')
                 if clicked_area != st.session_state.get('selected_area'):
                     st.session_state.selected_area = clicked_area
                     st.rerun()
@@ -6347,71 +6267,44 @@ def run_catalunya_app():
         if selected_area and "---" not in selected_area:
             st.markdown(f"##### Selecciona una localitat a **{selected_area}**:")
             
-            poblacions_a_mostrar = CIUTATS_PER_COMARCA.get(selected_area.strip(), {})
+            gdf = carregar_dades_geografiques()
+            property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), 'nom_comar')
+            poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
+            
+            poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
             
             if poblacions_a_mostrar:
                 cols = st.columns(4)
-                for i, nom_poble in enumerate(sorted(poblacions_a_mostrar.keys())):
-                    with cols[i % 4]:
+                col_index = 0
+                for nom_poble in sorted(poblacions_a_mostrar.keys()):
+                    with cols[col_index % 4]:
                         st.button(
-                            nom_poble, key=f"btn_{nom_poble.replace(' ', '_')}",
-                            on_click=seleccionar_poble, args=(nom_poble,), use_container_width=True
+                            nom_poble,
+                            key=f"btn_{nom_poble.replace(' ', '_')}",
+                            on_click=seleccionar_poble,
+                            args=(nom_poble,),
+                            use_container_width=True
                         )
+                    col_index += 1
             else:
-                st.warning("Aquesta comarca no té localitats predefinides per a l'anàlisi detallada.")
+                st.warning("Aquesta zona no té localitats predefinides per a l'anàlisi.")
 
             if st.button("⬅️ Veure totes les zones"):
                 st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
                 st.rerun()
         else:
-             st.info("Fes clic en una comarca del mapa per veure'n els municipis i les localitats d'anàlisi.", icon="👆")
+             st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
 
 
-@st.cache_data(ttl=1800, show_spinner="Analitzant focus de convergència...")
-def preparar_dades_heatmap(hourly_index, nivell):
-    """
-    Prepara les dades per a un HeatMap de Folium.
-    Calcula la convergència a tota la graella i retorna una llista de punts
-    amb la seva intensitat [latitud, longitud, pes].
-    """
-    CONV_THRESHOLD = 20  # Llindar a partir del qual es mostra un punt al mapa de calor
-    map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
-    if error or not map_data:
-        return []
 
-    try:
-        # Càlcul de la graella de convergència
-        lons, lats = map_data['lons'], map_data['lats']
-        grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100))
-        u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
-        grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-        grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-        with np.errstate(invalid='ignore'):
-            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-            convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
-            convergence_scaled[np.isnan(convergence_scaled)] = 0
 
-        # Filtra els punts que superen el llindar
-        hot_points_indices = np.where(convergence_scaled > CONV_THRESHOLD)
-        
-        # Crea la llista de dades en el format que HeatMap necessita: [[lat, lon, pes], ...]
-        heatmap_data = [
-            [lat, lon, conv] for lat, lon, conv in zip(
-                grid_lat[hot_points_indices],
-                grid_lon[hot_points_indices],
-                convergence_scaled[hot_points_indices]
-            )
-        ]
-        return heatmap_data
-
-    except Exception as e:
-        print(f"Error a preparar_dades_heatmap: {e}")
-        return []
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data):
     """
-    PESTANYA D'ANÀLISI COMARCAL (V. FINAL AMB GRADIENT).
-    - Mostra un mapa amb un gradient de convergència (estil radar) retallat a la forma de la comarca.
+    PESTANYA D'ANÀLISI COMARCAL (V. FINAL).
+    - Mostra un mapa estàtic i "congelat" de la comarca.
+    - El mapa s'ajusta automàticament als límits de la comarca.
+    - Tota la interacció (zoom, moviment) està desactivada.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: **{comarca}**")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6420,57 +6313,72 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
     with col_mapa:
         st.markdown("##### Focus de Convergència a la Zona")
-        with st.spinner("Generant mapa de gradient comarcal..."):
-            
-            # --- CANVI CLAU AQUÍ: Cridem a la funció correcta ---
-            gdf_comarques, _ = carregar_dades_geografiques_i_mapeig()
-            # ----------------------------------------------------
+        gdf_comarques = carregar_dades_geografiques()
+        if gdf_comarques is None:
+            st.error("No s'ha pogut carregar el mapa de comarques.")
+            return
 
-            if gdf_comarques is None:
-                st.error("No s'ha pogut carregar el mapa de comarques.")
-                return
+        property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_comarques.columns), 'nom_comar')
+        comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
 
-            property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_comarques.columns), 'nomcomar')
-            comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
-
-            if comarca_shape.empty:
-                st.warning(f"No s'ha trobat la geometria per a la comarca '{comarca}'.")
-                return
-            
-            # Creem el mapa base
-            bounds = comarca_shape.total_bounds
-            m = folium.Map(tiles="CartoDB positron", zoom_control=False, scrollWheelZoom=False, dragging=False)
-            m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
-
-            # Generem la imatge del gradient retallada i la superposem
-            gradient_img_b64, img_bounds = crear_gradient_convergencia_per_comarca(map_data, comarca_shape)
-            if gradient_img_b64:
-                folium.raster_layers.ImageOverlay(
-                    image=f"data:image/png;base64,{gradient_img_b64}",
-                    bounds=img_bounds,
-                    opacity=0.7,
-                    name="Convergència"
-                ).add_to(m)
-
-            # Dibuixem la vora de la comarca per sobre
+        # --- CANVI CLAU: MAPA "CONGELAT" ---
+        # Creem un mapa inicial sense zoom ni centre, i amb tota la interacció desactivada.
+        m = folium.Map(
+            tiles="CartoDB positron",
+            zoom_control=False,
+            scrollWheelZoom=False,
+            dragging=False,
+            doubleClickZoom=False
+        )
+        
+        if comarca_shape.empty:
+            st.warning(f"No s'ha trobat la geometria per a la comarca '{comarca}'.")
+        else:
+            # Dibuixem la comarca ressaltada
             folium.GeoJson(
                 comarca_shape,
-                style_function=lambda x: {'fillOpacity': 0, 'color': 'black', 'weight': 2.5}
+                style_function=lambda x: {'fillColor': '#007bff', 'color': 'black', 'weight': 2, 'fillOpacity': 0.3}
             ).add_to(m)
+            
+            # Ajustem els límits del mapa a la geometria de la comarca
+            bounds = comarca_shape.total_bounds
+            m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
 
-            st_folium(m, width="100%", height=450)
+        # Troba i marca el punt de màxima convergència dins de la comarca
+        if map_data and valor_conv > 10:
+            lons, lats = map_data['lons'], map_data['lats']
+            grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100))
+            u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
+            grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+            grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+            convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
+            
+            points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': convergence_scaled.flatten()})
+            gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
+            
+            comarca_shape = comarca_shape.to_crs(gdf_points.crs)
+            points_in_comarca = gpd.sjoin(gdf_points, comarca_shape, how="inner", predicate="within")
+            
+            if not points_in_comarca.empty:
+                max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
+                folium.Marker(
+                    location=[max_conv_point.geometry.y, max_conv_point.geometry.x],
+                    tooltip=f"Focus Màxim: {max_conv_point.conv:.0f}",
+                    icon=folium.Icon(color='red', icon='bolt')
+                ).add_to(m)
+
+        st_folium(m, width="100%", height=450)
 
     with col_diagnostic:
         st.markdown("##### Diagnòstic de la Zona")
         
-        # El valor de convergència màxim el traiem de la funció 'calcular_alertes_per_comarca' a run_catalunya_app
-        # Per ara, utilitzem el 'valor_conv' que es passa com a argument.
         if valor_conv >= 60:
             nivell_alerta, color_alerta, emoji, descripcio = "Molt Alt", "#DC3545", "🔴", f"S'ha detectat un focus de convergència **extremadament fort** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquesta és una senyal molt clara per a la formació imminent de tempestes, possiblement severes i organitzades, a la zona. Cal parar molta atenció."
         elif valor_conv >= 40:
             nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FD7E14", "🟠", f"Hi ha un focus de convergència **forta** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona. El potencial de temps sever és considerable."
         elif valor_conv >= 20:
-            nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#FFC107", "🟡", f"S'observa una zona de convergència **moderada** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquesta condició pot ser suficient per iniciar tempestes, especialment si l'atmosfera és inestable. Cal vigilar l'evolució."
+            nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#28A745", "🟢", f"S'observa una zona de convergència **moderada** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquesta condició pot ser suficient per iniciar tempestes, especialment si l'atmosfera és inestable. Cal vigilar l'evolució."
         else:
             nivell_alerta, color_alerta, emoji, descripcio = "Baix", "#6c757d", "⚪", "No es detecten focus de convergència significatius a la comarca. El forçament dinàmic per iniciar tempestes és feble o inexistent en aquesta zona."
 
@@ -6481,68 +6389,8 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         </div>
         """, unsafe_allow_html=True)
         
-        st.info(f"**Nota:** Aquesta anàlisi es basa en la convergència de vent a **{nivell_sel} hPa**. La formació final de tempestes depèn també de la inestabilitat (CAPE) i la presència d'inhibició (CIN), que pots consultar a la pestanya 'Anàlisi Vertical'.", icon="ℹ️")
+        st.info(f"**Nota:** Aquesta anàlisi es basa en la convergència de vent a **{nivell_sel} hPa**. La formació final de tempestes depèn també de la inestabilitat atmosfèrica (CAPE) i la presència d'inhibició (CIN), que pots consultar a la pestanya 'Anàlisi Vertical' de qualsevol municipi de la zona.", icon="ℹ️")
 
-def crear_gradient_convergencia_per_comarca(map_data, comarca_shape):
-    """
-    Genera una imatge PNG transparent d'un gradient de convergència,
-    retallada a la forma de la comarca seleccionada.
-    Retorna la imatge en format Base64 i els seus límits geogràfics.
-    """
-    if not map_data or comarca_shape.empty:
-        return None, None
-
-    # 1. Càlcul de la graella de convergència
-    lons, lats = map_data['lons'], map_data['lats']
-    u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
-    
-    bounds = comarca_shape.total_bounds
-    margin = 0.1 # Un petit marge per asegurar que la graella cobreix tota la comarca
-    grid_lon, grid_lat = np.meshgrid(
-        np.linspace(bounds[0] - margin, bounds[2] + margin, 150),
-        np.linspace(bounds[1] - margin, bounds[3] + margin, 150)
-    )
-
-    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-    
-    with np.errstate(invalid='ignore'):
-        dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-        convergence = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
-        convergence[np.isnan(convergence)] = 0
-    
-    # 2. Creació del gràfic amb Matplotlib i Cartopy
-    fig = plt.figure(figsize=(8, 8), dpi=150)
-    ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
-    ax.set_extent(bounds, crs=ccrs.PlateCarree())
-    
-    # Fons i eixos transparents
-    fig.patch.set_alpha(0)
-    ax.patch.set_alpha(0)
-    ax.axis('off')
-
-    # 3. Dibuix del gradient
-    levels = np.linspace(20, 100, 9)
-    colors = ['#00BFFF', '#2E8B57', '#9ACD32', '#FFD700', '#FFA500', '#FF4500', '#DC143C', '#FF00FF'] # Estil radar
-    cmap = ListedColormap(colors)
-    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
-    
-    contour = ax.contourf(grid_lon, grid_lat, convergence, levels=levels, cmap=cmap, norm=norm, extend='max', transform=ccrs.PlateCarree())
-    
-    # 4. Retall de la imatge amb la forma de la comarca
-    for geometry in comarca_shape.geometry:
-        ax.set_clip_path(gpd.GeoSeries([geometry]).__geo_interface__['features'][0]['geometry'])
-
-    # 5. Conversió a imatge Base64
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', transparent=True, bbox_inches='tight', pad_inches=0)
-    plt.close(fig)
-    
-    import base64
-    img_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-    
-    return img_b64, [[bounds[1], bounds[0]], [bounds[3], bounds[2]]]
-    
 def seleccionar_poble(nom_poble):
     """Callback segur que estableix la intenció de seleccionar un poble."""
     # En lloc de canviar 'poble_sel' directament, establim un estat intermedi.
@@ -6591,72 +6439,103 @@ CAPITALS_COMARCA = {
     "Vallès Oriental": {"nom": "Granollers", "lat": 41.6083, "lon": 2.2886}
 }
 
-def ui_mapa_display_personalitzat(heatmap_data, gdf_comarques, gdf_municipis, comarca_map, selected_area=None):
+def ui_mapa_display_personalitzat(alertes_per_zona):
     """
-    Versió amb HeatMap per visualitzar la convergència amb gradients.
-    Aquesta versió ja NO crida a funcions antigues i rep totes les dades com a paràmetres.
+    Versió final robusta v14 (Límits de Zoom).
+    - Afegeix un nivell de zoom mínim per impedir sortir de Catalunya.
+    - Manté el mapa congelat quan se selecciona una comarca.
     """
     st.markdown("#### Mapa de Situació")
-    # Comprova que les dades necessàries han arribat
-    if gdf_comarques is None:
-        st.error("Error: No s'han pogut carregar les dades de les comarques per generar el mapa.")
-        return None
+    gdf = carregar_dades_geografiques()
+    if gdf is None: return None
 
-    # Configuració del mapa base
+    property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), None)
+    if not property_name:
+        st.error("Error Crític en el Mapa: L'arxiu GeoJSON no conté una propietat de nom vàlida.")
+        return None
+    tooltip_alias = 'Comarca:'
+
+    selected_area = st.session_state.get('selected_area')
+    
+    # --- CANVI CLAU: PARÀMETRES DEL MAPA REVISATS ---
     map_params = {
-        "location": [41.83, 1.87], "zoom_start": 8,
+        "location": [41.83, 1.87],
+        "zoom_start": 8,
         "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-        "attr": "Tiles &copy; Esri", "scrollWheelZoom": True, "dragging": True,
-        "max_bounds": [[40.4, 0.0], [42.9, 3.5]], "min_zoom": 8, "max_zoom": 12
+        "attr": "Tiles &copy; Esri &mdash; and the GIS User Community",
+        "scrollWheelZoom": True,
+        "dragging": True,
+        "zoom_control": True,
+        "doubleClickZoom": True,
+        "max_bounds": [[40.4, 0.0], [42.9, 3.5]],
+        "min_zoom": 8, # <-- NOU: Impedeix fer "unzoom" excessiu
+        "max_zoom": 12  # <-- NOU: Limita el zoom màxim per consistència
     }
+
     if selected_area and "---" not in selected_area:
-        zona_shape = gdf_comarques[gdf_comarques['nomcomar'] == selected_area]
+        cleaned_selected_area = selected_area.strip().replace('.', '')
+        zona_shape = gdf[gdf[property_name].str.strip().str.replace('.', '') == cleaned_selected_area]
         if not zona_shape.empty:
             centroid = zona_shape.geometry.centroid.iloc[0]
-            map_params.update({"location": [centroid.y, centroid.x], "zoom_start": 10, "scrollWheelZoom": False, "dragging": False})
+            map_params["location"] = [centroid.y, centroid.x]
+            map_params["zoom_start"] = 10
+            map_params["scrollWheelZoom"] = False
+            map_params["dragging"] = False
+            map_params["zoom_control"] = False
+            map_params["doubleClickZoom"] = False
             bounds = zona_shape.total_bounds
             map_params["max_bounds"] = [[bounds[1], bounds[0]], [bounds[3], bounds[2]]]
-    
+
     m = folium.Map(**map_params)
+    # --- FI DEL CANVI ---
 
-    # Dibuixa les comarques amb un estil base subtil
+    def get_color_from_convergence(value):
+        if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
+        if value >= 100: return '#9370DB', '#FFFFFF'
+        if value >= 60: return '#DC3545', '#FFFFFF'
+        if value >= 40: return '#FD7E14', '#FFFFFF'
+        if value >= 20: return '#28A745', '#FFFFFF'
+        return '#6c757d', '#FFFFFF'
+
+    def style_function(feature):
+        style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
+        nom_feature_raw = feature.get('properties', {}).get(property_name)
+        if nom_feature_raw and isinstance(nom_feature_raw, str):
+            nom_feature = nom_feature_raw.strip().replace('.', '')
+            conv_value = alertes_per_zona.get(nom_feature)
+            if conv_value:
+                alert_color, _ = get_color_from_convergence(conv_value)
+                if alert_color:
+                    style['fillColor'] = alert_color; style['color'] = alert_color
+                    style['fillOpacity'] = 0.55; style['weight'] = 2.5
+            cleaned_selected_area = st.session_state.get('selected_area', '').strip().replace('.', '')
+            if nom_feature == cleaned_selected_area:
+                style['fillColor'] = '#007bff'; style['color'] = '#ffffff'
+                style['weight'] = 3; style['fillOpacity'] = 0.5
+        return style
+
+    highlight_function = lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5}
+
     folium.GeoJson(
-        gdf_comarques,
-        style_function=lambda feature: {
-            'fillColor': '#808080', 'color': '#FFFFFF',
-            'weight': 1, 'fillOpacity': 0.1
-        },
-        highlight_function=lambda x: {'weight': 2.5, 'color': '#FFFFFF'},
-        tooltip=folium.GeoJsonTooltip(fields=['nomcomar'], aliases=['Comarca:'])
+        gdf,
+        style_function=style_function,
+        highlight_function=highlight_function,
+        tooltip=folium.GeoJsonTooltip(fields=[property_name], aliases=[tooltip_alias])
     ).add_to(m)
-    
-    # Afegeix el HeatMap de convergència
-    if heatmap_data:
-        HeatMap(
-            heatmap_data, name="Focus de Convergència", min_opacity=0.2,
-            max_val=max([p[2] for p in heatmap_data]) if heatmap_data else 100,
-            radius=25, blur=20, gradient={0.2: 'cyan', 0.4: 'lime', 0.7: 'yellow', 1: 'red'}
-        ).add_to(m)
-    
-    # Dibuixa la comarca seleccionada ressaltada i els seus municipis
-    if selected_area and "---" not in selected_area:
-        comarca_shape = gdf_comarques[gdf_comarques['nomcomar'] == selected_area]
-        if not comarca_shape.empty:
-            folium.GeoJson(
-                comarca_shape,
-                style_function=lambda x: {'fillColor': '#007bff', 'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.4}
+
+    for zona, conv_value in alertes_per_zona.items():
+        capital_info = CAPITALS_COMARCA.get(zona)
+        if capital_info:
+            bg_color, text_color = get_color_from_convergence(conv_value)
+            nom_capital = capital_info['nom']
+            icon_html = f"""<div style="position: relative; background-color: {bg_color}; color: {text_color}; padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color}; font-family: sans-serif; font-size: 13px; font-weight: bold; text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5); transform: translate(-50%, -100%);"><div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div><div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>{zona}: {conv_value:.0f}</div>"""
+            icon = folium.DivIcon(html=icon_html)
+            folium.Marker(
+                location=[capital_info['lat'], capital_info['lon']],
+                icon=icon,
+                tooltip=f"Comarca: {zona}"
             ).add_to(m)
-
-        comarca_code = comarca_map.get(selected_area)
-        if comarca_code and gdf_municipis is not None:
-            municipis_filtrats = gdf_municipis[gdf_municipis['comarca'] == comarca_code]
-            for _, municipi in municipis_filtrats.iterrows():
-                centroid = municipi.geometry.centroid
-                folium.CircleMarker(
-                    location=[centroid.y, centroid.x], radius=4, color='#ffffff', weight=1.5,
-                    fill=True, fill_color='#007bff', fill_opacity=0.8, tooltip=municipi['nom']
-                ).add_to(m)
-
+    
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
     
     
