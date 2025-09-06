@@ -6301,10 +6301,8 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data):
     """
-    PESTANYA D'ANÀLISI COMARCAL (V. FINAL).
-    - Mostra un mapa estàtic i "congelat" de la comarca.
-    - El mapa s'ajusta automàticament als límits de la comarca.
-    - Tota la interacció (zoom, moviment) està desactivada.
+    PESTANYA D'ANÀLISI COMARCAL (V. FINAL AMB GRADIENT).
+    - Mostra un mapa amb un gradient de convergència (estil radar) retallat a la forma de la comarca.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: **{comarca}**")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6313,62 +6311,41 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
     with col_mapa:
         st.markdown("##### Focus de Convergència a la Zona")
-        gdf_comarques = carregar_dades_geografiques()
-        if gdf_comarques is None:
-            st.error("No s'ha pogut carregar el mapa de comarques.")
-            return
+        with st.spinner("Generant mapa de gradient comarcal..."):
+            gdf_comarques, _ = carregar_dades_geografiques_i_mapeig()
+            if gdf_comarques is None:
+                st.error("No s'ha pogut carregar el mapa de comarques.")
+                return
 
-        property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_comarques.columns), 'nom_comar')
-        comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
+            property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_comarques.columns), 'nomcomar')
+            comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
 
-        # --- CANVI CLAU: MAPA "CONGELAT" ---
-        # Creem un mapa inicial sense zoom ni centre, i amb tota la interacció desactivada.
-        m = folium.Map(
-            tiles="CartoDB positron",
-            zoom_control=False,
-            scrollWheelZoom=False,
-            dragging=False,
-            doubleClickZoom=False
-        )
-        
-        if comarca_shape.empty:
-            st.warning(f"No s'ha trobat la geometria per a la comarca '{comarca}'.")
-        else:
-            # Dibuixem la comarca ressaltada
-            folium.GeoJson(
-                comarca_shape,
-                style_function=lambda x: {'fillColor': '#007bff', 'color': 'black', 'weight': 2, 'fillOpacity': 0.3}
-            ).add_to(m)
+            if comarca_shape.empty:
+                st.warning(f"No s'ha trobat la geometria per a la comarca '{comarca}'.")
+                return
             
-            # Ajustem els límits del mapa a la geometria de la comarca
+            # Creem el mapa base
             bounds = comarca_shape.total_bounds
+            m = folium.Map(tiles="CartoDB positron", zoom_control=False, scrollWheelZoom=False, dragging=False)
             m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
 
-        # Troba i marca el punt de màxima convergència dins de la comarca
-        if map_data and valor_conv > 10:
-            lons, lats = map_data['lons'], map_data['lats']
-            grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100))
-            u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
-            grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-            grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-            convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
-            
-            points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': convergence_scaled.flatten()})
-            gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
-            
-            comarca_shape = comarca_shape.to_crs(gdf_points.crs)
-            points_in_comarca = gpd.sjoin(gdf_points, comarca_shape, how="inner", predicate="within")
-            
-            if not points_in_comarca.empty:
-                max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
-                folium.Marker(
-                    location=[max_conv_point.geometry.y, max_conv_point.geometry.x],
-                    tooltip=f"Focus Màxim: {max_conv_point.conv:.0f}",
-                    icon=folium.Icon(color='red', icon='bolt')
+            # Generem la imatge del gradient retallada i la superposem
+            gradient_img_b64, img_bounds = crear_gradient_convergencia_per_comarca(map_data, comarca_shape)
+            if gradient_img_b64:
+                folium.raster_layers.ImageOverlay(
+                    image=f"data:image/png;base64,{gradient_img_b64}",
+                    bounds=img_bounds,
+                    opacity=0.7,
+                    name="Convergència"
                 ).add_to(m)
 
-        st_folium(m, width="100%", height=450)
+            # Dibuixem la vora de la comarca per sobre
+            folium.GeoJson(
+                comarca_shape,
+                style_function=lambda x: {'fillOpacity': 0, 'color': 'black', 'weight': 2.5}
+            ).add_to(m)
+
+            st_folium(m, width="100%", height=450)
 
     with col_diagnostic:
         st.markdown("##### Diagnòstic de la Zona")
@@ -6378,7 +6355,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         elif valor_conv >= 40:
             nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FD7E14", "🟠", f"Hi ha un focus de convergència **forta** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona. El potencial de temps sever és considerable."
         elif valor_conv >= 20:
-            nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#28A745", "🟢", f"S'observa una zona de convergència **moderada** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquesta condició pot ser suficient per iniciar tempestes, especialment si l'atmosfera és inestable. Cal vigilar l'evolució."
+            nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#FFC107", "🟡", f"S'observa una zona de convergència **moderada** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquesta condició pot ser suficient per iniciar tempestes, especialment si l'atmosfera és inestable. Cal vigilar l'evolució."
         else:
             nivell_alerta, color_alerta, emoji, descripcio = "Baix", "#6c757d", "⚪", "No es detecten focus de convergència significatius a la comarca. El forçament dinàmic per iniciar tempestes és feble o inexistent en aquesta zona."
 
@@ -6389,8 +6366,69 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         </div>
         """, unsafe_allow_html=True)
         
-        st.info(f"**Nota:** Aquesta anàlisi es basa en la convergència de vent a **{nivell_sel} hPa**. La formació final de tempestes depèn també de la inestabilitat atmosfèrica (CAPE) i la presència d'inhibició (CIN), que pots consultar a la pestanya 'Anàlisi Vertical' de qualsevol municipi de la zona.", icon="ℹ️")
+        st.info(f"**Nota:** Aquesta anàlisi es basa en la convergència de vent a **{nivell_sel} hPa**. La formació final de tempestes depèn també de la inestabilitat (CAPE) i la presència d'inhibició (CIN), que pots consultar a la pestanya 'Anàlisi Vertical'.", icon="ℹ️")
 
+
+        def crear_gradient_convergencia_per_comarca(map_data, comarca_shape):
+    """
+    Genera una imatge PNG transparent d'un gradient de convergència,
+    retallada a la forma de la comarca seleccionada.
+    Retorna la imatge en format Base64 i els seus límits geogràfics.
+    """
+    if not map_data or comarca_shape.empty:
+        return None, None
+
+    # 1. Càlcul de la graella de convergència
+    lons, lats = map_data['lons'], map_data['lats']
+    u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
+    
+    bounds = comarca_shape.total_bounds
+    margin = 0.1 # Un petit marge per asegurar que la graella cobreix tota la comarca
+    grid_lon, grid_lat = np.meshgrid(
+        np.linspace(bounds[0] - margin, bounds[2] + margin, 150),
+        np.linspace(bounds[1] - margin, bounds[3] + margin, 150)
+    )
+
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+    
+    with np.errstate(invalid='ignore'):
+        dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+        convergence = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
+        convergence[np.isnan(convergence)] = 0
+    
+    # 2. Creació del gràfic amb Matplotlib i Cartopy
+    fig = plt.figure(figsize=(8, 8), dpi=150)
+    ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+    ax.set_extent(bounds, crs=ccrs.PlateCarree())
+    
+    # Fons i eixos transparents
+    fig.patch.set_alpha(0)
+    ax.patch.set_alpha(0)
+    ax.axis('off')
+
+    # 3. Dibuix del gradient
+    levels = np.linspace(20, 100, 9)
+    colors = ['#00BFFF', '#2E8B57', '#9ACD32', '#FFD700', '#FFA500', '#FF4500', '#DC143C', '#FF00FF'] # Estil radar
+    cmap = ListedColormap(colors)
+    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+    
+    contour = ax.contourf(grid_lon, grid_lat, convergence, levels=levels, cmap=cmap, norm=norm, extend='max', transform=ccrs.PlateCarree())
+    
+    # 4. Retall de la imatge amb la forma de la comarca
+    for geometry in comarca_shape.geometry:
+        ax.set_clip_path(gpd.GeoSeries([geometry]).__geo_interface__['features'][0]['geometry'])
+
+    # 5. Conversió a imatge Base64
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', transparent=True, bbox_inches='tight', pad_inches=0)
+    plt.close(fig)
+    
+    import base64
+    img_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+    
+    return img_b64, [[bounds[1], bounds[0]], [bounds[3], bounds[2]]]
+    
 def seleccionar_poble(nom_poble):
     """Callback segur que estableix la intenció de seleccionar un poble."""
     # En lloc de canviar 'poble_sel' directament, establim un estat intermedi.
