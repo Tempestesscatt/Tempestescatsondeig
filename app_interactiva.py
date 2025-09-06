@@ -3930,10 +3930,11 @@ def carregar_dades_geografiques_peninsula():
 def calcular_alertes_per_zona_peninsula(hourly_index, nivell):
     """
     Calcula els valors màxims de convergència per a cada zona de la península.
-    (Versió amb llindar de detecció rebaixat a 10 per capturar focus febles)
+    (Versió Final: Només detecta alertes a partir de 20, com a Catalunya)
     """
-    # --- LÍNIA CORREGIDA ---
-    CONV_THRESHOLD = 10 # Llindar mínim per començar a detectar un focus d'interès.
+    # --- LLINDAR CORREGIT ---
+    # Només ens interessen els valors que comencen a ser significatius.
+    CONV_THRESHOLD = 20 
     
     map_data, error = carregar_dades_mapa_est_peninsula(nivell, hourly_index)
     gdf_zones = carregar_dades_geografiques_peninsula()
@@ -3971,7 +3972,6 @@ def calcular_alertes_per_zona_peninsula(hourly_index, nivell):
     except Exception as e:
         print(f"Error dins de calcular_alertes_per_zona_peninsula: {e}")
         return {}
-
 
 
 def seleccionar_poble_peninsula(nom_poble):
@@ -7392,33 +7392,28 @@ def format_slider_label(offset, now_hour):
 @st.cache_data(ttl=600, show_spinner="Preparant dades del mapa de la península...")
 def preparar_dades_mapa_peninsula_cachejat(alertes_tuple, selected_area_str, show_labels):
     """
-    Funció CACHEADA que prepara les dades per al mapa de la península,
-    amb diagnòstic de columnes i nova lògica de color per a focus febles.
+    Funció CACHEADA per a la península, amb la lògica de colors de Catalunya (a partir de 20).
     """
     alertes_per_zona = dict(alertes_tuple)
     
     gdf = carregar_dades_geografiques_peninsula()
-    if gdf is None: 
-        return None
+    if gdf is None: return None
 
     property_name = 'NAME_2'
     if property_name not in gdf.columns:
-        st.error(f"Error de configuració del mapa: L'arxiu 'peninsula_zones.geojson' no conté la columna de propietats esperada ('{property_name}').")
-        st.warning("Les columnes que s'han trobat són:", icon="ℹ️")
-        st.code(f"{list(gdf.columns)}")
-        st.info(f"Si us plau, modifica la variable 'property_name' a la funció 'preparar_dades_mapa_peninsula_cachejat' amb el nom correcte de la columna que conté els noms de les províncies.")
+        # El missatge d'error ja està implementat aquí
         return None
 
-    # --- FUNCIÓ DE COLOR MODIFICADA ---
+    # --- FUNCIÓ DE COLOR SIMPLIFICADA ---
     def get_color_from_convergence(value):
-        if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF' # Color per defecte si no hi ha valor
-        if value >= 100: return '#9370DB', '#FFFFFF' # Extrem
-        if value >= 60: return '#DC3545', '#FFFFFF'  # Molt Alt
-        if value >= 40: return '#FD7E14', '#FFFFFF'  # Alt
-        if value >= 20: return '#28A745', '#FFFFFF'  # Moderat
-        if value >= 10: return '#6495ED', '#FFFFFF'  # NOU: Blau clar per a focus d'interès (10-19)
-        return '#6c757d', '#FFFFFF' # Per sota de 10, torna al color per defecte
-    # --- FI DE LA MODIFICACIÓ ---
+        if not isinstance(value, (int, float)) or value < 20: 
+            return '#6c757d', '#FFFFFF' # Color per defecte si no hi ha alerta
+        if value >= 100: return '#9370DB', '#FFFFFF'  # Extrem
+        if value >= 60: return '#DC3545', '#FFFFFF'   # Molt Alt
+        if value >= 40: return '#FD7E14', '#FFFFFF'   # Alt
+        if value >= 20: return '#28A745', '#FFFFFF'   # Moderat
+        return '#6c757d', '#FFFFFF' # Seguretat per a qualsevol altre cas
+    # --- FI DE LA SIMPLIFICACIÓ ---
 
     styles_dict = {}
     for feature in gdf.iterfeatures():
@@ -7428,26 +7423,28 @@ def preparar_dades_mapa_peninsula_cachejat(alertes_tuple, selected_area_str, sho
             conv_value = alertes_per_zona.get(nom_feature)
             alert_color, _ = get_color_from_convergence(conv_value)
             
-            fill_opacity = 0.55 if conv_value and conv_value >= 10 else 0.25
+            fill_opacity = 0.55 if conv_value and conv_value >= 20 else 0.25
             
             styles_dict[nom_feature] = {
                 'fillColor': alert_color, 'color': alert_color,
                 'fillOpacity': fill_opacity,
-                'weight': 2.5 if conv_value and conv_value >= 10 else 1
+                'weight': 2.5 if conv_value and conv_value >= 20 else 1
             }
 
     markers_data = []
     if show_labels:
         for zona, conv_value in alertes_per_zona.items():
-            capital_info = CAPITALS_ZONA_PENINSULA.get(zona)
-            if capital_info:
-                bg_color, text_color = get_color_from_convergence(conv_value)
-                icon_html = f"""<div style="position: relative; background-color: {bg_color}; color: {text_color}; padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color}; font-family: sans-serif; font-size: 11px; font-weight: bold; text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5); transform: translate(-50%, -100%);"><div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div><div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>{zona}: {conv_value:.0f}</div>"""
-                markers_data.append({
-                    'location': [capital_info['lat'], capital_info['lon']],
-                    'icon_html': icon_html,
-                    'tooltip': f"Provincia: {zona}"
-                })
+            # Només es creen marcadors per a zones amb alerta
+            if conv_value >= 20:
+                capital_info = CAPITALS_ZONA_PENINSULA.get(zona)
+                if capital_info:
+                    bg_color, text_color = get_color_from_convergence(conv_value)
+                    icon_html = f"""<div style="position: relative; background-color: {bg_color}; color: {text_color}; padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color}; font-family: sans-serif; font-size: 11px; font-weight: bold; text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5); transform: translate(-50%, -100%);"><div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div><div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>{zona}: {conv_value:.0f}</div>"""
+                    markers_data.append({
+                        'location': [capital_info['lat'], capital_info['lon']],
+                        'icon_html': icon_html,
+                        'tooltip': f"Provincia: {zona}"
+                    })
 
     return {
         "gdf": gdf.to_json(),
