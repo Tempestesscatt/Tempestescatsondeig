@@ -5715,6 +5715,7 @@ def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index)
         if value >= 20: return '#28A745', '#FFFFFF'
         return '#6c757d', '#FFFFFF'
 
+    # 1. Pre-calculem els estils per a cada zona
     styles_dict = {}
     for feature in gdf.iterfeatures():
         nom_feature_raw = feature.get('properties', {}).get(property_name)
@@ -5728,6 +5729,7 @@ def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index)
                 'weight': 2.5 if conv_value else 1
             }
 
+    # 2. Pre-calculem les dades per als marcadors (etiquetes)
     markers_data = []
     for zona, conv_value in alertes_per_zona.items():
         capital_info = CAPITALS_COMARCA.get(zona)
