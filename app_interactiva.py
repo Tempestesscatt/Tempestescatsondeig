@@ -6649,110 +6649,55 @@ def seleccionar_poble(nom_poble):
 
 def ui_llegenda_mapa_principal():
     """
-    Mostra una llegenda gràfica i millorada per al mapa principal de situació,
-    utilitzant una barra de color degradada per a una interpretació més intuïtiva.
+    Mostra una llegenda gràfica i millorada per al mapa principal de situació.
+    (Versió 2.0 - Anti-formatació de codi)
     """
+    # El CSS es manté igual, ja que funciona correctament.
     st.markdown("""
     <style>
-        /* Contenidor principal de la llegenda */
-        .legend-container-main { 
-            background-color: #262730; 
-            border-radius: 8px; 
-            padding: 18px; 
-            margin-top: 15px; 
-            border: 1px solid #444; 
-        }
-        /* Títol de la llegenda */
-        .legend-title-main { 
-            font-size: 1.2em; 
-            font-weight: bold; 
-            color: #FAFAFA; 
-            margin-bottom: 8px; 
-        }
-        /* Descripció sota el títol */
-        .legend-subtitle-main {
-            font-size: 0.95em; 
-            color: #a0a0b0; 
-            margin-bottom: 18px;
-        }
-        /* La barra de color degradada */
-        .legend-gradient-bar {
-            height: 15px;
-            border-radius: 7px;
-            background: linear-gradient(to right, #28A745, #FD7E14, #DC3545, #9370DB);
-            margin-bottom: 5px;
-            border: 1px solid #555;
-        }
-        /* Contenidor per a les etiquetes numèriques de sota la barra */
-        .legend-labels {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.8em;
-            color: #a0a0b0;
-            padding: 0 5px;
-        }
-        /* Contenidor per a les descripcions de cada nivell */
-        .legend-descriptions {
-            display: flex;
-            justify-content: space-around;
-            text-align: center;
-            margin-top: 10px;
-        }
-        /* Estil per a cada bloc de descripció */
-        .legend-desc-item {
-            flex: 1;
-            padding: 0 5px;
-        }
-        .legend-desc-item b {
-            font-size: 0.9em;
-            color: #FFFFFF;
-        }
-        .legend-desc-item p {
-            font-size: 0.8em;
-            color: #a0a0b0;
-            margin-top: 2px;
-            line-height: 1.3;
-        }
+        .legend-container-main { background-color: #262730; border-radius: 8px; padding: 18px; margin-top: 15px; border: 1px solid #444; }
+        .legend-title-main { font-size: 1.2em; font-weight: bold; color: #FAFAFA; margin-bottom: 8px; }
+        .legend-subtitle-main { font-size: 0.95em; color: #a0a0b0; margin-bottom: 18px; }
+        .legend-gradient-bar { height: 15px; border-radius: 7px; background: linear-gradient(to right, #28A745, #FD7E14, #DC3545, #9370DB); margin-bottom: 5px; border: 1px solid #555; }
+        .legend-labels { display: flex; justify-content: space-between; font-size: 0.8em; color: #a0a0b0; padding: 0 5px; }
+        .legend-descriptions { display: flex; justify-content: space-around; text-align: center; margin-top: 10px; }
+        .legend-desc-item { flex: 1; padding: 0 5px; }
+        .legend-desc-item b { font-size: 0.9em; color: #FFFFFF; }
+        .legend-desc-item p { font-size: 0.8em; color: #a0a0b0; margin-top: 2px; line-height: 1.3; }
     </style>
-    
-    <div class="legend-container-main">
-        <div class="legend-title-main">Com Interpretar el Mapa de Situació</div>
-        <div class="legend-subtitle-main">El color de la comarca i el número indiquen la força màxima del <b>disparador</b> (convergència) detectada a la zona:</div>
-        
-        <!-- Barra de color -->
-        <div class="legend-gradient-bar"></div>
-        
-        <!-- Etiquetes numèriques -->
-        <div class="legend-labels">
-            <span>20</span>
-            <span>40</span>
-            <span>60</span>
-            <span>100+</span>
-        </div>
-
-        <hr style="border-color: #444; margin: 15px 0;">
-
-        <!-- Descripcions dels nivells -->
-        <div class="legend-descriptions">
-            <div class="legend-desc-item" style="color:#28A745;">
-                <b>Moderat</b>
-                <p>Potencial per a iniciar tempestes.</p>
-            </div>
-            <div class="legend-desc-item" style="color:#FD7E14;">
-                <b>Alt</b>
-                <p>Disparador eficient, tempestes probables.</p>
-            </div>
-            <div class="legend-desc-item" style="color:#DC3545;">
-                <b>Molt Alt</b>
-                <p>Senyal clara de temps sever imminent.</p>
-            </div>
-            <div class="legend-desc-item" style="color:#9370DB;">
-                <b>Extrem</b>
-                <p>Condicions de risc excepcional.</p>
-            </div>
-        </div>
-    </div>
     """, unsafe_allow_html=True)
+
+    # --- CORRECCIÓ DEFINITIVA: L'HTML es construeix com una única cadena contínua ---
+    html_llegenda = (
+        '<div class="legend-container-main">'
+        '    <div class="legend-title-main">Com Interpretar el Mapa de Situació</div>'
+        '    <div class="legend-subtitle-main">El color de la comarca i el número indiquen la força màxima del <b>disparador</b> (convergència) detectada a la zona:</div>'
+        '    <div class="legend-gradient-bar"></div>'
+        '    <div class="legend-labels">'
+        '        <span>20</span>'
+        '        <span>40</span>'
+        '        <span>60</span>'
+        '        <span>100+</span>'
+        '    </div>'
+        '    <hr style="border-color: #444; margin: 15px 0;">'
+        '    <div class="legend-descriptions">'
+        '        <div class="legend-desc-item" style="color:#28A745;">'
+        '            <b>Moderat</b><p>Potencial per a iniciar tempestes.</p>'
+        '        </div>'
+        '        <div class="legend-desc-item" style="color:#FD7E14;">'
+        '            <b>Alt</b><p>Disparador eficient, tempestes probables.</p>'
+        '        </div>'
+        '        <div class="legend-desc-item" style="color:#DC3545;">'
+        '            <b>Molt Alt</b><p>Senyal clara de temps sever imminent.</p>'
+        '        </div>'
+        '        <div class="legend-desc-item" style="color:#9370DB;">'
+        '            <b>Extrem</b><p>Condicions de risc excepcional.</p>'
+        '        </div>'
+        '    </div>'
+        '</div>'
+    )
+    
+    st.markdown(html_llegenda, unsafe_allow_html=True)
     
     
 # --- DICCIONARI DE CAPITALS (Necessari per a les coordenades) ---
