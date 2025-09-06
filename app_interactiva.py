@@ -138,7 +138,6 @@ TIMEZONE_EST_PENINSULA = pytz.timezone('Europe/Madrid')
 PRESS_LEVELS_EST_PENINSULA = sorted([1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 MAP_EXTENT_EST_PENINSULA = [-4, 1, 38.5, 43.5]
 
-# Llista base de ciutats
 CIUTATS_EST_PENINSULA = {
     'Pamplona': {'lat': 42.8125, 'lon': -1.6458, 'sea_dir': None},
     'Logroño': {'lat': 42.465, 'lon': -2.441, 'sea_dir': None},
@@ -149,12 +148,17 @@ CIUTATS_EST_PENINSULA = {
     'València': {'lat': 39.4699, 'lon': -0.3763, 'sea_dir': (45, 180)},
     'Cuenca': {'lat': 40.0704, 'lon': -2.1374, 'sea_dir': None},
     'Albacete': {'lat': 38.9942, 'lon': -1.8584, 'sea_dir': None},
+    # --- NOVA LÍNIA AFEGIDA ---
+    'El Pobo': {'lat': 40.5408, 'lon': -0.9272, 'sea_dir': None},
 }
 
-# Agrupació de ciutats per PROVÍNCIA (el nom ha de coincidir amb el camp NAME_2 del GeoJSON)
 CIUTATS_PER_ZONA_PENINSULA = {
     "Zaragoza": { 'Zaragoza': CIUTATS_EST_PENINSULA['Zaragoza'] },
-    "Teruel": { 'Teruel': CIUTATS_EST_PENINSULA['Teruel'] },
+    "Teruel": { 
+        'Teruel': CIUTATS_EST_PENINSULA['Teruel'],
+        # --- NOVA LÍNIA AFEGIDA ---
+        'El Pobo': CIUTATS_EST_PENINSULA['El Pobo']
+    },
     "Castellón": { 'Castelló': CIUTATS_EST_PENINSULA['Castelló'] },
     "Valencia": { 'València': CIUTATS_EST_PENINSULA['València'] },
     "Navarra": { 'Pamplona': CIUTATS_EST_PENINSULA['Pamplona'] },
