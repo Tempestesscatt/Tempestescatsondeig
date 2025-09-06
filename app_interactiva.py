@@ -5690,62 +5690,6 @@ def on_day_change_usa():
 
 
 
-@st.cache_data(ttl=600, show_spinner="Preparant dades del mapa...")
-def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index):
-    """
-    Funció CACHEADA que fa el treball pesat. Rep una tupla d'alertes 100% segura.
-    """
-    alertes_per_zona = dict(alertes_tuple)
-    
-    gdf = carregar_dades_geografiques()
-    if gdf is None: return None
-
-    property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), None)
-    if not property_name:
-        print("Error Crític: L'arxiu GeoJSON del mapa no té una propietat de nom vàlida.")
-        return None
-
-    def get_color_from_convergence(value):
-        if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
-        if value >= 100: return '#9370DB', '#FFFFFF'
-        if value >= 60: return '#DC3545', '#FFFFFF'
-        if value >= 40: return '#FD7E14', '#FFFFFF'
-        if value >= 20: return '#28A745', '#FFFFFF'
-        return '#6c757d', '#FFFFFF'
-
-    styles_dict = {}
-    for feature in gdf.iterfeatures():
-        nom_feature_raw = feature.get('properties', {}).get(property_name)
-        if nom_feature_raw and isinstance(nom_feature_raw, str):
-            nom_feature = nom_feature_raw.strip().replace('.', '')
-            conv_value = alertes_per_zona.get(nom_feature)
-            alert_color, _ = get_color_from_convergence(conv_value)
-            styles_dict[nom_feature] = {
-                'fillColor': alert_color, 'color': alert_color,
-                'fillOpacity': 0.55 if conv_value else 0.25,
-                'weight': 2.5 if conv_value else 1
-            }
-
-    markers_data = []
-    for zona, conv_value in alertes_per_zona.items():
-        capital_info = CAPITALS_COMARCA.get(zona)
-        if capital_info:
-            bg_color, text_color = get_color_from_convergence(conv_value)
-            icon_html = f"""<div style="position: relative; background-color: {bg_color}; color: {text_color}; padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color}; font-family: sans-serif; font-size: 11px; font-weight: bold; text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5); transform: translate(-50%, -100%);"><div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div><div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>{zona}: {conv_value:.0f}</div>"""
-            markers_data.append({
-                'location': [capital_info['lat'], capital_info['lon']],
-                'icon_html': icon_html,
-                'tooltip': f"Comarca: {zona}"
-            })
-
-    return {
-        "gdf": gdf.to_json(),
-        "property_name": property_name,
-        "styles": styles_dict,
-        "markers": markers_data
-    }
-
-
 
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya", convergencies=None):
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
@@ -5834,11 +5778,13 @@ def ui_pestanya_mapes_uk(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
 
 
 @st.cache_data(ttl=600, show_spinner="Preparant dades del mapa...")
-def preparar_dades_mapa_cachejat(alertes_per_zona):
+def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index):
     """
-    Funció CACHEADA que fa el treball pesat: carrega geometries, calcula estils i
-    prepara les dades per als marcadors. Retorna un diccionari de dades simples.
+    Funció CACHEADA que fa el treball pesat. Aquesta versió accepta correctament
+    els 3 paràmetres per evitar el TypeError.
     """
+    alertes_per_zona = dict(alertes_tuple)
+    
     gdf = carregar_dades_geografiques()
     if gdf is None: return None
 
@@ -5847,8 +5793,6 @@ def preparar_dades_mapa_cachejat(alertes_per_zona):
         print("Error Crític: L'arxiu GeoJSON del mapa no té una propietat de nom vàlida.")
         return None
 
-    # <<<--- AQUÍ ESTÀ LA CORRECCIÓ ---
-    # Hem mogut la funció auxiliar aquí dins, perquè sigui accessible.
     def get_color_from_convergence(value):
         if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
         if value >= 100: return '#9370DB', '#FFFFFF'
@@ -5856,48 +5800,26 @@ def preparar_dades_mapa_cachejat(alertes_per_zona):
         if value >= 40: return '#FD7E14', '#FFFFFF'
         if value >= 20: return '#28A745', '#FFFFFF'
         return '#6c757d', '#FFFFFF'
-    # --- FI DE LA CORRECCIÓ ---
 
-    # 1. Pre-calculem els estils per a cada zona
     styles_dict = {}
     for feature in gdf.iterfeatures():
         nom_feature_raw = feature.get('properties', {}).get(property_name)
         if nom_feature_raw and isinstance(nom_feature_raw, str):
             nom_feature = nom_feature_raw.strip().replace('.', '')
             conv_value = alertes_per_zona.get(nom_feature)
-            
-            # La funció 'get_color' ja no és necessària, podem cridar directament.
             alert_color, _ = get_color_from_convergence(conv_value)
-            
             styles_dict[nom_feature] = {
-                'fillColor': alert_color,
-                'color': alert_color,
+                'fillColor': alert_color, 'color': alert_color,
                 'fillOpacity': 0.55 if conv_value else 0.25,
                 'weight': 2.5 if conv_value else 1
             }
 
-    # 2. Pre-calculem les dades per als marcadors (etiquetes)
     markers_data = []
     for zona, conv_value in alertes_per_zona.items():
         capital_info = CAPITALS_COMARCA.get(zona)
         if capital_info:
             bg_color, text_color = get_color_from_convergence(conv_value)
-            
-            # El teu HTML per a la icona
-            icon_html = f"""
-            <div style="
-                position: relative; background-color: {bg_color}; color: {text_color};
-                padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color};
-                font-family: sans-serif; font-size: 11px; font-weight: bold;
-                text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5);
-                transform: translate(-50%, -100%);
-            ">
-                <div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div>
-                <div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>
-                {zona}: {conv_value:.0f}
-            </div>
-            """
-            
+            icon_html = f"""<div style="position: relative; background-color: {bg_color}; color: {text_color}; padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color}; font-family: sans-serif; font-size: 11px; font-weight: bold; text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5); transform: translate(-50%, -100%);"><div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div><div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>{zona}: {conv_value:.0f}</div>"""
             markers_data.append({
                 'location': [capital_info['lat'], capital_info['lon']],
                 'icon_html': icon_html,
@@ -6533,9 +6455,11 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
             
 def seleccionar_poble(nom_poble):
-    """Callback segur que estableix la intenció de seleccionar un poble."""
-    # En lloc de canviar 'poble_sel' directament, establim un estat intermedi.
-    st.session_state.poble_seleccionat_per_boto = nom_poble
+    """Callback que s'activa en clicar un poble. Actualitza l'estat directament."""
+    st.session_state.poble_sel = nom_poble
+    # Reseteja la pestanya per començar sempre per "Anàlisi Comarcal"
+    if 'active_tab_cat_index' in st.session_state:
+        st.session_state.active_tab_cat_index = 0
 
 
 def ui_llegenda_mapa_principal():
@@ -6709,8 +6633,6 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
     
     selected_area_str = st.session_state.get('selected_area')
 
-    # <<<--- AQUESTA ÉS LA CORRECCIÓ MÉS IMPORTANT ---
-    # Convertim els valors numèrics a 'float' de Python per evitar problemes amb NumPy.
     alertes_tuple = tuple(sorted((k, float(v)) for k, v in alertes_per_zona.items()))
     
     map_data = preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index)
@@ -6719,7 +6641,6 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
         st.error("No s'han pogut generar les dades per al mapa.")
         return None
 
-    # El reste de la funció per construir el mapa no canvia
     map_params = {
         "location": [41.83, 1.87], "zoom_start": 8,
         "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
