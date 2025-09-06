@@ -5695,53 +5695,61 @@ def on_day_change_usa():
 
 
 
-@st.cache_resource(ttl=1800, show_spinner=False)
-def generar_mapa_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
+@st.cache_data(ttl=600, show_spinner="Preparant dades del mapa...")
+def preparar_dades_mapa_cachejat(alertes_per_zona, selected_area_str, hourly_index):
     """
-    Funció generadora que crea i desa a la memòria cau el mapa de convergència.
-    Només s'executa si els paràmetres (hora, nivell, zoom) canvien.
+    Funció CACHEADA que fa el treball pesat. L'argument 'hourly_index' assegura
+    que la memòria cau es refresqui correctament quan canvia l'hora.
     """
-    map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
-    if error or not map_data:
+    gdf = carregar_dades_geografiques()
+    if gdf is None: return None
+
+    property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), None)
+    if not property_name:
+        print("Error Crític: L'arxiu GeoJSON del mapa no té una propietat de nom vàlida.")
         return None
-    
-    map_extent_list = list(map_extent_tuple)
-    
-    fig = crear_mapa_forecast_combinat_cat(
-        map_data['lons'], map_data['lats'], 
-        map_data['speed_data'], map_data['dir_data'], 
-        map_data['dewpoint_data'], nivell, 
-        timestamp_str, map_extent_list
-    )
-    return fig
 
-def on_city_change(source_widget_key, other_widget_key, placeholder_text, city_dict):
-    """
-    Funció de callback genèrica i robusta per gestionar el canvi de ciutat.
-    """
-    selected_raw_text = st.session_state[source_widget_key]
-    
-    if placeholder_text in selected_raw_text:
-        return # No facis res si s'ha seleccionat el placeholder
+    def get_color_from_convergence(value):
+        if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
+        if value >= 100: return '#9370DB', '#FFFFFF'
+        if value >= 60: return '#DC3545', '#FFFFFF'
+        if value >= 40: return '#FD7E14', '#FFFFFF'
+        if value >= 20: return '#28A745', '#FFFFFF'
+        return '#6c757d', '#FFFFFF'
 
-    # Troba la clau original correcta sense perill de KeyErrors
-    found_key = None
-    for key in city_dict.keys():
-        if selected_raw_text.startswith(key):
-            found_key = key
-            break
-            
-    if found_key:
-        # Si la selecció és vàlida, actualitza l'estat principal
-        if 'poble_selector' in st.session_state:
-             st.session_state.poble_selector = found_key
-        elif 'poble_selector_usa' in st.session_state:
-            st.session_state.poble_selector_usa = found_key
+    # Pre-calculem els estils per a cada zona
+    styles_dict = {}
+    for feature in gdf.iterfeatures():
+        nom_feature_raw = feature.get('properties', {}).get(property_name)
+        if nom_feature_raw and isinstance(nom_feature_raw, str):
+            nom_feature = nom_feature_raw.strip().replace('.', '')
+            conv_value = alertes_per_zona.get(nom_feature)
+            alert_color, _ = get_color_from_convergence(conv_value)
+            styles_dict[nom_feature] = {
+                'fillColor': alert_color, 'color': alert_color,
+                'fillOpacity': 0.55 if conv_value else 0.25,
+                'weight': 2.5 if conv_value else 1
+            }
 
-        # Important: Reseteja l'ALTRE selector només si existeix
-        if other_widget_key and other_widget_key in st.session_state:
-            # Utilitzem una clau interna per evitar disparar el callback de l'altre
-            st.session_state[other_widget_key] = placeholder_text
+    # Pre-calculem les dades per als marcadors
+    markers_data = []
+    for zona, conv_value in alertes_per_zona.items():
+        capital_info = CAPITALS_COMARCA.get(zona)
+        if capital_info:
+            bg_color, text_color = get_color_from_convergence(conv_value)
+            icon_html = f"""<div style="position: relative; background-color: {bg_color}; color: {text_color}; padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color}; font-family: sans-serif; font-size: 11px; font-weight: bold; text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5); transform: translate(-50%, -100%);"><div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div><div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>{zona}: {conv_value:.0f}</div>"""
+            markers_data.append({
+                'location': [capital_info['lat'], capital_info['lon']],
+                'icon_html': icon_html,
+                'tooltip': f"Comarca: {zona}"
+            })
+
+    return {
+        "gdf": gdf.to_json(),
+        "property_name": property_name,
+        "styles": styles_dict,
+        "markers": markers_data
+    }
 
 
 
@@ -6623,49 +6631,56 @@ def generar_mapa_folium_catalunya(alertes_per_zona, selected_area_str):
     
     return m
     
-def ui_mapa_display_personalitzat(alertes_per_zona):
+def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
     """
     Funció de VISUALITZACIÓ. No està a la memòria cau.
     Obté les dades pre-processades de la memòria cau i construeix el mapa ràpidament.
     """
-    st.markdown("#### Mapa amb avisos convergents ")
+    st.markdown("#### Mapa de Situació")
     
-    # Obtenim les dades pre-processades (les "instruccions") de la memòria cau
-    map_data = preparar_dades_mapa_cachejat(alertes_per_zona)
+    # Agafem la zona seleccionada de l'estat de la sessió
+    selected_area_str = st.session_state.get('selected_area')
+
+    # Cridem a la funció que SÍ està a la memòria cau per obtenir les dades del mapa
+    map_data = preparar_dades_mapa_cachejat(alertes_per_zona, selected_area_str, hourly_index)
     
     if not map_data:
         st.error("No s'han pogut generar les dades per al mapa.")
         return None
 
-    # Agafem la zona seleccionada de l'estat de la sessió
-    selected_area = st.session_state.get('selected_area')
-
-    # Paràmetres del mapa (igual que abans)
+    # Paràmetres del mapa
     map_params = {
-        "location": [41.83, 1.87], "zoom_start": 8, "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-        "attr": "Tiles &copy; Esri", "scrollWheelZoom": True, "dragging": True, "zoom_control": True, "doubleClickZoom": True,
+        "location": [41.83, 1.87], "zoom_start": 8,
+        "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+        "attr": "Tiles &copy; Esri &mdash; and the GIS User Community",
+        "scrollWheelZoom": True, "dragging": True, "zoom_control": True, "doubleClickZoom": True,
         "max_bounds": [[40.4, 0.0], [42.9, 3.5]], "min_zoom": 8, "max_zoom": 12
     }
 
-    # Lògica per congelar el mapa (igual que abans)
-    if selected_area and "---" not in selected_area:
-        gdf_temp = gpd.read_file(map_data["gdf"]) # Reconstruïm el GDF temporalment
-        cleaned_selected_area = selected_area.strip().replace('.', '')
-        zona_shape = gdf_temp[gdf_temp[map_data["property_name"]].str.strip().str.replace('.', '') == cleaned_selected_area]
+    # Lògica per congelar el mapa
+    if selected_area_str and "---" not in selected_area_str:
+        # Per aquesta comprovació, hem de llegir el GDF des del JSON guardat
+        gdf_temp = gpd.read_file(map_data["gdf"])
+        cleaned_selected_area = selected_area_str.strip().replace('.', '')
+        zona_shape = gdf_temp[gdf_temp[map_data["property_name"]].str.strip().replace('.', '') == cleaned_selected_area]
         if not zona_shape.empty:
             centroid = zona_shape.geometry.centroid.iloc[0]
-            map_params.update({"location": [centroid.y, centroid.x], "zoom_start": 10, "scrollWheelZoom": False, "dragging": False, "zoom_control": False, "doubleClickZoom": False})
+            map_params.update({
+                "location": [centroid.y, centroid.x], "zoom_start": 10,
+                "scrollWheelZoom": False, "dragging": False, "zoom_control": False, "doubleClickZoom": False,
+                "max_bounds": [[zona_shape.total_bounds[1], zona_shape.total_bounds[0]], [zona_shape.total_bounds[3], zona_shape.total_bounds[2]]]
+            })
 
     m = folium.Map(**map_params)
 
-    # Funció d'estil que ara utilitza les dades pre-calculades
+    # Funció d'estil que utilitza les dades pre-calculades
     def style_function(feature):
         nom_feature_raw = feature.get('properties', {}).get(map_data["property_name"])
-        style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25} # Estil per defecte
+        style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
         if nom_feature_raw:
             nom_feature = nom_feature_raw.strip().replace('.', '')
-            style = map_data["styles"].get(nom_feature, style) # Busca l'estil al diccionari
-            cleaned_selected_area = selected_area.strip().replace('.', '') if selected_area else ''
+            style = map_data["styles"].get(nom_feature, style)
+            cleaned_selected_area = selected_area_str.strip().replace('.', '') if selected_area_str else ''
             if nom_feature == cleaned_selected_area:
                 style.update({'fillColor': '#007bff', 'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.5})
         return style
@@ -6678,7 +6693,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
         tooltip=folium.GeoJsonTooltip(fields=[map_data["property_name"]], aliases=['Comarca:'])
     ).add_to(m)
 
-    # Dibuixem els marcadors a partir de les dades pre-calculades
+    # Dibuixem els marcadors
     for marker in map_data["markers"]:
         icon = folium.DivIcon(html=marker['icon_html'])
         folium.Marker(location=marker['location'], icon=icon, tooltip=marker['tooltip']).add_to(m)
