@@ -6450,19 +6450,23 @@ def ui_pestanya_mapes_uk(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
 @st.cache_data(ttl=600, show_spinner="Preparant dades del mapa...")
 def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index, show_labels):
     """
-    Funció CACHEADA que fa el treball pesat. Ara accepta 'show_labels'
-    per decidir si genera les dades dels marcadors de text.
+    Funció CACHEADA per a Catalunya, ara amb diagnòstic de columnes.
     """
     alertes_per_zona = dict(alertes_tuple)
     
     gdf = carregar_dades_geografiques()
     if gdf is None: return None
 
+    # --- BLOC DE DIAGNÒSTIC MILLORAT ---
     property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), None)
     if not property_name:
-        print("Error Crític: L'arxiu GeoJSON del mapa no té una propietat de nom vàlida.")
+        st.error("Error de configuració del mapa: L'arxiu GeoJSON de Catalunya no conté una columna de propietats de nom vàlida (com 'nom_zona' o 'nom_comar').")
+        st.warning("Les columnes que s'han trobat són:", icon="ℹ️")
+        st.code(f"{list(gdf.columns)}")
         return None
-
+    # --- FI DEL BLOC DE DIAGNÒSTIC ---
+    
+    # La resta de la funció continua igual...
     def get_color_from_convergence(value):
         if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
         if value >= 100: return '#9370DB', '#FFFFFF'
@@ -6485,8 +6489,6 @@ def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index,
             }
 
     markers_data = []
-    # --- MODIFICACIÓ CLAU AQUÍ ---
-    # Només generem les dades dels marcadors si l'usuari ho ha demanat.
     if show_labels:
         for zona, conv_value in alertes_per_zona.items():
             capital_info = CAPITALS_COMARCA.get(zona)
@@ -6505,8 +6507,6 @@ def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index,
         "styles": styles_dict,
         "markers": markers_data
     }
-
-
 
 
 @st.cache_resource(ttl=1800, show_spinner=False)
@@ -7158,18 +7158,23 @@ def ui_mapa_display_peninsula(alertes_per_zona, hourly_index, show_labels):
 @st.cache_data(ttl=600, show_spinner="Preparant dades del mapa de la península...")
 def preparar_dades_mapa_peninsula_cachejat(alertes_tuple, selected_area_str, show_labels):
     """
-    Funció CACHEADA que prepara les dades per al mapa de la península.
+    Funció CACHEADA per a la península, ara amb diagnòstic de columnes.
     """
     alertes_per_zona = dict(alertes_tuple)
     
-    # CRIDA A LA FUNCIÓ DE CÀRREGA ESPECÍFICA DE LA PENÍNSULA
     gdf = carregar_dades_geografiques_peninsula()
-    if gdf is None: return None
-
-    property_name = 'nom_zona'
-    if property_name not in gdf.columns:
-        print("Error Crític: L'arxiu 'peninsula_zones.geojson' ha de tenir una propietat anomenada 'nom_zona'.")
+    if gdf is None: 
         return None
+
+    # --- NOU BLOC DE DIAGNÒSTIC ---
+    property_name = 'NAME_2' # El nom que esperem trobar
+    if property_name not in gdf.columns:
+        st.error(f"Error de configuració del mapa: El fitxer 'peninsula_zones.geojson' no conté la columna de propietats esperada ('{property_name}').")
+        st.warning("Les columnes que s'han trobat són:", icon="ℹ️")
+        st.code(f"{list(gdf.columns)}")
+        st.info(f"Si us plau, modifica la variable 'property_name' a la funció 'preparar_dades_mapa_peninsula_cachejat' amb el nom correcte de la columna que conté els noms de les províncies.")
+        return None
+    # --- FI DEL NOU BLOC DE DIAGNÒSTIC ---
 
     def get_color_from_convergence(value):
         if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
@@ -7195,7 +7200,6 @@ def preparar_dades_mapa_peninsula_cachejat(alertes_tuple, selected_area_str, sho
     markers_data = []
     if show_labels:
         for zona, conv_value in alertes_per_zona.items():
-            # UTILITZA LES CAPITALS DE ZONA DE LA PENÍNSULA
             capital_info = CAPITALS_ZONA_PENINSULA.get(zona)
             if capital_info:
                 bg_color, text_color = get_color_from_convergence(conv_value)
@@ -7203,7 +7207,7 @@ def preparar_dades_mapa_peninsula_cachejat(alertes_tuple, selected_area_str, sho
                 markers_data.append({
                     'location': [capital_info['lat'], capital_info['lon']],
                     'icon_html': icon_html,
-                    'tooltip': f"Zona: {zona}"
+                    'tooltip': f"Provincia: {zona}"
                 })
 
     return {
