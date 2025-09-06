@@ -2841,14 +2841,11 @@ def afegir_etiquetes_ciutats(ax, map_extent):
                 # Dibuixem l'etiqueta de text al costat del punt
                 # <<-- CANVI CLAU: Hem reduït el 'fontsize' de 8 a 6 -->>
                 ax.text(lon + 0.02, lat, ciutat, 
-                        fontsize= 5, # <-- AQUÍ ESTÀ EL CANVI
+                        fontsize= 5, # <-- CANVIA AQUEST NÚMERO
                         color='white',
                         transform=ccrs.PlateCarree(), 
                         zorder=2,
                         path_effects=[path_effects.withStroke(linewidth=2.5, foreground='gray')])
-
-
-
 
 
 
