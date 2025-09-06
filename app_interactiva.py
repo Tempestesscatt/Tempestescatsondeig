@@ -128,10 +128,17 @@ WEBCAM_LINKS = {
 
 
 
-# --- Constants per a l'Est de la Península Ibèrica ---
+
+
+
+
+# --- Constants per a l'Est de la Península Ibèrica (VERSIÓ CONSOLIDADA I ORDENADA) ---
 API_URL_EST_PENINSULA = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_EST_PENINSULA = pytz.timezone('Europe/Madrid')
 PRESS_LEVELS_EST_PENINSULA = sorted([1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
+MAP_EXTENT_EST_PENINSULA = [-4, 1, 38.5, 43.5]
+
+# 1. PRIMER: Definim la llista base de ciutats. Aquesta és la part més important.
 CIUTATS_EST_PENINSULA = {
     'Pamplona': {'lat': 42.8125, 'lon': -1.6458, 'sea_dir': None},
     'Logroño': {'lat': 42.465, 'lon': -2.441, 'sea_dir': None},
@@ -143,8 +150,36 @@ CIUTATS_EST_PENINSULA = {
     'Cuenca': {'lat': 40.0704, 'lon': -2.1374, 'sea_dir': None},
     'Albacete': {'lat': 38.9942, 'lon': -1.8584, 'sea_dir': None},
 }
-# Delimitem el mapa des d'Albacete fins a Pamplona
-MAP_EXTENT_EST_PENINSULA = [-4, 1, 38.5, 43.5] 
+
+# 2. SEGON: Ara que CIUTATS_EST_PENINSULA ja existeix, podem utilitzar-la per crear les agrupacions.
+CIUTATS_PER_ZONA_PENINSULA = {
+    "Eix de l'Ebre": {
+        'Zaragoza': CIUTATS_EST_PENINSULA['Zaragoza'],
+        'Teruel': CIUTATS_EST_PENINSULA['Teruel']
+    },
+    "Llevant": {
+        'València': CIUTATS_EST_PENINSULA['València'],
+        'Castelló': CIUTATS_EST_PENINSULA['Castelló']
+    },
+    "Interior Nord": {
+        'Pamplona': CIUTATS_EST_PENINSULA['Pamplona'],
+        'Logroño': CIUTATS_EST_PENINSULA['Logroño'],
+        'Soria': CIUTATS_EST_PENINSULA['Soria']
+    },
+    "Interior Sud": {
+        'Cuenca': CIUTATS_EST_PENINSULA['Cuenca'],
+        'Albacete': CIUTATS_EST_PENINSULA['Albacete']
+    }
+}
+
+# 3. TERCER: Finalment, definim les capitals per a les etiquetes del mapa.
+CAPITALS_ZONA_PENINSULA = {
+    "Eix de l'Ebre": {"nom": "Zaragoza", "lat": 41.6488, "lon": -0.8891},
+    "Llevant": {"nom": "València", "lat": 39.4699, "lon": -0.3763},
+    "Interior Nord": {"nom": "Logroño", "lat": 42.465, "lon": -2.441},
+    "Interior Sud": {"nom": "Albacete", "lat": 38.9942, "lon": -1.8584},
+}
+
 
 
 
@@ -3879,6 +3914,87 @@ def crear_mapa_forecast_combinat_japo(lons, lats, speed_data, dir_data, dewpoint
 
 
 
+
+st.cache_data(show_spinner="Carregant mapa de selecció de la península...")
+def carregar_dades_geografiques_peninsula():
+    """ Carrega el fitxer GeoJSON amb les geometries de les zones de la península. """
+    try:
+        gdf_zones = gpd.read_file("peninsula_zones.geojson")
+        gdf_zones = gdf_zones.to_crs("EPSG:4326")
+        return gdf_zones
+    except Exception as e:
+        st.error(f"Error crític: No s'ha pogut carregar l'arxiu 'peninsula_zones.geojson'. Assegura't que existeix. Detall: {e}")
+        return None
+
+@st.cache_data(ttl=1800, show_spinner="Analitzant focus de convergència a la península...")
+def calcular_alertes_per_zona_peninsula(hourly_index, nivell):
+    """ Calcula els valors màxims de convergència per a cada zona de la península. """
+    CONV_THRESHOLD = 20
+    map_data, error = carregar_dades_mapa_est_peninsula(nivell, hourly_index)
+    gdf_zones = carregar_dades_geografiques_peninsula()
+
+    if error or not map_data or gdf_zones is None:
+        return {}
+
+    try:
+        property_name = 'nom_zona'
+        lons, lats = map_data['lons'], map_data['lats']
+        grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 150), np.linspace(min(lats), max(lats), 150))
+        u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
+        grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+        grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+
+        with np.errstate(invalid='ignore'):
+            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+            convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
+        
+        punts_calents_idx = np.argwhere(convergence_scaled > CONV_THRESHOLD)
+        if len(punts_calents_idx) == 0: return {}
+            
+        punts_lats = grid_lat[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
+        punts_lons = grid_lon[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
+        punts_vals = convergence_scaled[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
+        
+        gdf_punts = gpd.GeoDataFrame(
+            {'value': punts_vals}, 
+            geometry=[Point(lon, lat) for lon, lat in zip(punts_lons, punts_lats)], 
+            crs="EPSG:4326"
+        )
+        
+        punts_dins_zones = gpd.sjoin(gdf_punts, gdf_zones, how="inner", predicate="within")
+        if punts_dins_zones.empty: return {}
+            
+        max_conv_per_zona = punts_dins_zones.groupby(property_name)['value'].max()
+        return max_conv_per_zona.to_dict()
+        
+    except Exception as e:
+        print(f"Error dins de calcular_alertes_per_zona_peninsula: {e}")
+        return {}
+
+
+
+
+
+def seleccionar_poble_peninsula(nom_poble):
+    """Callback per seleccionar un poble a la zona de la península."""
+    st.session_state.poble_selector_est_peninsula = nom_poble
+    if 'active_tab_est_peninsula_index' in st.session_state:
+        st.session_state.active_tab_est_peninsula_index = 0
+
+def tornar_a_seleccio_zona_peninsula():
+    """Callback per tornar a la llista de municipis de la zona seleccionada a la península."""
+    st.session_state.poble_selector_est_peninsula = "--- Selecciona una localitat ---"
+    if 'active_tab_est_peninsula_index' in st.session_state:
+        st.session_state.active_tab_est_peninsula_index = 0
+
+def tornar_al_mapa_general_peninsula():
+    """Callback per tornar al mapa general de la península."""
+    st.session_state.poble_selector_est_peninsula = "--- Selecciona una localitat ---"
+    st.session_state.selected_area_peninsula = "--- Selecciona una zona al mapa ---"
+    if 'active_tab_est_peninsula_index' in st.session_state:
+        st.session_state.active_tab_est_peninsula_index = 0
+
+
 def _dibuixar_frame_professional(frame_params):
     """Motor de renderització d'alta qualitat per a un fotograma."""
     el_hgt_km = frame_params['el_hgt_km']
@@ -6105,38 +6221,136 @@ def crear_mapa_forecast_combinat_est_peninsula(lons, lats, speed_data, dir_data,
 
 
 def run_est_peninsula_app():
-    # Inicialitza l'estat si no existeix
-    if 'poble_selector_est_peninsula' not in st.session_state:
-        st.session_state.poble_selector_est_peninsula = "Zaragoza"
+    """
+    Funció principal que gestiona la lògica per a la zona de l'Est Peninsular,
+    ara amb mapa interactiu.
+    """
+    # --- PAS 1: GESTIÓ D'ESTAT INICIAL ---
+    if 'selected_area_peninsula' not in st.session_state: st.session_state.selected_area_peninsula = "--- Selecciona una zona al mapa ---"
+    if 'poble_selector_est_peninsula' not in st.session_state: st.session_state.poble_selector_est_peninsula = "--- Selecciona una localitat ---"
     
-    ui_capcalera_selectors(None, zona_activa="est_peninsula")
+    # --- PAS 2: CAPÇALERA I SELECTORS GLOBALS ---
+    st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Est Península</h1>', unsafe_allow_html=True)
+    is_guest = st.session_state.get('guest_mode', False)
     
-    poble_sel = st.session_state.poble_selector_est_peninsula
+    altres_zones = {
+        'catalunya': 'Catalunya', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya', 
+        'italia': 'Itàlia', 'holanda': 'Holanda', 'japo': 'Japó', 
+        'uk': 'Regne Unit', 'canada': 'Canadà', 'noruega': 'Noruega'
+    }
     
-    # Configuració de data i hora (idèntica a altres zones)
-    now_local = datetime.now(TIMEZONE_EST_PENINSULA)
-    dia_sel_str = now_local.strftime('%d/%m/%Y'); hora_sel = now_local.hour
-    hora_sel_str = f"{hora_sel:02d}:00h"; nivell_sel = 925
-    lat_sel, lon_sel = CIUTATS_EST_PENINSULA[poble_sel]['lat'], CIUTATS_EST_PENINSULA[poble_sel]['lon']
-    
-    local_dt = now_local.replace(minute=0, second=0, microsecond=0)
-    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-    
-    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
-    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_EST_PENINSULA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
-    
-    # Menú de pestanyes
-    menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes"]
-    menu_icons = ["graph-up-arrow", "map-fill"]
+    col_text, col_nav, col_back, col_logout = st.columns([0.5, 0.2, 0.15, 0.15])
+    with col_text:
+        if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username', 'Usuari')}**!")
+    with col_nav:
+        nova_zona_key = st.selectbox("Canviar a:", options=list(altres_zones.keys()), format_func=lambda k: altres_zones[k], index=None, placeholder="Anar a...")
+        if nova_zona_key: st.session_state.zone_selected = nova_zona_key; st.rerun()
+    with col_back:
+        if st.button("⬅️ Zones", use_container_width=True, help="Tornar a la selecció de zona"):
+            keys_to_clear = [k for k in st.session_state if k not in ['logged_in', 'username', 'guest_mode', 'developer_mode']]
+            for key in keys_to_clear: del st.session_state[key]
+            st.rerun()
+    with col_logout:
+        if st.button("Sortir" if is_guest else "Tanca Sessió", use_container_width=True):
+            for key in list(st.session_state.keys()): del st.session_state[key]
+            st.rerun()
+    st.divider()
 
-    option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
-                orientation="horizontal", key="active_tab_est_peninsula", default_index=0)
+    # --- PAS 3: CÀLCUL DE LA DATA I HORA ---
+    with st.container(border=True):
+        now_local = datetime.now(TIMEZONE_EST_PENINSULA)
+        dia_sel_str = now_local.strftime('%d/%m/%Y')
+        hora_sel_str = f"{now_local.hour:02d}:00h"
+        nivell_sel = 925
+        local_dt = now_local.replace(minute=0, second=0, microsecond=0)
+        start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
 
-    # Lògica de les pestanyes
-    if st.session_state.active_tab_est_peninsula == "Anàlisi Vertical":
-        with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
-            data_tuple, final_index, error_msg = carregar_dades_sondeig_est_peninsula(lat_sel, lon_sel, hourly_index_sel)
+    # --- PAS 4: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
+    if st.session_state.poble_selector_est_peninsula and "---" not in st.session_state.poble_selector_est_peninsula:
+        # --- VISTA D'ANÀLISI DETALLADA D'UNA CIUTAT ---
+        poble_sel = st.session_state.poble_selector_est_peninsula
+        st.success(f"### Anàlisi per a: {poble_sel}")
+        
+        col_nav1, col_nav2 = st.columns(2)
+        with col_nav1:
+            st.button("⬅️ Tornar a la Zona", on_click=tornar_a_seleccio_zona_peninsula, use_container_width=True)
+        with col_nav2:
+            st.button("🗺️ Tornar al Mapa General", on_click=tornar_al_mapa_general_peninsula, use_container_width=True)
+
+        lat_sel, lon_sel = CIUTATS_EST_PENINSULA[poble_sel]['lat'], CIUTATS_EST_PENINSULA[poble_sel]['lon']
+        cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+        timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_EST_PENINSULA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+
+        # Menú de pestanyes per a l'anàlisi
+        menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes"]
+        menu_icons = ["graph-up-arrow", "map-fill"]
+        option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
+                    orientation="horizontal", key="active_tab_est_peninsula", default_index=0)
+
+        # Lògica per mostrar el contingut de cada pestanya
+        if st.session_state.active_tab_est_peninsula == "Anàlisi Vertical":
+            with st.spinner(f"Carregant dades del sondeig AROME per a {poble_sel}..."):
+                data_tuple, final_index, error_msg = carregar_dades_sondeig_est_peninsula(lat_sel, lon_sel, hourly_index_sel)
+            
+            if data_tuple is None or error_msg:
+                st.error(f"No s'ha pogut carregar el sondeig: {formatar_missatge_error_api(error_msg)}")
+            else:
+                if final_index is not None and final_index != hourly_index_sel:
+                    adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+                    adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_EST_PENINSULA)
+                    st.warning(f"**Avís:** Es mostren dades de les **{adjusted_local_time.strftime('%H:%Mh')}**.")
+                
+                params_calc = data_tuple[1]
+                with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
+                    map_data_conv, _ = carregar_dades_mapa_est_peninsula(nivell_sel, hourly_index_sel)
+                if map_data_conv:
+                    params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+                
+                ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+
+        elif st.session_state.active_tab_est_peninsula == "Anàlisi de Mapes":
+            ui_pestanya_mapes_est_peninsula(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
+
+    else:
+        # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
+        with st.spinner("Carregant mapa de situació de la península..."):
+            alertes_totals = calcular_alertes_per_zona_peninsula(hourly_index_sel, nivell_sel)
+            map_output = ui_mapa_display_personalitzat(alertes_totals, hourly_index_sel)
+        
+        ui_llegenda_mapa_principal()
+
+        if map_output and map_output.get("last_object_clicked_tooltip"):
+            raw_tooltip = map_output["last_object_clicked_tooltip"]
+            if "Comarca:" in raw_tooltip:
+                clicked_area = raw_tooltip.split(':')[-1].strip()
+                if clicked_area != st.session_state.get('selected_area_peninsula'):
+                    st.session_state.selected_area_peninsula = clicked_area
+                    st.rerun()
+
+        selected_area = st.session_state.get('selected_area_peninsula')
+        if selected_area and "---" not in selected_area:
+            st.markdown(f"##### Selecciona una localitat a {selected_area}:")
+            poblacions_a_mostrar = CIUTATS_PER_ZONA_PENINSULA.get(selected_area.strip(), {})
+            
+            if poblacions_a_mostrar:
+                cols = st.columns(4)
+                col_index = 0
+                for nom_poble in sorted(poblacions_a_mostrar.keys()):
+                    with cols[col_index % 4]:
+                        st.button(
+                            nom_poble, key=f"btn_pen_{nom_poble.replace(' ', '_')}",
+                            on_click=seleccionar_poble_peninsula, args=(nom_poble,), use_container_width=True
+                        )
+                    col_index += 1
+            else:
+                st.warning("Aquesta zona no té localitats predefinides per a l'anàlisi.")
+            
+            if st.button("⬅️ Veure totes les zones"):
+                st.session_state.selected_area_peninsula = "--- Selecciona una zona al mapa ---"
+                st.rerun()
+        else:
+            st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
        
 
 
@@ -7560,64 +7774,7 @@ def ui_pestanya_mapes_est_peninsula(hourly_index_sel, timestamp_str, nivell_sel,
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
 
-def run_est_peninsula_app():
-    """
-    Funció principal que gestiona la lògica per a la zona de l'Est Peninsular.
-    """
-    # Inicialitza el selector de poble per a aquesta zona si no existeix
-    if 'poble_selector_est_peninsula' not in st.session_state:
-        st.session_state.poble_selector_est_peninsula = "Zaragoza"
-    
-    # Mostra la capçalera i el selector de ciutat
-    ui_capcalera_selectors(None, zona_activa="est_peninsula")
-    
-    poble_sel = st.session_state.poble_selector_est_peninsula
-    
-    # Configuració de data i hora
-    now_local = datetime.now(TIMEZONE_EST_PENINSULA)
-    dia_sel_str = now_local.strftime('%d/%m/%Y'); hora_sel = now_local.hour
-    hora_sel_str = f"{hora_sel:02d}:00h"; nivell_sel = 925
-    lat_sel, lon_sel = CIUTATS_EST_PENINSULA[poble_sel]['lat'], CIUTATS_EST_PENINSULA[poble_sel]['lon']
-    
-    local_dt = now_local.replace(minute=0, second=0, microsecond=0)
-    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-    
-    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
-    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_EST_PENINSULA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
-    
-    # Menú de pestanyes
-    menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes"]
-    menu_icons = ["graph-up-arrow", "map-fill"]
 
-    option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
-                orientation="horizontal", key="active_tab_est_peninsula", default_index=0)
-
-    # Lògica per mostrar el contingut de cada pestanya
-    if st.session_state.active_tab_est_peninsula == "Anàlisi Vertical":
-        with st.spinner(f"Carregant dades del sondeig AROME per a {poble_sel}..."):
-            data_tuple, final_index, error_msg = carregar_dades_sondeig_est_peninsula(lat_sel, lon_sel, hourly_index_sel)
-        
-        if data_tuple is None or error_msg:
-            st.error(f"No s'ha pogut carregar el sondeig: {formatar_missatge_error_api(error_msg)}")
-        else:
-            if final_index is not None and final_index != hourly_index_sel:
-                adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
-                adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_EST_PENINSULA)
-                st.warning(f"**Avís:** Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
-            
-            params_calc = data_tuple[1]
-            with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
-                map_data_conv, _ = carregar_dades_mapa_est_peninsula(nivell_sel, hourly_index_sel)
-            if map_data_conv:
-                params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
-            
-            # Reutilitzem la funció de visualització vertical genèrica
-            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
-
-    elif st.session_state.active_tab_est_peninsula == "Anàlisi de Mapes":
-        # Truquem a la funció específica per mostrar els mapes d'aquesta zona
-        ui_pestanya_mapes_est_peninsula(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
 
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
