@@ -6295,7 +6295,9 @@ def run_catalunya_app():
                 comarca_actual = get_comarca_for_poble(poble_sel)
                 if comarca_actual:
                     valor_conv_comarcal = alertes_zona.get(comarca_actual, 0)
-                    ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calc)
+                    # --- LÍNIA CORREGIDA ---
+                    # Ara li passem el paràmetre 'hora_sel_str' que faltava
+                    ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calc, hora_sel_str)
                 else:
                     st.warning(f"No s'ha pogut determinar la comarca per a {poble_sel}.")
             elif active_tab == "Anàlisi de Mapes":
