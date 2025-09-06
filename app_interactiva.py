@@ -6596,6 +6596,28 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             st.rerun()
     st.divider()
 
+    # --- BLOC DE SELECTORS RESTAURAT ---
+    # Aquesta part torna a crear els selectors de ciutats per a les zones que no tenen mapa interactiu.
+    if zona_activa not in ['catalunya', 'est_peninsula']:
+        with st.container(border=True):
+            if zona_activa == 'valley_halley':
+                st.selectbox("Ciutat:", options=sorted(list(USA_CITIES.keys())), key="poble_selector_usa")
+            elif zona_activa == 'alemanya':
+                st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ALEMANYA.keys())), key="poble_selector_alemanya")
+            elif zona_activa == 'italia':
+                st.selectbox("Ciutat:", options=sorted(list(CIUTATS_ITALIA.keys())), key="poble_selector_italia")
+            elif zona_activa == 'holanda':
+                st.selectbox("Ciutat:", options=sorted(list(CIUTATS_HOLANDA.keys())), key="poble_selector_holanda")
+            elif zona_activa == 'japo':
+                st.selectbox("Ciutat:", options=sorted(list(CIUTATS_JAPO.keys())), key="poble_selector_japo")
+            elif zona_activa == 'uk':
+                st.selectbox("Ciutat:", options=sorted(list(CIUTATS_UK.keys())), key="poble_selector_uk")
+            elif zona_activa == 'canada':
+                st.selectbox("Ciutat:", options=sorted(list(CIUTATS_CANADA.keys())), key="poble_selector_canada")
+            elif zona_activa == 'noruega':
+                st.selectbox("Ciutat:", options=sorted(list(CIUTATS_NORUEGA.keys())), key="poble_selector_noruega")
+                
+
 def ui_pestanya_mapes_japo(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
     st.markdown("#### Mapes de Pronòstic (Model JMA GSM)")
     with st.spinner("Carregant mapa JMA GSM... El primer cop pot trigar una mica."):
