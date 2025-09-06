@@ -6410,7 +6410,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         </div>
         """, unsafe_allow_html=True)
         
-        # --- NOU BLOC: LLEGENDA EXPLICATIVA ---
+        # --- AQUEST ÉS EL BLOC DE LA LLEGENDA QUE FALTAVA ---
         st.markdown("""
         <style>
             .legend-container { background-color: #262730; border-radius: 8px; padding: 16px; margin-top: 15px; }
@@ -6436,7 +6436,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             </div>
         </div>
         """, unsafe_allow_html=True)
-        # --- FI DEL NOU BLOC ---
+        # --- FI DEL BLOC DE LA LLEGENDA ---
 
         st.markdown("##### Validació Atmosfèrica")
         
