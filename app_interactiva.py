@@ -5696,11 +5696,14 @@ def on_day_change_usa():
 
 
 @st.cache_data(ttl=600, show_spinner="Preparant dades del mapa...")
-def preparar_dades_mapa_cachejat(alertes_per_zona, selected_area_str, hourly_index):
+def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index):
     """
-    Funció CACHEADA que fa el treball pesat. L'argument 'hourly_index' assegura
-    que la memòria cau es refresqui correctament quan canvia l'hora.
+    Funció CACHEADA que fa el treball pesat. Ara rep una tupla d'alertes per
+    assegurar la compatibilitat amb la memòria cau.
     """
+    # <<<--- CANVI CLAU: Reconstruïm el diccionari a partir de la tupla ---
+    alertes_per_zona = dict(alertes_tuple)
+    
     gdf = carregar_dades_geografiques()
     if gdf is None: return None
 
@@ -5717,7 +5720,7 @@ def preparar_dades_mapa_cachejat(alertes_per_zona, selected_area_str, hourly_ind
         if value >= 20: return '#28A745', '#FFFFFF'
         return '#6c757d', '#FFFFFF'
 
-    # Pre-calculem els estils per a cada zona
+    # La resta de la funció no canvia
     styles_dict = {}
     for feature in gdf.iterfeatures():
         nom_feature_raw = feature.get('properties', {}).get(property_name)
@@ -5731,7 +5734,6 @@ def preparar_dades_mapa_cachejat(alertes_per_zona, selected_area_str, hourly_ind
                 'weight': 2.5 if conv_value else 1
             }
 
-    # Pre-calculem les dades per als marcadors
     markers_data = []
     for zona, conv_value in alertes_per_zona.items():
         capital_info = CAPITALS_COMARCA.get(zona)
@@ -6633,22 +6635,24 @@ def generar_mapa_folium_catalunya(alertes_per_zona, selected_area_str):
     
 def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
     """
-    Funció de VISUALITZACIÓ. No està a la memòria cau.
-    Obté les dades pre-processades de la memòria cau i construeix el mapa ràpidament.
+    Funció de VISUALITZACIÓ. Converteix les alertes a un format segur per a la memòria cau.
     """
     st.markdown("#### Mapa de Situació")
     
-    # Agafem la zona seleccionada de l'estat de la sessió
     selected_area_str = st.session_state.get('selected_area')
 
-    # Cridem a la funció que SÍ està a la memòria cau per obtenir les dades del mapa
-    map_data = preparar_dades_mapa_cachejat(alertes_per_zona, selected_area_str, hourly_index)
+    # <<<--- CANVI CLAU: Convertim el diccionari a una tupla ordenada ---
+    # Aquest format és 100% segur per a la memòria cau de Streamlit.
+    alertes_tuple = tuple(sorted(alertes_per_zona.items()))
+    
+    # Passem la tupla segura a la funció de la memòria cau
+    map_data = preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index)
     
     if not map_data:
         st.error("No s'han pogut generar les dades per al mapa.")
         return None
 
-    # Paràmetres del mapa
+    # El reste de la funció per construir el mapa no canvia
     map_params = {
         "location": [41.83, 1.87], "zoom_start": 8,
         "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
@@ -6657,9 +6661,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
         "max_bounds": [[40.4, 0.0], [42.9, 3.5]], "min_zoom": 8, "max_zoom": 12
     }
 
-    # Lògica per congelar el mapa
     if selected_area_str and "---" not in selected_area_str:
-        # Per aquesta comprovació, hem de llegir el GDF des del JSON guardat
         gdf_temp = gpd.read_file(map_data["gdf"])
         cleaned_selected_area = selected_area_str.strip().replace('.', '')
         zona_shape = gdf_temp[gdf_temp[map_data["property_name"]].str.strip().replace('.', '') == cleaned_selected_area]
@@ -6673,7 +6675,6 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
 
     m = folium.Map(**map_params)
 
-    # Funció d'estil que utilitza les dades pre-calculades
     def style_function(feature):
         nom_feature_raw = feature.get('properties', {}).get(map_data["property_name"])
         style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
@@ -6685,20 +6686,16 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
                 style.update({'fillColor': '#007bff', 'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.5})
         return style
 
-    # Dibuixem el GeoJson
     folium.GeoJson(
-        map_data["gdf"],
-        style_function=style_function,
+        map_data["gdf"], style_function=style_function,
         highlight_function=lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5},
         tooltip=folium.GeoJsonTooltip(fields=[map_data["property_name"]], aliases=['Comarca:'])
     ).add_to(m)
 
-    # Dibuixem els marcadors
     for marker in map_data["markers"]:
         icon = folium.DivIcon(html=marker['icon_html'])
         folium.Marker(location=marker['location'], icon=icon, tooltip=marker['tooltip']).add_to(m)
     
-    # Finalment, mostrem el mapa
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
     
     
