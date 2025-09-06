@@ -6488,7 +6488,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
             if poble_coords:
                 lon_poble, lat_poble = poble_coords['lon'], poble_coords['lat']
-                ax.text(lon_poble, lat_poble, '📍', transform=ccrs.PlateCarree(),
+                ax.text(lon_poble, lat_poble, '🔻', transform=ccrs.PlateCarree(),
                         fontsize=20, ha='center', va='center', zorder=14,
                         path_effects=[path_effects.withStroke(linewidth=3, foreground='white')])
 
