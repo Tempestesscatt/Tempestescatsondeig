@@ -6541,7 +6541,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                  <p style="font-size:0.9em; color:#a0a0b0; margin-top:10px; text-align: left;">{vered_desc}</p>
             </div>
             """, unsafe_allow_html=True)
-            st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")```
+            st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
 
             
 def seleccionar_poble(nom_poble):
