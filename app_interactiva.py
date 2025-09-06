@@ -6462,9 +6462,7 @@ def crear_llegenda_direccionalitat():
     </div>
 </div>
 '''
-    st.markdown(html_llegenda, unsafe_allow_html=True)```
-
-Amb aquest canvi, la llegenda ara s'hauria de veure correctament, amb les imatges i el text formatat, en lloc del codi HTML en brut.
+    st.markdown(html_llegenda, unsafe_allow_html=True)
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
