@@ -6383,9 +6383,8 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió COMPLETA I DEFINITIVA).
-    Inclou: Fons verd, gradient de convergència, isòlines numerades,
-    con de pronòstic amb temps i marcador de posició.
+    PESTANYA D'ANÀLISI COMARCAL (Versió final amb ESTIL VISCÓS/SUAU).
+    Utilitza un suavitzat més intens i més nivells de color per a un efecte natural.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6407,7 +6406,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             map_extent = [bounds[0] - margin_lon, bounds[2] + margin_lon, bounds[1] - margin_lat, bounds[3] + margin_lat]
             
             plt.style.use('default')
-            fig, ax = crear_mapa_base(map_extent) # Aquesta crida ja utilitzarà el teu fons verd
+            fig, ax = crear_mapa_base(map_extent)
             ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
 
             if map_data and valor_conv > 15:
@@ -6424,13 +6423,21 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     DEWPOINT_THRESHOLD = 14 if nivell_sel >= 950 else 12
                     humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
                     effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0)
-                smoothed_convergence = gaussian_filter(effective_convergence, sigma=1.5)
+                
+                # --- CANVI 1: Augmentem el suavitzat per a un efecte més "líquid" ---
+                smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
                 smoothed_convergence[smoothed_convergence < 15] = 0
+
                 if np.any(smoothed_convergence > 0):
                     colors_conv = ['#5BC0DE', "#FBFF00", "#DC6D05", "#EC8383", "#F03D3D", "#FF0000", "#7C7EF0", "#0408EAFF", "#000070"]
                     cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_personalitzada", colors_conv)
-                    fill_levels = np.arange(20, 151, 5)
+                    
+                    # --- CANVI 2: Augmentem molt el nombre de nivells per a un gradient suau ---
+                    fill_levels = np.linspace(20, 120, 100) # 100 passos de color
+                    
                     ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels, cmap=cmap_conv, alpha=0.7, zorder=3, transform=ccrs.PlateCarree(), extend='max')
+                    
+                    # Les línies de contorn es mantenen igual per a la informació clau
                     line_levels = [20, 40, 60, 80, 100]
                     contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors='black', linestyles='--', linewidths=1.2, zorder=4, transform=ccrs.PlateCarree())
                     labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
@@ -6493,7 +6500,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             plt.close(fig)
 
     with col_diagnostic:
-        # Aquesta part no canvia, es manté exactament igual
+        # Aquesta part es manté exactament igual
         st.markdown("##### Diagnòstic de la Zona")
         if valor_conv >= 100:
             nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
