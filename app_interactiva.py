@@ -6173,7 +6173,7 @@ def run_canada_app():
 
 
 def run_catalunya_app():
-    # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
+    # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL (Sense canvis) ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
@@ -6191,7 +6191,7 @@ def run_catalunya_app():
             st.rerun()
     st.divider()
 
-    # --- PAS 2, 3, 4: GESTIÓ D'ESTAT I SELECTORS GLOBALS ---
+    # --- PAS 2, 3, 4: GESTIÓ D'ESTAT I SELECTORS GLOBALS (Sense canvis) ---
     if 'selected_area' not in st.session_state: st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
     if 'poble_sel' not in st.session_state: st.session_state.poble_sel = "--- Selecciona una localitat ---"
     
@@ -6213,7 +6213,7 @@ def run_catalunya_app():
 
     # --- PAS 5: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # --- VISTA D'ANÀLISI DETALLADA ---
+        # --- VISTA D'ANÀLISI DETALLADA (Aquest bloc no canvia) ---
         poble_sel = st.session_state.poble_sel
         with st.spinner(f"Carregant anàlisi completa per a {poble_sel}..."):
             lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
@@ -6324,8 +6324,44 @@ def run_catalunya_app():
             alertes_filtrades = filtrar_alertes(alertes_totals, st.session_state.alert_filter_level)
             map_output = ui_mapa_display_personalitzat(alertes_filtrades, hourly_index_sel)
 
-        # La llegenda només es mostra aquí
+        # Mostrem la llegenda principal
         ui_llegenda_mapa_principal()
+
+        # --- NOU BLOC: LÒGICA DE LA FLETXA INDICADORA ---
+        arrow_position_percent = None
+        selected_area = st.session_state.get('selected_area')
+        if selected_area and "---" not in selected_area:
+            cleaned_area_name = selected_area.strip().replace('.', '')
+            conv_value = alertes_filtrades.get(cleaned_area_name)
+            
+            # Funció per calcular la posició de la fletxa
+            def calcular_posicio_llegenda(valor):
+                if not isinstance(valor, (int, float)) or valor < 20:
+                    return None
+                valor_clamped = max(20, min(valor, 100))
+                posicio_percent = ((valor_clamped - 20) / (100 - 20)) * 100
+                return posicio_percent
+            
+            arrow_position_percent = calcular_posicio_llegenda(conv_value)
+
+        # Si tenim una posició vàlida, injectem el CSS per a la fletxa
+        if arrow_position_percent is not None:
+            st.markdown(f"""
+            <style>
+            .legend-gradient-bar::after {{
+                content: '▼';
+                color: white;
+                font-size: 24px;
+                position: absolute;
+                bottom: 78px; /* Ajusta aquest valor per pujar o baixar la fletxa */
+                left: {arrow_position_percent}%;
+                transform: translateX(-50%);
+                text-shadow: 0px 0px 5px black;
+                transition: left 0.3s ease-in-out;
+            }}
+            </style>
+            """, unsafe_allow_html=True)
+        # --- FI DEL NOU BLOC ---
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
@@ -6652,24 +6688,66 @@ def filtrar_alertes(alertes_totals, nivell_seleccionat):
 def ui_llegenda_mapa_principal():
     """
     Mostra una llegenda gràfica i millorada per al mapa principal de situació.
-    (Versió 2.0 - Anti-formatació de codi)
+    (Versió 3.0 - Preparada per a la fletxa indicadora)
     """
-    # El CSS es manté igual, ja que funciona correctament.
     st.markdown("""
     <style>
-        .legend-container-main { background-color: #262730; border-radius: 8px; padding: 18px; margin-top: 15px; border: 1px solid #444; }
-        .legend-title-main { font-size: 1.2em; font-weight: bold; color: #FAFAFA; margin-bottom: 8px; }
-        .legend-subtitle-main { font-size: 0.95em; color: #a0a0b0; margin-bottom: 18px; }
-        .legend-gradient-bar { height: 15px; border-radius: 7px; background: linear-gradient(to right, #28A745, #FD7E14, #DC3545, #9370DB); margin-bottom: 5px; border: 1px solid #555; }
-        .legend-labels { display: flex; justify-content: space-between; font-size: 0.8em; color: #a0a0b0; padding: 0 5px; }
-        .legend-descriptions { display: flex; justify-content: space-around; text-align: center; margin-top: 10px; }
-        .legend-desc-item { flex: 1; padding: 0 5px; }
-        .legend-desc-item b { font-size: 0.9em; color: #FFFFFF; }
-        .legend-desc-item p { font-size: 0.8em; color: #a0a0b0; margin-top: 2px; line-height: 1.3; }
+        .legend-container-main { 
+            background-color: #262730; 
+            border-radius: 8px; 
+            padding: 18px; 
+            margin-top: 15px; 
+            border: 1px solid #444; 
+            position: relative; /* <-- AFEGIT CLAU PER A LA FLETXA */
+        }
+        .legend-title-main { 
+            font-size: 1.2em; 
+            font-weight: bold; 
+            color: #FAFAFA; 
+            margin-bottom: 8px; 
+        }
+        .legend-subtitle-main {
+            font-size: 0.95em; 
+            color: #a0a0b0; 
+            margin-bottom: 18px;
+        }
+        .legend-gradient-bar {
+            height: 15px;
+            border-radius: 7px;
+            background: linear-gradient(to right, #28A745, #FD7E14, #DC3545, #9370DB);
+            margin-bottom: 5px;
+            border: 1px solid #555;
+        }
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8em;
+            color: #a0a0b0;
+            padding: 0 5px;
+        }
+        .legend-descriptions {
+            display: flex;
+            justify-content: space-around;
+            text-align: center;
+            margin-top: 10px;
+        }
+        .legend-desc-item {
+            flex: 1;
+            padding: 0 5px;
+        }
+        .legend-desc-item b {
+            font-size: 0.9em;
+            color: #FFFFFF;
+        }
+        .legend-desc-item p {
+            font-size: 0.8em;
+            color: #a0a0b0;
+            margin-top: 2px;
+            line-height: 1.3;
+        }
     </style>
     """, unsafe_allow_html=True)
 
-    # --- CORRECCIÓ DEFINITIVA: L'HTML es construeix com una única cadena contínua ---
     html_llegenda = (
         '<div class="legend-container-main">'
         '    <div class="legend-title-main">Com Interpretar el Mapa de Situació</div>'
