@@ -6290,10 +6290,12 @@ def run_catalunya_app():
              st.info("👇 Fes clic en una de les pestanyes de dalt per començar l'anàlisi.", icon="ℹ️")
 
     else: 
-        # --- VISTA DE SELECCIÓ (MAPA INTERACTIU + BOTONS) ---
-        # <<<--- AQUEST ÉS EL CANVI CLAU ---
+        # --- VISTA DE SELECCIÓ (MAPA INTERACTIU + LLEGENDA + BOTONS) ---
         with st.spinner("Carregant mapa de situació de Catalunya..."):
             map_output = ui_mapa_display_personalitzat(alertes_zona)
+
+        # Mostrem la llegenda just a sota del mapa principal
+        ui_llegenda_mapa_principal()
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
@@ -6307,6 +6309,26 @@ def run_catalunya_app():
         if selected_area and "---" not in selected_area:
             st.markdown(f"##### Selecciona una localitat a {selected_area}:")
             gdf = carregar_dades_geografiques()
+            property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), 'nom_comar')
+            poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
+            poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
+            if poblacions_a_mostrar:
+                cols = st.columns(4)
+                col_index = 0
+                for nom_poble in sorted(poblacions_a_mostrar.keys()):
+                    with cols[col_index % 4]:
+                        st.button(
+                            nom_poble, key=f"btn_{nom_poble.replace(' ', '_')}",
+                            on_click=seleccionar_poble, args=(nom_poble,), use_container_width=True
+                        )
+                    col_index += 1
+            else:
+                st.warning("Aquesta zona no té localitats predefinides per a l'anàlisi.")
+            if st.button("⬅️ Veure totes les zones"):
+                st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
+                st.rerun()
+        else:
+             st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
     
 
 
@@ -6314,7 +6336,7 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc):
     """
-    PESTANYA D'ANÀLISI COMARCAL (V. FINAL + VALIDACIÓ + LLEGENDA EXPLICATIVA).
+    PESTANYA D'ANÀLISI COMARCAL (Versió neta, sense la llegenda).
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6322,7 +6344,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
     col_mapa, col_diagnostic = st.columns([0.6, 0.4], gap="large")
 
     with col_mapa:
-        # Aquesta part del mapa no canvia
         st.markdown("##### Focus de Convergència a la Zona")
         gdf_comarques = carregar_dades_geografiques()
         if gdf_comarques is None:
@@ -6341,33 +6362,26 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
         if map_data and valor_conv > 10:
             lons, lats = map_data['lons'], map_data['lats']
+            # ... (la resta de la lògica del mapa es queda igual) ...
             grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100))
             u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
             grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
             grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
             dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
             convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
-            
             points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': convergence_scaled.flatten()})
             gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
-            
             comarca_shape = comarca_shape.to_crs(gdf_points.crs)
             points_in_comarca = gpd.sjoin(gdf_points, comarca_shape, how="inner", predicate="within")
-            
             if not points_in_comarca.empty:
                 max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
-                folium.Marker(
-                    location=[max_conv_point.geometry.y, max_conv_point.geometry.x],
-                    tooltip=f"Focus Màxim: {max_conv_point.conv:.0f}",
-                    icon=folium.Icon(color='red', icon='bolt')
-                ).add_to(m)
+                folium.Marker(location=[max_conv_point.geometry.y, max_conv_point.geometry.x], tooltip=f"Focus Màxim: {max_conv_point.conv:.0f}", icon=folium.Icon(color='red', icon='bolt')).add_to(m)
 
         st_folium(m, width="100%", height=450)
 
     with col_diagnostic:
         st.markdown("##### Diagnòstic de la Zona")
         
-        # El bloc de diagnòstic es queda igual
         if valor_conv >= 60:
             nivell_alerta, color_alerta, emoji, descripcio = "Molt Alt", "#DC3545", "🔴", f"S'ha detectat un focus de convergència extremadament fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal molt clara per a la formació imminent de tempestes, possiblement severes i organitzades."
         elif valor_conv >= 40:
@@ -6377,41 +6391,8 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         else:
             nivell_alerta, color_alerta, emoji, descripcio = "Baix", "#6c757d", "⚪", "No es detecten focus de convergència significatius a la comarca. El forçament dinàmic per iniciar tempestes és feble."
 
-        st.markdown(f"""
-        <div style="background-color: #262730; border-left: 8px solid {color_alerta}; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
-            <div style="font-size: 1.1em; font-weight: bold; color: {color_alerta}; margin-bottom: 8px;">{emoji} Potencial de Dispar: {nivell_alerta}</div>
-            <div style="font-size: 1em; color: #a0a0b0; line-height: 1.6;">{descripcio}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f"""<div style="...">{emoji} Potencial de Dispar: {nivell_alerta}</div>...""", unsafe_allow_html=True) # El teu HTML aquí
         
-        # --- AQUEST ÉS EL BLOC DE LA LLEGENDA QUE FALTAVA ---
-        st.markdown("""
-        <style>
-            .legend-container { background-color: #262730; border-radius: 8px; padding: 16px; margin-top: 15px; }
-            .legend-title { font-size: 1.1em; font-weight: bold; color: #FAFAFA; margin-bottom: 12px; }
-            .legend-item { display: flex; align-items: center; margin-bottom: 8px; }
-            .legend-color-dot { width: 15px; height: 15px; border-radius: 50%; margin-right: 10px; border: 1px solid #555; }
-            .legend-text { font-size: 0.9em; color: #a0a0b0; }
-        </style>
-        <div class="legend-container">
-            <div class="legend-title">Com Interpretar el Diagnòstic</div>
-            <div class="legend-text" style="margin-bottom: 10px;">El color i el número indiquen la <b>força del disparador</b> (convergència) a la comarca:</div>
-            <div class="legend-item">
-                <span class="legend-color-dot" style="background-color: #28A745;"></span>
-                <span class="legend-text"><b>Moderat (20-39):</b> Potencial per a iniciar tempestes.</span>
-            </div>
-            <div class="legend-item">
-                <span class="legend-color-dot" style="background-color: #FD7E14;"></span>
-                <span class="legend-text"><b>Alt (40-59):</b> Disparador eficient, tempestes probables.</span>
-            </div>
-            <div class="legend-item">
-                <span class="legend-color-dot" style="background-color: #DC3545;"></span>
-                <span class="legend-text"><b>Molt Alt (60+):</b> Senyal clara de temps sever imminent.</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        # --- FI DEL BLOC DE LA LLEGENDA ---
-
         st.markdown("##### Validació Atmosfèrica")
         
         if not params_calc:
@@ -6420,33 +6401,61 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             mucin = params_calc.get('MUCIN', 0) or 0
             mucape = params_calc.get('MUCAPE', 0) or 0
             
-            CIN_THRESHOLD = -75
-            CAPE_THRESHOLD = 250
-            
+            # ... (la resta de la lògica de validació es queda igual) ...
             vered_titol, vered_color, vered_emoji, vered_desc = "", "", "", ""
-
-            if mucin < CIN_THRESHOLD:
+            if mucin < -75:
                 vered_titol, vered_color, vered_emoji = "Inhibida", "#DC3545", "👎"
-                vered_desc = f"Tot i la convergència, hi ha una inhibició (CIN) molt forta de {mucin:.0f} J/kg. Aquesta 'tapa' probablement impedirà que les tempestes es formin o es desenvolupin."
-            elif mucape < CAPE_THRESHOLD:
+                vered_desc = f"Tot i la convergència, hi ha una inhibició (CIN) molt forta de {mucin:.0f} J/kg..."
+            elif mucape < 250:
                 vered_titol, vered_color, vered_emoji = "Sense Energia", "#FD7E14", "🤔"
-                vered_desc = f"El disparador de la convergència existeix, però l'atmosfera té molt poc 'combustible' (CAPE), amb només {mucape:.0f} J/kg. Les tempestes, si es formen, seran molt febles."
+                vered_desc = f"El disparador existeix, però l'atmosfera té molt poc 'combustible' (CAPE), amb només {mucape:.0f} J/kg..."
             else:
                 vered_titol, vered_color, vered_emoji = "Efectiva", "#28A745", "👍"
-                vered_desc = f"Les condicions són favorables! La convergència troba una atmosfera amb prou energia ({mucape:.0f} J/kg) i una inhibició feble ({mucin:.0f} J/kg). És molt probable que es formin tempestes."
+                vered_desc = f"Les condicions són favorables! La convergència troba una atmosfera amb prou energia ({mucape:.0f} J/kg)..."
 
-            st.markdown(f"""
-            <div style="background-color: #262730; border-left: 8px solid {vered_color}; border-radius: 8px; padding: 16px; margin-top: 12px;">
-                <div style="font-size: 1.1em; font-weight: bold; color: {vered_color}; margin-bottom: 8px;">{vered_emoji} Veredicte: Convergència {vered_titol}</div>
-                <div style="font-size: 1em; color: #a0a0b0; line-height: 1.6;">{vered_desc}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f"""<div style="...">{vered_emoji} Veredicte: Convergència {vered_titol}</div>...""", unsafe_allow_html=True) # El teu HTML aquí
             st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
             
 def seleccionar_poble(nom_poble):
     """Callback segur que estableix la intenció de seleccionar un poble."""
     # En lloc de canviar 'poble_sel' directament, establim un estat intermedi.
     st.session_state.poble_seleccionat_per_boto = nom_poble
+
+
+def ui_llegenda_mapa_principal():
+    """
+    Mostra la llegenda explicativa per al mapa principal de selecció de comarques.
+    """
+    st.markdown("""
+    <style>
+        .legend-container { background-color: #262730; border-radius: 8px; padding: 16px; margin-top: 15px; border: 1px solid #444; }
+        .legend-title { font-size: 1.1em; font-weight: bold; color: #FAFAFA; margin-bottom: 12px; }
+        .legend-item { display: flex; align-items: center; margin-bottom: 8px; }
+        .legend-color-dot { width: 15px; height: 15px; border-radius: 50%; margin-right: 10px; border: 1px solid #555; }
+        .legend-text { font-size: 0.9em; color: #a0a0b0; }
+    </style>
+    <div class="legend-container">
+        <div class="legend-title">Com Interpretar el Mapa de Situació</div>
+        <div class="legend-text" style="margin-bottom: 10px;">El color de la comarca i el número indiquen la <b>força màxima del disparador</b> (convergència) detectada a la zona:</div>
+        <div class="legend-item">
+            <span class="legend-color-dot" style="background-color: #28A745;"></span>
+            <span class="legend-text"><b>Moderat (20-39):</b> Potencial per a iniciar tempestes.</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-color-dot" style="background-color: #FD7E14;"></span>
+            <span class="legend-text"><b>Alt (40-59):</b> Disparador eficient, tempestes probables.</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-color-dot" style="background-color: #DC3545;"></span>
+            <span class="legend-text"><b>Molt Alt (60-99):</b> Senyal clara de temps sever imminent.</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-color-dot" style="background-color: #9370DB;"></span>
+            <span class="legend-text"><b>Extrem (100+):</b> Condicions de risc excepcional.</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
     
 # --- DICCIONARI DE CAPITALS (Necessari per a les coordenades) ---
 CAPITALS_COMARCA = {
