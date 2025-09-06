@@ -6312,7 +6312,11 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
     with col_mapa:
         st.markdown("##### Focus de Convergència a la Zona")
         with st.spinner("Generant mapa de gradient comarcal..."):
-            gdf_comarques, _ = carregar_dades_geografiques()
+            
+            # --- CANVI CLAU AQUÍ: Cridem a la funció correcta ---
+            gdf_comarques, _ = carregar_dades_geografiques_i_mapeig()
+            # ----------------------------------------------------
+
             if gdf_comarques is None:
                 st.error("No s'ha pogut carregar el mapa de comarques.")
                 return
@@ -6350,6 +6354,8 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
     with col_diagnostic:
         st.markdown("##### Diagnòstic de la Zona")
         
+        # El valor de convergència màxim el traiem de la funció 'calcular_alertes_per_comarca' a run_catalunya_app
+        # Per ara, utilitzem el 'valor_conv' que es passa com a argument.
         if valor_conv >= 60:
             nivell_alerta, color_alerta, emoji, descripcio = "Molt Alt", "#DC3545", "🔴", f"S'ha detectat un focus de convergència **extremadament fort** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquesta és una senyal molt clara per a la formació imminent de tempestes, possiblement severes i organitzades, a la zona. Cal parar molta atenció."
         elif valor_conv >= 40:
@@ -6367,7 +6373,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         """, unsafe_allow_html=True)
         
         st.info(f"**Nota:** Aquesta anàlisi es basa en la convergència de vent a **{nivell_sel} hPa**. La formació final de tempestes depèn també de la inestabilitat (CAPE) i la presència d'inhibició (CIN), que pots consultar a la pestanya 'Anàlisi Vertical'.", icon="ℹ️")
-
 
 def crear_gradient_convergencia_per_comarca(map_data, comarca_shape):
     """
