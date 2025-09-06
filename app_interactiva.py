@@ -5784,6 +5784,17 @@ def preparar_dades_mapa_cachejat(alertes_per_zona):
         print("Error Crític: L'arxiu GeoJSON del mapa no té una propietat de nom vàlida.")
         return None
 
+    # <<<--- AQUÍ ESTÀ LA CORRECCIÓ ---
+    # Hem mogut la funció auxiliar aquí dins, perquè sigui accessible.
+    def get_color_from_convergence(value):
+        if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
+        if value >= 100: return '#9370DB', '#FFFFFF'
+        if value >= 60: return '#DC3545', '#FFFFFF'
+        if value >= 40: return '#FD7E14', '#FFFFFF'
+        if value >= 20: return '#28A745', '#FFFFFF'
+        return '#6c757d', '#FFFFFF'
+    # --- FI DE LA CORRECCIÓ ---
+
     # 1. Pre-calculem els estils per a cada zona
     styles_dict = {}
     for feature in gdf.iterfeatures():
@@ -5792,15 +5803,8 @@ def preparar_dades_mapa_cachejat(alertes_per_zona):
             nom_feature = nom_feature_raw.strip().replace('.', '')
             conv_value = alertes_per_zona.get(nom_feature)
             
-            def get_color(val):
-                if not isinstance(val, (int, float)): return '#6c757d'
-                if val >= 100: return '#9370DB'
-                if val >= 60: return '#DC3545'
-                if val >= 40: return '#FD7E14'
-                if val >= 20: return '#28A745'
-                return '#6c757d'
-            
-            alert_color = get_color(conv_value)
+            # La funció 'get_color' ja no és necessària, podem cridar directament.
+            alert_color, _ = get_color_from_convergence(conv_value)
             
             styles_dict[nom_feature] = {
                 'fillColor': alert_color,
@@ -5815,7 +5819,21 @@ def preparar_dades_mapa_cachejat(alertes_per_zona):
         capital_info = CAPITALS_COMARCA.get(zona)
         if capital_info:
             bg_color, text_color = get_color_from_convergence(conv_value)
-            icon_html = f"""<div style="... font-size: 11px; ...">{zona}: {conv_value:.0f}</div>""" # El teu HTML aquí
+            
+            # El teu HTML per a la icona
+            icon_html = f"""
+            <div style="
+                position: relative; background-color: {bg_color}; color: {text_color};
+                padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color};
+                font-family: sans-serif; font-size: 11px; font-weight: bold;
+                text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5);
+                transform: translate(-50%, -100%);
+            ">
+                <div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div>
+                <div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>
+                {zona}: {conv_value:.0f}
+            </div>
+            """
             
             markers_data.append({
                 'location': [capital_info['lat'], capital_info['lon']],
@@ -5824,7 +5842,7 @@ def preparar_dades_mapa_cachejat(alertes_per_zona):
             })
 
     return {
-        "gdf": gdf.to_json(),  # Guardem el GeoDataFrame com a text JSON (segur per a la memòria cau)
+        "gdf": gdf.to_json(),
         "property_name": property_name,
         "styles": styles_dict,
         "markers": markers_data
