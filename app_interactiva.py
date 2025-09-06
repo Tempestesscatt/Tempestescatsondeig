@@ -6327,6 +6327,7 @@ def run_catalunya_app():
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
         # --- VISTA D'ANÀLISI DETALLADA ---
         poble_sel = st.session_state.poble_sel
+        
         with st.spinner(f"Carregant anàlisi completa per a {poble_sel}..."):
             lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
             data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
