@@ -5650,6 +5650,31 @@ def on_day_change_usa():
     time_in_spain = time_in_usa.astimezone(TIMEZONE_CAT)
     st.session_state.hora_selector_usa = f"{time_in_usa.hour:02d}:00 (Local: {time_in_spain.hour:02d}:00h)"
 
+
+
+
+
+
+@st.cache_resource(ttl=1800, show_spinner=False)
+def generar_mapa_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
+    """
+    Funció generadora que crea i desa a la memòria cau el mapa de convergència.
+    Només s'executa si els paràmetres (hora, nivell, zoom) canvien.
+    """
+    map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
+    if error or not map_data:
+        return None
+    
+    map_extent_list = list(map_extent_tuple)
+    
+    fig = crear_mapa_forecast_combinat_cat(
+        map_data['lons'], map_data['lats'], 
+        map_data['speed_data'], map_data['dir_data'], 
+        map_data['dewpoint_data'], nivell, 
+        timestamp_str, map_extent_list
+    )
+    return fig
+
 def on_city_change(source_widget_key, other_widget_key, placeholder_text, city_dict):
     """
     Funció de callback genèrica i robusta per gestionar el canvi de ciutat.
@@ -5862,6 +5887,7 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     
     with st.spinner(f"Carregant i generant mapa... (només la primera vegada)"):
         if "Convergència" in mapa_sel:
+            # Crida a la funció per al mapa de convergència
             fig = generar_mapa_cachejat_cat(hourly_index_sel, nivell_sel, timestamp_str, tuple(selected_extent))
             if fig is None:
                 st.error(f"Error en carregar les dades per al mapa de convergència.")
@@ -5869,6 +5895,7 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
                 st.pyplot(fig, use_container_width=True)
         
         else:
+            # Crida a la funció per als mapes de vent
             nivell_vent = 700 if "700" in mapa_sel else 300
             fig = generar_mapa_vents_cachejat_cat(hourly_index_sel, nivell_vent, timestamp_str, tuple(selected_extent))
             if fig is None:
@@ -5876,7 +5903,6 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
             else:
                 st.pyplot(fig, use_container_width=True)
 
-    # <<-- LÍNIA CLAU AFEGIDA: Crida a la funció que dibuixa l'explicació -->>
     if "Convergència" in mapa_sel:
         ui_explicacio_convergencia()
             
