@@ -45,6 +45,7 @@ from shapely.geometry import Point
 
 
 
+
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever")
 
@@ -233,123 +234,131 @@ MAP_EXTENT_ALEMANYA = [5.5, 15.5, 47.0, 55.5]
 PRESS_LEVELS_ICON = sorted([1000, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 
 
-
-# --- Constants per Catalunya ---
 API_URL_CAT = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_CAT = pytz.timezone('Europe/Madrid')
-CIUTATS_CATALUNYA = {
-    # Capitals de província
-    'Barcelona': {'lat': 41.3851, 'lon': 2.1734, 'sea_dir': (90, 190)},
-    'Girona': {'lat': 41.9831, 'lon': 2.8249, 'sea_dir': (80, 170)},
-    'Lleida': {'lat': 41.6177, 'lon': 0.6200, 'sea_dir': None},
-    'Tarragona': {'lat': 41.1189, 'lon': 1.2445, 'sea_dir': (110, 220)},
+PRESS_LEVELS_AROME = sorted([1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
+MAP_EXTENT_CAT = [0, 3.5, 40.4, 43]
 
-    # LLISTA COMPLETA I VERIFICADA
-    'Agramunt': {'lat': 41.7871, 'lon': 1.0967, 'sea_dir': None},
-    'Alcanar': {'lat': 40.5434, 'lon': 0.4820, 'sea_dir': (60, 160)},
-    'Alella': {'lat': 41.4947, 'lon': 2.2955, 'sea_dir': (90, 180)},
-    'Altafulla': {'lat': 41.1417, 'lon': 1.3750, 'sea_dir': (110, 220)},
-    'Amposta': {'lat': 40.7093, 'lon': 0.5810, 'sea_dir': (70, 170)},
-    'Arbúcies': {'lat': 41.8159, 'lon': 2.5152, 'sea_dir': None},
-    'Arenys de Mar': {'lat': 41.5815, 'lon': 2.5504, 'sea_dir': (90, 180)},
-    'Arenys de Munt': {'lat': 41.6094, 'lon': 2.5411, 'sea_dir': None},
-    'Balaguer': {'lat': 41.7904, 'lon': 0.8066, 'sea_dir': None},
-    'Banyoles': {'lat': 42.1197, 'lon': 2.7667, 'sea_dir': (80, 170)},
-    'Begur': {'lat': 41.9542, 'lon': 3.2076, 'sea_dir': (0, 180)},
-    'Bellver de Cerdanya': {'lat': 42.3705, 'lon': 1.7770, 'sea_dir': None},
-    'Berga': {'lat': 42.1051, 'lon': 1.8458, 'sea_dir': None},
-    'Blanes': {'lat': 41.6748, 'lon': 2.7917, 'sea_dir': (80, 180)},
-    'Cabrera de Mar': {'lat': 41.5275, 'lon': 2.3958, 'sea_dir': (90, 180)},
-    'Cadaqués': {'lat': 42.2888, 'lon': 3.2770, 'sea_dir': (0, 180)},
-    'Calaf': {'lat': 41.7311, 'lon': 1.5126, 'sea_dir': None},
-    'Caldes de Montbui': {'lat': 41.6315, 'lon': 2.1678, 'sea_dir': None},
-    'Calella': {'lat': 41.6146, 'lon': 2.6653, 'sea_dir': (90, 180)},
-    'Calonge': {'lat': 41.8601, 'lon': 3.0768, 'sea_dir': (80, 190)},
-    'Camarasa': {'lat': 41.8753, 'lon': 0.8804, 'sea_dir': None},
-    'Cambrils': {'lat': 41.0667, 'lon': 1.0500, 'sea_dir': (110, 220)},
-    'Capellades': {'lat': 41.5312, 'lon': 1.6874, 'sea_dir': None},
-    'Cardedeu': {'lat': 41.6403, 'lon': 2.3582, 'sea_dir': (90, 180)},
-    'Cardona': {'lat': 41.9138, 'lon': 1.6806, 'sea_dir': None},
-    'Cassà de la Selva': {'lat': 41.8893, 'lon': 2.8736, 'sea_dir': (80, 170)},
-    'Castellbisbal': {'lat': 41.4776, 'lon': 1.9866, 'sea_dir': None},
-    'Castellar del Vallès': {'lat': 41.6186, 'lon': 2.0875, 'sea_dir': None},
-    'Castellfollit de la Roca': {'lat': 42.2201, 'lon': 2.5517, 'sea_dir': None},
-    'Castelló d\'Empúries': {'lat': 42.2582, 'lon': 3.0725, 'sea_dir': (70, 160)},
-    'Centelles': {'lat': 41.7963, 'lon': 2.2203, 'sea_dir': None},
-    'Cerdanyola del Vallès': {'lat': 41.4925, 'lon': 2.1415, 'sea_dir': (100, 200)},
-    'Figueres': {'lat': 42.2662, 'lon': 2.9622, 'sea_dir': (70, 160)},
-    'Flaçà': {'lat': 42.0494, 'lon': 2.9559, 'sea_dir': (80, 170)},
-    'Granollers': {'lat': 41.6083, 'lon': 2.2886, 'sea_dir': (90, 180)},
-    'Hostalric': {'lat': 41.7479, 'lon': 2.6360, 'sea_dir': None},
-    'Igualada': {'lat': 41.5791, 'lon': 1.6174, 'sea_dir': None},
-    'L\'Ametlla de Mar': {'lat': 40.8824, 'lon': 0.8016, 'sea_dir': (90, 200)},
-    'L\'Escala': {'lat': 42.1235, 'lon': 3.1311, 'sea_dir': (0, 160)},
-    'L\'Hospitalet de Llobregat': {'lat': 41.3571, 'lon': 2.1030, 'sea_dir': (90, 190)},
-    'La Bisbal d\'Empordà': {'lat': 41.9602, 'lon': 3.0378, 'sea_dir': (80, 170)},
-    'La Jonquera': {'lat': 42.4194, 'lon': 2.8752, 'sea_dir': None},
-    'La Pobla de Segur': {'lat': 42.2472, 'lon': 0.9678, 'sea_dir': None},
-    'La Selva del Camp': {'lat': 41.2131, 'lon': 1.1384, 'sea_dir': (110, 220)},
-    'La Sénia': {'lat': 40.6322, 'lon': 0.2831, 'sea_dir': None},
-    'La Seu d\'Urgell': {'lat': 42.3582, 'lon': 1.4593, 'sea_dir': None},
-    'Llagostera': {'lat': 41.8291, 'lon': 2.8931, 'sea_dir': (80, 180)},
-    'Llançà': {'lat': 42.3625, 'lon': 3.1539, 'sea_dir': (0, 150)},
-    'Lloret de Mar': {'lat': 41.7005, 'lon': 2.8450, 'sea_dir': (80, 180)},
-    'Malgrat de Mar': {'lat': 41.6461, 'lon': 2.7423, 'sea_dir': (90, 180)},
-    'Manlleu': {'lat': 42.0016, 'lon': 2.2844, 'sea_dir': None},
-    'Manresa': {'lat': 41.7230, 'lon': 1.8268, 'sea_dir': None},
-    'Mataró': {'lat': 41.5388, 'lon': 2.4449, 'sea_dir': (90, 180)},
-    'Mollet del Vallès': {'lat': 41.5385, 'lon': 2.2144, 'sea_dir': (100, 200)},
-    'Montblanc': {'lat': 41.3761, 'lon': 1.1610, 'sea_dir': None},
-    'Montcada i Reixac': {'lat': 41.4851, 'lon': 2.1884, 'sea_dir': (100, 200)},
-    'Olesa de Montserrat': {'lat': 41.5451, 'lon': 1.8955, 'sea_dir': None},
-    'Olot': {'lat': 42.1818, 'lon': 2.4900, 'sea_dir': None},
-    'Palamós': {'lat': 41.8465, 'lon': 3.1287, 'sea_dir': (80, 190)},
-    'Pals': {'lat': 41.9688, 'lon': 3.1458, 'sea_dir': (0, 180)},
-    'Pineda de Mar': {'lat': 41.6277, 'lon': 2.6908, 'sea_dir': (90, 180)},
-    'Platja d\'Aro': {'lat': 41.8175, 'lon': 3.0645, 'sea_dir': (80, 190)},
-    'Puigcerdà': {'lat': 42.4331, 'lon': 1.9287, 'sea_dir': None},
-    'Reus': {'lat': 41.1550, 'lon': 1.1075, 'sea_dir': (120, 220)},
-    'Ripoll': {'lat': 42.2013, 'lon': 2.1903, 'sea_dir': None},
-    'Riudellots de la Selva': {'lat': 41.9080, 'lon': 2.8099, 'sea_dir': (80, 170)},
-    'Roses': {'lat': 42.2619, 'lon': 3.1764, 'sea_dir': (90, 200)},
-    'Rubí': {'lat': 41.4936, 'lon': 2.0323, 'sea_dir': (100, 200)},
-    'Sabadell': {'lat': 41.5483, 'lon': 2.1075, 'sea_dir': (100, 200)},
-    'Salou': {'lat': 41.0763, 'lon': 1.1417, 'sea_dir': (110, 220)},
-    'Sant Cugat del Vallès': {'lat': 41.4727, 'lon': 2.0863, 'sea_dir': (100, 200)},
-    'Sant Feliu de Guíxols': {'lat': 41.7801, 'lon': 3.0278, 'sea_dir': (80, 190)},
-    'Sant Feliu de Llobregat': {'lat': 41.3833, 'lon': 2.0500, 'sea_dir': (100, 200)},
-    'Sant Joan de les Abadesses': {'lat': 42.2355, 'lon': 2.2858, 'sea_dir': None},
-    'Sant Pere de Ribes': {'lat': 41.2599, 'lon': 1.7725, 'sea_dir': (100, 220)},
-    'Sant Quirze del Vallès': {'lat': 41.5303, 'lon': 2.0831, 'sea_dir': None},
-    'Santa Coloma de Farners': {'lat': 41.8596, 'lon': 2.6703, 'sea_dir': None},
-    'Santa Coloma de Gramenet': {'lat': 41.4550, 'lon': 2.2111, 'sea_dir': (90, 190)},
-    'Santa Cristina d\'Aro': {'lat': 41.8130, 'lon': 2.9976, 'sea_dir': (80, 190)},
-    'Santa Pau': {'lat': 42.1448, 'lon': 2.5695, 'sea_dir': None},
-    'Santa Susanna': {'lat': 41.6366, 'lon': 2.7098, 'sea_dir': (90, 180)},
-    'Sarroca de Bellera': {'lat': 42.3957, 'lon': 0.8656, 'sea_dir': None},
-    'Sitges': {'lat': 41.2351, 'lon': 1.8117, 'sea_dir': (100, 220)},
-    'Solsona': {'lat': 41.9942, 'lon': 1.5161, 'sea_dir': None},
-    'Sort': {'lat': 42.4131, 'lon': 1.1278, 'sea_dir': None},
-    'Soses': {'lat': 41.5358, 'lon': 0.5186, 'sea_dir': None},
-    'Terrassa': {'lat': 41.5615, 'lon': 2.0084, 'sea_dir': (100, 200)},
-    'Tortosa': {'lat': 40.8126, 'lon': 0.5211, 'sea_dir': (60, 160)},
-    'Tremp': {'lat': 42.1664, 'lon': 0.8953, 'sea_dir': None},
-    'Valls': {'lat': 41.2872, 'lon': 1.2505, 'sea_dir': (110, 220)},
-    'Vic': {'lat': 41.9301, 'lon': 2.2545, 'sea_dir': None},
-    'Vidrà': {'lat': 42.1226, 'lon': 2.3116, 'sea_dir': None},
-    'Vidreres': {'lat': 41.7876, 'lon': 2.7788, 'sea_dir': (80, 180)},
-    'Vielha': {'lat': 42.7027, 'lon': 0.7966, 'sea_dir': None},
-    'Vilafranca del Penedès': {'lat': 41.3453, 'lon': 1.6995, 'sea_dir': (100, 200)},
-    'Vilanova i la Geltrú': {'lat': 41.2241, 'lon': 1.7252, 'sea_dir': (100, 200)},
-    'Viladecans': {'lat': 41.3155, 'lon': 2.0194, 'sea_dir': (100, 200)},
-    'Vilassar de Dalt': {'lat': 41.5167, 'lon': 2.3583, 'sea_dir': None},
-    'Vilassar de Mar': {'lat': 41.5057, 'lon': 2.3920, 'sea_dir': (90, 180)},
-    
-    # Punts Marins
+MAP_ZOOM_LEVELS_CAT = {
+    'Catalunya (Complet)': MAP_EXTENT_CAT,
+    'Barcelona': [1.8, 2.6, 41.25, 41.65],
+    'Girona': [2.5, 3.4, 41.8, 42.2],
+    'Lleida': [0.3, 0.95, 41.5, 41.75],
+    'Tarragona': [0.9, 1.35, 40.95, 41.3]
+}
+
+# FONT DE DADES ÚNICA I PRINCIPAL PER A TOTES LES LOCALITATS
+CIUTATS_PER_COMARCA = {
+    "Alt Camp": { 'Valls': {'lat': 41.2872, 'lon': 1.2505, 'sea_dir': (110, 220)}, },
+    "Alt Empordà": {
+        'Cadaqués': {'lat': 42.2888, 'lon': 3.2770, 'sea_dir': (0, 180)}, 'Castelló d\'Empúries': {'lat': 42.2582, 'lon': 3.0725, 'sea_dir': (70, 160)},
+        'Figueres': {'lat': 42.2662, 'lon': 2.9622, 'sea_dir': (70, 160)}, 'L\'Escala': {'lat': 42.1235, 'lon': 3.1311, 'sea_dir': (0, 160)},
+        'La Jonquera': {'lat': 42.4194, 'lon': 2.8752, 'sea_dir': None}, 'Llançà': {'lat': 42.3625, 'lon': 3.1539, 'sea_dir': (0, 150)},
+        'Roses': {'lat': 42.2619, 'lon': 3.1764, 'sea_dir': (90, 200)},
+    },
+    "Alt Penedès": { 'Vilafranca del Penedès': {'lat': 41.3453, 'lon': 1.6995, 'sea_dir': (100, 200)}, },
+    "Alt Urgell": { 'La Seu d\'Urgell': {'lat': 42.3582, 'lon': 1.4593, 'sea_dir': None}, },
+    "Anoia": { 'Calaf': {'lat': 41.7311, 'lon': 1.5126, 'sea_dir': None}, 'Capellades': {'lat': 41.5312, 'lon': 1.6874, 'sea_dir': None}, 'Igualada': {'lat': 41.5791, 'lon': 1.6174, 'sea_dir': None}, },
+    "Bages": { 'Cardona': {'lat': 41.9138, 'lon': 1.6806, 'sea_dir': None}, 'Manresa': {'lat': 41.7230, 'lon': 1.8268, 'sea_dir': None}, },
+    "Baix Camp": { 'Cambrils': {'lat': 41.0667, 'lon': 1.0500, 'sea_dir': (110, 220)}, 'La Selva del Camp': {'lat': 41.2131, 'lon': 1.1384, 'sea_dir': (110, 220)}, 'Reus': {'lat': 41.1550, 'lon': 1.1075, 'sea_dir': (120, 220)}, },
+    "Baix Ebre": { 'L\'Ametlla de Mar': {'lat': 40.8824, 'lon': 0.8016, 'sea_dir': (90, 200)}, 'Tortosa': {'lat': 40.8126, 'lon': 0.5211, 'sea_dir': (60, 160)}, },
+    "Baix Empordà": {
+        'Begur': {'lat': 41.9542, 'lon': 3.2076, 'sea_dir': (0, 180)}, 'Calonge': {'lat': 41.8601, 'lon': 3.0768, 'sea_dir': (80, 190)}, 'La Bisbal d\'Empordà': {'lat': 41.9602, 'lon': 3.0378, 'sea_dir': (80, 170)},
+        'Palamós': {'lat': 41.8465, 'lon': 3.1287, 'sea_dir': (80, 190)}, 'Pals': {'lat': 41.9688, 'lon': 3.1458, 'sea_dir': (0, 180)},
+        'Platja d\'Aro': {'lat': 41.8175, 'lon': 3.0645, 'sea_dir': (80, 190)}, 'Sant Feliu de Guíxols': {'lat': 41.7801, 'lon': 3.0278, 'sea_dir': (80, 190)}, 'Santa Cristina d\'Aro': {'lat': 41.8130, 'lon': 2.9976, 'sea_dir': (80, 190)},
+    },
+    "Baix Llobregat": {
+        'Castellbisbal': {'lat': 41.4776, 'lon': 1.9866, 'sea_dir': None}, 'Castelldefels': {'lat': 41.2806, 'lon': 1.9750, 'sea_dir': (100, 210)},
+        'L\'Hospitalet de Llobregat': {'lat': 41.3571, 'lon': 2.1030, 'sea_dir': (90, 190)}, 'Olesa de Montserrat': {'lat': 41.5451, 'lon': 1.8955, 'sea_dir': None},
+        'Sant Feliu de Llobregat': {'lat': 41.3833, 'lon': 2.0500, 'sea_dir': (100, 200)}, 'Viladecans': {'lat': 41.3155, 'lon': 2.0194, 'sea_dir': (100, 200)},
+    },
+    "Barcelonès": { 'Barcelona': {'lat': 41.3851, 'lon': 2.1734, 'sea_dir': (90, 190)}, 'Santa Coloma de Gramenet': {'lat': 41.4550, 'lon': 2.2111, 'sea_dir': (90, 190)}, },
+    "Berguedà": { 'Berga': {'lat': 42.1051, 'lon': 1.8458, 'sea_dir': None}, },
+    "Cerdanya": { 'Bellver de Cerdanya': {'lat': 42.3705, 'lon': 1.7770, 'sea_dir': None}, 'La Molina': {'lat': 42.3361, 'lon': 1.9463, 'sea_dir': None}, 'Puigcerdà': {'lat': 42.4331, 'lon': 1.9287, 'sea_dir': None}, },
+    "Conca de Barberà": { 'Montblanc': {'lat': 41.3761, 'lon': 1.1610, 'sea_dir': None}, },
+    "Garraf": { 'Sant Pere de Ribes': {'lat': 41.2599, 'lon': 1.7725, 'sea_dir': (100, 220)}, 'Sitges': {'lat': 41.2351, 'lon': 1.8117, 'sea_dir': (100, 220)}, 'Vilanova i la Geltrú': {'lat': 41.2241, 'lon': 1.7252, 'sea_dir': (100, 200)}, },
+    "Garrigues": { 'Les Borges Blanques': {'lat': 41.5224, 'lon': 0.8674, 'sea_dir': None}, },
+    "Garrotxa": { 'Castellfollit de la Roca': {'lat': 42.2201, 'lon': 2.5517, 'sea_dir': None}, 'Olot': {'lat': 42.1818, 'lon': 2.4900, 'sea_dir': None}, 'Santa Pau': {'lat': 42.1448, 'lon': 2.5695, 'sea_dir': None}, },
+    "Gironès": {
+        'Cassà de la Selva': {'lat': 41.8893, 'lon': 2.8736, 'sea_dir': (80, 170)}, 'Flaçà': {'lat': 42.0494, 'lon': 2.9559, 'sea_dir': (80, 170)},
+        'Girona': {'lat': 41.9831, 'lon': 2.8249, 'sea_dir': (80, 170)}, 'Llagostera': {'lat': 41.8291, 'lon': 2.8931, 'sea_dir': (80, 180)},
+        'Riudellots de la Selva': {'lat': 41.9080, 'lon': 2.8099, 'sea_dir': (80, 170)},
+    },
+    "Maresme": {
+        'Alella': {'lat': 41.4947, 'lon': 2.2955, 'sea_dir': (90, 180)}, 'Arenys de Mar': {'lat': 41.5815, 'lon': 2.5504, 'sea_dir': (90, 180)}, 'Arenys de Munt': {'lat': 41.6094, 'lon': 2.5411, 'sea_dir': None},
+        'Cabrera de Mar': {'lat': 41.5275, 'lon': 2.3958, 'sea_dir': (90, 180)}, 'Calella': {'lat': 41.6146, 'lon': 2.6653, 'sea_dir': (90, 180)}, 'Malgrat de Mar': {'lat': 41.6461, 'lon': 2.7423, 'sea_dir': (90, 180)},
+        'Mataró': {'lat': 41.5388, 'lon': 2.4449, 'sea_dir': (90, 180)}, 'Pineda de Mar': {'lat': 41.6277, 'lon': 2.6908, 'sea_dir': (90, 180)},
+        'Santa Susanna': {'lat': 41.6366, 'lon': 2.7098, 'sea_dir': (90, 180)}, 'Tordera': {'lat': 41.7011, 'lon': 2.7183, 'sea_dir': None},
+        'Vilassar de Dalt': {'lat': 41.5167, 'lon': 2.3583, 'sea_dir': None}, 'Vilassar de Mar': {'lat': 41.5057, 'lon': 2.3920, 'sea_dir': (90, 180)},
+    },
+    "Montsià": { 'Alcanar': {'lat': 40.5434, 'lon': 0.4820, 'sea_dir': (60, 160)}, 'Amposta': {'lat': 40.7093, 'lon': 0.5810, 'sea_dir': (70, 170)}, 'La Sénia': {'lat': 40.6322, 'lon': 0.2831, 'sea_dir': None}, },
+    "Noguera": { 'Agramunt': {'lat': 41.7871, 'lon': 1.0967, 'sea_dir': None}, 'Balaguer': {'lat': 41.7904, 'lon': 0.8066, 'sea_dir': None}, 'Camarasa': {'lat': 41.8753, 'lon': 0.8804, 'sea_dir': None}, },
+    "Osona": { 'Centelles': {'lat': 41.7963, 'lon': 2.2203, 'sea_dir': None}, 'Manlleu': {'lat': 42.0016, 'lon': 2.2844, 'sea_dir': None}, 'Vic': {'lat': 41.9301, 'lon': 2.2545, 'sea_dir': None}, 'Vidrà': {'lat': 42.1226, 'lon': 2.3116, 'sea_dir': None}, },
+    "Pallars Jussà": { 'La Pobla de Segur': {'lat': 42.2472, 'lon': 0.9678, 'sea_dir': None}, 'Tremp': {'lat': 42.1664, 'lon': 0.8953, 'sea_dir': None}, },
+    "Pallars Sobirà": { 'Sarroca de Bellera': {'lat': 42.3957, 'lon': 0.8656, 'sea_dir': None}, 'Sort': {'lat': 42.4131, 'lon': 1.1278, 'sea_dir': None}, },
+    "Pla de l'Estany": { 'Banyoles': {'lat': 42.1197, 'lon': 2.7667, 'sea_dir': (80, 170)}, },
+    "Pla d_Urgell": { 'Mollerussa': {'lat': 41.6315, 'lon': 0.8931, 'sea_dir': None}, },
+    "Priorat": { 'Falset': {'lat': 41.1444, 'lon': 0.8208, 'sea_dir': None}, },
+    "Ribera d_Ebre": { 'Móra d\'Ebre': {'lat': 41.0945, 'lon': 0.6450, 'sea_dir': None}, },
+    "Ripollès": { 'Ripoll': {'lat': 42.2013, 'lon': 2.1903, 'sea_dir': None}, 'Sant Joan de les Abadesses': {'lat': 42.2355, 'lon': 2.2858, 'sea_dir': None}, },
+    "Segarra": { 'Cervera': {'lat': 41.6709, 'lon': 1.2721, 'sea_dir': None}, },
+    "Segrià": { 'Lleida': {'lat': 41.6177, 'lon': 0.6200, 'sea_dir': None}, 'Soses': {'lat': 41.5358, 'lon': 0.5186, 'sea_dir': None}, },
+    "Selva": {
+        'Arbúcies': {'lat': 41.8159, 'lon': 2.5152, 'sea_dir': None}, 'Blanes': {'lat': 41.6748, 'lon': 2.7917, 'sea_dir': (80, 180)},
+        'Hostalric': {'lat': 41.7479, 'lon': 2.6360, 'sea_dir': None}, 'Lloret de Mar': {'lat': 41.7005, 'lon': 2.8450, 'sea_dir': (80, 180)},
+        'Santa Coloma de Farners': {'lat': 41.8596, 'lon': 2.6703, 'sea_dir': None}, 'Tossa de Mar': {'lat': 41.7167, 'lon': 2.9333, 'sea_dir': (90, 200)},
+        'Vidreres': {'lat': 41.7876, 'lon': 2.7788, 'sea_dir': (80, 180)},
+    },
+    "Solsonès": { 'Solsona': {'lat': 41.9942, 'lon': 1.5161, 'sea_dir': None}, },
+    "Tarragonès": { 'Altafulla': {'lat': 41.1417, 'lon': 1.3750, 'sea_dir': (110, 220)}, 'Salou': {'lat': 41.0763, 'lon': 1.1417, 'sea_dir': (110, 220)}, 'Tarragona': {'lat': 41.1189, 'lon': 1.2445, 'sea_dir': (110, 220)}, },
+    "Terra Alta": { 'Batea': {'lat': 41.0954, 'lon': 0.3119, 'sea_dir': None}, 'Gandesa': {'lat': 41.0526, 'lon': 0.4337, 'sea_dir': None}, 'Horta de Sant Joan': {'lat': 40.9545, 'lon': 0.3160, 'sea_dir': None}, },
+    "Urgell": { 'Tàrrega': {'lat': 41.6469, 'lon': 1.1415, 'sea_dir': None}, },
+    "Val d'Aran": { 'Vielha': {'lat': 42.7027, 'lon': 0.7966, 'sea_dir': None}, },
+    "Vallès Occidental": {
+        'Castellar del Vallès': {'lat': 41.6186, 'lon': 2.0875, 'sea_dir': None}, 'Cerdanyola del Vallès': {'lat': 41.4925, 'lon': 2.1415, 'sea_dir': (100, 200)}, 'Montcada i Reixac': {'lat': 41.4851, 'lon': 2.1884, 'sea_dir': (100, 200)},
+        'Rubí': {'lat': 41.4936, 'lon': 2.0323, 'sea_dir': (100, 200)}, 'Sabadell': {'lat': 41.5483, 'lon': 2.1075, 'sea_dir': (100, 200)},
+        'Sant Cugat del Vallès': {'lat': 41.4727, 'lon': 2.0863, 'sea_dir': (100, 200)}, 'Sant Quirze del Vallès': {'lat': 41.5303, 'lon': 2.0831, 'sea_dir': None}, 'Terrassa': {'lat': 41.5615, 'lon': 2.0084, 'sea_dir': (100, 200)},
+    },
+    "Vallès Oriental": {
+        'Caldes de Montbui': {'lat': 41.6315, 'lon': 2.1678, 'sea_dir': None}, 'Cardedeu': {'lat': 41.6403, 'lon': 2.3582, 'sea_dir': (90, 180)},
+        'Granollers': {'lat': 41.6083, 'lon': 2.2886, 'sea_dir': (90, 180)}, 'Mollet del Vallès': {'lat': 41.5385, 'lon': 2.2144, 'sea_dir': (100, 200)},
+        'Sant Celoni': {'lat': 41.6903, 'lon': 2.4908, 'sea_dir': None},
+    },
+}
+
+# Genera la llista plana de CIUTATS_CATALUNYA a partir de la font única
+CIUTATS_CATALUNYA = { ciutat: dades for comarca in CIUTATS_PER_COMARCA.values() for ciutat, dades in comarca.items() }
+
+# Afegeix els punts marins manualment
+PUNTS_MAR = {
     'Costes de Girona (Mar)':   {'lat': 42.05, 'lon': 3.30, 'sea_dir': (0, 360)},
     'Litoral Barceloní (Mar)': {'lat': 41.40, 'lon': 2.90, 'sea_dir': (0, 360)},
     'Aigües de Tarragona (Mar)': {'lat': 40.90, 'lon': 2.00, 'sea_dir': (0, 360)},
 }
+CIUTATS_CATALUNYA.update(PUNTS_MAR)
+
+# Defineix les llistes necessàries a partir de la llista principal ja completa
+POBLACIONS_TERRA = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' not in k}
+CIUTATS_CONVIDAT = {
+    'Barcelona': CIUTATS_CATALUNYA['Barcelona'], 'Girona': CIUTATS_CATALUNYA['Girona'],
+    'Lleida': CIUTATS_CATALUNYA['Lleida'], 'Tarragona': CIUTATS_CATALUNYA['Tarragona']
+}
+
+POBLES_MAPA_REFERENCIA = {poble: {'lat': data['lat'], 'lon': data['lon']} for poble, data in POBLACIONS_TERRA.items()}
+
+# Genera les zones personalitzades a partir de les dades ja definides per comarca
+CIUTATS_PER_ZONA_PERSONALITZADA = {
+    "Pirineu i Pre-Pirineu": { p: CIUTATS_CATALUNYA[p] for p in ['Vielha', 'Sort', 'Sarroca de Bellera', 'Tremp', 'La Pobla de Segur', 'La Seu d\'Urgell', 'Puigcerdà', 'Bellver de Cerdanya', 'La Molina', 'Ripoll', 'Sant Joan de les Abadesses', 'Berga', 'Solsona', 'Olot', 'Santa Pau', 'Castellfollit de la Roca'] if p in CIUTATS_CATALUNYA },
+    "Plana de Lleida i Ponent": { p: CIUTATS_CATALUNYA[p] for p in ['Lleida', 'Soses', 'Balaguer', 'Agramunt', 'Camarasa', 'Calaf', 'Les Borges Blanques', 'Mollerussa', 'Tàrrega', 'Cervera'] if p in CIUTATS_CATALUNYA },
+    "Catalunya Central": { p: CIUTATS_CATALUNYA[p] for p in ['Manresa', 'Cardona', 'Igualada', 'Capellades', 'Vic', 'Manlleu', 'Centelles', 'Vidrà'] if p in CIUTATS_CATALUNYA },
+    "Litoral i Prelitoral Nord (Girona)": { p: CIUTATS_CATALUNYA[p] for p in ['Girona', 'Figueres', 'Banyoles', 'La Bisbal d\'Empordà', 'Roses', 'Cadaqués', 'Llançà', 'L\'Escala', 'Castelló d\'Empúries', 'La Jonquera', 'Palamós', 'Platja d\'Aro', 'Sant Feliu de Guíxols', 'Begur', 'Pals', 'Calonge', 'Santa Cristina d\'Aro', 'Blanes', 'Lloret de Mar', 'Tossa de Mar', 'Santa Coloma de Farners', 'Arbúcies', 'Hostalric', 'Cassà de la Selva', 'Llagostera', 'Flaçà', 'Riudellots de la Selva', 'Vidreres'] if p in CIUTATS_CATALUNYA },
+    "Litoral i Prelitoral Central (Barcelona)": { p: CIUTATS_CATALUNYA[p] for p in ['Barcelona', 'L\'Hospitalet de Llobregat', 'Santa Coloma de Gramenet', 'Sabadell', 'Terrassa', 'Mataró', 'Granollers', 'Mollet del Vallès', 'Sant Cugat del Vallès', 'Rubí', 'Viladecans', 'Castellbisbal', 'Cerdanyola del Vallès', 'Montcada i Reixac', 'Sant Quirze del Vallès', 'Castellar del Vallès', 'Cardedeu', 'Caldes de Montbui', 'Arenys de Mar', 'Calella', 'Malgrat de Mar', 'Pineda de Mar', 'Santa Susanna', 'Vilassar de Mar', 'Alella', 'Cabrera de Mar', 'Vilanova i la Geltrú', 'Sitges', 'Vilafranca del Penedès', 'Sant Pere de Ribes', 'Olesa de Montserrat', 'Sant Feliu de Llobregat', 'Castelldefels', 'Tordera', 'Sant Celoni'] if p in CIUTATS_CATALUNYA },
+    "Camp de Tarragona": { p: CIUTATS_CATALUNYA[p] for p in ['Tarragona', 'Reus', 'Valls', 'Salou', 'Cambrils', 'Altafulla', 'La Selva del Camp', 'Montblanc', 'Falset'] if p in CIUTATS_CATALUNYA },
+    "Terres de l'Ebre": { p: CIUTATS_CATALUNYA[p] for p in ['Tortosa', 'Amposta', 'Alcanar', 'L\'Ametlla de Mar', 'La Sénia', 'Móra d\'Ebre', 'Gandesa', 'Horta de Sant Joan', 'Batea'] if p in CIUTATS_CATALUNYA },
+}
+
+
+
 
 POBLES_MAPA_REFERENCIA = {
     # Capitals de província (es poden repetir si també vols que surtin sempre al mapa)
@@ -620,6 +629,7 @@ CIUTATS_PER_COMARCA = {
     },
     "Baix Llobregat": {
         'Castellbisbal': {'lat': 41.4776, 'lon': 1.9866, 'sea_dir': None},
+        'Castelldefels': {'lat': 41.2806, 'lon': 1.9750, 'sea_dir': (100, 210)},
         'L\'Hospitalet de Llobregat': {'lat': 41.3571, 'lon': 2.1030, 'sea_dir': (90, 190)},
         'Olesa de Montserrat': {'lat': 41.5451, 'lon': 1.8955, 'sea_dir': None},
         'Sant Feliu de Llobregat': {'lat': 41.3833, 'lon': 2.0500, 'sea_dir': (100, 200)},
@@ -634,6 +644,7 @@ CIUTATS_PER_COMARCA = {
     },
     "Cerdanya": {
         'Bellver de Cerdanya': {'lat': 42.3705, 'lon': 1.7770, 'sea_dir': None},
+        'La Molina': {'lat': 42.3361, 'lon': 1.9463, 'sea_dir': None},
         'Puigcerdà': {'lat': 42.4331, 'lon': 1.9287, 'sea_dir': None},
     },
     "Conca de Barberà": {
@@ -643,6 +654,9 @@ CIUTATS_PER_COMARCA = {
         'Sant Pere de Ribes': {'lat': 41.2599, 'lon': 1.7725, 'sea_dir': (100, 220)},
         'Sitges': {'lat': 41.2351, 'lon': 1.8117, 'sea_dir': (100, 220)},
         'Vilanova i la Geltrú': {'lat': 41.2241, 'lon': 1.7252, 'sea_dir': (100, 200)},
+    },
+    "Garrigues": {
+        'Les Borges Blanques': {'lat': 41.5224, 'lon': 0.8674, 'sea_dir': None},
     },
     "Garrotxa": {
         'Castellfollit de la Roca': {'lat': 42.2201, 'lon': 2.5517, 'sea_dir': None},
@@ -666,6 +680,7 @@ CIUTATS_PER_COMARCA = {
         'Mataró': {'lat': 41.5388, 'lon': 2.4449, 'sea_dir': (90, 180)},
         'Pineda de Mar': {'lat': 41.6277, 'lon': 2.6908, 'sea_dir': (90, 180)},
         'Santa Susanna': {'lat': 41.6366, 'lon': 2.7098, 'sea_dir': (90, 180)},
+        'Tordera': {'lat': 41.7011, 'lon': 2.7183, 'sea_dir': None},
         'Vilassar de Dalt': {'lat': 41.5167, 'lon': 2.3583, 'sea_dir': None},
         'Vilassar de Mar': {'lat': 41.5057, 'lon': 2.3920, 'sea_dir': (90, 180)},
     },
@@ -696,9 +711,21 @@ CIUTATS_PER_COMARCA = {
     "Pla de l'Estany": {
         'Banyoles': {'lat': 42.1197, 'lon': 2.7667, 'sea_dir': (80, 170)},
     },
+    "Pla d_Urgell": {
+        'Mollerussa': {'lat': 41.6315, 'lon': 0.8931, 'sea_dir': None},
+    },
+    "Priorat": {
+        'Falset': {'lat': 41.1444, 'lon': 0.8208, 'sea_dir': None},
+    },
+    "Ribera d_Ebre": {
+        'Móra d\'Ebre': {'lat': 41.0945, 'lon': 0.6450, 'sea_dir': None},
+    },
     "Ripollès": {
         'Ripoll': {'lat': 42.2013, 'lon': 2.1903, 'sea_dir': None},
         'Sant Joan de les Abadesses': {'lat': 42.2355, 'lon': 2.2858, 'sea_dir': None},
+    },
+    "Segarra": {
+        'Cervera': {'lat': 41.6709, 'lon': 1.2721, 'sea_dir': None},
     },
     "Segrià": {
         'Lleida': {'lat': 41.6177, 'lon': 0.6200, 'sea_dir': None},
@@ -710,6 +737,7 @@ CIUTATS_PER_COMARCA = {
         'Hostalric': {'lat': 41.7479, 'lon': 2.6360, 'sea_dir': None},
         'Lloret de Mar': {'lat': 41.7005, 'lon': 2.8450, 'sea_dir': (80, 180)},
         'Santa Coloma de Farners': {'lat': 41.8596, 'lon': 2.6703, 'sea_dir': None},
+        'Tossa de Mar': {'lat': 41.7167, 'lon': 2.9333, 'sea_dir': (90, 200)},
         'Vidreres': {'lat': 41.7876, 'lon': 2.7788, 'sea_dir': (80, 180)},
     },
     "Solsonès": {
@@ -719,6 +747,14 @@ CIUTATS_PER_COMARCA = {
         'Altafulla': {'lat': 41.1417, 'lon': 1.3750, 'sea_dir': (110, 220)},
         'Salou': {'lat': 41.0763, 'lon': 1.1417, 'sea_dir': (110, 220)},
         'Tarragona': {'lat': 41.1189, 'lon': 1.2445, 'sea_dir': (110, 220)},
+    },
+    "Terra Alta": {
+        'Batea': {'lat': 41.0954, 'lon': 0.3119, 'sea_dir': None},
+        'Gandesa': {'lat': 41.0526, 'lon': 0.4337, 'sea_dir': None},
+        'Horta de Sant Joan': {'lat': 40.9545, 'lon': 0.3160, 'sea_dir': None},
+    },
+    "Urgell": {
+        'Tàrrega': {'lat': 41.6469, 'lon': 1.1415, 'sea_dir': None},
     },
     "Val d'Aran": {
         'Vielha': {'lat': 42.7027, 'lon': 0.7966, 'sea_dir': None},
@@ -738,9 +774,9 @@ CIUTATS_PER_COMARCA = {
         'Cardedeu': {'lat': 41.6403, 'lon': 2.3582, 'sea_dir': (90, 180)},
         'Granollers': {'lat': 41.6083, 'lon': 2.2886, 'sea_dir': (90, 180)},
         'Mollet del Vallès': {'lat': 41.5385, 'lon': 2.2144, 'sea_dir': (100, 200)},
+        'Sant Celoni': {'lat': 41.6903, 'lon': 2.4908, 'sea_dir': None},
     },
 }
-
 # Genera una llista plana a partir de la nova estructura per compatibilitat
 CIUTATS_CATALUNYA = {
     ciutat: dades 
@@ -1300,6 +1336,22 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                 params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
         
     return ((p, T, Td, u, v, heights, sfc_prof), params_calc), None
+
+
+
+
+
+def get_comarca_for_poble(poble_name):
+    """
+    Troba la comarca OFICIAL a la qual pertany un municipi.
+    Això garanteix que sempre tindrem un nom de geometria vàlid per al mapa.
+    """
+
+    for comarca, pobles in CIUTATS_PER_COMARCA.items():
+        if poble_name in pobles:
+            return comarca
+    return None
+    
 
 def diagnosticar_potencial_tempesta(params):
     """
@@ -1984,10 +2036,9 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     TOOLTIPS = {
         'SBCAPE': "Energia Potencial Convectiva Disponible (CAPE) des de la Superfície. Mesura el 'combustible' per a les tempestes a partir d'una bombolla d'aire a la superfície.",
         'MUCAPE': "El CAPE més alt possible a l'atmosfera (Most Unstable). Útil per detectar inestabilitat elevada, fins i tot si la superfície és estable.",
-        'CONVERGENCIA': f"Força de la convergència de vent a {nivell_conv}hPa. Actua com el 'disparador' o 'mecanisme de forçament' que obliga l'aire a ascendir, ajudant a iniciar les tempestes.",
+        'CONV_PUNTUAL': f"Força de la convergència de vent EXACTAMENT al punt de {poble_sel}. Actua com el 'disparador' local i és la dada que correspon a aquest sondeig.",
         'SBCIN': "Inhibició Convectiva (CIN) des de la Superfície. És l'energia necessària per vèncer l'estabilitat inicial. Valors molt negatius actuen com una 'tapa' que impedeix les tempestes.",
         'MUCIN': "La CIN associada al MUCAPE.",
-        'POTENCIAL_CACA': "Diagnòstic ràpid que sintetitza si la combinació d'energia (CAPE), disparador (Convergència) i organització (Cisallament) és favorable per a la formació de tempestes que valguin la pena observar o 'caçar'.",
         'LI': "Índex d'Elevació (Lifted Index). Mesura la diferència de temperatura a 500hPa entre l'entorn i una bombolla d'aire elevada. Valors molt negatius indiquen una forta inestabilitat.",
         'PWAT': "Aigua Precipitable Total (Precipitable Water). Quantitat total de vapor d'aigua en la columna atmosfàrica. Valors alts indiquen potencial per a pluges fortes.",
         'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació (LCL). És l'alçada a la qual es formarà la base del núvol. Valors baixos (<1000m) afavoreixen el temps sever.",
@@ -1996,95 +2047,35 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         'BWD_0-6km': "Cisallament del Vent (Bulk Wind Shear) entre 0 i 6 km. Crucial per a l'organització de les tempestes (multicèl·lules, supercèl·lules).",
         'BWD_0-1km': "Cisallament del Vent entre 0 i 1 km. Important per a la rotació a nivells baixos (tornados).",
         'T_500hPa': "Temperatura a 500 hPa (uns 5.500 metres). Temperatures molt fredes en alçada disparen la inestabilitat.",
-        'MAX_UPDRAFT': "Estimació de la velocitat màxima del corrent ascendent. Indicador directe del potencial de calamarsa.",
-        'AMENACA_CALAMARSA': "Probabilitat de calamarsa de mida significativa (>2 cm). Es basa en la potència del corrent ascendent (MAX_UPDRAFT) i l'alçada de la isoterma de 0°C.",
         'PUNTUACIO_TEMPESTA': "Índex de 0 a 10 que valora el potencial global de formació de tempestes, combinant els ingredients clau.",
+        'AMENACA_CALAMARSA': "Probabilitat de calamarsa de mida significativa (>2 cm). Es basa en la potència del corrent ascendent (MAX_UPDRAFT) i l'alçada de la isoterma de 0°C.",
         'AMENACA_LLAMPS': "Potencial d'activitat elèctrica. S'estima a partir de la inestabilitat (LI) i la profunditat de la tempesta (EL_Hgt)."
     }
-    
-    
 
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
-        display_label = label
-        color = "#FFFFFF"
-        val_str = "---"
-        font_size = "1.6em"
-        # Comencem amb la unitat per defecte per a tots els paràmetres
-        unit_display = f"({unit})"
-
+        color = "#FFFFFF"; val_str = "---"
         is_numeric = isinstance(value, (int, float, np.number))
-
         if pd.notna(value) and is_numeric:
+            # Lògica de color específica per a convergència
             if 'CONV' in param_key:
-                if value < 0:
-                    # DIVERGÈNCIA: Mostrem text, sense unitat
-                    color = "#5bc0de"
-                    display_label = "Dinàmica Vertical"
-                    font_size = "1.4em"
-                    unit_display = "" # Amaguem la unitat
-                    
-                    abs_val = abs(value)
-                    if abs_val >= 30: val_str = "Divergència<br>Forta"
-                    elif abs_val >= 15: val_str = "Divergència<br>Moderada"
-                    else: val_str = "Divergència<br>Feble"
-                else:
-                    # CONVERGÈNCIA: Mostrem número i títol amb rang
-                    display_label = "Convergència"
-                    
-                    # <<<--- NOU BLOC: Canviem la unitat pel rang de força --->>>
-                    if value < 5: strength_label = "(Calma)"
-                    elif value < 15: strength_label = "(Feble)"
-                    elif value < 30: strength_label = "(Moderada)"
-                    elif value < 40: strength_label = "(Forta)"
-                    else: strength_label = "(Molt Forta)"
-                    unit_display = strength_label # Substituïm la unitat (10⁻⁵ s⁻¹) pel text
-                    # <<<--- FI DEL NOU BLOC --->>>
-
-                    thresholds = [5, 15, 30, 40]
-                    colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
-                    color = colors[np.searchsorted(thresholds, value)]
-                    val_str = f"{value:.{precision}f}"
-
-            elif param_key == 'T_500hPa':
-                thresholds = [-8, -14, -18, -22]
-                colors = ["#2ca02c", "#ffc107", "#fd7e14", "#dc3545", "#b300ff"]
-                color = colors[len(thresholds) - np.searchsorted(thresholds, value, side='right')]
-                val_str = f"{value:.{precision}f}"
+                conv_thresholds = [5, 15, 30, 40]
+                conv_colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
+                color = conv_colors[np.searchsorted(conv_thresholds, value)]
             else:
                 color = get_color_global(value, param_key, reverse_colors)
-                val_str = f"{value:.{precision}f}"
+            val_str = f"{value:.{precision}f}"
         
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
-        
-        # Si el text ja és 'Divergència...', no cal mostrar la unitat.
-        if "Divergència" in val_str:
-            unit_display = ""
-
         st.markdown(f"""
         <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
-            <span style="font-size: 0.8em; color: #FAFAFA;">{display_label} {unit_display}{tooltip_html}</span>
-            <strong style="font-size: {font_size}; color: {color}; line-height: 1.1;">{val_str}</strong>
+            <span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit}){tooltip_html}</span>
+            <strong style="font-size: 1.6em; color: {color}; line-height: 1.1;">{val_str}</strong>
         </div>""", unsafe_allow_html=True)
 
-    def styled_qualitative(label, analysis_dict, tooltip_text=""):
-        # ... (aquesta funció interna no canvia)
-        text = analysis_dict.get('text', 'N/A')
-        color = analysis_dict.get('color', '#808080')
-        motiu = analysis_dict.get('motiu', '')
-        full_tooltip = f"{tooltip_text} Motiu del diagnòstic: {motiu}" if motiu else tooltip_text
-        tooltip_html = f' <span title="{full_tooltip}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if full_tooltip else ""
-        st.markdown(f"""
-        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
-            <span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br>
-            <strong style="font-size: 1.6em; color: {color};">{text}</strong>
-        </div>""", unsafe_allow_html=True)
-        
-    def styled_threat(label, text, color, tooltip_key):
-        # ... (aquesta funció interna no canvia)
-        tooltip_text = TOOLTIPS.get(tooltip_key, "")
+    def styled_qualitative(label, text, color, tooltip_text=""):
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""
-        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
+        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
             <span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br>
             <strong style="font-size: 1.6em; color: {color};">{text}</strong>
         </div>""", unsafe_allow_html=True)
@@ -2096,64 +2087,21 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
     with cols[2]: 
         conv_key = f'CONV_{nivell_conv}hPa'
-        styled_metric("Convergència", params.get(conv_key, np.nan), "10⁻⁵ s⁻¹", conv_key, precision=1, tooltip_text=TOOLTIPS.get('CONVERGENCIA'))
+        styled_metric("Convergència Puntual", params.get(conv_key, np.nan), "10⁻⁵ s⁻¹", 'CONV_PUNTUAL', precision=1, tooltip_text=TOOLTIPS.get('CONV_PUNTUAL'))
     
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
     with cols[2]:
-        analisi_caca = analitzar_potencial_caca(params, nivell_conv)
-        
-        # --- LÒGICA D'ARREGLAMENT DEFINITIU ---
-        # Si la resposta és "No", construïm un HTML personalitzat
-        # que inclou el motiu directament a la caixa.
-        if analisi_caca['text'] == 'No':
-            motiu = analisi_caca.get('motiu', 'Motiu no especificat.')
-            tooltip_text = TOOLTIPS.get('POTENCIAL_CACA')
-            tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.7em; opacity: 0.7;">❓</span>'
-
-            st.markdown(f"""
-            <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
-                <span style="font-size: 0.8em; color: #FAFAFA;">Val la pena anar-hi?{tooltip_html}</span>
-                <strong style="font-size: 1.4em; color: #dc3545; line-height: 1.2;">No</strong>
-                <span style="font-size: 0.7em; color: #E0E0E0; line-height: 1.1; font-style: italic;">{motiu}</span>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            # Si la resposta és positiva, utilitzem la funció de sempre.
-            styled_qualitative("Val la pena anar-hi?", analisi_caca, tooltip_text=TOOLTIPS.get('POTENCIAL_CACA'))
-
-    cols = st.columns(3)
-    with cols[0]: 
-        li_value = params.get('LI', np.nan)
-        if hasattr(li_value, '__len__') and not isinstance(li_value, str) and len(li_value) > 0: li_value = li_value[0]
-        styled_metric("LI", li_value, "°C", 'LI', precision=1, reverse_colors=True, tooltip_text=TOOLTIPS.get('LI'))
-    with cols[1]: 
-        styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', precision=1, tooltip_text=TOOLTIPS.get('PWAT'))
-    with cols[2]:
         analisi_temps = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
-        emoji = analisi_temps['emoji']
-        descripcio = analisi_temps['descripcio']
-
-        if avis_proximitat:
-            background_color = "#fd7e14"
-            title_text = "⚠️ATENCIÓ: FOCUS APROP⚠️"
-            main_text = "Anirá cap a tú"
-            sub_text = f"Actual: {emoji} {descripcio}"
-            st.markdown(f"""
-            <div class="blinking-alert" style="text-align: center; padding: 5px; border-radius: 10px; background-color: {background_color}; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
-                <span style="font-size: 0.8em; color: #FFFFFF; font-weight: bold;">{title_text}</span>
-                <strong style="font-size: 1.2em; color: #FFFFFF; line-height: 1.2;">{main_text}</strong>
-                <span style="font-size: 0.7em; color: #FFFFFF; opacity: 0.9;">{sub_text}</span>
-            </div>""", unsafe_allow_html=True)
-        else:
-            st.markdown(f"""
+        emoji = analisi_temps['emoji']; descripcio = analisi_temps['descripcio']
+        st.markdown(f"""
             <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
                 <span style="font-size: 0.8em; color: #FAFAFA;">Tipus de Cel Previst</span>
                 <strong style="font-size: 1.8em; line-height: 1;">{emoji}</strong>
                 <span style="font-size: 0.8em; color: #E0E0E0;">{descripcio}</span>
             </div>""", unsafe_allow_html=True)
-        
+
     cols = st.columns(3)
     with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
     with cols[1]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
@@ -2162,22 +2110,16 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     cols = st.columns(3)
     with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km', tooltip_text=TOOLTIPS.get('BWD_0-6km'))
     with cols[1]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km', tooltip_text=TOOLTIPS.get('BWD_0-1km'))
-    with cols[2]: 
-        styled_metric("T 500hPa", params.get('T_500hPa', np.nan), "°C", 'T_500hPa', precision=1, tooltip_text=TOOLTIPS.get('T_500hPa'))
+    with cols[2]: styled_metric("T 500hPa", params.get('T_500hPa', np.nan), "°C", 'T_500hPa', precision=1, tooltip_text=TOOLTIPS.get('T_500hPa'))
 
     st.markdown("##### Potencial d'Amenaces Severes")
     amenaces = analitzar_amenaces_especifiques(params)
-    
     puntuacio_resultat = calcular_puntuacio_tempesta(sounding_data, params, nivell_conv)
     
     cols = st.columns(3)
-    with cols[0]:
-        styled_threat("Calamarsa Gran (>2cm)", amenaces['calamarsa']['text'], amenaces['calamarsa']['color'], 'AMENACA_CALAMARSA')
-    with cols[1]:
-        score_text = f"{puntuacio_resultat['score']} / 10"
-        styled_threat("Índex de Potencial", score_text, puntuacio_resultat['color'], 'PUNTUACIO_TEMPESTA')
-    with cols[2]:
-        styled_threat("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], 'AMENACA_LLAMPS')
+    with cols[0]: styled_qualitative("Calamarsa Gran (>2cm)", amenaces['calamarsa']['text'], amenaces['calamarsa']['color'], tooltip_text=TOOLTIPS.get('AMENACA_CALAMARSA'))
+    with cols[1]: styled_qualitative("Índex de Potencial", f"{puntuacio_resultat['score']} / 10", puntuacio_resultat['color'], tooltip_text=TOOLTIPS.get('PUNTUACIO_TEMPESTA'))
+    with cols[2]: styled_qualitative("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], tooltip_text=TOOLTIPS.get('AMENACA_LLAMPS'))
 
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
     """
@@ -2935,14 +2877,11 @@ def afegir_etiquetes_ciutats(ax, map_extent):
                 # Dibuixem l'etiqueta de text al costat del punt
                 # <<-- CANVI CLAU: Hem reduït el 'fontsize' de 8 a 6 -->>
                 ax.text(lon + 0.02, lat, ciutat, 
-                        fontsize= 5, # <-- AQUÍ ESTÀ EL CANVI
+                        fontsize= 5, # <-- CANVIA AQUEST NÚMERO
                         color='white',
                         transform=ccrs.PlateCarree(), 
                         zorder=2,
                         path_effects=[path_effects.withStroke(linewidth=2.5, foreground='gray')])
-
-
-
 
 
 
@@ -3744,10 +3683,7 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ FINAL AMB ESCALA AJUSTADA (30-150):
-    - Detecció i visualització de la convergència a partir de 30.
-    - Paleta de colors i línies de contorn optimitzades per al rang 30-150.
-    - Manté l'estil net, sense llegendes i amb isos negres.
+    VERSIÓ FINAL AMB ESCALA AJUSTADA I CORRECCIÓ D'ERRORS.
     """
     # Tornem a l'estil per defecte (fons clar)
     plt.style.use('default')
@@ -3776,7 +3712,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     # --- STREAMLINES DEL VENT ---
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.5, density=6.5, arrowsize=0.3, zorder=4, transform=ccrs.PlateCarree())
     
-    # --- 3. CÀLCUL I FILTRATGE DE CONVERGÈNCIA (LLINDAR A 30) ---
+    # --- 3. CÀLCUL I FILTRATGE DE CONVERGÈNCIA ---
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
@@ -3784,15 +3720,15 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
         DEWPOINT_THRESHOLD = 14 if nivell >= 950 else 12
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
         
-        # <<-- CANVI CLAU: El llindar ara és 30 -->>
-        effective_convergence = np.where((convergence >= 30) & humid_mask, convergence, 0)
+        # Correcció d'un altre petit bug: s'han d'utilitzar parèntesis amb l'operador '&'
+        effective_convergence = np.where((convergence >= 20) & (humid_mask), convergence, 0)
 
+    # Aquesta és la línia que donava l'error 'NameError'
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
     
-    # <<-- CANVI CLAU: El filtre post-suavitzat també és 30 -->>
-    smoothed_convergence[smoothed_convergence < 30] = 0
+    smoothed_convergence[smoothed_convergence < 20] = 0
     
-    # --- 4. DIBUIX DE LA CONVERGÈNCIA (NOVA ESCALA 30-150) ---
+    # --- 4. DIBUIX DE LA CONVERGÈNCIA ---
     if np.any(smoothed_convergence > 0):
         colors_conv = [
             '#5BC0DE', "#FBFF00", "#DC6D05", "#EC8383", "#F03D3D", 
@@ -3800,14 +3736,12 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
         ]
         cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_personalitzada", colors_conv)
         
-        # <<-- CANVI CLAU: El farciment comença a 30 i acaba a 151 -->>
         fill_levels = np.arange(30, 151, 5)
         ax.contourf(grid_lon, grid_lat, smoothed_convergence,
                     levels=fill_levels, cmap=cmap_conv, alpha=0.99,
                     zorder=3, transform=ccrs.PlateCarree(), extend='max')
 
-        # <<-- CANVI CLAU: Nous nivells per a les línies de contorn -->>
-        line_levels = [30, 50, 70, 90, 120]
+        line_levels = [20, 30, 50, 70, 90, 120]
         contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
                               levels=line_levels, 
                               colors='black',
@@ -4329,6 +4263,24 @@ def ui_pestanya_webcams(poble_sel, zona_activa):
         windy_url = f"https://embed.windy.com/webcams/map/{lat}/{lon}?overlay=radar"
         
         st.components.v1.html(f'<iframe width="100%" height="500" src="{windy_url}" frameborder="0"></iframe>', height=520)
+
+
+
+@st.cache_data(show_spinner="Carregant geometries municipals...")
+def carregar_dades_municipis():
+    """
+    Carrega el fitxer GeoJSON amb les geometries de tots els municipis de Catalunya.
+    """
+    try:
+        # Aquesta línia llegeix el teu arxiu de municipis
+        gdf_municipis = gpd.read_file("municipis.geojson")
+        gdf_municipis = gdf_municipis.to_crs("EPSG:4326")
+        # Convertim el codi de comarca a número per assegurar la compatibilitat
+        gdf_municipis['comarca'] = pd.to_numeric(gdf_municipis['comarca'])
+        return gdf_municipis
+    except Exception as e:
+        st.error(f"Error crític: No s'ha pogut carregar l'arxiu 'municipis.geojson'. Assegura't que existeix. Detall: {e}")
+        return None
 
 @st.cache_data(show_spinner="Carregant mapa de selecció...")
 def carregar_dades_geografiques():
@@ -5733,33 +5685,67 @@ def on_day_change_usa():
     time_in_spain = time_in_usa.astimezone(TIMEZONE_CAT)
     st.session_state.hora_selector_usa = f"{time_in_usa.hour:02d}:00 (Local: {time_in_spain.hour:02d}:00h)"
 
-def on_city_change(source_widget_key, other_widget_key, placeholder_text, city_dict):
+
+
+
+
+
+@st.cache_data(ttl=600, show_spinner="Preparant dades del mapa...")
+def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index):
     """
-    Funció de callback genèrica i robusta per gestionar el canvi de ciutat.
+    Funció CACHEADA que fa el treball pesat. Aquesta versió accepta correctament
+    els 3 paràmetres per evitar el TypeError.
     """
-    selected_raw_text = st.session_state[source_widget_key]
+    # Reconstruïm el diccionari a partir de la tupla
+    alertes_per_zona = dict(alertes_tuple)
     
-    if placeholder_text in selected_raw_text:
-        return # No facis res si s'ha seleccionat el placeholder
+    gdf = carregar_dades_geografiques()
+    if gdf is None: return None
 
-    # Troba la clau original correcta sense perill de KeyErrors
-    found_key = None
-    for key in city_dict.keys():
-        if selected_raw_text.startswith(key):
-            found_key = key
-            break
-            
-    if found_key:
-        # Si la selecció és vàlida, actualitza l'estat principal
-        if 'poble_selector' in st.session_state:
-             st.session_state.poble_selector = found_key
-        elif 'poble_selector_usa' in st.session_state:
-            st.session_state.poble_selector_usa = found_key
+    property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), None)
+    if not property_name:
+        print("Error Crític: L'arxiu GeoJSON del mapa no té una propietat de nom vàlida.")
+        return None
 
-        # Important: Reseteja l'ALTRE selector només si existeix
-        if other_widget_key and other_widget_key in st.session_state:
-            # Utilitzem una clau interna per evitar disparar el callback de l'altre
-            st.session_state[other_widget_key] = placeholder_text
+    def get_color_from_convergence(value):
+        if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
+        if value >= 100: return '#9370DB', '#FFFFFF'
+        if value >= 60: return '#DC3545', '#FFFFFF'
+        if value >= 40: return '#FD7E14', '#FFFFFF'
+        if value >= 20: return '#28A745', '#FFFFFF'
+        return '#6c757d', '#FFFFFF'
+
+    styles_dict = {}
+    for feature in gdf.iterfeatures():
+        nom_feature_raw = feature.get('properties', {}).get(property_name)
+        if nom_feature_raw and isinstance(nom_feature_raw, str):
+            nom_feature = nom_feature_raw.strip().replace('.', '')
+            conv_value = alertes_per_zona.get(nom_feature)
+            alert_color, _ = get_color_from_convergence(conv_value)
+            styles_dict[nom_feature] = {
+                'fillColor': alert_color, 'color': alert_color,
+                'fillOpacity': 0.55 if conv_value else 0.25,
+                'weight': 2.5 if conv_value else 1
+            }
+
+    markers_data = []
+    for zona, conv_value in alertes_per_zona.items():
+        capital_info = CAPITALS_COMARCA.get(zona)
+        if capital_info:
+            bg_color, text_color = get_color_from_convergence(conv_value)
+            icon_html = f"""<div style="position: relative; background-color: {bg_color}; color: {text_color}; padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color}; font-family: sans-serif; font-size: 11px; font-weight: bold; text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5); transform: translate(-50%, -100%);"><div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div><div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>{zona}: {conv_value:.0f}</div>"""
+            markers_data.append({
+                'location': [capital_info['lat'], capital_info['lon']],
+                'icon_html': icon_html,
+                'tooltip': f"Comarca: {zona}"
+            })
+
+    return {
+        "gdf": gdf.to_json(),
+        "property_name": property_name,
+        "styles": styles_dict,
+        "markers": markers_data
+    }
 
 
 
@@ -5849,6 +5835,124 @@ def ui_pestanya_mapes_uk(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
             plt.close(fig)
 
 
+@st.cache_data(ttl=600, show_spinner="Preparant dades del mapa...")
+def preparar_dades_mapa_cachejat(alertes_per_zona):
+    """
+    Funció CACHEADA que fa el treball pesat: carrega geometries, calcula estils i
+    prepara les dades per als marcadors. Retorna un diccionari de dades simples.
+    """
+    gdf = carregar_dades_geografiques()
+    if gdf is None: return None
+
+    property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), None)
+    if not property_name:
+        print("Error Crític: L'arxiu GeoJSON del mapa no té una propietat de nom vàlida.")
+        return None
+
+    # <<<--- AQUÍ ESTÀ LA CORRECCIÓ ---
+    # Hem mogut la funció auxiliar aquí dins, perquè sigui accessible.
+    def get_color_from_convergence(value):
+        if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
+        if value >= 100: return '#9370DB', '#FFFFFF'
+        if value >= 60: return '#DC3545', '#FFFFFF'
+        if value >= 40: return '#FD7E14', '#FFFFFF'
+        if value >= 20: return '#28A745', '#FFFFFF'
+        return '#6c757d', '#FFFFFF'
+    # --- FI DE LA CORRECCIÓ ---
+
+    # 1. Pre-calculem els estils per a cada zona
+    styles_dict = {}
+    for feature in gdf.iterfeatures():
+        nom_feature_raw = feature.get('properties', {}).get(property_name)
+        if nom_feature_raw and isinstance(nom_feature_raw, str):
+            nom_feature = nom_feature_raw.strip().replace('.', '')
+            conv_value = alertes_per_zona.get(nom_feature)
+            
+            # La funció 'get_color' ja no és necessària, podem cridar directament.
+            alert_color, _ = get_color_from_convergence(conv_value)
+            
+            styles_dict[nom_feature] = {
+                'fillColor': alert_color,
+                'color': alert_color,
+                'fillOpacity': 0.55 if conv_value else 0.25,
+                'weight': 2.5 if conv_value else 1
+            }
+
+    # 2. Pre-calculem les dades per als marcadors (etiquetes)
+    markers_data = []
+    for zona, conv_value in alertes_per_zona.items():
+        capital_info = CAPITALS_COMARCA.get(zona)
+        if capital_info:
+            bg_color, text_color = get_color_from_convergence(conv_value)
+            
+            # El teu HTML per a la icona
+            icon_html = f"""
+            <div style="
+                position: relative; background-color: {bg_color}; color: {text_color};
+                padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color};
+                font-family: sans-serif; font-size: 11px; font-weight: bold;
+                text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5);
+                transform: translate(-50%, -100%);
+            ">
+                <div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div>
+                <div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>
+                {zona}: {conv_value:.0f}
+            </div>
+            """
+            
+            markers_data.append({
+                'location': [capital_info['lat'], capital_info['lon']],
+                'icon_html': icon_html,
+                'tooltip': f"Comarca: {zona}"
+            })
+
+    return {
+        "gdf": gdf.to_json(),
+        "property_name": property_name,
+        "styles": styles_dict,
+        "markers": markers_data
+    }
+
+
+def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
+    st.markdown("#### Mapes de Pronòstic (Model AROME)")
+    
+    col_capa, col_zoom = st.columns(2)
+    with col_capa:
+        mapa_sel = st.selectbox("Selecciona la capa del mapa:", 
+                               ["Anàlisi de Vent i Convergència", "Vent a 700hPa", "Vent a 300hPa"], 
+                               key="map_cat")
+    with col_zoom: 
+        zoom_sel = st.selectbox("Nivell de Zoom:", 
+                               options=list(MAP_ZOOM_LEVELS_CAT.keys()), 
+                               key="zoom_cat")
+    
+    selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
+    
+    with st.spinner(f"Carregant i generant mapa... (només la primera vegada)"):
+        if "Convergència" in mapa_sel:
+            # Crida a la funció per al mapa de convergència
+            fig = generar_mapa_cachejat_cat(hourly_index_sel, nivell_sel, timestamp_str, tuple(selected_extent))
+            if fig is None:
+                st.error(f"Error en carregar les dades per al mapa de convergència.")
+            else:
+                st.pyplot(fig, use_container_width=True)
+        
+        else:
+            # Crida a la funció per als mapes de vent
+            nivell_vent = 700 if "700" in mapa_sel else 300
+            fig = generar_mapa_vents_cachejat_cat(hourly_index_sel, nivell_vent, timestamp_str, tuple(selected_extent))
+            if fig is None:
+                st.error(f"Error en carregar les dades per al mapa de vent a {nivell_vent}hPa.")
+            else:
+                st.pyplot(fig, use_container_width=True)
+
+    if "Convergència" in mapa_sel:
+        ui_explicacio_convergencia()
+
+
+
+
 @st.cache_resource(ttl=1800, show_spinner=False)
 def generar_mapa_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
     """
@@ -5871,6 +5975,37 @@ def generar_mapa_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tu
     )
     return fig
 
+
+def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str, map_extent):
+    """
+    Crea un mapa que mostra la velocitat del vent (color de fons) i la direcció (línies).
+    """
+    fig, ax = crear_mapa_base(map_extent)
+    grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 200), np.linspace(map_extent[2], map_extent[3], 200))
+    u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+    
+    # Interpolació ràpida
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'linear')
+    
+    colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
+    speed_levels = [0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 220, 250]
+    custom_cmap = ListedColormap(colors_wind)
+    norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.7, density=2.5, zorder=3, transform=ccrs.PlateCarree())
+    
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7)
+    cbar.set_label("Velocitat del Vent (km/h)")
+    ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    
+    afegir_etiquetes_ciutats(ax, map_extent)
+    
+    return fig
+
+
 @st.cache_resource(ttl=1800, show_spinner=False)
 def generar_mapa_vents_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
     """
@@ -5890,42 +6025,6 @@ def generar_mapa_vents_cachejat_cat(hourly_index, nivell, timestamp_str, map_ext
         nivell, timestamp_str, map_extent_list
     )
     return fig
-
-
-def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
-    st.markdown("#### Mapes de Pronòstic (Model AROME)")
-    
-    col_capa, col_zoom = st.columns(2)
-    with col_capa:
-        mapa_sel = st.selectbox("Selecciona la capa del mapa:", 
-                               ["Anàlisi de Vent i Convergència", "Vent a 700hPa", "Vent a 300hPa"], 
-                               key="map_cat")
-    with col_zoom: 
-        zoom_sel = st.selectbox("Nivell de Zoom:", 
-                               options=list(MAP_ZOOM_LEVELS_CAT.keys()), 
-                               key="zoom_cat")
-    
-    selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
-    
-    with st.spinner(f"Carregant i generant mapa... (només la primera vegada)"):
-        if "Convergència" in mapa_sel:
-            fig = generar_mapa_cachejat_cat(hourly_index_sel, nivell_sel, timestamp_str, tuple(selected_extent))
-            if fig is None:
-                st.error(f"Error en carregar les dades per al mapa de convergència.")
-            else:
-                st.pyplot(fig, use_container_width=True)
-        
-        else:
-            nivell_vent = 700 if "700" in mapa_sel else 300
-            fig = generar_mapa_vents_cachejat_cat(hourly_index_sel, nivell_vent, timestamp_str, tuple(selected_extent))
-            if fig is None:
-                st.error(f"Error en carregar les dades per al mapa de vent a {nivell_vent}hPa.")
-            else:
-                st.pyplot(fig, use_container_width=True)
-
-    # <<-- LÍNIA CLAU AFEGIDA: Crida a la funció que dibuixa l'explicació -->>
-    if "Convergència" in mapa_sel:
-        ui_explicacio_convergencia()
             
 def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp_str):
     """
@@ -6178,34 +6277,30 @@ def run_canada_app():
     elif st.session_state.active_tab_canada == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="canada")
 
+
 def run_catalunya_app():
     # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
-
     col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
     with col_text:
         if not is_guest:
-            st.markdown(f"Benvingut/da, **{st.session_state.get('username', 'Usuari')}**!")
+            st.markdown(f"Benvingut/da, {st.session_state.get('username', 'Usuari')}!")
     with col_change:
         if st.button("Canviar de Zona", use_container_width=True, help="Torna a la selecció de zona geogràfica"):
             st.session_state.zone_selected = None
-            keys_to_clear = ['selected_area', 'poble_sel', 'active_tab_cat']
-            for key in keys_to_clear:
-                if key in st.session_state: del st.session_state[key]
+            [st.session_state.pop(key, None) for key in ['selected_area', 'poble_sel', 'active_tab_cat']]
             st.rerun()
     with col_logout:
         if st.button("Sortir" if is_guest else "Tanca Sessió", use_container_width=True):
-            # <<<--- AQUÍ ESTAVA L'ERROR, ARA CORREGIT --->>>
             st.session_state.clear()
             st.rerun()
     st.divider()
 
-    # --- PAS 2: GESTIÓ D'ESTAT ---
+    # --- PAS 2, 3, 4: GESTIÓ D'ESTAT I SELECTORS GLOBALS ---
     if 'selected_area' not in st.session_state: st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
     if 'poble_sel' not in st.session_state: st.session_state.poble_sel = "--- Selecciona una localitat ---"
-
-    # --- PAS 3: SELECTORS GLOBALS DE TEMPS ---
+    
     with st.container(border=True):
         col_dia, col_hora, col_nivell = st.columns(3)
         with col_dia:
@@ -6215,219 +6310,462 @@ def run_catalunya_app():
             hora_sel_str = st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector", index=datetime.now(TIMEZONE_CAT).hour)
         with col_nivell:
             nivell_sel = st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
-
-    # --- PAS 4: CÀLCUL DE DADES SEMPRE ACTUALITZAT ---
+    
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     hora_num = int(hora_sel_str.split(':')[0])
     local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_num))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-    
     alertes_zona = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
 
-    # --- PAS 5: LÒGICA PRINCIPAL (SELECCIÓ O ANÀLISI) ---
+    # --- PAS 5: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
         # --- VISTA D'ANÀLISI DETALLADA ---
         poble_sel = st.session_state.poble_sel
-        st.success(f"### Anàlisi per a: **{poble_sel}**")
+        
+        with st.spinner(f"Carregant anàlisi completa per a {poble_sel}..."):
+            lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
+            data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+            map_data_conv, error_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
+        
+        st.success(f"### Anàlisi per a: {poble_sel}")
         if st.button("⬅️ Tornar al mapa de selecció"):
             st.session_state.poble_sel = "--- Selecciona una localitat ---"
             st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
             if 'active_tab_cat' in st.session_state: del st.session_state['active_tab_cat']
             st.rerun()
-
-        lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
+            
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
         
-        menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes", "Anàlisi de Vents", "Simulació de Núvol"]
-        menu_icons = ["graph-up-arrow", "map", "wind", "cloud-upload"]
+        menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi de Mapes", "Simulació de Núvol"]
+        menu_icons = ["fullscreen", "graph-up-arrow", "map", "cloud-upload"]
         if not is_guest:
             menu_options.append("💬 Assistent IA")
             menu_icons.append("chat-quote-fill")
-        option_menu(menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key="active_tab_cat", default_index=0)
-        
-        if st.session_state.active_tab_cat == "Anàlisi de Mapes":
-            ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
-        else:
-            with st.spinner(f"Carregant dades del sondeig AROME per a {poble_sel}..."):
-                data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
-            
-            if final_index is not None and final_index != hourly_index_sel and not error_msg:
-                adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
-                adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
-                st.warning(f"**Avís:** Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
-            
-            if error_msg: 
-                st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
-            elif data_tuple:
-                params_calc = data_tuple[1]
-                map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
-                if map_data_conv:
-                    conv_value = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
-                    if pd.notna(conv_value): params_calc[f'CONV_{nivell_sel}hPa'] = conv_value
-                
-                if st.session_state.active_tab_cat == "Anàlisi Vertical":
-                    avis_proximitat = analitzar_amenaça_convergencia_propera(map_data_conv, params_calc, lat_sel, lon_sel, nivell_sel)
-                    ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str, avis_proximitat)
-                elif st.session_state.active_tab_cat == "Anàlisi de Vents":
-                    ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_sel_str, timestamp_str)
-                elif st.session_state.active_tab_cat == "Simulació de Núvol":
-                    st.markdown(f"#### Simulació del Cicle de Vida per a {poble_sel}")
-                    st.caption(timestamp_str)
-                    if 'regenerate_key' not in st.session_state: st.session_state.regenerate_key = 0
-                    if st.button("🔄 Regenerar Totes les Animacions"): forcar_regeneracio_animacio()
-                    with st.spinner("Generant simulacions visuals..."):
-                        params_tuple = tuple(sorted(params_calc.items()))
-                        gifs = generar_animacions_professionals(params_tuple, timestamp_str, st.session_state.regenerate_key)
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.markdown("<h5 style='text-align: center;'>1. Iniciació</h5>", unsafe_allow_html=True)
-                        if gifs['iniciacio']: st.image(gifs['iniciacio'])
-                        else: st.info("Condicions estables.")
-                    with col2:
-                        st.markdown("<h5 style='text-align: center;'>2. Maduresa</h5>", unsafe_allow_html=True)
-                        if gifs['maduresa']: st.image(gifs['maduresa'])
-                        else: st.info("Sense energia per a tempesta.")
-                    with col3:
-                        st.markdown("<h5 style='text-align: center;'>3. Dissipació</h5>", unsafe_allow_html=True)
-                        if gifs['dissipacio']: st.image(gifs['dissipacio'])
-                        else: st.info("Sense fase final.")
-                    st.divider()
-                    ui_guia_tall_vertical(params_calc, nivell_sel)
-                elif st.session_state.active_tab_cat == "💬 Assistent IA" and not is_guest:
-                    analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
-                    interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
-                    sounding_data = data_tuple[0] if data_tuple else None
-                    ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)
-    
-    else: 
-        # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
-        selected_area = st.session_state.get('selected_area')
-        if selected_area and "---" not in selected_area:
-             st.info(f"Zona seleccionada: **{selected_area}**. Fes clic sobre el nom d'una localitat per analitzar-la.", icon="👇")
-             if st.button("⬅️ Veure totes les zones"):
-                 st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
-                 st.rerun()
-        else:
-             st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
 
-        map_output = ui_mapa_display_personalitzat(alertes_zona)
+        if 'active_tab_cat_index' not in st.session_state:
+            st.session_state.active_tab_cat_index = 0
+        
+        active_tab = option_menu(
+            menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", 
+            orientation="horizontal", key='option_menu_widget',
+            default_index=st.session_state.active_tab_cat_index
+        )
+        st.session_state.active_tab_cat = active_tab
+
+        if final_index is not None and final_index != hourly_index_sel and not error_msg:
+            adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+            adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
+            st.warning(f"Avís: Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: {adjusted_local_time.strftime('%H:%Mh')}.")
+        
+        if error_msg: 
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
+        elif data_tuple:
+            params_calc = data_tuple[1]
+            if map_data_conv:
+                conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+                if pd.notna(conv_puntual):
+                    params_calc[f'CONV_{nivell_sel}hPa'] = conv_puntual
+            
+            if active_tab == "Anàlisi Vertical":
+                ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+            elif active_tab == "Anàlisi Comarcal":
+                comarca_actual = get_comarca_for_poble(poble_sel)
+                if comarca_actual:
+                    valor_conv_comarcal = alertes_zona.get(comarca_actual, 0)
+                    ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calc)
+                else:
+                    st.warning(f"No s'ha pogut determinar la comarca per a {poble_sel}.")
+            elif active_tab == "Anàlisi de Mapes":
+                ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
+            elif active_tab == "Simulació de Núvol":
+                st.markdown(f"#### Simulació del Cicle de Vida per a {poble_sel}")
+                st.caption(timestamp_str)
+                if 'regenerate_key' not in st.session_state: st.session_state.regenerate_key = 0
+                if st.button("🔄 Regenerar Totes les Animacions"): forcar_regeneracio_animacio()
+                with st.spinner("Generant simulacions visuals..."):
+                    params_tuple = tuple(sorted(params_calc.items()))
+                    gifs = generar_animacions_professionals(params_tuple, timestamp_str, st.session_state.regenerate_key)
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.markdown("<h5 style='text-align: center;'>1. Iniciació</h5>", unsafe_allow_html=True)
+                    if gifs['iniciacio']: st.image(gifs['iniciacio'])
+                    else: st.info("Condicions estables.")
+                with col2:
+                    st.markdown("<h5 style='text-align: center;'>2. Maduresa</h5>", unsafe_allow_html=True)
+                    if gifs['maduresa']: st.image(gifs['maduresa'])
+                    else: st.info("Sense energia per a tempesta.")
+                with col3:
+                    st.markdown("<h5 style='text-align: center;'>3. Dissipació</h5>", unsafe_allow_html=True)
+                    if gifs['dissipacio']: st.image(gifs['dissipacio'])
+                    else: st.info("Sense fase final.")
+                st.divider()
+                ui_guia_tall_vertical(params_calc, nivell_sel)
+            elif active_tab == "💬 Assistent IA" and not is_guest:
+                analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
+                interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
+                sounding_data = data_tuple[0] if data_tuple else None
+                ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)
+        else:
+             st.info("👇 Fes clic en una de les pestanyes de dalt per començar l'anàlisi.", icon="ℹ️")
+
+    else: 
+        # --- VISTA DE SELECCIÓ (MAPA INTERACTIU + LLEGENDA + BOTONS) ---
+        with st.spinner("Carregant mapa de situació de Catalunya..."):
+            map_output = ui_mapa_display_personalitzat(alertes_zona, hourly_index_sel)
+
+        ui_llegenda_mapa_principal()
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
-            
-            if "Zona:" in raw_tooltip or "Comarca:" in raw_tooltip:
+            if "Comarca:" in raw_tooltip:
                 clicked_area = raw_tooltip.split(':')[-1].strip().replace('.', '')
                 if clicked_area != st.session_state.get('selected_area'):
                     st.session_state.selected_area = clicked_area
-                    st.session_state.poble_sel = "--- Selecciona una localitat ---"
                     st.rerun()
+
+        selected_area = st.session_state.get('selected_area')
+        if selected_area and "---" not in selected_area:
+            st.markdown(f"##### Selecciona una localitat a {selected_area}:")
+            gdf = carregar_dades_geografiques()
+            property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), 'nom_comar')
+            poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
+            poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
+            if poblacions_a_mostrar:
+                cols = st.columns(4)
+                col_index = 0
+                for nom_poble in sorted(poblacions_a_mostrar.keys()):
+                    with cols[col_index % 4]:
+                        st.button(
+                            nom_poble, key=f"btn_{nom_poble.replace(' ', '_')}",
+                            on_click=seleccionar_poble, args=(nom_poble,), use_container_width=True
+                        )
+                    col_index += 1
             else:
-                clicked_poble = raw_tooltip.strip()
-                if clicked_poble in CIUTATS_CATALUNYA:
-                    st.session_state.poble_sel = clicked_poble
-                    st.rerun()
+                st.warning("Aquesta zona no té localitats predefinides per a l'anàlisi.")
+            if st.button("⬅️ Veure totes les zones"):
+                st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
+                st.rerun()
+        else:
+             st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
+    
 
 
-def ui_mapa_display_personalitzat(alertes_per_zona):
+
+
+def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc):
     """
-    Versió final robusta v3.
-    - Dibuixa SEMPRE tots els polígons amb un estil base.
-    - Pinta a sobre les alertes de convergència amb l'escala de colors.
-    - Ressalta en blau la zona seleccionada per l'usuari.
+    PESTANYA D'ANÀLISI COMARCAL (Versió neta, sense la llegenda).
     """
-    st.markdown("#### Mapa de Situació")
+    st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
+    st.caption(timestamp_str.replace(poble_sel, comarca))
+
+    col_mapa, col_diagnostic = st.columns([0.6, 0.4], gap="large")
+
+    with col_mapa:
+        st.markdown("##### Focus de Convergència a la Zona")
+        gdf_comarques = carregar_dades_geografiques()
+        if gdf_comarques is None:
+            st.error("No s'ha pogut carregar el mapa de comarques.")
+            return
+
+        property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_comarques.columns), 'nom_comar')
+        comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
+
+        m = folium.Map(tiles="CartoDB positron", zoom_control=False, scrollWheelZoom=False, dragging=False, doubleClickZoom=False)
+        
+        if not comarca_shape.empty:
+            folium.GeoJson(comarca_shape, style_function=lambda x: {'fillColor': '#007bff', 'color': 'black', 'weight': 2, 'fillOpacity': 0.3}).add_to(m)
+            bounds = comarca_shape.total_bounds
+            m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+
+        if map_data and valor_conv > 10:
+            lons, lats = map_data['lons'], map_data['lats']
+            # ... (la resta de la lògica del mapa es queda igual) ...
+            grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100))
+            u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
+            grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+            grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+            convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
+            points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': convergence_scaled.flatten()})
+            gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
+            comarca_shape = comarca_shape.to_crs(gdf_points.crs)
+            points_in_comarca = gpd.sjoin(gdf_points, comarca_shape, how="inner", predicate="within")
+            if not points_in_comarca.empty:
+                max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
+                folium.Marker(location=[max_conv_point.geometry.y, max_conv_point.geometry.x], tooltip=f"Focus Màxim: {max_conv_point.conv:.0f}", icon=folium.Icon(color='red', icon='bolt')).add_to(m)
+
+        st_folium(m, width="100%", height=450)
+
+    with col_diagnostic:
+        st.markdown("##### Diagnòstic de la Zona")
+        
+        if valor_conv >= 60:
+            nivell_alerta, color_alerta, emoji, descripcio = "Molt Alt", "#DC3545", "🔴", f"S'ha detectat un focus de convergència extremadament fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal molt clara per a la formació imminent de tempestes, possiblement severes i organitzades."
+        elif valor_conv >= 40:
+            nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FD7E14", "🟠", f"Hi ha un focus de convergència forta a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona."
+        elif valor_conv >= 20:
+            nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#28A745", "🟢", f"S'observa una zona de convergència moderada a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes si l'atmosfera és inestable."
+        else:
+            nivell_alerta, color_alerta, emoji, descripcio = "Baix", "#6c757d", "⚪", "No es detecten focus de convergència significatius a la comarca. El forçament dinàmic per iniciar tempestes és feble."
+
+        st.markdown(f"""<div style="...">{emoji} Potencial de Dispar: {nivell_alerta}</div>...""", unsafe_allow_html=True) # El teu HTML aquí
+        
+        st.markdown("##### Validació Atmosfèrica")
+        
+        if not params_calc:
+            st.warning("No hi ha dades de sondeig disponibles per a la validació.")
+        else:
+            mucin = params_calc.get('MUCIN', 0) or 0
+            mucape = params_calc.get('MUCAPE', 0) or 0
+            
+            # ... (la resta de la lògica de validació es queda igual) ...
+            vered_titol, vered_color, vered_emoji, vered_desc = "", "", "", ""
+            if mucin < -75:
+                vered_titol, vered_color, vered_emoji = "Inhibida", "#DC3545", "👎"
+                vered_desc = f"Tot i la convergència, hi ha una inhibició (CIN) molt forta de {mucin:.0f} J/kg..."
+            elif mucape < 250:
+                vered_titol, vered_color, vered_emoji = "Sense Energia", "#FD7E14", "🤔"
+                vered_desc = f"El disparador existeix, però l'atmosfera té molt poc 'combustible' (CAPE), amb només {mucape:.0f} J/kg..."
+            else:
+                vered_titol, vered_color, vered_emoji = "Efectiva", "#28A745", "👍"
+                vered_desc = f"Les condicions són favorables! La convergència troba una atmosfera amb prou energia ({mucape:.0f} J/kg)..."
+
+            st.markdown(f"""<div style="...">{vered_emoji} Veredicte: Convergència {vered_titol}</div>...""", unsafe_allow_html=True) # El teu HTML aquí
+            st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
+            
+def seleccionar_poble(nom_poble):
+    """Callback segur que estableix la intenció de seleccionar un poble."""
+    # En lloc de canviar 'poble_sel' directament, establim un estat intermedi.
+    st.session_state.poble_seleccionat_per_boto = nom_poble
+
+
+def ui_llegenda_mapa_principal():
+    """
+    Mostra la llegenda explicativa per al mapa principal de selecció de comarques.
+    """
+    st.markdown("""
+    <style>
+        .legend-container { background-color: #262730; border-radius: 8px; padding: 16px; margin-top: 15px; border: 1px solid #444; }
+        .legend-title { font-size: 1.1em; font-weight: bold; color: #FAFAFA; margin-bottom: 12px; }
+        .legend-item { display: flex; align-items: center; margin-bottom: 8px; }
+        .legend-color-dot { width: 15px; height: 15px; border-radius: 50%; margin-right: 10px; border: 1px solid #555; }
+        .legend-text { font-size: 0.9em; color: #a0a0b0; }
+    </style>
+    <div class="legend-container">
+        <div class="legend-title">Com Interpretar el Mapa de Situació</div>
+        <div class="legend-text" style="margin-bottom: 10px;">El color de la comarca i el número indiquen la <b>força màxima del disparador</b> (convergència) detectada a la zona:</div>
+        <div class="legend-item">
+            <span class="legend-color-dot" style="background-color: #28A745;"></span>
+            <span class="legend-text"><b>Moderat (20-39):</b> Potencial per a iniciar tempestes.</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-color-dot" style="background-color: #FD7E14;"></span>
+            <span class="legend-text"><b>Alt (40-59):</b> Disparador eficient, tempestes probables.</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-color-dot" style="background-color: #DC3545;"></span>
+            <span class="legend-text"><b>Molt Alt (60-99):</b> Senyal clara de temps sever imminent.</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-color-dot" style="background-color: #9370DB;"></span>
+            <span class="legend-text"><b>Extrem (100+):</b> Condicions de risc excepcional.</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    
+# --- DICCIONARI DE CAPITALS (Necessari per a les coordenades) ---
+CAPITALS_COMARCA = {
+    "Alt Camp": {"nom": "Valls", "lat": 41.2872, "lon": 1.2505},
+    "Alt Empordà": {"nom": "Figueres", "lat": 42.2662, "lon": 2.9622},
+    "Alt Penedès": {"nom": "Vilafranca del Penedès", "lat": 41.3453, "lon": 1.6995},
+    "Alt Urgell": {"nom": "La Seu d'Urgell", "lat": 42.3582, "lon": 1.4593},
+    "Anoia": {"nom": "Igualada", "lat": 41.5791, "lon": 1.6174},
+    "Bages": {"nom": "Manresa", "lat": 41.7230, "lon": 1.8268},
+    "Baix Camp": {"nom": "Reus", "lat": 41.1550, "lon": 1.1075},
+    "Baix Ebre": {"nom": "Tortosa", "lat": 40.8126, "lon": 0.5211},
+    "Baix Empordà": {"nom": "La Bisbal d'Empordà", "lat": 41.9602, "lon": 3.0378},
+    "Baix Llobregat": {"nom": "Sant Feliu de Llobregat", "lat": 41.3833, "lon": 2.0500},
+    "Barcelonès": {"nom": "Barcelona", "lat": 41.3851, "lon": 2.1734},
+    "Berguedà": {"nom": "Berga", "lat": 42.1051, "lon": 1.8458},
+    "Cerdanya": {"nom": "Puigcerdà", "lat": 42.4331, "lon": 1.9287},
+    "Conca de Barberà": {"nom": "Montblanc", "lat": 41.3761, "lon": 1.1610},
+    "Garraf": {"nom": "Vilanova i la Geltrú", "lat": 41.2241, "lon": 1.7252},
+    "Garrigues": {"nom": "Les Borges Blanques", "lat": 41.5224, "lon": 0.8674},
+    "Garrotxa": {"nom": "Olot", "lat": 42.1818, "lon": 2.4900},
+    "Gironès": {"nom": "Girona", "lat": 41.9831, "lon": 2.8249},
+    "Maresme": {"nom": "Mataró", "lat": 41.5388, "lon": 2.4449},
+    "Montsià": {"nom": "Amposta", "lat": 40.7093, "lon": 0.5810},
+    "Noguera": {"nom": "Balaguer", "lat": 41.7904, "lon": 0.8066},
+    "Osona": {"nom": "Vic", "lat": 41.9301, "lon": 2.2545},
+    "Pallars Jussà": {"nom": "Tremp", "lat": 42.1664, "lon": 0.8953},
+    "Pallars Sobirà": {"nom": "Sort", "lat": 42.4131, "lon": 1.1278},
+    "Pla de l'Estany": {"nom": "Banyoles", "lat": 42.1197, "lon": 2.7667},
+    "Pla d_Urgell": {"nom": "Mollerussa", "lat": 41.6315, "lon": 0.8931},
+    "Priorat": {"nom": "Falset", "lat": 41.1444, "lon": 0.8208},
+    "Ribera d_Ebre": {"nom": "Móra d'Ebre", "lat": 41.0945, "lon": 0.6450},
+    "Ripollès": {"nom": "Ripoll", "lat": 42.2013, "lon": 2.1903},
+    "Segarra": {"nom": "Cervera", "lat": 41.6709, "lon": 1.2721},
+    "Segrià": {"nom": "Lleida", "lat": 41.6177, "lon": 0.6200},
+    "Selva": {"nom": "Santa Coloma de Farners", "lat": 41.8596, "lon": 2.6703},
+    "Solsonès": {"nom": "Solsona", "lat": 41.9942, "lon": 1.5161},
+    "Tarragonès": {"nom": "Tarragona", "lat": 41.1189, "lon": 1.2445},
+    "Terra Alta": {"nom": "Gandesa", "lat": 41.0526, "lon": 0.4337},
+    "Urgell": {"nom": "Tàrrega", "lat": 41.6469, "lon": 1.1415},
+    "Val d'Aran": {"nom": "Vielha", "lat": 42.7027, "lon": 0.7966},
+    "Vallès Occidental": {"nom": "Sabadell", "lat": 41.5483, "lon": 2.1075},
+    "Vallès Oriental": {"nom": "Granollers", "lat": 41.6083, "lon": 2.2886}
+}
+
+
+
+
+
+
+@st.cache_data(ttl=600, show_spinner="Generant mapa de situació...")
+def generar_mapa_folium_catalunya(alertes_per_zona, selected_area_str):
+    """
+    Funció CACHEADA que fa el treball pesat: carrega les geometries i
+    construeix l'objecte del mapa Folium. Retorna l'objecte 'm'.
+    """
     gdf = carregar_dades_geografiques()
     if gdf is None: return None
 
     property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), None)
     if not property_name:
-        st.error(
-            "**Error Crític en el Mapa:** L'arxiu GeoJSON no conté una propietat de nom vàlida. "
-            "Ha de ser `nom_zona`, `nomcomar` o `nom_comar`."
-        )
+        # No podem usar st.error dins d'una funció cachejada, així que imprimim i retornem None.
+        print("Error Crític en el Mapa: L'arxiu GeoJSON no conté una propietat de nom vàlida.")
         return None
-    tooltip_alias = 'Zona:' if property_name == 'nom_zona' else 'Comarca:'
+    tooltip_alias = 'Comarca:'
 
-    selected_area = st.session_state.get('selected_area')
+    # Paràmetres del mapa
+    map_params = {
+        "location": [41.83, 1.87], "zoom_start": 8,
+        "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+        "attr": "Tiles &copy; Esri &mdash; and the GIS User Community",
+        "scrollWheelZoom": True, "dragging": True, "zoom_control": True, "doubleClickZoom": True,
+        "max_bounds": [[40.4, 0.0], [42.9, 3.5]], "min_zoom": 8, "max_zoom": 12
+    }
 
-    map_center = [41.83, 1.87]; zoom_level = 8
-    if selected_area and "---" not in selected_area:
-        # Netejem el nom seleccionat per a una comparació segura
-        cleaned_selected_area = selected_area.strip().replace('.', '')
+    # Lògica per congelar el mapa si hi ha una zona seleccionada
+    if selected_area_str and "---" not in selected_area_str:
+        cleaned_selected_area = selected_area_str.strip().replace('.', '')
         zona_shape = gdf[gdf[property_name].str.strip().str.replace('.', '') == cleaned_selected_area]
         if not zona_shape.empty:
-            map_center = [zona_shape.geometry.centroid.y.iloc[0], zona_shape.geometry.centroid.x.iloc[0]]
-            zoom_level = 10 if property_name in ['nomcomar', 'nom_comar'] else 9
+            centroid = zona_shape.geometry.centroid.iloc[0]
+            map_params.update({
+                "location": [centroid.y, centroid.x], "zoom_start": 10,
+                "scrollWheelZoom": False, "dragging": False, "zoom_control": False, "doubleClickZoom": False,
+                "max_bounds": [[zona_shape.total_bounds[1], zona_shape.total_bounds[0]], [zona_shape.total_bounds[3], zona_shape.total_bounds[2]]]
+            })
 
-    m = folium.Map(
-        location=map_center, 
-        zoom_start=zoom_level, 
-        tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-        attr="Tiles &copy; Esri &mdash; and the GIS User Community",
-        scrollWheelZoom=True
-    )
+    m = folium.Map(**map_params)
 
+    # Funcions d'estil (exactament les mateixes que tenies)
     def get_color_from_convergence(value):
-        if not isinstance(value, (int, float)): return None
-        if value >= 100: return '#9370DB' # Lila
-        if value >= 60: return '#DC3545' # Vermell
-        if value >= 40: return '#FD7E14' # Taronja
-        if value >= 20: return '#28A745' # Verd
-        return None
+        if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
+        if value >= 100: return '#9370DB', '#FFFFFF'
+        if value >= 60: return '#DC3545', '#FFFFFF'
+        if value >= 40: return '#FD7E14', '#FFFFFF'
+        if value >= 20: return '#28A745', '#FFFFFF'
+        return '#6c757d', '#FFFFFF'
 
     def style_function(feature):
-        # <<<--- LÒGICA COMPLETAMENT REVISADA PER A MÀXIMA ROBUSTESA --->>>
-        
-        # 1. Estil base per a TOTS els polígons: gris, semitransparent.
         style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
-        
         nom_feature_raw = feature.get('properties', {}).get(property_name)
         if nom_feature_raw and isinstance(nom_feature_raw, str):
             nom_feature = nom_feature_raw.strip().replace('.', '')
-            
-            # 2. Comprova si té alerta. Si és així, PINTA A SOBRE.
             conv_value = alertes_per_zona.get(nom_feature)
             if conv_value:
-                alert_color = get_color_from_convergence(conv_value)
-                if alert_color:
-                    style['fillColor'] = alert_color
-                    style['color'] = alert_color
-                    style['fillOpacity'] = 0.55
-                    style['weight'] = 2.5
-            
-            # 3. Comprova si és la seleccionada. Si és així, PINTA A SOBRE DE TOT.
-            cleaned_selected_area = st.session_state.get('selected_area', '').strip().replace('.', '')
+                alert_color, _ = get_color_from_convergence(conv_value)
+                style.update({'fillColor': alert_color, 'color': alert_color, 'fillOpacity': 0.55, 'weight': 2.5})
+            cleaned_selected_area = selected_area_str.strip().replace('.', '') if selected_area_str else ''
             if nom_feature == cleaned_selected_area:
-                style['fillColor'] = '#007bff'
-                style['color'] = '#ffffff'
-                style['weight'] = 3
-                style['fillOpacity'] = 0.5
-        
-        # <<<--- CORRECCIÓ CLAU: El 'return' està fora del 'if' --->>>
-        # D'aquesta manera, sempre es retorna un estil, fins i tot per a polígons sense nom.
+                style.update({'fillColor': '#007bff', 'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.5})
         return style
 
     highlight_function = lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5}
 
     folium.GeoJson(
-        gdf,
-        style_function=style_function,
-        highlight_function=highlight_function,
+        gdf, style_function=style_function, highlight_function=highlight_function,
         tooltip=folium.GeoJsonTooltip(fields=[property_name], aliases=[tooltip_alias])
     ).add_to(m)
 
-    if selected_area and "---" not in selected_area:
-        poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
-        poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
-        for nom_poble, coords in poblacions_a_mostrar.items():
-            icon = folium.DivIcon(
-                html=f"""<div style="font-family: sans-serif; font-size: 11px; font-weight: bold; color: #111; background-color: rgba(255, 255, 255, 0.7); padding: 2px 6px; border-radius: 5px; border: 1.5px solid #111; white-space: nowrap;">{nom_poble}</div>"""
-            )
-            folium.Marker(location=[coords['lat'], coords['lon']], icon=icon, tooltip=nom_poble).add_to(m)
+    # Afegir les etiquetes de text
+    for zona, conv_value in alertes_per_zona.items():
+        capital_info = CAPITALS_COMARCA.get(zona)
+        if capital_info:
+            bg_color, text_color = get_color_from_convergence(conv_value)
+            icon_html = f"""<div style="... font-size: 11px; ...">{zona}: {conv_value:.0f}</div>""" # El teu HTML aquí
+            icon = folium.DivIcon(html=icon_html)
+            folium.Marker(location=[capital_info['lat'], capital_info['lon']], icon=icon, tooltip=f"Comarca: {zona}").add_to(m)
+    
+    return m
+    
+def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
+    """
+    Funció de VISUALITZACIÓ. Converteix les alertes a un format segur per a la memòria cau.
+    """
+    st.markdown("#### Mapa de Situació")
+    
+    selected_area_str = st.session_state.get('selected_area')
 
+    alertes_tuple = tuple(sorted(alertes_per_zona.items()))
+    
+    map_data = preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index)
+    
+    if not map_data:
+        st.error("No s'han pogut generar les dades per al mapa.")
+        return None
+
+    map_params = {
+        "location": [41.83, 1.87], "zoom_start": 8,
+        "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+        "attr": "Tiles &copy; Esri &mdash; and the GIS User Community",
+        "scrollWheelZoom": True, "dragging": True, "zoom_control": True, "doubleClickZoom": True,
+        "max_bounds": [[40.4, 0.0], [42.9, 3.5]], "min_zoom": 8, "max_zoom": 12
+    }
+
+    if selected_area_str and "---" not in selected_area_str:
+        gdf_temp = gpd.read_file(map_data["gdf"])
+        cleaned_selected_area = selected_area_str.strip().replace('.', '')
+        zona_shape = gdf_temp[gdf_temp[map_data["property_name"]].str.strip().replace('.', '') == cleaned_selected_area]
+        if not zona_shape.empty:
+            centroid = zona_shape.geometry.centroid.iloc[0]
+            map_params.update({
+                "location": [centroid.y, centroid.x], "zoom_start": 10,
+                "scrollWheelZoom": False, "dragging": False, "zoom_control": False, "doubleClickZoom": False,
+                "max_bounds": [[zona_shape.total_bounds[1], zona_shape.total_bounds[0]], [zona_shape.total_bounds[3], zona_shape.total_bounds[2]]]
+            })
+
+    m = folium.Map(**map_params)
+
+    def style_function(feature):
+        nom_feature_raw = feature.get('properties', {}).get(map_data["property_name"])
+        style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
+        if nom_feature_raw:
+            nom_feature = nom_feature_raw.strip().replace('.', '')
+            style = map_data["styles"].get(nom_feature, style)
+            cleaned_selected_area = selected_area_str.strip().replace('.', '') if selected_area_str else ''
+            if nom_feature == cleaned_selected_area:
+                style.update({'fillColor': '#007bff', 'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.5})
+        return style
+
+    folium.GeoJson(
+        map_data["gdf"], style_function=style_function,
+        highlight_function=lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5},
+        tooltip=folium.GeoJsonTooltip(fields=[map_data["property_name"]], aliases=['Comarca:'])
+    ).add_to(m)
+
+    for marker in map_data["markers"]:
+        icon = folium.DivIcon(html=marker['icon_html'])
+        folium.Marker(location=marker['location'], icon=icon, tooltip=marker['tooltip']).add_to(m)
+    
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
-                    
+    
+    
 def run_valley_halley_app():
     if 'poble_selector_usa' not in st.session_state or st.session_state.poble_selector_usa not in USA_CITIES:
         st.session_state.poble_selector_usa = "Dallas, TX"
