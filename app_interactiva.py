@@ -6436,6 +6436,7 @@ CAPITALS_COMARCA = {
     "Vallès Oriental": {"nom": "Granollers", "lat": 41.6083, "lon": 2.2886}
 }
 
+@st.cache_data(ttl=600)
 def ui_mapa_display_personalitzat(alertes_per_zona):
     """
     Versió final robusta v14 (Límits de Zoom).
@@ -6454,7 +6455,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
 
     selected_area = st.session_state.get('selected_area')
     
-    # --- CANVI CLAU: PARÀMETRES DEL MAPA REVISATS ---
+    # --- PARÀMETRES DEL MAPA REVISATS I AMB LÍMITS ---
     map_params = {
         "location": [41.83, 1.87],
         "zoom_start": 8,
@@ -6464,11 +6465,12 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
         "dragging": True,
         "zoom_control": True,
         "doubleClickZoom": True,
-        "max_bounds": [[40.4, 0.0], [42.9, 3.5]],
-        "min_zoom": 8, # <-- NOU: Impedeix fer "unzoom" excessiu
-        "max_zoom": 12  # <-- NOU: Limita el zoom màxim per consistència
+        "max_bounds": [[40.4, 0.0], [42.9, 3.5]], # Límits geogràfics
+        "min_zoom": 8, # Impedeix fer "unzoom" excessiu
+        "max_zoom": 12  # Limita el zoom màxim per consistència
     }
 
+    # Si hi ha una zona seleccionada, congela el mapa sobre ella
     if selected_area and "---" not in selected_area:
         cleaned_selected_area = selected_area.strip().replace('.', '')
         zona_shape = gdf[gdf[property_name].str.strip().str.replace('.', '') == cleaned_selected_area]
@@ -6476,6 +6478,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
             centroid = zona_shape.geometry.centroid.iloc[0]
             map_params["location"] = [centroid.y, centroid.x]
             map_params["zoom_start"] = 10
+            # Desactiva tota la interacció
             map_params["scrollWheelZoom"] = False
             map_params["dragging"] = False
             map_params["zoom_control"] = False
@@ -6484,31 +6487,40 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
             map_params["max_bounds"] = [[bounds[1], bounds[0]], [bounds[3], bounds[2]]]
 
     m = folium.Map(**map_params)
-    # --- FI DEL CANVI ---
 
     def get_color_from_convergence(value):
         if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
-        if value >= 100: return '#9370DB', '#FFFFFF'
-        if value >= 60: return '#DC3545', '#FFFFFF'
-        if value >= 40: return '#FD7E14', '#FFFFFF'
-        if value >= 20: return '#28A745', '#FFFFFF'
-        return '#6c757d', '#FFFFFF'
+        if value >= 100: return '#9370DB', '#FFFFFF' # Lila per a valors extrems
+        if value >= 60: return '#DC3545', '#FFFFFF'  # Vermell
+        if value >= 40: return '#FD7E14', '#FFFFFF'  # Taronja
+        if value >= 20: return '#28A745', '#FFFFFF'  # Verd
+        return '#6c757d', '#FFFFFF' # Gris per defecte
 
     def style_function(feature):
         style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
         nom_feature_raw = feature.get('properties', {}).get(property_name)
+        
         if nom_feature_raw and isinstance(nom_feature_raw, str):
             nom_feature = nom_feature_raw.strip().replace('.', '')
             conv_value = alertes_per_zona.get(nom_feature)
+            
+            # Aplica color d'alerta
             if conv_value:
                 alert_color, _ = get_color_from_convergence(conv_value)
                 if alert_color:
-                    style['fillColor'] = alert_color; style['color'] = alert_color
-                    style['fillOpacity'] = 0.55; style['weight'] = 2.5
+                    style['fillColor'] = alert_color
+                    style['color'] = alert_color
+                    style['fillOpacity'] = 0.55
+                    style['weight'] = 2.5
+            
+            # Ressalta la zona seleccionada
             cleaned_selected_area = st.session_state.get('selected_area', '').strip().replace('.', '')
             if nom_feature == cleaned_selected_area:
-                style['fillColor'] = '#007bff'; style['color'] = '#ffffff'
-                style['weight'] = 3; style['fillOpacity'] = 0.5
+                style['fillColor'] = '#007bff'
+                style['color'] = '#ffffff'
+                style['weight'] = 3
+                style['fillOpacity'] = 0.5
+                
         return style
 
     highlight_function = lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5}
@@ -6520,13 +6532,37 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
         tooltip=folium.GeoJsonTooltip(fields=[property_name], aliases=[tooltip_alias])
     ).add_to(m)
 
+    # Afegeix les etiquetes de text amb els valors de convergència
     for zona, conv_value in alertes_per_zona.items():
         capital_info = CAPITALS_COMARCA.get(zona)
         if capital_info:
             bg_color, text_color = get_color_from_convergence(conv_value)
-            nom_capital = capital_info['nom']
-            icon_html = f"""<div style="position: relative; background-color: {bg_color}; color: {text_color}; padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color}; font-family: sans-serif; font-size: 13px; font-weight: bold; text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5); transform: translate(-50%, -100%);"><div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div><div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>{zona}: {conv_value:.0f}</div>"""
+            
+            # --- AQUÍ POTS AJUSTAR LA MIDA DEL TEXT ---
+            # Canvia 'font-size: 13px;' per un valor més petit, com '11px'.
+            icon_html = f"""
+            <div style="
+                position: relative;
+                background-color: {bg_color};
+                color: {text_color};
+                padding: 6px 12px;
+                border-radius: 8px;
+                border: 2px solid {text_color};
+                font-family: sans-serif;
+                font-size: 11px; /* <-- AJUSTA LA MIDA AQUÍ */
+                font-weight: bold;
+                text-align: center;
+                min-width: 80px;
+                box-shadow: 3px 3px 5px rgba(0,0,0,0.5);
+                transform: translate(-50%, -100%);
+            ">
+                <div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div>
+                <div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>
+                {zona}: {conv_value:.0f}
+            </div>
+            """
             icon = folium.DivIcon(html=icon_html)
+            
             folium.Marker(
                 location=[capital_info['lat'], capital_info['lon']],
                 icon=icon,
