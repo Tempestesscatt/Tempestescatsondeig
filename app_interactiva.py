@@ -5720,7 +5720,6 @@ def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index)
         if value >= 20: return '#28A745', '#FFFFFF'
         return '#6c757d', '#FFFFFF'
 
-    # La resta de la funció és idèntica i ja funciona correctament
     styles_dict = {}
     for feature in gdf.iterfeatures():
         nom_feature_raw = feature.get('properties', {}).get(property_name)
@@ -6717,18 +6716,14 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
     
     selected_area_str = st.session_state.get('selected_area')
 
-    # <<<--- CANVI CLAU: Convertim el diccionari a una tupla ordenada ---
-    # Aquest format és 100% segur per a la memòria cau de Streamlit.
     alertes_tuple = tuple(sorted(alertes_per_zona.items()))
     
-    # Passem la tupla segura a la funció de la memòria cau
     map_data = preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index)
     
     if not map_data:
         st.error("No s'han pogut generar les dades per al mapa.")
         return None
 
-    # El reste de la funció per construir el mapa no canvia
     map_params = {
         "location": [41.83, 1.87], "zoom_start": 8,
         "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
