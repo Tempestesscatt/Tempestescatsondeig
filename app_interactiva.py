@@ -8093,47 +8093,62 @@ def inject_custom_css():
     st.markdown("""
     <style>
     /* --- ESTIL DEFINITIU I ROBUST PER A TOTS ELS SPINNERS --- */
-    /* ... (el teu codi de spinner es manté igual) ... */
+    /* Aquesta regla s'aplica a qualsevol spinner, en qualsevol lloc de l'app */
+    .stSpinner {
+        position: fixed; /* Posició fixa respecte a la finestra del navegador */
+        top: 0;
+        left: 0;
+        width: 100%;     /* Ocupa tota l'amplada */
+        height: 100%;    /* Ocupa tota l'alçada */
+        background-color: rgba(0, 0, 0, 0.7); /* Fons fosc semitransparent */
+        z-index: 9999;   /* Assegura que estigui per sobre de tot */
+        
+        /* Centrat perfecte amb Flexbox */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    /* Estil per al contingut intern (la icona i el text) */
+    .stSpinner > div {
+        text-align: center;
+        color: white;         /* Text en blanc per a més contrast */
+        font-size: 1.2rem;    /* Mida del text una mica més gran */
+        font-weight: bold;
+    }
+    /* --- FI DE L'ESTIL DEL SPINNER --- */
     
+
     /* --- ESTIL DE L'ALERTA PARPELLEJANT (ES MANTÉ) --- */
-    /* ... (el teu codi de blinking es manté igual) ... */
-
-    /* --- NOU: ESTIL PER A LA VORA DAURADA ANIMADA --- */
-    .animated-border-gold {
-        position: relative;
-        overflow: hidden; /* Molt important per contenir el gradient */
-        border-radius: 12px; /* Coincideix amb el border-radius del contenidor de Streamlit */
-        padding: 2px; /* Espai per a la vora */
-        background: #1c1c1c; /* Color de fons del contenidor */
+    .blinking-alert {
+        animation: blink 1.5s linear infinite;
     }
 
-    .animated-border-gold::before {
-        content: '';
-        position: absolute;
-        top: -50%;
-        left: -50%;
-        width: 200%;
-        height: 200%;
-        background: conic-gradient(
-            from 0deg,
-            #FFD700, #F0E68C, #FFD700, #DAA520, #FFD700
-        );
+    @keyframes blink {
+        50% { opacity: 0.6; }
+    }
+
+    /* --- NOU: ESTIL PER A LA VORA DAURADA ANIMADA (VERSIÓ ROBUSTA) --- */
+    @property --angle {
+        syntax: '<angle>';
+        initial-value: 0deg;
+        inherits: false;
+    }
+
+    .animated-gold-container {
+        --angle: 0deg;
+        border: 3px solid;
+        border-image: conic-gradient(from var(--angle), #DAA520, #FFD700, #F0E68C, #FFD700, #DAA520) 1;
         animation: rotate-border 4s linear infinite;
-        z-index: 1; /* Per sota del contingut */
-    }
-
-    /* Aquesta classe contindrà el contingut real del botó */
-    .animated-border-content {
-        position: relative;
-        background: #121212; /* Color de fons intern, lleugerament diferent */
-        border-radius: 10px; /* Un pèl més petit que el contenidor exterior */
-        padding: 1rem; /* Ajusta el padding intern si cal */
-        z-index: 2; /* Per sobre de l'animació */
+        border-radius: 12px; /* Coincideix amb el border-radius de Streamlit */
+        padding: 1.2rem;
+        background-color: rgba(38, 39, 48, 0.5); /* Fons semi-transparent */
     }
 
     @keyframes rotate-border {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
+        to {
+            --angle: 360deg;
+        }
     }
     /* --- FI DEL NOU ESTIL --- */
     </style>
@@ -8167,31 +8182,23 @@ def ui_zone_selection():
     # --- FUNCIÓ create_zone_button MODIFICADA ---
     def create_zone_button(col, path, title, key, zone_id, type="secondary", height="160px", animated_border=False):
         
-        # Si té vora animada, emboliquem tot el contingut
-        if animated_border:
-            col.markdown('<div class="animated-border-gold">', unsafe_allow_html=True)
+        # Determinem si el contenidor tindrà la vora animada o la normal
+        container_class = "animated-gold-container" if animated_border else ""
         
-        with col, st.container(border=not animated_border): # Només mostrem la vora de Streamlit si no és animada
-            # Si és animada, afegim una capa interna per al contingut
-            if animated_border:
-                st.markdown('<div class="animated-border-content">', unsafe_allow_html=True)
-            
-            st.markdown(generar_html_imatge_estatica(path, height=height), unsafe_allow_html=True)
-            
-            display_title = title
-            if zone_id == 'italia': display_title += " 🔥"
-            elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya', 'holanda', 'catalunya', 'noruega']: display_title += " 🟢"
-            
-            st.subheader(display_title)
-            
-            st.button(f"Analitzar {title}", key=key, use_container_width=True, type=type,
-                      on_click=start_transition, args=(zone_id,))
-            
-            if animated_border:
-                st.markdown('</div>', unsafe_allow_html=True)
-
-        if animated_border:
-            col.markdown('</div>', unsafe_allow_html=True)
+        with col:
+            # Creem un contenidor i li assignem la classe CSS. Aquest és el canvi clau.
+            with st.container(border=not animated_border, css_class=container_class):
+                
+                st.markdown(generar_html_imatge_estatica(path, height=height), unsafe_allow_html=True)
+                
+                display_title = title
+                if zone_id == 'italia': display_title += " 🔥"
+                elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya', 'holanda', 'catalunya', 'noruega']: display_title += " 🟢"
+                
+                st.subheader(display_title)
+                
+                st.button(f"Analitzar {title}", key=key, use_container_width=True, type=type,
+                          on_click=start_transition, args=(zone_id,))
     # --- FI DE LA MODIFICACIÓ ---
 
     # Dibuixem els botons amb el nou paràmetre
@@ -8208,7 +8215,7 @@ def ui_zone_selection():
     create_zone_button(row3_col3, paths['can'], "Canadà", "btn_can", "canada")
     create_zone_button(row3_col4, paths['nor'], "Noruega", "btn_nor", "noruega")
 
-    # Secció d'Arxius (es manté igual)
+    # Secció d'Arxius
     st.markdown("---")
     
     with st.container(border=True):
@@ -8225,6 +8232,7 @@ def ui_zone_selection():
             )
             st.button("Consultar Arxius", key="btn_arxiu", use_container_width=True, type="primary",
                       on_click=start_transition, args=("arxiu_tempestes",))
+                      
             
 
 @st.cache_data(ttl=3600)
