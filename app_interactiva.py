@@ -6219,7 +6219,7 @@ def crear_mapa_forecast_combinat_est_peninsula(lons, lats, speed_data, dir_data,
 def run_est_peninsula_app():
     """
     Funció principal que gestiona la lògica per a la zona de l'Est Peninsular,
-    adaptada per funcionar amb un mapa de províncies.
+    amb mapa interactiu, alertes, selecció de zona i navegació a localitats.
     """
     # --- PAS 1: GESTIÓ D'ESTAT INICIAL ---
     if 'selected_area_peninsula' not in st.session_state: st.session_state.selected_area_peninsula = "--- Selecciona una província al mapa ---"
@@ -6282,13 +6282,23 @@ def run_est_peninsula_app():
                     orientation="horizontal", key="active_tab_est_peninsula", default_index=0)
 
         if st.session_state.active_tab_est_peninsula == "Anàlisi Vertical":
-            # (Aquesta part no canvia)
             with st.spinner(f"Carregant dades del sondeig AROME per a {poble_sel}..."):
                 data_tuple, final_index, error_msg = carregar_dades_sondeig_est_peninsula(lat_sel, lon_sel, hourly_index_sel)
-            if data_tuple is None or error_msg: st.error(f"No s'ha pogut carregar el sondeig: {formatar_missatge_error_api(error_msg)}")
+            
+            if data_tuple is None or error_msg:
+                st.error(f"No s'ha pogut carregar el sondeig: {formatar_missatge_error_api(error_msg)}")
             else:
-                #... (la resta de la lògica es manté)
+                if final_index is not None and final_index != hourly_index_sel:
+                    adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+                    adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_EST_PENINSULA)
+                    st.warning(f"**Avís:** Es mostren dades de les **{adjusted_local_time.strftime('%H:%Mh')}**.")
+                
                 params_calc = data_tuple[1]
+                with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
+                    map_data_conv, _ = carregar_dades_mapa_est_peninsula(nivell_sel, hourly_index_sel)
+                if map_data_conv:
+                    params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+                
                 ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
 
         elif st.session_state.active_tab_est_peninsula == "Anàlisi de Mapes":
@@ -6298,7 +6308,6 @@ def run_est_peninsula_app():
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU DE PROVÍNCIES) ---
         gdf_zones = carregar_dades_geografiques_peninsula()
         if gdf_zones is None:
-            # (El missatge d'error ja està a la funció de càrrega)
             return
 
         st.session_state.setdefault('show_comarca_labels_peninsula', False)
@@ -7104,10 +7113,8 @@ def ui_mapa_display_peninsula(alertes_per_zona, hourly_index, show_labels):
     
     selected_area_str = st.session_state.get('selected_area_peninsula')
 
-    # Prepara les dades per a la memòria cau
     alertes_tuple = tuple(sorted((k, float(v)) for k, v in alertes_per_zona.items()))
     
-    # Prepara les dades del mapa (aquesta funció la crearàs al següent pas)
     map_data = preparar_dades_mapa_peninsula_cachejat(
         alertes_tuple, 
         selected_area_str, 
@@ -7115,12 +7122,11 @@ def ui_mapa_display_peninsula(alertes_per_zona, hourly_index, show_labels):
     )
     
     if not map_data:
-        st.error("No s'han pogut generar les dades per al mapa de la península.")
+        # L'error ja es mostra a la funció de preparació.
         return None
 
-    # Paràmetres per centrar el mapa a la península
     map_params = {
-        "location": [40.8, -1.0], "zoom_start": 7, # <-- Coordenades i zoom per a la península
+        "location": [40.8, -1.0], "zoom_start": 7,
         "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
         "attr": "Tiles &copy; Esri &mdash; and the GIS User Community",
         "scrollWheelZoom": True, "dragging": True, "zoom_control": True, "doubleClickZoom": True,
@@ -7143,7 +7149,7 @@ def ui_mapa_display_peninsula(alertes_per_zona, hourly_index, show_labels):
     folium.GeoJson(
         map_data["gdf"], style_function=style_function,
         highlight_function=lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5},
-        tooltip=folium.GeoJsonTooltip(fields=[map_data["property_name"]], aliases=['Zona:']) # Canviem l'àlies
+        tooltip=folium.GeoJsonTooltip(fields=[map_data["property_name"]], aliases=['Provincia:']) # <-- Canvi important aquí
     ).add_to(m)
 
     for marker in map_data["markers"]:
