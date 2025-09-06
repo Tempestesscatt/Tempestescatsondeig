@@ -5693,10 +5693,8 @@ def on_day_change_usa():
 @st.cache_data(ttl=600, show_spinner="Preparant dades del mapa...")
 def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index):
     """
-    Funció CACHEADA que fa el treball pesat. Aquesta versió accepta correctament
-    els 3 paràmetres per evitar el TypeError.
+    Funció CACHEADA que fa el treball pesat. Rep una tupla d'alertes 100% segura.
     """
-    # Reconstruïm el diccionari a partir de la tupla
     alertes_per_zona = dict(alertes_tuple)
     
     gdf = carregar_dades_geografiques()
@@ -5715,7 +5713,6 @@ def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index)
         if value >= 20: return '#28A745', '#FFFFFF'
         return '#6c757d', '#FFFFFF'
 
-    # 1. Pre-calculem els estils per a cada zona
     styles_dict = {}
     for feature in gdf.iterfeatures():
         nom_feature_raw = feature.get('properties', {}).get(property_name)
@@ -5729,7 +5726,6 @@ def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index)
                 'weight': 2.5 if conv_value else 1
             }
 
-    # 2. Pre-calculem les dades per als marcadors (etiquetes)
     markers_data = []
     for zona, conv_value in alertes_per_zona.items():
         capital_info = CAPITALS_COMARCA.get(zona)
@@ -6324,7 +6320,6 @@ def run_catalunya_app():
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
         # --- VISTA D'ANÀLISI DETALLADA ---
         poble_sel = st.session_state.poble_sel
-        
         with st.spinner(f"Carregant anàlisi completa per a {poble_sel}..."):
             lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
             data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
@@ -6714,7 +6709,9 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
     
     selected_area_str = st.session_state.get('selected_area')
 
-    alertes_tuple = tuple(sorted(alertes_per_zona.items()))
+    # <<<--- AQUESTA ÉS LA CORRECCIÓ MÉS IMPORTANT ---
+    # Convertim els valors numèrics a 'float' de Python per evitar problemes amb NumPy.
+    alertes_tuple = tuple(sorted((k, float(v)) for k, v in alertes_per_zona.items()))
     
     map_data = preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index)
     
@@ -6722,6 +6719,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
         st.error("No s'han pogut generar les dades per al mapa.")
         return None
 
+    # El reste de la funció per construir el mapa no canvia
     map_params = {
         "location": [41.83, 1.87], "zoom_start": 8,
         "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
