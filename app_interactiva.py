@@ -7347,7 +7347,7 @@ def ui_mapa_display_peninsula(alertes_per_zona, hourly_index, show_labels):
 def preparar_dades_mapa_peninsula_cachejat(alertes_tuple, selected_area_str, show_labels):
     """
     Funció CACHEADA que prepara les dades per al mapa de la península,
-    amb diagnòstic de columnes.
+    amb diagnòstic de columnes i nova lògica de color gris per a convergència feble.
     """
     alertes_per_zona = dict(alertes_tuple)
     
@@ -7363,13 +7363,16 @@ def preparar_dades_mapa_peninsula_cachejat(alertes_tuple, selected_area_str, sho
         st.info(f"Si us plau, modifica la variable 'property_name' a la funció 'preparar_dades_mapa_peninsula_cachejat' amb el nom correcte de la columna que conté els noms de les províncies.")
         return None
 
+    # --- FUNCIÓ DE COLOR MODIFICADA ---
     def get_color_from_convergence(value):
-        if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
-        if value >= 100: return '#9370DB', '#FFFFFF'
-        if value >= 60: return '#DC3545', '#FFFFFF'
-        if value >= 40: return '#FD7E14', '#FFFFFF'
-        if value >= 20: return '#28A745', '#FFFFFF'
-        return '#6c757d', '#FFFFFF'
+        if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF' # Color per defecte si no hi ha valor
+        if value >= 100: return '#9370DB', '#FFFFFF' # Extrem
+        if value >= 60: return '#DC3545', '#FFFFFF'  # Molt Alt
+        if value >= 40: return '#FD7E14', '#FFFFFF'  # Alt
+        if value >= 20: return '#28A745', '#FFFFFF'  # Moderat
+        if value >= 15: return '#808080', '#FFFFFF'  # **NOU: Gris per a convergència feble (15-19)**
+        return '#6c757d', '#FFFFFF' # Per sota de 15, torna al color per defecte
+    # --- FI DE LA MODIFICACIÓ ---
 
     styles_dict = {}
     for feature in gdf.iterfeatures():
@@ -7378,10 +7381,14 @@ def preparar_dades_mapa_peninsula_cachejat(alertes_tuple, selected_area_str, sho
             nom_feature = nom_feature_raw.strip().replace('.', '')
             conv_value = alertes_per_zona.get(nom_feature)
             alert_color, _ = get_color_from_convergence(conv_value)
+            
+            # Apliquem una opacitat una mica més alta per al nou color gris
+            fill_opacity = 0.55 if conv_value and conv_value >= 15 else 0.25
+            
             styles_dict[nom_feature] = {
                 'fillColor': alert_color, 'color': alert_color,
-                'fillOpacity': 0.55 if conv_value else 0.25,
-                'weight': 2.5 if conv_value else 1
+                'fillOpacity': fill_opacity,
+                'weight': 2.5 if conv_value and conv_value >= 15 else 1
             }
 
     markers_data = []
