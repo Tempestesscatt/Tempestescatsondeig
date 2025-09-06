@@ -6381,10 +6381,10 @@ def run_catalunya_app():
 
 
 
-def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
+def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió definitiva amb DIRECCIÓ 500-700hPa).
-    Calcula la direcció de la tempesta basant-se en el flux director de capes mitjanes.
+    PESTANYA D'ANÀLISI COMARCAL (Versió final amb ESTIL VISUAL AVANÇAT).
+    Dibuixa un gradient de color professional i només les dues isòlines més fortes del nucli.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6410,7 +6410,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
 
             if map_data and valor_conv > 15:
-                # ... (La part de càlcul i dibuix de la convergència es manté igual) ...
                 lons, lats = map_data['lons'], map_data['lats']
                 grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 150), np.linspace(map_extent[2], map_extent[3], 150))
                 grid_dewpoint = griddata((lons, lats), map_data['dewpoint_data'], (grid_lon, grid_lat), 'linear')
@@ -6424,18 +6423,36 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     DEWPOINT_THRESHOLD = 14 if nivell_sel >= 950 else 12
                     humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
                     effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0)
+                
                 smoothed_convergence = gaussian_filter(effective_convergence, sigma=3.5)
                 smoothed_convergence[smoothed_convergence < 15] = 0
+
                 if np.any(smoothed_convergence > 0):
-                    colors_conv_professional = [(0.0, 0.6, 0.8, 0.6), (0.1, 0.8, 0.4, 0.7), (0.9, 0.9, 0.2, 0.8), (1.0, 0.5, 0.0, 0.9), (0.9, 0.0, 0.0, 1.0)]
-                    cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_professional", colors_conv_professional)
-                    fill_levels = np.linspace(20, 100, 128)
-                    ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels, cmap=cmap_conv, alpha=0.85, zorder=3, transform=ccrs.PlateCarree(), extend='max')
-                    line_levels = np.arange(20, np.max(smoothed_convergence), 5)
-                    if len(line_levels) > 0:
-                        contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors='black', linestyles='--', linewidths=1.2, zorder=4, transform=ccrs.PlateCarree())
-                        labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
-                        for label in labels: label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.6))
+                    # --- NOU BLOC DE RENDERITZAT AVANÇAT ---
+                    # 1. Un mapa de colors més "maco" i professional
+                    colors_professional = ['#0096c7', '#48cae4', '#90e0ef', '#ade8f4', '#caffbf', '#ffdd00', '#ffaa00', '#ff7b00', '#e85d04', '#d00000', '#9d0208']
+                    cmap_professional = LinearSegmentedColormap.from_list("cmap_professional", colors_professional)
+                    
+                    # 2. Dibuixem el gradient suau amb molts nivells
+                    fill_levels = np.linspace(15, max(100, np.max(smoothed_convergence)), 256)
+                    ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels, cmap=cmap_professional, alpha=0.8, zorder=3, transform=ccrs.PlateCarree(), extend='max')
+
+                    # 3. Lògica per dibuixar NOMÉS les dues isòlines més fortes
+                    max_conv_valor = np.max(smoothed_convergence)
+                    top_level = int(max_conv_valor // 10) * 10 # Arrodonim a la desena inferior (ex: 67 -> 60)
+                    
+                    line_levels = []
+                    if top_level >= 20: line_levels.append(top_level)
+                    if (top_level - 10) >= 20: line_levels.append(top_level - 10)
+                        
+                    if line_levels:
+                        contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
+                                              levels=line_levels, colors='white', linestyles='solid',
+                                              linewidths=1.5, zorder=4, transform=ccrs.PlateCarree())
+                        labels = ax.clabel(contours, inline=True, fontsize=9, fmt='%1.0f')
+                        for label in labels:
+                            label.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')])
+                    # --- FI DEL NOU BLOC ---
                 
                 points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
@@ -6445,9 +6462,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
                     px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
                     
-                    # --- NOU BLOC: CÀLCUL I DIBUIX DE L'INDICADOR DE DIRECCIÓ ---
-                    if data_tuple and valor_conv >= 20:
-                        # 1. Determinem el color segons la força de la convergència
+                    if params_calc and valor_conv >= 20:
                         if valor_conv >= 100: indicator_color = '#9370DB'
                         elif valor_conv >= 60: indicator_color = '#DC3545'
                         elif valor_conv >= 40: indicator_color = '#FD7E14'
@@ -6459,39 +6474,26 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                         ax.add_patch(circle)
                         ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
 
-                        # 2. Calculem la direcció amb el flux director 700-500 hPa
-                        try:
-                            sounding_data, _ = data_tuple
-                            p, u, v = sounding_data[0], sounding_data[3], sounding_data[4]
-                            
-                            if p.m.min() < 500 and p.m.max() > 700: # Assegurem que el sondeig és prou alt
-                                u_700 = np.interp(700, p.m[::-1], u.m[::-1])
-                                v_700 = np.interp(700, p.m[::-1], v.m[::-1])
-                                u_500 = np.interp(500, p.m[::-1], u.m[::-1])
-                                v_500 = np.interp(500, p.m[::-1], v.m[::-1])
-                                
-                                mean_u_steering = (u_700 + u_500) / 2.0 * units('m/s')
-                                mean_v_steering = (v_700 + v_500) / 2.0 * units('m/s')
-                                
-                                storm_dir_to = (mpcalc.wind_direction(mean_u_steering, mean_v_steering).m + 180) % 360
-                                
-                                # 3. Dibuixem la fletxa estilitzada amb la nova direcció
-                                dir_rad = np.deg2rad(90 - storm_dir_to)
-                                length = 0.25
-                                end_x = px + length * np.cos(dir_rad); end_y = py + length * np.sin(dir_rad)
-                                ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
-                                
-                                num_barbs = 3; barb_length = 0.04
-                                barb_angle_rad = dir_rad + np.pi / 2
-                                for i in range(1, num_barbs + 1):
-                                    pos_on_shaft = 0.4 + (i * 0.2)
-                                    barb_center_x = px + length * pos_on_shaft * np.cos(dir_rad)
-                                    barb_center_y = py + length * pos_on_shaft * np.sin(dir_rad)
-                                    barb_start_x = barb_center_x - barb_length / 2 * np.cos(barb_angle_rad); barb_start_y = barb_center_y - barb_length / 2 * np.sin(barb_angle_rad)
-                                    barb_end_x = barb_center_x + barb_length / 2 * np.cos(barb_angle_rad); barb_end_y = barb_center_y + barb_length / 2 * np.sin(barb_angle_rad)
-                                    ax.plot([barb_start_x, barb_end_x], [barb_start_y, barb_end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
-                        except Exception:
-                            pass # Si falla el càlcul, simplement no es dibuixa la fletxa
+                        motion_vector = params_calc.get('RM') or params_calc.get('Mean_Wind')
+                        if motion_vector and not pd.isna(motion_vector[0]):
+                            u_storm, v_storm = motion_vector[0] * units('m/s'), motion_vector[1] * units('m/s')
+                            storm_dir_to = (mpcalc.wind_direction(u_storm, v_storm).m + 180) % 360
+                            dir_rad = np.deg2rad(90 - storm_dir_to)
+                            length = 0.25
+                            end_x = px + length * np.cos(dir_rad)
+                            end_y = py + length * np.sin(dir_rad)
+                            ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+                            num_barbs = 3; barb_length = 0.04
+                            barb_angle_rad = dir_rad + np.pi / 2
+                            for i in range(1, num_barbs + 1):
+                                pos_on_shaft = 0.4 + (i * 0.2)
+                                barb_center_x = px + length * pos_on_shaft * np.cos(dir_rad)
+                                barb_center_y = py + length * pos_on_shaft * np.sin(dir_rad)
+                                barb_start_x = barb_center_x - barb_length / 2 * np.cos(barb_angle_rad)
+                                barb_start_y = barb_center_y - barb_length / 2 * np.sin(barb_angle_rad)
+                                barb_end_x = barb_center_x + barb_length / 2 * np.cos(barb_angle_rad)
+                                barb_end_y = barb_center_y + barb_length / 2 * np.sin(barb_angle_rad)
+                                ax.plot([barb_start_x, barb_end_x], [barb_start_y, barb_end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
             
             poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
             if poble_coords:
