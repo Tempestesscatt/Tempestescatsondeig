@@ -3934,11 +3934,10 @@ def carregar_dades_geografiques_peninsula():
 def calcular_alertes_per_zona_peninsula(hourly_index, nivell):
     """
     Calcula els valors màxims de convergència per a cada zona de la península.
-    (Versió Final: Només detecta alertes a partir de 20, com a Catalunya)
+    (Versió amb llindar de detecció ajustat a 10)
     """
     # --- LLINDAR CORREGIT ---
-    # Només ens interessen els valors que comencen a ser significatius.
-    CONV_THRESHOLD = 20 
+    CONV_THRESHOLD = 10 # Rebaixem el llindar per detectar focus d'interès més febles.
     
     map_data, error = carregar_dades_mapa_est_peninsula(nivell, hourly_index)
     gdf_zones = carregar_dades_geografiques_peninsula()
@@ -3947,7 +3946,7 @@ def calcular_alertes_per_zona_peninsula(hourly_index, nivell):
         return {}
 
     try:
-        property_name = 'NAME_2'
+        property_name = 'NAME_2' # Assegura't que aquest sigui el nom correcte
         lons, lats = map_data['lons'], map_data['lats']
         grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 150), np.linspace(min(lats), max(lats), 150))
         u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
@@ -3976,7 +3975,6 @@ def calcular_alertes_per_zona_peninsula(hourly_index, nivell):
     except Exception as e:
         print(f"Error dins de calcular_alertes_per_zona_peninsula: {e}")
         return {}
-
 
 def seleccionar_poble_peninsula(nom_poble):
     """Callback per seleccionar un poble a la zona de la península."""
@@ -7405,28 +7403,32 @@ def format_slider_label(offset, now_hour):
 @st.cache_data(ttl=600, show_spinner="Preparant dades del mapa de la península...")
 def preparar_dades_mapa_peninsula_cachejat(alertes_tuple, selected_area_str, show_labels):
     """
-    Funció CACHEADA per a la península, amb la lògica de colors de Catalunya (a partir de 20).
+    Funció CACHEADA per a la península, amb nova lògica de color per a focus febles (a partir de 10).
     """
     alertes_per_zona = dict(alertes_tuple)
     
     gdf = carregar_dades_geografiques_peninsula()
-    if gdf is None: return None
+    if gdf is None: 
+        return None
 
     property_name = 'NAME_2'
     if property_name not in gdf.columns:
-        # El missatge d'error ja està implementat aquí
+        st.error(f"Error de configuració del mapa: L'arxiu 'peninsula_zones.geojson' no conté la columna de propietats esperada ('{property_name}').")
+        st.warning("Les columnes que s'han trobat són:", icon="ℹ️")
+        st.code(f"{list(gdf.columns)}")
+        st.info(f"Si us plau, modifica la variable 'property_name' a la funció 'preparar_dades_mapa_peninsula_cachejat' amb el nom correcte de la columna que conté els noms de les províncies.")
         return None
 
-    # --- FUNCIÓ DE COLOR SIMPLIFICADA ---
+    # --- FUNCIÓ DE COLOR MODIFICADA ---
     def get_color_from_convergence(value):
-        if not isinstance(value, (int, float)) or value < 20: 
-            return '#6c757d', '#FFFFFF' # Color per defecte si no hi ha alerta
+        if not isinstance(value, (int, float)): return '#4a4a4a', '#FFFFFF' # Color per defecte
         if value >= 100: return '#9370DB', '#FFFFFF'  # Extrem
         if value >= 60: return '#DC3545', '#FFFFFF'   # Molt Alt
         if value >= 40: return '#FD7E14', '#FFFFFF'   # Alt
         if value >= 20: return '#28A745', '#FFFFFF'   # Moderat
-        return '#6c757d', '#FFFFFF' # Seguretat per a qualsevol altre cas
-    # --- FI DE LA SIMPLIFICACIÓ ---
+        if value >= 10: return '#6495ED', '#FFFFFF'   # Blau clar per a focus d'interès (10-19)
+        return '#4a4a4a', '#FFFFFF'
+    # --- FI DE LA MODIFICACIÓ ---
 
     styles_dict = {}
     for feature in gdf.iterfeatures():
@@ -7436,19 +7438,18 @@ def preparar_dades_mapa_peninsula_cachejat(alertes_tuple, selected_area_str, sho
             conv_value = alertes_per_zona.get(nom_feature)
             alert_color, _ = get_color_from_convergence(conv_value)
             
-            fill_opacity = 0.55 if conv_value and conv_value >= 20 else 0.25
+            fill_opacity = 0.55 if conv_value and conv_value >= 10 else 0.25
             
             styles_dict[nom_feature] = {
                 'fillColor': alert_color, 'color': alert_color,
                 'fillOpacity': fill_opacity,
-                'weight': 2.5 if conv_value and conv_value >= 20 else 1
+                'weight': 2.5 if conv_value and conv_value >= 10 else 1
             }
 
     markers_data = []
     if show_labels:
         for zona, conv_value in alertes_per_zona.items():
-            # Només es creen marcadors per a zones amb alerta
-            if conv_value >= 20:
+            if conv_value >= 10: # Només mostrem etiqueta si hi ha focus d'interès
                 capital_info = CAPITALS_ZONA_PENINSULA.get(zona)
                 if capital_info:
                     bg_color, text_color = get_color_from_convergence(conv_value)
@@ -7782,75 +7783,30 @@ def filtrar_alertes(alertes_totals, nivell_seleccionat):
 def ui_llegenda_mapa_principal(indicator_html=""):
     """
     Mostra una llegenda gràfica i millorada per al mapa principal de situació.
-    (Versió 4.0 - Accepta un indicador HTML per injectar)
+    (Versió 6.0 - Afegeix el nivell "Focus Present")
     """
-    # El CSS es manté igual, ja que funciona correctament.
     st.markdown("""
     <style>
-        .legend-container-main { 
-            background-color: #262730; 
-            border-radius: 8px; 
-            padding: 18px; 
-            margin-top: 15px; 
-            border: 1px solid #444; 
-            position: relative; 
-        }
-        .legend-title-main { 
-            font-size: 1.2em; 
-            font-weight: bold; 
-            color: #FAFAFA; 
-            margin-bottom: 8px; 
-        }
-        .legend-subtitle-main {
-            font-size: 0.95em; 
-            color: #a0a0b0; 
-            margin-bottom: 18px;
-        }
-        .legend-gradient-bar {
-            height: 15px;
-            border-radius: 7px;
-            background: linear-gradient(to right, #28A745, #FD7E14, #DC3545, #9370DB);
-            margin-bottom: 5px;
-            border: 1px solid #555;
-        }
-        .legend-labels {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.8em;
-            color: #a0a0b0;
-            padding: 0 5px;
-        }
-        .legend-descriptions {
-            display: flex;
-            justify-content: space-around;
-            text-align: center;
-            margin-top: 10px;
-        }
-        .legend-desc-item {
-            flex: 1;
-            padding: 0 5px;
-        }
-        .legend-desc-item b {
-            font-size: 0.9em;
-            color: #FFFFFF;
-        }
-        .legend-desc-item p {
-            font-size: 0.8em;
-            color: #a0a0b0;
-            margin-top: 2px;
-            line-height: 1.3;
-        }
+        .legend-container-main { background-color: #262730; border-radius: 8px; padding: 18px; margin-top: 15px; border: 1px solid #444; position: relative; }
+        .legend-title-main { font-size: 1.2em; font-weight: bold; color: #FAFAFA; margin-bottom: 8px; }
+        .legend-subtitle-main { font-size: 0.95em; color: #a0a0b0; margin-bottom: 18px; }
+        .legend-gradient-bar { height: 15px; border-radius: 7px; background: linear-gradient(to right, #6495ED, #28A745, #FD7E14, #DC3545, #9370DB); margin-bottom: 5px; border: 1px solid #555; }
+        .legend-labels { display: flex; justify-content: space-between; font-size: 0.8em; color: #a0a0b0; padding: 0 5px; }
+        .legend-descriptions { display: flex; justify-content: space-around; text-align: center; margin-top: 10px; }
+        .legend-desc-item { flex: 1; padding: 0 5px; }
+        .legend-desc-item b { font-size: 0.9em; color: #FFFFFF; }
+        .legend-desc-item p { font-size: 0.8em; color: #a0a0b0; margin-top: 2px; line-height: 1.3; }
     </style>
     """, unsafe_allow_html=True)
 
-    # --- CORRECCIÓ CLAU: Injectem l'HTML de l'indicador just abans del títol ---
     html_llegenda = (
         f'<div class="legend-container-main">'
-        f'    {indicator_html}'  # La fletxa i el text s'injectaran aquí
+        f'    {indicator_html}'
         '    <div class="legend-title-main">Com Interpretar el Mapa de Situació</div>'
-        '    <div class="legend-subtitle-main">El color de la comarca i el número indiquen la força màxima del <b>disparador</b> (convergència) detectada a la zona:</div>'
+        '    <div class="legend-subtitle-main">El color indica la força màxima del <b>disparador</b> (convergència) detectada a la zona:</div>'
         '    <div class="legend-gradient-bar"></div>'
         '    <div class="legend-labels">'
+        '        <span>10</span>'
         '        <span>20</span>'
         '        <span>40</span>'
         '        <span>60</span>'
@@ -7858,6 +7814,9 @@ def ui_llegenda_mapa_principal(indicator_html=""):
         '    </div>'
         '    <hr style="border-color: #444; margin: 15px 0;">'
         '    <div class="legend-descriptions">'
+        '        <div class="legend-desc-item" style="color:#6495ED;">'
+        '            <b>Focus Present</b><p>Convergència feble, a vigilar.</p>'
+        '        </div>'
         '        <div class="legend-desc-item" style="color:#28A745;">'
         '            <b>Moderat</b><p>Potencial per a iniciar tempestes.</p>'
         '        </div>'
@@ -7867,13 +7826,9 @@ def ui_llegenda_mapa_principal(indicator_html=""):
         '        <div class="legend-desc-item" style="color:#DC3545;">'
         '            <b>Molt Alt</b><p>Senyal clara de temps sever imminent.</p>'
         '        </div>'
-        '        <div class="legend-desc-item" style="color:#9370DB;">'
-        '            <b>Extrem</b><p>Condicions de risc excepcional.</p>'
-        '        </div>'
         '    </div>'
         '</div>'
     )
-    
     st.markdown(html_llegenda, unsafe_allow_html=True)
     
     
