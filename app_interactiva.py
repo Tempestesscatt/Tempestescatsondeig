@@ -128,6 +128,25 @@ WEBCAM_LINKS = {
 
 
 
+# --- Constants per a l'Est de la Península Ibèrica ---
+API_URL_EST_PENINSULA = "https://api.open-meteo.com/v1/forecast"
+TIMEZONE_EST_PENINSULA = pytz.timezone('Europe/Madrid')
+PRESS_LEVELS_EST_PENINSULA = sorted([1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
+CIUTATS_EST_PENINSULA = {
+    'Pamplona': {'lat': 42.8125, 'lon': -1.6458, 'sea_dir': None},
+    'Logroño': {'lat': 42.465, 'lon': -2.441, 'sea_dir': None},
+    'Soria': {'lat': 41.7636, 'lon': -2.4676, 'sea_dir': None},
+    'Zaragoza': {'lat': 41.6488, 'lon': -0.8891, 'sea_dir': None},
+    'Teruel': {'lat': 40.3456, 'lon': -1.1065, 'sea_dir': None},
+    'Castelló': {'lat': 39.9864, 'lon': -0.0513, 'sea_dir': (60, 180)},
+    'València': {'lat': 39.4699, 'lon': -0.3763, 'sea_dir': (45, 180)},
+    'Cuenca': {'lat': 40.0704, 'lon': -2.1374, 'sea_dir': None},
+    'Albacete': {'lat': 38.9942, 'lon': -1.8584, 'sea_dir': None},
+}
+# Delimitem el mapa des d'Albacete fins a Pamplona
+MAP_EXTENT_EST_PENINSULA = [-4, 1, 38.5, 43.5] 
+
+
 
 API_URL_NORUEGA = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_NORUEGA = pytz.timezone('Europe/Oslo')
@@ -5740,14 +5759,169 @@ def on_day_change_usa():
 
 
 
+@st.cache_data(ttl=1800, max_entries=20, show_spinner=False)
+def carregar_dades_sondeig_est_peninsula(lat, lon, hourly_index):
+    """
+    Carrega dades de sondeig per a l'Est Peninsular (Model AROME).
+    És una còpia funcional de la versió per a Catalunya.
+    """
+    try:
+        # La lògica és idèntica a la de Catalunya, ja que usem el mateix model (AROME)
+        h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
+        h_press = [f"{v}_{p}hPa" for v in ["temperature", "relative_humidity", "wind_speed", "wind_direction", "geopotential_height"] for p in PRESS_LEVELS_EST_PENINSULA]
+        params = {"latitude": lat, "longitude": lon, "hourly": h_base + h_press, "models": "arome_seamless", "forecast_days": 4}
+        response = openmeteo.weather_api(API_URL_EST_PENINSULA, params=params)[0]
+        hourly = response.Hourly()
 
+        valid_index = trobar_hora_valida_mes_propera(hourly, hourly_index, len(h_base))
+        if valid_index is None: return None, hourly_index, "No s'han trobat dades vàlides."
+        
+        sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[valid_index] for i, v in enumerate(h_base)}
+        
+        p_data = {}
+        var_count = len(h_base)
+        for i, var in enumerate(["T", "RH", "WS", "WD", "H"]):
+            p_data[var] = [hourly.Variables(var_count + i * len(PRESS_LEVELS_EST_PENINSULA) + j).ValuesAsNumpy()[valid_index] for j in range(len(PRESS_LEVELS_EST_PENINSULA))]
+        
+        sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
+        
+        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
+        
+        for i, p_val in enumerate(PRESS_LEVELS_EST_PENINSULA):
+            if p_val < p_profile[-1] and all(not np.isnan(p_data[v][i]) for v in ["T", "RH", "WS", "WD", "H"]):
+                p_profile.append(p_val)
+                T_profile.append(p_data["T"][i])
+                Td_profile.append(mpcalc.dewpoint_from_relative_humidity(p_data["T"][i] * units.degC, p_data["RH"][i] * units.percent).m)
+                u, v = mpcalc.wind_components(p_data["WS"][i] * units('km/h'), p_data["WD"][i] * units.degrees)
+                u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m); h_profile.append(p_data["H"][i])
+
+        processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
+        return processed_data, valid_index, error
+        
+    except Exception as e: 
+        return None, hourly_index, f"Error en carregar dades del sondeig AROME (Península): {e}"
+
+@st.cache_data(ttl=3600)
+def carregar_dades_mapa_est_peninsula(nivell, hourly_index):
+    """
+    Carrega les dades en una graella per al mapa de l'Est Peninsular.
+    """
+    try:
+        variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+        lats, lons = np.linspace(MAP_EXTENT_EST_PENINSULA[2], MAP_EXTENT_EST_PENINSULA[3], 12), np.linspace(MAP_EXTENT_EST_PENINSULA[0], MAP_EXTENT_EST_PENINSULA[1], 12)
+        lon_grid, lat_grid = np.meshgrid(lons, lats)
+        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": 2}
+        
+        responses = openmeteo.weather_api(API_URL_EST_PENINSULA, params=params)
+        output = {var: [] for var in ["lats", "lons"] + variables}
+        for r in responses:
+            try:
+                vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
+                if not any(np.isnan(v) for v in vals):
+                    output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
+                    for i, var in enumerate(variables): output[var].append(vals[i])
+            except IndexError: continue
+        
+        if not output["lats"]: return None, "No s'han rebut dades."
+        temp_data = np.array(output.pop(f'temperature_{nivell}hPa')) * units.degC
+        rh_data = np.array(output.pop(f'relative_humidity_{nivell}hPa')) * units.percent
+        output['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
+        output['speed_data'] = output.pop(f'wind_speed_{nivell}hPa')
+        output['dir_data'] = output.pop(f'wind_direction_{nivell}hPa')
+        return output, None
+    except Exception as e:
+        return None, f"Error en carregar dades del mapa de l'Est Peninsular: {e}"
+
+def crear_mapa_forecast_combinat_est_peninsula(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
+    """
+    Crea el mapa visual de vent i convergència per a l'Est Peninsular.
+    """
+    fig, ax = crear_mapa_base(MAP_EXTENT_EST_PENINSULA)
+    if len(lons) < 4: return fig
+
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_EST_PENINSULA[0], MAP_EXTENT_EST_PENINSULA[1], 200), np.linspace(MAP_EXTENT_EST_PENINSULA[2], MAP_EXTENT_EST_PENINSULA[3], 200))
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic')
+    grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
+    u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
+    
+    colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
+    speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]
+    custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=4.5, arrowsize=0.5, zorder=4, transform=ccrs.PlateCarree())
+    
+    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat); convergence_scaled = -(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s').magnitude * 1e5
+    convergence_in_humid_areas = np.where(grid_dewpoint >= 14, convergence_scaled, 0)
+    
+    fill_levels = [5, 10, 15, 25]; fill_colors = ['#ffc107', '#ff9800', '#f44336']
+    line_levels = [5, 10, 15]; line_colors = ['#e65100', '#bf360c', '#b71c1c']
+    
+    ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=fill_colors, alpha=0.6, zorder=5, transform=ccrs.PlateCarree())
+    contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors=line_colors, linestyles='--', linewidths=1.2, zorder=6, transform=ccrs.PlateCarree())
+    ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
+
+    for city, coords in CIUTATS_EST_PENINSULA.items():
+        ax.plot(coords['lon'], coords['lat'], 'o', color='red', markersize=3, markeredgecolor='black', transform=ccrs.PlateCarree(), zorder=10)
+        ax.text(coords['lon'] + 0.1, coords['lat'] + 0.1, city, fontsize=8, transform=ccrs.PlateCarree(), zorder=10, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+
+    ax.set_title(f"Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    return fig
+
+
+def run_est_peninsula_app():
+    # Inicialitza l'estat si no existeix
+    if 'poble_selector_est_peninsula' not in st.session_state:
+        st.session_state.poble_selector_est_peninsula = "Zaragoza"
+    
+    ui_capcalera_selectors(None, zona_activa="est_peninsula")
+    
+    poble_sel = st.session_state.poble_selector_est_peninsula
+    
+    # Configuració de data i hora (idèntica a altres zones)
+    now_local = datetime.now(TIMEZONE_EST_PENINSULA)
+    dia_sel_str = now_local.strftime('%d/%m/%Y'); hora_sel = now_local.hour
+    hora_sel_str = f"{hora_sel:02d}:00h"; nivell_sel = 925
+    lat_sel, lon_sel = CIUTATS_EST_PENINSULA[poble_sel]['lat'], CIUTATS_EST_PENINSULA[poble_sel]['lon']
+    
+    local_dt = now_local.replace(minute=0, second=0, microsecond=0)
+    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    
+    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_EST_PENINSULA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+    
+    # Menú de pestanyes
+    menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes"]
+    menu_icons = ["graph-up-arrow", "map-fill"]
+
+    option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
+                orientation="horizontal", key="active_tab_est_peninsula", default_index=0)
+
+    # Lògica de les pestanyes
+    if st.session_state.active_tab_est_peninsula == "Anàlisi Vertical":
+        with st.spinner(f"Carregant dades del sondeig per a {poble_sel}..."):
+            data_tuple, final_index, error_msg = carregar_dades_sondeig_est_peninsula(lat_sel, lon_sel, hourly_index_sel)
+       
 
 
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya", convergencies=None):
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
-    altres_zones = {'catalunya': 'Catalunya', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya', 'italia': 'Itàlia', 'holanda': 'Holanda', 'japo': 'Japó', 'uk': 'Regne Unit', 'canada': 'Canadà', 'noruega': 'Noruega'}
+    altres_zones = {
+        'catalunya': 'Catalunya', 
+        'valley_halley': 'Tornado Alley', 
+        'alemanya': 'Alemanya', 
+        'italia': 'Itàlia', 
+        'holanda': 'Holanda', 
+        'japo': 'Japó', 
+        'uk': 'Regne Unit', 
+        'canada': 'Canadà', 
+        'noruega': 'Noruega',
+        'est_peninsula': 'Est Península'  # <-- Nova zona afegida al diccionari
+    }
     del altres_zones[zona_activa]
     
     col_text, col_nav, col_back, col_logout = st.columns([0.5, 0.2, 0.15, 0.15])
@@ -5768,12 +5942,9 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             st.rerun()
 
     with st.container(border=True):
-        # La secció de Catalunya és l'única que no es mostra aquí,
-        # ja que els seus selectors globals estan a la seva pròpia funció.
         if zona_activa == 'catalunya':
             pass
         
-        # Per a la resta de zones, només mostrem el selector de ciutat.
         elif zona_activa == 'valley_halley':
             st.selectbox("Ciutat:", options=sorted(list(USA_CITIES.keys())), key="poble_selector_usa")
         elif zona_activa == 'alemanya':
@@ -5790,6 +5961,9 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             st.selectbox("Ciutat:", options=sorted(list(CIUTATS_CANADA.keys())), key="poble_selector_canada")
         elif zona_activa == 'noruega':
             st.selectbox("Ciutat:", options=sorted(list(CIUTATS_NORUEGA.keys())), key="poble_selector_noruega")
+        # <-- Nou bloc elif per a la nova zona -->
+        elif zona_activa == 'est_peninsula':
+            st.selectbox("Ciutat:", options=sorted(list(CIUTATS_EST_PENINSULA.keys())), key="poble_selector_est_peninsula")
 
 
 def ui_pestanya_mapes_japo(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
@@ -7131,15 +7305,66 @@ def ui_zone_selection():
         'ita': "italia_preview.png", 'hol': "holanda_preview.png", 'japo': "japo_preview.png",
         'uk': "uk_preview.png", 'can': "canada_preview.png",
         'nor': "noruega_preview.png",
-        'arxiu': "arxiu_preview.png"
+        'arxiu': "arxiu_preview.png",
+        'peninsula': "peninsula_preview.png"  # <-- Imatge per a la nova zona
     }
     
     with st.spinner('Carregant entorns geoespacials...'): time.sleep(1)
 
-    # Definim les tres files de columnes
+    # Definim les files de columnes
     row1_col1, row1_col2, row1_col3, row1_col4 = st.columns(4)
     row2_col1, row2_col2, row2_col3, row2_col4 = st.columns(4)
-    row3_col1, _, _, _ = st.columns(4)
+    row3_col1, row3_col2, _, _ = st.columns(4) # Ampliem la tercera fila
+
+    def create_zone_button(col, path, title, key, zone_id, type="secondary"):
+        with col, st.container(border=True):
+            st.markdown(generar_html_imatge_estatica(path, height="160px"), unsafe_allow_html=True)
+            
+            display_title = title
+            if zone_id == 'italia':
+                display_title += " 🔥"
+            elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya', 'holanda', 'catalunya', 'noruega']:
+                display_title += " 🟢"
+            
+            st.subheader(display_title)
+            
+            st.button(f"Analitzar {title}", key=key, use_container_width=True, type=type,
+                      on_click=start_transition, args=(zone_id,))
+
+    # Dibuixem els botons a les seves respectives files i columnes
+    create_zone_button(row1_col1, paths['cat'], "Catalunya", "btn_cat", "catalunya", "primary")
+    create_zone_button(row1_col2, paths['usa'], "Tornado Alley", "btn_usa", "valley_halley")
+    create_zone_button(row1_col3, paths['ale'], "Alemanya", "btn_ale", "alemanya")
+    create_zone_button(row1_col4, paths['ita'], "Itàlia", "btn_ita", "italia")
+    
+    create_zone_button(row2_col1, paths['hol'], "Holanda", "btn_hol", "holanda")
+    create_zone_button(row2_col2, paths['japo'], "Japó", "btn_japo", "japo")
+    create_zone_button(row2_col3, paths['uk'], "Regne Unit", "btn_uk", "uk")
+    create_zone_button(row2_col4, paths['can'], "Canadà", "btn_can", "canada")
+
+    create_zone_button(row3_col1, paths['nor'], "Noruega", "btn_nor", "noruega")
+    # Nou botó per a l'Est Peninsular
+    create_zone_button(row3_col2, paths['peninsula'], "Est Península", "btn_peninsula", "est_peninsula")
+
+    # --- Secció d'Arxius ---
+    st.markdown("---")
+    
+    with st.container(border=True):
+        img_col, content_col = st.columns([0.4, 0.6])
+
+        with img_col:
+            st.markdown(generar_html_imatge_estatica(paths['arxiu'], height="180px"), unsafe_allow_html=True)
+
+        with content_col:
+            st.subheader("Arxius Tempestes ⛈️")
+            st.write(
+                """
+                Explora i analitza els **sondejos i mapes de situacions de temps sever passades**. 
+                Una eina essencial per a l'estudi de casos, la comparació de patrons i l'aprenentatge.
+                """
+            )
+            st.button("Consultar Arxius", key="btn_arxiu", use_container_width=True, type="primary",
+                      on_click=start_transition, args=("arxiu_tempestes",))
 
 
     def create_zone_button(col, path, title, key, zone_id, type="secondary"):
@@ -7541,6 +7766,8 @@ def main():
     elif st.session_state.zone_selected == 'uk': run_uk_app()
     elif st.session_state.zone_selected == 'canada': run_canada_app()
     elif st.session_state.zone_selected == 'noruega': run_noruega_app()
+    # <-- AFEGEIX AQUESTA LÍNIA -->
+    elif st.session_state.zone_selected == 'est_peninsula': run_est_peninsula_app()
     elif st.session_state.zone_selected == 'arxiu_tempestes':
         run_arxiu_tempestes_app()
 
