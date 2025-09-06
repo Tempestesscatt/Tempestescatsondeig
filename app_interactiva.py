@@ -6892,7 +6892,7 @@ def tornar_al_mapa_general():
     st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
     if 'active_tab_cat_index' in st.session_state:
         st.session_state.active_tab_cat_index = 0
-        
+
 def generar_icona_direccio(color, direccio_graus):
     """
     Crea una icona visual (cercle + fletxa) per a la llegenda del mapa comarcal.
@@ -7563,7 +7563,6 @@ def ui_pestanya_mapes_est_peninsula(hourly_index_sel, timestamp_str, nivell_sel,
 def run_est_peninsula_app():
     """
     Funció principal que gestiona la lògica per a la zona de l'Est Peninsular.
-    Inclou anàlisi vertical i de mapes.
     """
     # Inicialitza el selector de poble per a aquesta zona si no existeix
     if 'poble_selector_est_peninsula' not in st.session_state:
@@ -7574,7 +7573,7 @@ def run_est_peninsula_app():
     
     poble_sel = st.session_state.poble_selector_est_peninsula
     
-    # Configuració de data i hora (idèntica a altres zones)
+    # Configuració de data i hora
     now_local = datetime.now(TIMEZONE_EST_PENINSULA)
     dia_sel_str = now_local.strftime('%d/%m/%Y'); hora_sel = now_local.hour
     hora_sel_str = f"{hora_sel:02d}:00h"; nivell_sel = 925
@@ -7605,7 +7604,7 @@ def run_est_peninsula_app():
             if final_index is not None and final_index != hourly_index_sel:
                 adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
                 adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_EST_PENINSULA)
-                st.warning(f"**Avís:** Es mostren dades de les **{adjusted_local_time.strftime('%H:%Mh')}**.")
+                st.warning(f"**Avís:** Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
             
             params_calc = data_tuple[1]
             with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
