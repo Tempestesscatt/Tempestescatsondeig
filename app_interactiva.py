@@ -6347,7 +6347,7 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc):
     """
-    PESTANYA D'ANÀLISI COMARCAL (V. FINAL + VALIDACIÓ SENSE ASTERISCS).
+    PESTANYA D'ANÀLISI COMARCAL (V. FINAL + VALIDACIÓ + LLEGENDA EXPLICATIVA).
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6355,7 +6355,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
     col_mapa, col_diagnostic = st.columns([0.6, 0.4], gap="large")
 
     with col_mapa:
-        # ... (Aquesta part del mapa no canvia i es queda igual) ...
+        # Aquesta part del mapa no canvia
         st.markdown("##### Focus de Convergència a la Zona")
         gdf_comarques = carregar_dades_geografiques()
         if gdf_comarques is None:
@@ -6365,16 +6365,10 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_comarques.columns), 'nom_comar')
         comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
 
-        m = folium.Map(
-            tiles="CartoDB positron", zoom_control=False, scrollWheelZoom=False,
-            dragging=False, doubleClickZoom=False
-        )
+        m = folium.Map(tiles="CartoDB positron", zoom_control=False, scrollWheelZoom=False, dragging=False, doubleClickZoom=False)
         
         if not comarca_shape.empty:
-            folium.GeoJson(
-                comarca_shape,
-                style_function=lambda x: {'fillColor': '#007bff', 'color': 'black', 'weight': 2, 'fillOpacity': 0.3}
-            ).add_to(m)
+            folium.GeoJson(comarca_shape, style_function=lambda x: {'fillColor': '#007bff', 'color': 'black', 'weight': 2, 'fillOpacity': 0.3}).add_to(m)
             bounds = comarca_shape.total_bounds
             m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
 
@@ -6403,11 +6397,10 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
         st_folium(m, width="100%", height=450)
 
-
     with col_diagnostic:
         st.markdown("##### Diagnòstic de la Zona")
         
-        # --- LÍNIES DE TEXT MODIFICADES (SENSE ASTERISCS) ---
+        # El bloc de diagnòstic es queda igual
         if valor_conv >= 60:
             nivell_alerta, color_alerta, emoji, descripcio = "Molt Alt", "#DC3545", "🔴", f"S'ha detectat un focus de convergència extremadament fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal molt clara per a la formació imminent de tempestes, possiblement severes i organitzades."
         elif valor_conv >= 40:
@@ -6424,6 +6417,34 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         </div>
         """, unsafe_allow_html=True)
         
+        # --- NOU BLOC: LLEGENDA EXPLICATIVA ---
+        st.markdown("""
+        <style>
+            .legend-container { background-color: #262730; border-radius: 8px; padding: 16px; margin-top: 15px; }
+            .legend-title { font-size: 1.1em; font-weight: bold; color: #FAFAFA; margin-bottom: 12px; }
+            .legend-item { display: flex; align-items: center; margin-bottom: 8px; }
+            .legend-color-dot { width: 15px; height: 15px; border-radius: 50%; margin-right: 10px; border: 1px solid #555; }
+            .legend-text { font-size: 0.9em; color: #a0a0b0; }
+        </style>
+        <div class="legend-container">
+            <div class="legend-title">Com Interpretar el Diagnòstic</div>
+            <div class="legend-text" style="margin-bottom: 10px;">El color i el número indiquen la <b>força del disparador</b> (convergència) a la comarca:</div>
+            <div class="legend-item">
+                <span class="legend-color-dot" style="background-color: #28A745;"></span>
+                <span class="legend-text"><b>Moderat (20-39):</b> Potencial per a iniciar tempestes.</span>
+            </div>
+            <div class="legend-item">
+                <span class="legend-color-dot" style="background-color: #FD7E14;"></span>
+                <span class="legend-text"><b>Alt (40-59):</b> Disparador eficient, tempestes probables.</span>
+            </div>
+            <div class="legend-item">
+                <span class="legend-color-dot" style="background-color: #DC3545;"></span>
+                <span class="legend-text"><b>Molt Alt (60+):</b> Senyal clara de temps sever imminent.</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        # --- FI DEL NOU BLOC ---
+
         st.markdown("##### Validació Atmosfèrica")
         
         if not params_calc:
@@ -6448,15 +6469,13 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                 vered_desc = f"Les condicions són favorables! La convergència troba una atmosfera amb prou energia ({mucape:.0f} J/kg) i una inhibició feble ({mucin:.0f} J/kg). És molt probable que es formin tempestes."
 
             st.markdown(f"""
-            <div style="background-color: #262730; border-left: 8px solid {vered_color}; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+            <div style="background-color: #262730; border-left: 8px solid {vered_color}; border-radius: 8px; padding: 16px; margin-top: 12px;">
                 <div style="font-size: 1.1em; font-weight: bold; color: {vered_color}; margin-bottom: 8px;">{vered_emoji} Veredicte: Convergència {vered_titol}</div>
                 <div style="font-size: 1em; color: #a0a0b0; line-height: 1.6;">{vered_desc}</div>
             </div>
             """, unsafe_allow_html=True)
             st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
-
-        st.info(f"Nota: Aquesta anàlisi es basa en la convergència de vent a {nivell_sel} hPa. Per a més detalls, consulta la pestanya 'Anàlisi Vertical'.", icon="ℹ️")
-        
+            
 def seleccionar_poble(nom_poble):
     """Callback segur que estableix la intenció de seleccionar un poble."""
     # En lloc de canviar 'poble_sel' directament, establim un estat intermedi.
