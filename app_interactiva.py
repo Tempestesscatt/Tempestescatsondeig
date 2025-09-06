@@ -6381,10 +6381,90 @@ def run_catalunya_app():
 
 
 
+def generar_icona_direccio(color, direccio_graus):
+    """
+    Crea una icona visual (cercle + fletxa) per a la llegenda del mapa comarcal.
+    Retorna una cadena d'imatge en format Base64.
+    """
+    fig, ax = plt.subplots(figsize=(1, 1), dpi=72)
+    fig.patch.set_alpha(0)
+    ax.set_aspect('equal')
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis('off')
+
+    # Dibuixa el cercle
+    cercle = Circle((0.5, 0.5), 0.4, facecolor='none', edgecolor=color, linewidth=4,
+                    path_effects=[path_effects.withStroke(linewidth=6, foreground='black')])
+    ax.add_patch(cercle)
+
+    # Dibuixa la fletxa de direcció
+    angle_rad = np.deg2rad(90 - direccio_graus)
+    ax.arrow(0.5, 0.5, 0.3 * np.cos(angle_rad), 0.3 * np.sin(angle_rad),
+             head_width=0.15, head_length=0.1, fc=color, ec=color,
+             length_includes_head=True, zorder=10,
+             path_effects=[path_effects.withStroke(linewidth=2.5, foreground='black')])
+
+    # Converteix la figura a imatge Base64
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0.1)
+    plt.close(fig)
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+
+def crear_llegenda_direccionalitat():
+    """
+    Mostra una llegenda visual i explicativa per al mapa de focus de convergència comarcal.
+    """
+    st.markdown("""
+    <style>
+        .legend-box { background-color: #2a2c34; border-radius: 10px; padding: 15px; border: 1px solid #444; margin-top: 15px; }
+        .legend-title { font-size: 1.1em; font-weight: bold; color: #FAFAFA; margin-bottom: 12px; }
+        .legend-section { display: flex; align-items: flex-start; margin-bottom: 10px; }
+        .legend-icon-container { flex-shrink: 0; margin-right: 15px; width: 50px; height: 50px; }
+        .legend-text-container { flex-grow: 1; }
+        .legend-text-container b { color: #FFFFFF; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Genera les icones dinàmicament
+    icona_alt = generar_icona_direccio('#FD7E14', 45)  # Taronja, cap al NE
+    icona_molt_alt = generar_icona_direccio('#DC3545', 270) # Vermell, cap a l'Oest
+
+    st.markdown(f"""
+    <div class="legend-box">
+        <div class="legend-title">Com Interpretar el Focus de Convergència</div>
+        <p style="font-size:0.9em; color:#a0a0b0;">El mapa mostra el punt de <b>màxima convergència</b> dins la comarca i la <b>direcció de desplaçament</b> prevista de la tempesta que es pugui formar.</p>
+        
+        <div class="legend-section">
+            <div class="legend-icon-container">
+                <img src="data:image/png;base64,{icona_alt}" width="50">
+            </div>
+            <div class="legend-text-container">
+                <b>Intensitat (Color del Cercle):</b> Indica la força del "disparador".<br>
+                <span style="color:#FD7E14;">■ Taronja: Alt</span>, 
+                <span style="color:#DC3545;">■ Vermell: Molt Alt</span>,
+                <span style="color:#9370DB;">■ Lila: Extrem.</span>
+            </div>
+        </div>
+
+        <div class="legend-section">
+            <div class="legend-icon-container">
+                <img src="data:image/png;base64,{icona_molt_alt}" width="50">
+            </div>
+            <div class="legend-text-container">
+                <b>Direcció (Fletxa):</b> Estima la trajectòria que seguirà la tempesta un cop formada, basant-se en el vent a nivells mitjans de l'atmosfera (700-500hPa).
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió amb CORRECCIÓ DE L'ERROR 'ValueError').
-    Assegura que les isòlines es passen a Matplotlib en ordre creixent.
+    PESTANYA D'ANÀLISI COMARCAL (Versió amb CORRECCIÓ DE L'ERROR 'ValueError' i LLEGENDA VISUAL).
+    Assegura que les isòlines es passen a Matplotlib en ordre creixent i mostra la nova llegenda.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6440,8 +6520,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     if top_level >= 20: line_levels.append(top_level)
                     if (top_level - 10) >= 20: line_levels.append(top_level - 10)
                         
-                    # --- CORRECCIÓ CLAU AQUÍ ---
-                    line_levels.sort() # Ordenem la llista per assegurar que sigui creixent
+                    line_levels.sort()
 
                     if line_levels:
                         contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors='white', linestyles='solid', linewidths=1.5, zorder=4, transform=ccrs.PlateCarree())
@@ -6506,7 +6585,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             plt.close(fig)
 
     with col_diagnostic:
-        # Aquesta part es manté exactament igual
         st.markdown("##### Diagnòstic de la Zona")
         if valor_conv >= 100:
             nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
@@ -6551,6 +6629,10 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             </div>
             """, unsafe_allow_html=True)
             st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
+        
+        # <<<--- TRUCADA A LA NOVA FUNCIÓ DE LLEGENDA ---
+        # Aquesta línia afegeix la llegenda visual al final de la columna de diagnòstic.
+        crear_llegenda_direccionalitat()
 
 
             
