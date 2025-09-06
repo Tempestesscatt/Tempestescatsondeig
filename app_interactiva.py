@@ -40,6 +40,7 @@ import folium
 from streamlit_folium import st_folium
 import geopandas as gpd
 from shapely.geometry import Point
+from folium.plugins import HeatMap
 
 
 
@@ -6374,7 +6375,9 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió neta, sense la llegenda).
+    PESTANYA D'ANÀLISI COMARCAL (Versió amb gradient/heatmap SOBRE el mapa).
+    Mostra un mapa de la comarca amb un heatmap visual que representa la
+    intensitat de la convergència.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6391,67 +6394,95 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_comarques.columns), 'nom_comar')
         comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
 
-        m = folium.Map(tiles="CartoDB positron", zoom_control=False, scrollWheelZoom=False, dragging=False, doubleClickZoom=False)
-        
+        m = folium.Map(tiles="CartoDB positron", zoom_control=True, scrollWheelZoom=True, dragging=True)
+
         if not comarca_shape.empty:
-            folium.GeoJson(comarca_shape, style_function=lambda x: {'fillColor': '#007bff', 'color': 'black', 'weight': 2, 'fillOpacity': 0.3}).add_to(m)
+            folium.GeoJson(
+                comarca_shape,
+                style_function=lambda x: {'fillColor': '#007bff', 'color': 'black', 'weight': 2.5, 'fillOpacity': 0.1}
+            ).add_to(m)
             bounds = comarca_shape.total_bounds
             m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
 
+        # --- NOU BLOC: CÀLCUL I DIBUIX DEL HEATMAP DE CONVERGÈNCIA ---
         if map_data and valor_conv > 10:
             lons, lats = map_data['lons'], map_data['lats']
-            # ... (la resta de la lògica del mapa es queda igual) ...
             grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100))
             u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
             grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
             grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
             dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
             convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
+
             points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': convergence_scaled.flatten()})
-            gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
-            comarca_shape = comarca_shape.to_crs(gdf_points.crs)
-            points_in_comarca = gpd.sjoin(gdf_points, comarca_shape, how="inner", predicate="within")
-            if not points_in_comarca.empty:
-                max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
-                folium.Marker(location=[max_conv_point.geometry.y, max_conv_point.geometry.x], tooltip=f"Focus Màxim: {max_conv_point.conv:.0f}", icon=folium.Icon(color='red', icon='bolt')).add_to(m)
+            points_df.dropna(inplace=True)
+            # Filtrem només els punts amb convergència significativa per al heatmap
+            heat_df = points_df[points_df['conv'] > 15]
 
-        st_folium(m, width="100%", height=450)
+            if not heat_df.empty:
+                # Creem les dades per al heatmap [lat, lon, intensitat]
+                heat_data = [[row['lat'], row['lon'], row['conv']] for index, row in heat_df.iterrows()]
+                # Creem un gradient de colors personalitzat
+                gradient_map = {0.2: '#28a745', 0.4: '#ffc107', 0.6: '#fd7e14', 0.8: '#dc3545', 1.0: '#9370DB'}
 
+                # Afegim la capa de heatmap al mapa
+                HeatMap(
+                    heat_data,
+                    name='Convergència',
+                    min_opacity=0.3,
+                    max_val=100, # Valor màxim esperat per normalitzar el color
+                    radius=25,
+                    blur=20,
+                    gradient=gradient_map
+                ).add_to(m)
+
+        st_folium(m, width="100%", height=450, key=f"map_gradient_{comarca}")
+
+    # La columna de la dreta amb el diagnòstic es manté igual, ja que resumeix la situació
     with col_diagnostic:
         st.markdown("##### Diagnòstic de la Zona")
-        
-        if valor_conv >= 60:
+        if valor_conv >= 100:
+            nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
+        elif valor_conv >= 60:
             nivell_alerta, color_alerta, emoji, descripcio = "Molt Alt", "#DC3545", "🔴", f"S'ha detectat un focus de convergència extremadament fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal molt clara per a la formació imminent de tempestes, possiblement severes i organitzades."
         elif valor_conv >= 40:
             nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FD7E14", "🟠", f"Hi ha un focus de convergència forta a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona."
         elif valor_conv >= 20:
             nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#28A745", "🟢", f"S'observa una zona de convergència moderada a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes si l'atmosfera és inestable."
         else:
-            nivell_alerta, color_alerta, emoji, descripcio = "Baix", "#6c757d", "⚪", "No es detecten focus de convergència significatius a la comarca. El forçament dinàmic per iniciar tempestes és feble."
+            nivell_alerta, color_alerta, emoji, descripcio = "Baix", "#6c757d", "⚪", f"No es detecten focus de convergència significatius (Valor: {valor_conv:.0f}). El forçament dinàmic per iniciar tempestes és feble o inexistent."
 
-        st.markdown(f"""<div style="...">{emoji} Potencial de Dispar: {nivell_alerta}</div>...""", unsafe_allow_html=True) # El teu HTML aquí
+        st.markdown(f"""
+        <div style="text-align: center; padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444;">
+             <span style="font-size: 1.2em; color: #FAFAFA;">{emoji} Potencial de Dispar: <strong style="color:{color_alerta}">{nivell_alerta}</strong></span>
+             <p style="font-size:0.95em; color:#a0a0b0; margin-top:10px; text-align: left;">{descripcio}</p>
+        </div>
+        """, unsafe_allow_html=True)
         
         st.markdown("##### Validació Atmosfèrica")
-        
         if not params_calc:
             st.warning("No hi ha dades de sondeig disponibles per a la validació.")
         else:
             mucin = params_calc.get('MUCIN', 0) or 0
             mucape = params_calc.get('MUCAPE', 0) or 0
             
-            # ... (la resta de la lògica de validació es queda igual) ...
             vered_titol, vered_color, vered_emoji, vered_desc = "", "", "", ""
             if mucin < -75:
                 vered_titol, vered_color, vered_emoji = "Inhibida", "#DC3545", "👎"
-                vered_desc = f"Tot i la convergència, hi ha una inhibició (CIN) molt forta de {mucin:.0f} J/kg..."
+                vered_desc = f"Tot i la convergència, hi ha una inhibició (CIN) molt forta de **{mucin:.0f} J/kg** que actua com una 'tapa', dificultant o impedint el desenvolupament de tempestes."
             elif mucape < 250:
                 vered_titol, vered_color, vered_emoji = "Sense Energia", "#FD7E14", "🤔"
-                vered_desc = f"El disparador existeix, però l'atmosfera té molt poc 'combustible' (CAPE), amb només {mucape:.0f} J/kg..."
+                vered_desc = f"El disparador existeix, però l'atmosfera té molt poc 'combustible' (CAPE), amb només **{mucape:.0f} J/kg**. Les tempestes, si es formen, seran febles."
             else:
                 vered_titol, vered_color, vered_emoji = "Efectiva", "#28A745", "👍"
-                vered_desc = f"Les condicions són favorables! La convergència troba una atmosfera amb prou energia ({mucape:.0f} J/kg)..."
+                vered_desc = f"Les condicions són favorables! La convergència troba una atmosfera amb prou energia (**{mucape:.0f} J/kg**) i una inhibició baixa (**{mucin:.0f} J/kg**) per a desenvolupar tempestes."
 
-            st.markdown(f"""<div style="...">{vered_emoji} Veredicte: Convergència {vered_titol}</div>...""", unsafe_allow_html=True) # El teu HTML aquí
+            st.markdown(f"""
+            <div style="text-align: center; padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444;">
+                 <span style="font-size: 1.1em; color: #FAFAFA;">{vered_emoji} Veredicte: Convergència <strong style="color:{vered_color}">{vered_titol}</strong></span>
+                 <p style="font-size:0.9em; color:#a0a0b0; margin-top:10px; text-align: left;">{vered_desc}</p>
+            </div>
+            """, unsafe_allow_html=True)
             st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
             
 def seleccionar_poble(nom_poble):
