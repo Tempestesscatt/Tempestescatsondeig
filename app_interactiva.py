@@ -6302,7 +6302,7 @@ def run_catalunya_app():
                     valor_conv_comarcal = alertes_zona.get(comarca_actual, 0)
                     # --- LÍNIA CORREGIDA ---
                     # Ara li passem el paràmetre 'hora_sel_str' que faltava
-                    ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calc, hora_sel_str)
+                    ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calc, hora_sel_str, data_tuple)
                 else:
                     st.warning(f"No s'ha pogut determinar la comarca per a {poble_sel}.")
             elif active_tab == "Anàlisi de Mapes":
@@ -6381,10 +6381,10 @@ def run_catalunya_app():
 
 
 
-def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str):
+def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió definitiva amb VORA NEGRA a l'indicador de direcció).
-    Afegeix un contorn negre a la fletxa i al cercle per a una visibilitat màxima.
+    PESTANYA D'ANÀLISI COMARCAL (Versió definitiva amb DIRECCIÓ 500-700hPa).
+    Calcula la direcció de la tempesta basant-se en el flux director de capes mitjanes.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6445,43 +6445,53 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
                     px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
                     
-                    if params_calc and valor_conv >= 20:
+                    # --- NOU BLOC: CÀLCUL I DIBUIX DE L'INDICADOR DE DIRECCIÓ ---
+                    if data_tuple and valor_conv >= 20:
+                        # 1. Determinem el color segons la força de la convergència
                         if valor_conv >= 100: indicator_color = '#9370DB'
                         elif valor_conv >= 60: indicator_color = '#DC3545'
                         elif valor_conv >= 40: indicator_color = '#FD7E14'
                         else: indicator_color = '#28A745'
                         
-                        # --- CANVI: Afegim path_effects a tots els elements de l'indicador ---
                         path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
                         
-                        circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, 
-                                        transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+                        circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
                         ax.add_patch(circle)
-                        ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, 
-                                zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
+                        ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
 
-                        motion_vector = params_calc.get('RM') or params_calc.get('Mean_Wind')
-                        if motion_vector and not pd.isna(motion_vector[0]):
-                            u_storm, v_storm = motion_vector[0] * units('m/s'), motion_vector[1] * units('m/s')
-                            storm_dir_to = (mpcalc.wind_direction(u_storm, v_storm).m + 180) % 360
-                            dir_rad = np.deg2rad(90 - storm_dir_to)
-                            length = 0.25
-                            end_x = px + length * np.cos(dir_rad)
-                            end_y = py + length * np.sin(dir_rad)
-                            ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, 
-                                    transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
-                            num_barbs = 3; barb_length = 0.04
-                            barb_angle_rad = dir_rad + np.pi / 2
-                            for i in range(1, num_barbs + 1):
-                                pos_on_shaft = 0.4 + (i * 0.2)
-                                barb_center_x = px + length * pos_on_shaft * np.cos(dir_rad)
-                                barb_center_y = py + length * pos_on_shaft * np.sin(dir_rad)
-                                barb_start_x = barb_center_x - barb_length / 2 * np.cos(barb_angle_rad)
-                                barb_start_y = barb_center_y - barb_length / 2 * np.sin(barb_angle_rad)
-                                barb_end_x = barb_center_x + barb_length / 2 * np.cos(barb_angle_rad)
-                                barb_end_y = barb_center_y + barb_length / 2 * np.sin(barb_angle_rad)
-                                ax.plot([barb_start_x, barb_end_x], [barb_start_y, barb_end_y], color=indicator_color, 
-                                        linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+                        # 2. Calculem la direcció amb el flux director 700-500 hPa
+                        try:
+                            sounding_data, _ = data_tuple
+                            p, u, v = sounding_data[0], sounding_data[3], sounding_data[4]
+                            
+                            if p.m.min() < 500 and p.m.max() > 700: # Assegurem que el sondeig és prou alt
+                                u_700 = np.interp(700, p.m[::-1], u.m[::-1])
+                                v_700 = np.interp(700, p.m[::-1], v.m[::-1])
+                                u_500 = np.interp(500, p.m[::-1], u.m[::-1])
+                                v_500 = np.interp(500, p.m[::-1], v.m[::-1])
+                                
+                                mean_u_steering = (u_700 + u_500) / 2.0 * units('m/s')
+                                mean_v_steering = (v_700 + v_500) / 2.0 * units('m/s')
+                                
+                                storm_dir_to = (mpcalc.wind_direction(mean_u_steering, mean_v_steering).m + 180) % 360
+                                
+                                # 3. Dibuixem la fletxa estilitzada amb la nova direcció
+                                dir_rad = np.deg2rad(90 - storm_dir_to)
+                                length = 0.25
+                                end_x = px + length * np.cos(dir_rad); end_y = py + length * np.sin(dir_rad)
+                                ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+                                
+                                num_barbs = 3; barb_length = 0.04
+                                barb_angle_rad = dir_rad + np.pi / 2
+                                for i in range(1, num_barbs + 1):
+                                    pos_on_shaft = 0.4 + (i * 0.2)
+                                    barb_center_x = px + length * pos_on_shaft * np.cos(dir_rad)
+                                    barb_center_y = py + length * pos_on_shaft * np.sin(dir_rad)
+                                    barb_start_x = barb_center_x - barb_length / 2 * np.cos(barb_angle_rad); barb_start_y = barb_center_y - barb_length / 2 * np.sin(barb_angle_rad)
+                                    barb_end_x = barb_center_x + barb_length / 2 * np.cos(barb_angle_rad); barb_end_y = barb_center_y + barb_length / 2 * np.sin(barb_angle_rad)
+                                    ax.plot([barb_start_x, barb_end_x], [barb_start_y, barb_end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+                        except Exception:
+                            pass # Si falla el càlcul, simplement no es dibuixa la fletxa
             
             poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
             if poble_coords:
