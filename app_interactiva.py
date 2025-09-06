@@ -6549,7 +6549,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             """, unsafe_allow_html=True)
             st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
 
-Amb aquest canvi, la teva aplicació hauria de funcionar correctament i mostrar el mapa comarcal amb totes les millores visuals i tècniques que hem anat implementant.
 
             
 def seleccionar_poble(nom_poble):
