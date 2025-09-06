@@ -7287,8 +7287,8 @@ def run_catalunya_app():
 
 def ui_mapa_display_peninsula(alertes_per_zona, hourly_index, show_labels):
     """
-    Funció de VISUALITZACIÓ específica per al mapa de l'Est Peninsular,
-    amb color de selecció groc fixat.
+    Funció de VISUALITZACIÓ específica per al mapa de l'Est Peninsular.
+    (Versió Final: Només mostra les províncies analitzades, la resta són invisibles)
     """
     st.markdown("#### Mapa de Situació")
     
@@ -7317,18 +7317,25 @@ def ui_mapa_display_peninsula(alertes_per_zona, hourly_index, show_labels):
 
     def style_function(feature):
         nom_feature_raw = feature.get('properties', {}).get(map_data["property_name"])
-        style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
-        if nom_feature_raw:
+        
+        # --- LÒGICA MILLORADA PER A LA VISIBILITAT ---
+        # 1. Comprovem si la província del GeoJSON és una de les que analitzem
+        if nom_feature_raw and nom_feature_raw.strip() in CIUTATS_PER_ZONA_PENINSULA:
+            # 2. Si ho és, apliquem tota la lògica de colors habitual
             nom_feature = nom_feature_raw.strip().replace('.', '')
-            style = map_data["styles"].get(nom_feature, style)
+            style = map_data["styles"].get(nom_feature, {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25})
+            
             cleaned_selected_area = selected_area_str.strip().replace('.', '') if selected_area_str else ''
             
-            # Aquesta condició aplica l'estil groc de forma permanent a la província seleccionada
             if nom_feature == cleaned_selected_area:
                 style.update({'fillColor': '#FFC107', 'color': '#000000', 'weight': 3, 'fillOpacity': 0.6})
-        return style
+            
+            return style
+        else:
+            # 3. Si NO és una de les nostres províncies, la fem completament invisible.
+            return {'fillOpacity': 0, 'weight': 0, 'color': 'transparent'}
+        # --- FI DE LA LÒGICA MILLORADA ---
 
-    # L'estil al passar el ratolí per sobre (highlight) es manté blanc
     folium.GeoJson(
         map_data["gdf"], style_function=style_function,
         highlight_function=lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5},
