@@ -1505,8 +1505,12 @@ def debug_calculos(p, T, Td, u, v, heights, prof):
     
 def crear_mapa_base(map_extent, projection=ccrs.PlateCarree()):
     fig, ax = plt.subplots(figsize=(8, 8), dpi=100, subplot_kw={'projection': projection})
-    ax.set_extent(map_extent, crs=ccrs.PlateCarree()) 
-    ax.add_feature(cfeature.LAND, facecolor="#E0E0E0", zorder=0)
+    ax.set_extent(map_extent, crs=ccrs.PlateCarree())
+    
+    # --- LÍNIA MODIFICADA AQUÍ ---
+    ax.add_feature(cfeature.LAND, facecolor="#D4E6B5", zorder=0) # Canviat a color verd
+    # ---------------------------------
+    
     ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
     ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
