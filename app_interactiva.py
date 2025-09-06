@@ -6078,6 +6078,32 @@ def run_canada_app():
     elif st.session_state.active_tab_canada == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="canada")
 
+
+@st.cache_data(show_spinner="Carregant dades geogràfiques...")
+def carregar_dades_geografiques_i_mapeig():
+    """
+    Carrega el mapa de comarques des de la variable GeoJSON integrada i crea un
+    diccionari per mapejar el nom de la comarca al seu codi numèric.
+    """
+    try:
+        # Llegeix les dades directament de la variable GEOJSON_COMARQUES
+        gdf_comarques = gpd.GeoDataFrame.from_features(GEOJSON_COMARQUES['features'])
+        gdf_comarques.set_crs("EPSG:4326", inplace=True)
+
+        # Creem el diccionari de mapeig (nom -> codi)
+        if 'nomcomar' in gdf_comarques.columns and 'codicomar' in gdf_comarques.columns:
+            gdf_comarques['codicomar'] = pd.to_numeric(gdf_comarques['codicomar'])
+            comarca_map = pd.Series(gdf_comarques.codicomar.values, index=gdf_comarques.nomcomar).to_dict()
+        else:
+            comarca_map = {}
+            st.warning("Les dades de comarques integrades no tenen el format esperat.")
+
+        return gdf_comarques, comarca_map
+    except Exception as e:
+        st.error(f"Error en carregar les dades de comarques: {e}")
+        return None, {}
+        
+
 def run_catalunya_app():
     # --- LÒGICA ANTI-BUG PER FORÇAR EL REDIBUIXAT EN SELECCIONAR POBLE ---
     if 'poble_seleccionat_per_boto' in st.session_state:
