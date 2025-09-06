@@ -345,6 +345,7 @@ CIUTATS_CATALUNYA = {
     'Viladecans': {'lat': 41.3155, 'lon': 2.0194, 'sea_dir': (100, 200)},
     'Vilassar de Dalt': {'lat': 41.5167, 'lon': 2.3583, 'sea_dir': None},
     'Vilassar de Mar': {'lat': 41.5057, 'lon': 2.3920, 'sea_dir': (90, 180)},
+    'Horta de Sant Joan': {'lat': 40.9545, 'lon': 0.3160, 'sea_dir': None},
     
     # Punts Marins
     'Costes de Girona (Mar)':   {'lat': 42.05, 'lon': 3.30, 'sea_dir': (0, 360)},
