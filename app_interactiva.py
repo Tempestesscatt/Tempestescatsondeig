@@ -40,6 +40,7 @@ import folium
 from streamlit_folium import st_folium
 import geopandas as gpd
 from shapely.geometry import Point
+from folium.plugins import HeatMap
 
 
 
@@ -4835,71 +4836,46 @@ def carregar_dades_sondeig_usa(lat, lon, hourly_index):
 
 
 
-@st.cache_data(ttl=1800, show_spinner="Analitzant focus de convergència a tot el territori...")
-def calcular_alertes_per_comarca(hourly_index, nivell):
+@st.cache_data(ttl=1800, show_spinner="Analitzant focus de convergència...")
+def preparar_dades_heatmap(hourly_index, nivell):
     """
-    Versió millorada que retorna un diccionari amb el valor MÀXIM de
-    convergència per a cada zona/comarca que superi el llindar mínim.
-    Exemple de retorn: {'Barcelonès': 45.7, 'Garraf': 28.1}
+    Prepara les dades per a un HeatMap de Folium.
+    Calcula la convergència a tota la graella i retorna una llista de punts
+    amb la seva intensitat [latitud, longitud, pes].
     """
-    CONV_THRESHOLD = 20 # Llindar mínim per començar a considerar una alerta (verd)
-    
+    CONV_THRESHOLD = 20  # Llindar a partir del qual es mostra un punt al mapa de calor
     map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
-    gdf_zones = carregar_dades_geografiques()
-
-    # Comprovacions de seguretat inicials
-    if error or not map_data or gdf_zones is None or 'lons' not in map_data or len(map_data['lons']) < 4:
-        return {}
+    if error or not map_data:
+        return []
 
     try:
-        # Detecta automàticament el nom de la propietat ('nom_zona' o 'nomcomar')
-        property_name = 'nom_zona' if 'nom_zona' in gdf_zones.columns else 'nomcomar'
-        if 'nom_comar' in gdf_zones.columns: # Afegeix suport per al teu format
-            property_name = 'nom_comar'
-
-        # Càlcul de la convergència a tota la graella
+        # Càlcul de la graella de convergència (aquest procés no canvia)
         lons, lats = map_data['lons'], map_data['lats']
-        grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 150), np.linspace(min(lats), max(lats), 150))
+        grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100))
         u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
         grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
         grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-
         with np.errstate(invalid='ignore'):
             dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
             convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
-        
-        # Troba els punts on la convergència supera el llindar mínim
-        punts_calents_idx = np.argwhere(convergence_scaled > CONV_THRESHOLD)
-        if len(punts_calents_idx) == 0: 
-            return {}
-            
-        # Crea un GeoDataFrame amb els punts calents i els seus valors
-        punts_lats = grid_lat[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
-        punts_lons = grid_lon[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
-        punts_vals = convergence_scaled[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
-        
-        gdf_punts = gpd.GeoDataFrame(
-            {'value': punts_vals}, 
-            geometry=[Point(lon, lat) for lon, lat in zip(punts_lons, punts_lats)], 
-            crs="EPSG:4326"
-        )
-        
-        # Uneix els punts amb les zones/comarques per saber a quina pertany cada punt
-        punts_dins_zones = gpd.sjoin(gdf_punts, gdf_zones, how="inner", predicate="within")
-        
-        if punts_dins_zones.empty: 
-            return {}
-            
-        # Agrupa per nom de zona i troba el valor MÀXIM de convergència per a cadascuna
-        max_conv_per_zona = punts_dins_zones.groupby(property_name)['value'].max()
-        
-        # Retorna el resultat com un diccionari net
-        return max_conv_per_zona.to_dict()
-        
-    except Exception as e:
-        print(f"Error dins de calcular_alertes_per_comarca: {e}")
-        return {}
+            convergence_scaled[np.isnan(convergence_scaled)] = 0
 
+        # Filtra els punts que superen el llindar
+        hot_points_indices = np.where(convergence_scaled > CONV_THRESHOLD)
+        
+        # Crea la llista de dades en el format que HeatMap necessita: [[lat, lon, pes], ...]
+        heatmap_data = [
+            [lat, lon, conv] for lat, lon, conv in zip(
+                grid_lat[hot_points_indices],
+                grid_lon[hot_points_indices],
+                convergence_scaled[hot_points_indices]
+            )
+        ]
+        return heatmap_data
+
+    except Exception as e:
+        print(f"Error a preparar_dades_heatmap: {e}")
+        return []
 def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str, map_extent):
     fig, ax = crear_mapa_base(map_extent)
     grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 200), np.linspace(map_extent[2], map_extent[3], 200))
@@ -6103,18 +6079,17 @@ def run_canada_app():
         ui_pestanya_webcams(poble_sel, zona_activa="canada")
 
 def run_catalunya_app():
-    # --- NOU BLOC: LÒGICA ANTI-BUG PER FORÇAR EL REDIBUIXAT ---
+    # --- LÒGICA ANTI-BUG PER FORÇAR EL REDIBUIXAT EN SELECCIONAR POBLE ---
     if 'poble_seleccionat_per_boto' in st.session_state:
         nom_poble = st.session_state.poble_seleccionat_per_boto
         del st.session_state.poble_seleccionat_per_boto
         st.session_state.poble_sel = nom_poble
-        # Important: Reiniciem la pestanya per defecte perquè el missatge aparegui
+        # Reiniciem la pestanya per defecte en canviar de poble
         if 'active_tab_cat' in st.session_state:
             del st.session_state['active_tab_cat']
         st.rerun()
-    # --- FI DEL NOU BLOC ---
 
-    # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
+    # --- CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
@@ -6124,6 +6099,7 @@ def run_catalunya_app():
     with col_change:
         if st.button("Canviar de Zona", use_container_width=True, help="Torna a la selecció de zona geogràfica"):
             st.session_state.zone_selected = None
+            # Neteja les claus específiques de Catalunya per a un reinici net
             [st.session_state.pop(key, None) for key in ['selected_area', 'poble_sel', 'active_tab_cat']]
             st.rerun()
     with col_logout:
@@ -6132,7 +6108,7 @@ def run_catalunya_app():
             st.rerun()
     st.divider()
 
-    # --- PAS 2, 3, 4 (Gestió d'estat i selectors) ---
+    # --- GESTIÓ D'ESTAT I SELECTORS GLOBALS ---
     if 'selected_area' not in st.session_state: st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
     if 'poble_sel' not in st.session_state: st.session_state.poble_sel = "--- Selecciona una localitat ---"
     
@@ -6151,11 +6127,10 @@ def run_catalunya_app():
     local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_num))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-    alertes_zona = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
 
-    # --- PAS 5: LÒGICA PRINCIPAL ---
+    # --- LÒGICA PRINCIPAL DE VISUALITZACIÓ ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # --- VISTA D'ANÀLISI DETALLADA ---
+        # --- VISTA D'ANÀLISI DETALLADA (QUAN UN POBLE ESTÀ SELECCIONAT) ---
         poble_sel = st.session_state.poble_sel
         st.success(f"### Anàlisi per a: **{poble_sel}**")
         if st.button("⬅️ Tornar al mapa de selecció"):
@@ -6173,20 +6148,14 @@ def run_catalunya_app():
             menu_options.append("💬 Assistent IA")
             menu_icons.append("chat-quote-fill")
 
-        # Gestió de la pestanya per defecte
         if 'active_tab_cat' not in st.session_state:
-            st.session_state.active_tab_cat_index = 0 # Comença a la primera
+            st.session_state.active_tab_cat_index = 0
         
         active_tab = option_menu(
-            menu_title=None, 
-            options=menu_options, 
-            icons=menu_icons, 
-            menu_icon="cast", 
-            orientation="horizontal",
-            key='option_menu_widget', # Clau única per al widget
+            menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", 
+            orientation="horizontal", key='option_menu_widget',
             default_index=st.session_state.active_tab_cat_index
         )
-        # Actualitza l'estat si l'usuari canvia de pestanya
         st.session_state.active_tab_cat = active_tab
 
         if 'poble_sel' in st.session_state and st.session_state.poble_sel != "--- Selecciona una localitat ---":
@@ -6209,12 +6178,14 @@ def run_catalunya_app():
                         params_calc[f'CONV_{nivell_sel}hPa'] = conv_puntual
                 
                 if active_tab == "Anàlisi Vertical":
-                    ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+                    # Carrega les dades per a l'anàlisi de proximitat just abans de mostrar la pestanya
+                    alertes_proximitat = preparar_dades_heatmap(hourly_index_sel, nivell_sel) # Reutilitzem la funció del heatmap
+                    ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str) # L'anàlisi de proximitat es farà dins
                 elif active_tab == "Anàlisi Comarcal":
                     comarca_actual = get_comarca_for_poble(poble_sel)
                     if comarca_actual:
-                        valor_conv_comarcal = alertes_zona.get(comarca_actual, 0)
-                        ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv)
+                        # Per a aquesta pestanya no necessitem alertes_zona, ja que es centra en el mapa
+                        ui_pestanya_analisi_comarcal(comarca_actual, 0, poble_sel, timestamp_str, nivell_sel, map_data_conv)
                     else:
                         st.warning(f"No s'ha pogut determinar la comarca per a {poble_sel}.")
                 elif active_tab == "Anàlisi de Mapes":
@@ -6253,12 +6224,24 @@ def run_catalunya_app():
     else: 
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU + BOTONS) ---
         with st.spinner("Carregant mapa de situació de Catalunya..."):
-            map_output = ui_mapa_display_personalitzat(alertes_zona)
+            # Carreguem totes les dades geogràfiques necessàries
+            gdf_comarques, comarca_map = carregar_dades_geografiques_i_mapeig()
+            gdf_municipis = carregar_dades_municipis()
+            heatmap_data = preparar_dades_heatmap(hourly_index_sel, nivell_sel)
+            
+            # Passem totes les dades a la funció del mapa
+            map_output = ui_mapa_display_personalitzat(
+                heatmap_data,
+                gdf_comarques,
+                gdf_municipis,
+                comarca_map,
+                st.session_state.get('selected_area')
+            )
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
             if "Comarca:" in raw_tooltip:
-                clicked_area = raw_tooltip.split(':')[-1].strip().replace('.', '')
+                clicked_area = raw_tooltip.split(':')[-1].strip()
                 if clicked_area != st.session_state.get('selected_area'):
                     st.session_state.selected_area = clicked_area
                     st.rerun()
@@ -6267,33 +6250,24 @@ def run_catalunya_app():
         if selected_area and "---" not in selected_area:
             st.markdown(f"##### Selecciona una localitat a **{selected_area}**:")
             
-            gdf = carregar_dades_geografiques()
-            property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), 'nom_comar')
-            poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
-            
-            poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
+            poblacions_a_mostrar = CIUTATS_PER_COMARCA.get(selected_area.strip(), {})
             
             if poblacions_a_mostrar:
                 cols = st.columns(4)
-                col_index = 0
-                for nom_poble in sorted(poblacions_a_mostrar.keys()):
-                    with cols[col_index % 4]:
+                for i, nom_poble in enumerate(sorted(poblacions_a_mostrar.keys())):
+                    with cols[i % 4]:
                         st.button(
-                            nom_poble,
-                            key=f"btn_{nom_poble.replace(' ', '_')}",
-                            on_click=seleccionar_poble,
-                            args=(nom_poble,),
-                            use_container_width=True
+                            nom_poble, key=f"btn_{nom_poble.replace(' ', '_')}",
+                            on_click=seleccionar_poble, args=(nom_poble,), use_container_width=True
                         )
-                    col_index += 1
             else:
-                st.warning("Aquesta zona no té localitats predefinides per a l'anàlisi.")
+                st.warning("Aquesta comarca no té localitats predefinides per a l'anàlisi detallada.")
 
             if st.button("⬅️ Veure totes les zones"):
                 st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
                 st.rerun()
         else:
-             st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
+             st.info("Fes clic en una comarca del mapa per veure'n els municipis i les localitats d'anàlisi.", icon="👆")
 
 
 
@@ -6439,103 +6413,73 @@ CAPITALS_COMARCA = {
     "Vallès Oriental": {"nom": "Granollers", "lat": 41.6083, "lon": 2.2886}
 }
 
-def ui_mapa_display_personalitzat(alertes_per_zona):
+def ui_mapa_display_personalitzat(heatmap_data, gdf_comarques, gdf_municipis, comarca_map, selected_area=None):
     """
-    Versió final robusta v14 (Límits de Zoom).
-    - Afegeix un nivell de zoom mínim per impedir sortir de Catalunya.
-    - Manté el mapa congelat quan se selecciona una comarca.
+    Versió amb HeatMap per visualitzar la convergència amb gradients.
     """
     st.markdown("#### Mapa de Situació")
-    gdf = carregar_dades_geografiques()
-    if gdf is None: return None
+    if gdf_comarques is None: return None
 
-    property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), None)
-    if not property_name:
-        st.error("Error Crític en el Mapa: L'arxiu GeoJSON no conté una propietat de nom vàlida.")
-        return None
-    tooltip_alias = 'Comarca:'
-
-    selected_area = st.session_state.get('selected_area')
-    
-    # --- CANVI CLAU: PARÀMETRES DEL MAPA REVISATS ---
+    # Configuració del mapa base (no canvia)
     map_params = {
-        "location": [41.83, 1.87],
-        "zoom_start": 8,
+        "location": [41.83, 1.87], "zoom_start": 8,
         "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-        "attr": "Tiles &copy; Esri &mdash; and the GIS User Community",
-        "scrollWheelZoom": True,
-        "dragging": True,
-        "zoom_control": True,
-        "doubleClickZoom": True,
-        "max_bounds": [[40.4, 0.0], [42.9, 3.5]],
-        "min_zoom": 8, # <-- NOU: Impedeix fer "unzoom" excessiu
-        "max_zoom": 12  # <-- NOU: Limita el zoom màxim per consistència
+        "attr": "Tiles &copy; Esri", "scrollWheelZoom": True, "dragging": True,
+        "max_bounds": [[40.4, 0.0], [42.9, 3.5]], "min_zoom": 8, "max_zoom": 12
     }
-
     if selected_area and "---" not in selected_area:
-        cleaned_selected_area = selected_area.strip().replace('.', '')
-        zona_shape = gdf[gdf[property_name].str.strip().str.replace('.', '') == cleaned_selected_area]
+        zona_shape = gdf_comarques[gdf_comarques['nomcomar'] == selected_area]
         if not zona_shape.empty:
             centroid = zona_shape.geometry.centroid.iloc[0]
-            map_params["location"] = [centroid.y, centroid.x]
-            map_params["zoom_start"] = 10
-            map_params["scrollWheelZoom"] = False
-            map_params["dragging"] = False
-            map_params["zoom_control"] = False
-            map_params["doubleClickZoom"] = False
+            map_params.update({"location": [centroid.y, centroid.x], "zoom_start": 10, "scrollWheelZoom": False, "dragging": False})
             bounds = zona_shape.total_bounds
             map_params["max_bounds"] = [[bounds[1], bounds[0]], [bounds[3], bounds[2]]]
-
-    m = folium.Map(**map_params)
-    # --- FI DEL CANVI ---
-
-    def get_color_from_convergence(value):
-        if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
-        if value >= 100: return '#9370DB', '#FFFFFF'
-        if value >= 60: return '#DC3545', '#FFFFFF'
-        if value >= 40: return '#FD7E14', '#FFFFFF'
-        if value >= 20: return '#28A745', '#FFFFFF'
-        return '#6c757d', '#FFFFFF'
-
-    def style_function(feature):
-        style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
-        nom_feature_raw = feature.get('properties', {}).get(property_name)
-        if nom_feature_raw and isinstance(nom_feature_raw, str):
-            nom_feature = nom_feature_raw.strip().replace('.', '')
-            conv_value = alertes_per_zona.get(nom_feature)
-            if conv_value:
-                alert_color, _ = get_color_from_convergence(conv_value)
-                if alert_color:
-                    style['fillColor'] = alert_color; style['color'] = alert_color
-                    style['fillOpacity'] = 0.55; style['weight'] = 2.5
-            cleaned_selected_area = st.session_state.get('selected_area', '').strip().replace('.', '')
-            if nom_feature == cleaned_selected_area:
-                style['fillColor'] = '#007bff'; style['color'] = '#ffffff'
-                style['weight'] = 3; style['fillOpacity'] = 0.5
-        return style
-
-    highlight_function = lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5}
-
-    folium.GeoJson(
-        gdf,
-        style_function=style_function,
-        highlight_function=highlight_function,
-        tooltip=folium.GeoJsonTooltip(fields=[property_name], aliases=[tooltip_alias])
-    ).add_to(m)
-
-    for zona, conv_value in alertes_per_zona.items():
-        capital_info = CAPITALS_COMARCA.get(zona)
-        if capital_info:
-            bg_color, text_color = get_color_from_convergence(conv_value)
-            nom_capital = capital_info['nom']
-            icon_html = f"""<div style="position: relative; background-color: {bg_color}; color: {text_color}; padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color}; font-family: sans-serif; font-size: 13px; font-weight: bold; text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5); transform: translate(-50%, -100%);"><div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div><div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>{zona}: {conv_value:.0f}</div>"""
-            icon = folium.DivIcon(html=icon_html)
-            folium.Marker(
-                location=[capital_info['lat'], capital_info['lon']],
-                icon=icon,
-                tooltip=f"Comarca: {zona}"
-            ).add_to(m)
     
+    m = folium.Map(**map_params)
+
+    # Dibuixa les comarques amb un estil base molt subtil per no distreure
+    folium.GeoJson(
+        gdf_comarques,
+        style_function=lambda feature: {
+            'fillColor': '#808080', 'color': '#FFFFFF',
+            'weight': 1, 'fillOpacity': 0.1
+        },
+        highlight_function=lambda x: {'weight': 2.5, 'color': '#FFFFFF'},
+        tooltip=folium.GeoJsonTooltip(fields=['nomcomar'], aliases=['Comarca:'])
+    ).add_to(m)
+    
+    # --- NOU BLOC PRINCIPAL: AFEGIR HEATMAP DE CONVERGÈNCIA ---
+    if heatmap_data:
+        HeatMap(
+            heatmap_data,
+            name="Focus de Convergència",
+            min_opacity=0.2,
+            max_val=max([p[2] for p in heatmap_data]) if heatmap_data else 100, # Escala màxima dinàmica
+            radius=25,       # Radi d'influència de cada punt (ajusta al teu gust)
+            blur=20,         # Suavitzat del gradient (ajusta al teu gust)
+            gradient={0.2: 'cyan', 0.4: 'lime', 0.7: 'yellow', 1: 'red'} # Colors del gradient
+        ).add_to(m)
+    # --- FI DEL NOU BLOC ---
+    
+    # Dibuixa la comarca seleccionada ressaltada i els seus municipis
+    if selected_area and "---" not in selected_area:
+        comarca_shape = gdf_comarques[gdf_comarques['nomcomar'] == selected_area]
+        if not comarca_shape.empty:
+            folium.GeoJson(
+                comarca_shape,
+                style_function=lambda x: {'fillColor': '#007bff', 'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.4}
+            ).add_to(m)
+
+        comarca_code = comarca_map.get(selected_area)
+        if comarca_code and gdf_municipis is not None:
+            municipis_filtrats = gdf_municipis[gdf_municipis['comarca'] == comarca_code]
+            for _, municipi in municipis_filtrats.iterrows():
+                centroid = municipi.geometry.centroid
+                folium.CircleMarker(
+                    location=[centroid.y, centroid.x], radius=4, color='#ffffff', weight=1.5,
+                    fill=True, fill_color='#007bff', fill_opacity=0.8, tooltip=municipi['nom']
+                ).add_to(m)
+
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
     
     
