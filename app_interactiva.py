@@ -7288,7 +7288,85 @@ def run_valley_halley_app():
         ui_pestanya_webcams(poble_sel, zona_activa="valley_halley")
 
 
+def ui_pestanya_mapes_est_peninsula(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
+    """
+    Mostra la interfície de la pestanya d'Anàlisi de Mapes per a l'Est Peninsular.
+    """
+    st.markdown("#### Mapes de Pronòstic (Model AROME)")
+    with st.spinner("Carregant mapa AROME per a la península..."):
+        map_data, error = carregar_dades_mapa_est_peninsula(nivell_sel, hourly_index_sel)
+    
+        if error or not map_data:
+            st.error(f"Error en carregar el mapa: {error if error else 'No s''han rebut dades.'}")
+        else:
+            timestamp_map_title = timestamp_str.replace(f"{poble_sel} | ", "")
+            fig = crear_mapa_forecast_combinat_est_peninsula(
+                map_data['lons'], map_data['lats'], map_data['speed_data'],
+                map_data['dir_data'], map_data['dewpoint_data'], nivell_sel,
+                timestamp_map_title
+            )
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
 
+def run_est_peninsula_app():
+    """
+    Funció principal que gestiona la lògica per a la zona de l'Est Peninsular.
+    Inclou anàlisi vertical i de mapes.
+    """
+    # Inicialitza el selector de poble per a aquesta zona si no existeix
+    if 'poble_selector_est_peninsula' not in st.session_state:
+        st.session_state.poble_selector_est_peninsula = "Zaragoza"
+    
+    # Mostra la capçalera i el selector de ciutat
+    ui_capcalera_selectors(None, zona_activa="est_peninsula")
+    
+    poble_sel = st.session_state.poble_selector_est_peninsula
+    
+    # Configuració de data i hora (idèntica a altres zones)
+    now_local = datetime.now(TIMEZONE_EST_PENINSULA)
+    dia_sel_str = now_local.strftime('%d/%m/%Y'); hora_sel = now_local.hour
+    hora_sel_str = f"{hora_sel:02d}:00h"; nivell_sel = 925
+    lat_sel, lon_sel = CIUTATS_EST_PENINSULA[poble_sel]['lat'], CIUTATS_EST_PENINSULA[poble_sel]['lon']
+    
+    local_dt = now_local.replace(minute=0, second=0, microsecond=0)
+    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    
+    cat_dt = local_dt.astimezone(TIMEZONE_CAT)
+    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_EST_PENINSULA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
+    
+    # Menú de pestanyes
+    menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes"]
+    menu_icons = ["graph-up-arrow", "map-fill"]
+
+    option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
+                orientation="horizontal", key="active_tab_est_peninsula", default_index=0)
+
+    # Lògica per mostrar el contingut de cada pestanya
+    if st.session_state.active_tab_est_peninsula == "Anàlisi Vertical":
+        with st.spinner(f"Carregant dades del sondeig AROME per a {poble_sel}..."):
+            data_tuple, final_index, error_msg = carregar_dades_sondeig_est_peninsula(lat_sel, lon_sel, hourly_index_sel)
+        
+        if data_tuple is None or error_msg:
+            st.error(f"No s'ha pogut carregar el sondeig: {formatar_missatge_error_api(error_msg)}")
+        else:
+            if final_index is not None and final_index != hourly_index_sel:
+                adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+                adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_EST_PENINSULA)
+                st.warning(f"**Avís:** Es mostren dades de les **{adjusted_local_time.strftime('%H:%Mh')}**.")
+            
+            params_calc = data_tuple[1]
+            with st.spinner(f"Calculant convergència a {nivell_sel}hPa..."):
+                map_data_conv, _ = carregar_dades_mapa_est_peninsula(nivell_sel, hourly_index_sel)
+            if map_data_conv:
+                params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+            
+            # Reutilitzem la funció de visualització vertical genèrica
+            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+
+    elif st.session_state.active_tab_est_peninsula == "Anàlisi de Mapes":
+        # Truquem a la funció específica per mostrar els mapes d'aquesta zona
+        ui_pestanya_mapes_est_peninsula(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
 
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
