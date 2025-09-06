@@ -6324,72 +6324,70 @@ def run_catalunya_app():
             alertes_filtrades = filtrar_alertes(alertes_totals, st.session_state.alert_filter_level)
             map_output = ui_mapa_display_personalitzat(alertes_filtrades, hourly_index_sel)
 
-        # Mostrem la llegenda principal
-        ui_llegenda_mapa_principal()
-
         # --- NOU BLOC: LÒGICA DE LA FLETXA INDICADORA AMB TEXT ---
-        arrow_position_percent = None
-        conv_value_selected = None
+        indicator_html_string = ""
         selected_area = st.session_state.get('selected_area')
         
         if selected_area and "---" not in selected_area:
             cleaned_area_name = selected_area.strip().replace('.', '')
-            conv_value_selected = alertes_filtrades.get(cleaned_area_name)
+            # Busquem el valor a les alertes *totals* per tenir sempre una referència
+            conv_value_selected = alertes_totals.get(cleaned_area_name)
             
             def calcular_posicio_llegenda(valor):
                 if not isinstance(valor, (int, float)) or valor < 20:
                     return None
+                # Limitem el valor entre 20 i 100 per al càlcul de la posició
                 valor_clamped = max(20, min(valor, 100))
+                # Calculem el percentatge dins del rang de la barra (20 a 100)
                 posicio_percent = ((valor_clamped - 20) / (100 - 20)) * 100
                 return posicio_percent
             
             arrow_position_percent = calcular_posicio_llegenda(conv_value_selected)
 
-        # Si tenim una posició, injectem el CSS i l'HTML per a l'indicador
-        if arrow_position_percent is not None:
-            # Injectem el CSS per a l'indicador
-            st.markdown(f"""
-            <style>
-            .legend-indicator {{
-                position: absolute;
-                top: 52px; /* Ajusta per alinear amb la part superior de la barra */
-                left: {arrow_position_percent}%;
-                transform: translateX(-50%);
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                z-index: 10;
-                transition: left 0.3s ease-in-out;
-                pointer-events: none; /* Per no interferir amb el ratolí */
-            }}
-            .indicator-text {{
-                background-color: rgba(0, 0, 0, 0.7);
-                color: white;
-                padding: 2px 6px;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: bold;
-                white-space: nowrap;
-            }}
-            .indicator-arrow {{
-                color: white;
-                font-size: 20px;
-                line-height: 0.5;
-                text-shadow: 0px 0px 4px black;
-            }}
-            </style>
-            """, unsafe_allow_html=True)
+            if arrow_position_percent is not None:
+                # Injectem el CSS per a l'indicador
+                st.markdown(f"""
+                <style>
+                .legend-indicator {{
+                    position: absolute;
+                    top: 80px; /* Posició vertical precisa just sobre la barra */
+                    left: {arrow_position_percent}%;
+                    transform: translateX(-50%);
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    z-index: 10;
+                    transition: left 0.3s ease-in-out;
+                    pointer-events: none;
+                }}
+                .indicator-text {{
+                    background-color: rgba(0, 0, 0, 0.75);
+                    color: white;
+                    padding: 3px 7px;
+                    border-radius: 5px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    white-space: nowrap;
+                }}
+                .indicator-arrow {{
+                    color: white;
+                    font-size: 22px;
+                    line-height: 0.6;
+                    text-shadow: 0px 0px 4px black;
+                }}
+                </style>
+                """, unsafe_allow_html=True)
 
-            # Injectem l'element HTML de l'indicador dins de la llegenda
-            # Nota: Ho fem amb un hack, afegint-lo a un contenidor separat que se superposa
-            with st.container():
-                 st.markdown(
+                # Generem l'HTML que s'injectarà
+                indicator_html_string = (
                     f'<div class="legend-indicator">'
                     f'  <div class="indicator-text">({int(conv_value_selected)})</div>'
                     f'  <div class="indicator-arrow">▼</div>'
-                    f'</div>',
-                    unsafe_allow_html=True
+                    f'</div>'
                 )
+        
+        # Mostrem la llegenda, passant-li l'indicador (que serà una cadena buida si no hi ha res seleccionat)
+        ui_llegenda_mapa_principal(indicator_html=indicator_html_string)
         # --- FI DEL NOU BLOC ---
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
@@ -6714,11 +6712,12 @@ def filtrar_alertes(alertes_totals, nivell_seleccionat):
     
     return {zona: valor for zona, valor in alertes_totals.items() if valor >= llindar_valor}
     
-def ui_llegenda_mapa_principal():
+def ui_llegenda_mapa_principal(indicator_html=""):
     """
     Mostra una llegenda gràfica i millorada per al mapa principal de situació.
-    (Versió 3.0 - Preparada per a la fletxa indicadora)
+    (Versió 4.0 - Accepta un indicador HTML per injectar)
     """
+    # El CSS es manté igual, ja que funciona correctament.
     st.markdown("""
     <style>
         .legend-container-main { 
@@ -6727,7 +6726,7 @@ def ui_llegenda_mapa_principal():
             padding: 18px; 
             margin-top: 15px; 
             border: 1px solid #444; 
-            position: relative; /* <-- AFEGIT CLAU PER A LA FLETXA */
+            position: relative; 
         }
         .legend-title-main { 
             font-size: 1.2em; 
@@ -6777,8 +6776,10 @@ def ui_llegenda_mapa_principal():
     </style>
     """, unsafe_allow_html=True)
 
+    # --- CORRECCIÓ CLAU: Injectem l'HTML de l'indicador just abans del títol ---
     html_llegenda = (
-        '<div class="legend-container-main">'
+        f'<div class="legend-container-main">'
+        f'    {indicator_html}'  # La fletxa i el text s'injectaran aquí
         '    <div class="legend-title-main">Com Interpretar el Mapa de Situació</div>'
         '    <div class="legend-subtitle-main">El color de la comarca i el número indiquen la força màxima del <b>disparador</b> (convergència) detectada a la zona:</div>'
         '    <div class="legend-gradient-bar"></div>'
@@ -6807,6 +6808,7 @@ def ui_llegenda_mapa_principal():
     )
     
     st.markdown(html_llegenda, unsafe_allow_html=True)
+    
     
     
 # --- DICCIONARI DE CAPITALS (Necessari per a les coordenades) ---
