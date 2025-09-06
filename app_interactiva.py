@@ -5780,11 +5780,9 @@ def ui_pestanya_mapes_uk(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
 @st.cache_data(ttl=600, show_spinner="Preparant dades del mapa...")
 def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index):
     """
-    Funció CACHEADA que fa el treball pesat. Aquesta versió accepta correctament
-    els 3 paràmetres per evitar el TypeError.
+    Versió millorada que afegeix marcadors clicables per a TOTES les capitals de comarca.
     """
     alertes_per_zona = dict(alertes_tuple)
-    
     gdf = carregar_dades_geografiques()
     if gdf is None: return None
 
@@ -5815,16 +5813,25 @@ def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index)
             }
 
     markers_data = []
-    for zona, conv_value in alertes_per_zona.items():
-        capital_info = CAPITALS_COMARCA.get(zona)
-        if capital_info:
+    
+    # <<<--- NOU BLOC: AFEGIM MARCADORS PER A TOTES LES CAPITALS ---
+    for zona, capital_info in CAPITALS_COMARCA.items():
+        conv_value = alertes_per_zona.get(zona)
+        
+        # Si hi ha un valor de convergència, creem l'etiqueta de color
+        if conv_value:
             bg_color, text_color = get_color_from_convergence(conv_value)
-            icon_html = f"""<div style="position: relative; background-color: {bg_color}; color: {text_color}; padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color}; font-family: sans-serif; font-size: 11px; font-weight: bold; text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5); transform: translate(-50%, -100%);"><div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div><div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>{zona}: {conv_value:.0f}</div>"""
-            markers_data.append({
-                'location': [capital_info['lat'], capital_info['lon']],
-                'icon_html': icon_html,
-                'tooltip': f"Comarca: {zona}"
-            })
+            icon_html = f"""<div style="background-color: {bg_color}; color: {text_color}; padding: 4px 8px; border-radius: 8px; border: 2px solid {text_color}; font-family: sans-serif; font-size: 11px; font-weight: bold; text-align: center; box-shadow: 3px 3px 5px rgba(0,0,0,0.5);">{capital_info['nom']}: {conv_value:.0f}</div>"""
+        # Si no, creem una etiqueta neutra
+        else:
+            bg_color, text_color = "#FFFFFF", "#333333"
+            icon_html = f"""<div style="background-color: {bg_color}; color: {text_color}; padding: 3px 6px; border-radius: 6px; border: 1px solid #555; font-family: sans-serif; font-size: 10px; font-weight: normal; text-align: center;">{capital_info['nom']}</div>"""
+
+        markers_data.append({
+            'location': [capital_info['lat'], capital_info['lon']],
+            'icon_html': icon_html,
+            'tooltip': f"Localitat: {capital_info['nom']}" # <-- Pista clau per al clic!
+        })
 
     return {
         "gdf": gdf.to_json(),
@@ -6205,7 +6212,7 @@ def run_catalunya_app():
     col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
     with col_text:
         if not is_guest:
-            st.markdown(f"Benvingut/da, {st.session_state.get('username', 'Usuari')}!")
+            st.markdown(f"Benvingut/da, **{st.session_state.get('username', 'Usuari')}**!")
     with col_change:
         if st.button("Canviar de Zona", use_container_width=True, help="Torna a la selecció de zona geogràfica"):
             st.session_state.zone_selected = None
@@ -6337,7 +6344,13 @@ def run_catalunya_app():
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
-            if "Comarca:" in raw_tooltip:
+            
+            if "Localitat:" in raw_tooltip:
+                poble_clicat = raw_tooltip.split(':')[-1].strip()
+                seleccionar_poble(poble_clicat)
+                st.rerun()
+            
+            elif "Comarca:" in raw_tooltip:
                 clicked_area = raw_tooltip.split(':')[-1].strip().replace('.', '')
                 if clicked_area != st.session_state.get('selected_area'):
                     st.session_state.selected_area = clicked_area
@@ -6366,7 +6379,7 @@ def run_catalunya_app():
                 st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
                 st.rerun()
         else:
-             st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
+             st.info("Fes clic en una zona o en una capital de comarca al mapa.", icon="👆")
     
 
 
