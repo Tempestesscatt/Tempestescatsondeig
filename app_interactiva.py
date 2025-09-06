@@ -5770,47 +5770,65 @@ def ui_pestanya_mapes_uk(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
             plt.close(fig)
 
 
-@st.cache_resource(ttl=1800, show_spinner=False)
-def generar_mapa_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
+@st.cache_data(ttl=600, show_spinner="Preparant dades del mapa...")
+def preparar_dades_mapa_cachejat(alertes_per_zona):
     """
-    Funció generadora que crea i desa a la memòria cau el mapa de convergència.
-    Només s'executa si els paràmetres (hora, nivell, zoom) canvien.
+    Funció CACHEADA que fa el treball pesat: carrega geometries, calcula estils i
+    prepara les dades per als marcadors. Retorna un diccionari de dades simples.
     """
-    map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
-    if error or not map_data:
-        # Retorna None si no es poden carregar les dades
-        return None
-    
-    # El tuple es converteix de nou a llista per a la funció de dibuix
-    map_extent_list = list(map_extent_tuple)
-    
-    fig = crear_mapa_forecast_combinat_cat(
-        map_data['lons'], map_data['lats'], 
-        map_data['speed_data'], map_data['dir_data'], 
-        map_data['dewpoint_data'], nivell, 
-        timestamp_str, map_extent_list
-    )
-    return fig
+    gdf = carregar_dades_geografiques()
+    if gdf is None: return None
 
-@st.cache_resource(ttl=1800, show_spinner=False)
-def generar_mapa_vents_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
-    """
-    Funció generadora que crea i desa a la memòria cau els mapes de vent (700/300hPa).
-    """
-    variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-    map_data, error = carregar_dades_mapa_base_cat(variables, hourly_index)
-    
-    if error or not map_data:
+    property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), None)
+    if not property_name:
+        print("Error Crític: L'arxiu GeoJSON del mapa no té una propietat de nom vàlida.")
         return None
-        
-    map_extent_list = list(map_extent_tuple)
-    
-    fig = crear_mapa_vents_cat(
-        map_data['lons'], map_data['lats'], 
-        map_data[variables[0]], map_data[variables[1]], 
-        nivell, timestamp_str, map_extent_list
-    )
-    return fig
+
+    # 1. Pre-calculem els estils per a cada zona
+    styles_dict = {}
+    for feature in gdf.iterfeatures():
+        nom_feature_raw = feature.get('properties', {}).get(property_name)
+        if nom_feature_raw and isinstance(nom_feature_raw, str):
+            nom_feature = nom_feature_raw.strip().replace('.', '')
+            conv_value = alertes_per_zona.get(nom_feature)
+            
+            def get_color(val):
+                if not isinstance(val, (int, float)): return '#6c757d'
+                if val >= 100: return '#9370DB'
+                if val >= 60: return '#DC3545'
+                if val >= 40: return '#FD7E14'
+                if val >= 20: return '#28A745'
+                return '#6c757d'
+            
+            alert_color = get_color(conv_value)
+            
+            styles_dict[nom_feature] = {
+                'fillColor': alert_color,
+                'color': alert_color,
+                'fillOpacity': 0.55 if conv_value else 0.25,
+                'weight': 2.5 if conv_value else 1
+            }
+
+    # 2. Pre-calculem les dades per als marcadors (etiquetes)
+    markers_data = []
+    for zona, conv_value in alertes_per_zona.items():
+        capital_info = CAPITALS_COMARCA.get(zona)
+        if capital_info:
+            bg_color, text_color = get_color_from_convergence(conv_value)
+            icon_html = f"""<div style="... font-size: 11px; ...">{zona}: {conv_value:.0f}</div>""" # El teu HTML aquí
+            
+            markers_data.append({
+                'location': [capital_info['lat'], capital_info['lon']],
+                'icon_html': icon_html,
+                'tooltip': f"Comarca: {zona}"
+            })
+
+    return {
+        "gdf": gdf.to_json(),  # Guardem el GeoDataFrame com a text JSON (segur per a la memòria cau)
+        "property_name": property_name,
+        "styles": styles_dict,
+        "markers": markers_data
+    }
 
 
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
@@ -6524,24 +6542,65 @@ def generar_mapa_folium_catalunya(alertes_per_zona, selected_area_str):
 def ui_mapa_display_personalitzat(alertes_per_zona):
     """
     Funció de VISUALITZACIÓ. No està a la memòria cau.
-    Crida a la funció que genera el mapa i després el mostra amb st_folium.
+    Obté les dades pre-processades de la memòria cau i construeix el mapa ràpidament.
     """
     st.markdown("#### Mapa de Situació")
     
-    # Agafem la zona seleccionada de l'estat de la sessió
-    selected_area_str = st.session_state.get('selected_area')
-
-    # Cridem a la funció que SÍ està a la memòria cau per obtenir l'objecte del mapa
-    # El spinner es mostrarà automàticament gràcies al decorador de la funció
-    map_object = generar_mapa_folium_catalunya(alertes_per_zona, selected_area_str)
+    # Obtenim les dades pre-processades (les "instruccions") de la memòria cau
+    map_data = preparar_dades_mapa_cachejat(alertes_per_zona)
     
-    if map_object:
-        # AQUESTA és l'única crida al widget, i està fora de la funció cachejada
-        return st_folium(map_object, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
-    else:
-        st.error("No s'ha pogut generar el mapa de situació.")
+    if not map_data:
+        st.error("No s'han pogut generar les dades per al mapa.")
         return None
+
+    # Agafem la zona seleccionada de l'estat de la sessió
+    selected_area = st.session_state.get('selected_area')
+
+    # Paràmetres del mapa (igual que abans)
+    map_params = {
+        "location": [41.83, 1.87], "zoom_start": 8, "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+        "attr": "Tiles &copy; Esri", "scrollWheelZoom": True, "dragging": True, "zoom_control": True, "doubleClickZoom": True,
+        "max_bounds": [[40.4, 0.0], [42.9, 3.5]], "min_zoom": 8, "max_zoom": 12
+    }
+
+    # Lògica per congelar el mapa (igual que abans)
+    if selected_area and "---" not in selected_area:
+        gdf_temp = gpd.read_file(map_data["gdf"]) # Reconstruïm el GDF temporalment
+        cleaned_selected_area = selected_area.strip().replace('.', '')
+        zona_shape = gdf_temp[gdf_temp[map_data["property_name"]].str.strip().str.replace('.', '') == cleaned_selected_area]
+        if not zona_shape.empty:
+            centroid = zona_shape.geometry.centroid.iloc[0]
+            map_params.update({"location": [centroid.y, centroid.x], "zoom_start": 10, "scrollWheelZoom": False, "dragging": False, "zoom_control": False, "doubleClickZoom": False})
+
+    m = folium.Map(**map_params)
+
+    # Funció d'estil que ara utilitza les dades pre-calculades
+    def style_function(feature):
+        nom_feature_raw = feature.get('properties', {}).get(map_data["property_name"])
+        style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25} # Estil per defecte
+        if nom_feature_raw:
+            nom_feature = nom_feature_raw.strip().replace('.', '')
+            style = map_data["styles"].get(nom_feature, style) # Busca l'estil al diccionari
+            cleaned_selected_area = selected_area.strip().replace('.', '') if selected_area else ''
+            if nom_feature == cleaned_selected_area:
+                style.update({'fillColor': '#007bff', 'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.5})
+        return style
+
+    # Dibuixem el GeoJson
+    folium.GeoJson(
+        map_data["gdf"],
+        style_function=style_function,
+        highlight_function=lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5},
+        tooltip=folium.GeoJsonTooltip(fields=[map_data["property_name"]], aliases=['Comarca:'])
+    ).add_to(m)
+
+    # Dibuixem els marcadors a partir de les dades pre-calculades
+    for marker in map_data["markers"]:
+        icon = folium.DivIcon(html=marker['icon_html'])
+        folium.Marker(location=marker['location'], icon=icon, tooltip=marker['tooltip']).add_to(m)
     
+    # Finalment, mostrem el mapa
+    return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
     
     
 def run_valley_halley_app():
