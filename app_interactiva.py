@@ -4241,54 +4241,54 @@ def ui_pestanya_webcams(poble_sel, zona_activa):
 @st.cache_data(show_spinner="Carregant geometries municipals...")
 def carregar_dades_municipis():
     """
-    Carrega el fitxer GeoJSON amb les geometries de tots els municipis de Catalunya.
+    Carrega les dades dels municipis des de la variable TopoJSON integrada,
+    les converteix a GeoDataFrame i els assigna el sistema de coordenades correcte (CRS).
     """
     try:
-        # Aquesta línia llegeix el teu arxiu de municipis
-        gdf_municipis = gpd.read_file("municipis.geojson")
-        gdf_municipis = gdf_municipis.to_crs("EPSG:4326")
-        # Convertim el codi de comarca a número per assegurar la compatibilitat
-        gdf_municipis['comarca'] = pd.to_numeric(gdf_municipis['comarca'])
+        # Carreguem el JSON des del text
+        topo_data = json.loads(TOPOJSON_DATA_STRING)
+        
+        # Convertim de TopoJSON a un format GeoJSON estàndard (a la memòria)
+        municipis_geojson = topojson.feature(topo_data, topo_data['objects']['municipis'])
+
+        # Llegim el GeoJSON amb GeoPandas
+        gdf_municipis = gpd.GeoDataFrame.from_features(municipis_geojson['features'])
+        
+        # --- PAS CRÍTIC: ASSIGNAR EL SISTEMA DE COORDENADES ---
+        # Li diem a GeoPandas que les coordenades són latitud/longitud (WGS84)
+        gdf_municipis.set_crs("EPSG:4326", inplace=True)
+        
+        # Convertim la columna 'comarca' a un tipus numèric per poder filtrar
+        gdf_municipis['comarca'] = pd.to_numeric(gdf_municipis['comarca'], errors='coerce')
+        
         return gdf_municipis
     except Exception as e:
-        st.error(f"Error crític: No s'ha pogut carregar l'arxiu 'municipis.geojson'. Assegura't que existeix. Detall: {e}")
+        st.error(f"Error crític en processar les dades dels municipis: {e}")
         return None
 
-@st.cache_data(show_spinner="Carregant mapa de selecció...")
-def carregar_dades_geografiques():
+@st.cache_data(show_spinner="Carregant dades geogràfiques...")
+def carregar_dades_geografiques_i_mapeig():
     """
-    Versió final i robusta que busca automàticament el mapa personalitzat
-    i, si no el troba, utilitza el mapa de comarques per defecte.
-    Aquesta versió corregeix el NameError.
+    Carrega el mapa de comarques des de la variable GeoJSON integrada i crea un
+    diccionari per mapejar el nom de la comarca al seu codi numèric.
     """
-    # Llista de noms d'arxiu per ordre de prioritat
-    noms_possibles = ["mapes_personalitzat.geojson", "comarques.geojson"]
-    file_to_load = None
-
-    # Busca el primer arxiu que existeixi
-    for file in noms_possibles:
-        if os.path.exists(file):
-            file_to_load = file
-            break
-
-    # Si no en troba cap, mostra un error
-    if file_to_load is None:
-        st.error(
-            "**Error Crític: Mapa no trobat.**\n\n"
-            "No s'ha trobat l'arxiu `mapa_personalitzat.geojson` ni `comarques.geojson` a la carpeta de l'aplicació. "
-            "Assegura't que almenys un d'aquests dos arxius existeixi."
-        )
-        return None
-
-    # Si troba un arxiu, el carrega
     try:
-        gdf = gpd.read_file(file_to_load)
-        gdf = gdf.to_crs("EPSG:4326")
-        return gdf
-    except Exception as e:
-        st.error(f"S'ha produït un error en carregar l'arxiu de mapa '{file_to_load}': {e}")
-        return None
+        # Llegeix les dades directament de la variable GEOJSON_COMARQUES
+        gdf_comarques = gpd.GeoDataFrame.from_features(GEOJSON_COMARQUES['features'])
+        gdf_comarques.set_crs("EPSG:4326", inplace=True)
 
+        # Creem el diccionari de mapeig (nom -> codi)
+        if 'nomcomar' in gdf_comarques.columns and 'codicomar' in gdf_comarques.columns:
+            gdf_comarques['codicomar'] = pd.to_numeric(gdf_comarques['codicomar'])
+            comarca_map = pd.Series(gdf_comarques.codicomar.values, index=gdf_comarques.nomcomar).to_dict()
+        else:
+            comarca_map = {}
+            st.warning("Les dades de comarques integrades no tenen el format esperat.")
+
+        return gdf_comarques, comarca_map
+    except Exception as e:
+        st.error(f"Error en carregar les dades de comarques: {e}")
+        return None, {}
 
 def on_poble_select():
     """
