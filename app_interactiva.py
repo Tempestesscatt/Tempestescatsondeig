@@ -236,7 +236,7 @@ PRESS_LEVELS_ICON = sorted([1000, 950, 925, 900, 850, 800, 700, 600, 500, 400, 3
 
 
 # --- Constants per Catalunya ---
-API_URL_CAT = "https://api.open-meteo.com/v1/forecast"
+API_URL_CAT = "https://api-open-meteo.com/v1/forecast"
 TIMEZONE_CAT = pytz.timezone('Europe/Madrid')
 CIUTATS_CATALUNYA = {
     # Capitals de província
@@ -245,7 +245,7 @@ CIUTATS_CATALUNYA = {
     'Lleida': {'lat': 41.6177, 'lon': 0.6200, 'sea_dir': None},
     'Tarragona': {'lat': 41.1189, 'lon': 1.2445, 'sea_dir': (110, 220)},
 
-    # LLISTA COMPLETA I VERIFICADA
+    # LLISTA COMPLETA I ESTRATÈGICA
     'Agramunt': {'lat': 41.7871, 'lon': 1.0967, 'sea_dir': None},
     'Alcanar': {'lat': 40.5434, 'lon': 0.4820, 'sea_dir': (60, 160)},
     'Alella': {'lat': 41.4947, 'lon': 2.2955, 'sea_dir': (90, 180)},
@@ -256,6 +256,7 @@ CIUTATS_CATALUNYA = {
     'Arenys de Munt': {'lat': 41.6094, 'lon': 2.5411, 'sea_dir': None},
     'Balaguer': {'lat': 41.7904, 'lon': 0.8066, 'sea_dir': None},
     'Banyoles': {'lat': 42.1197, 'lon': 2.7667, 'sea_dir': (80, 170)},
+    'Batea': {'lat': 41.0954, 'lon': 0.3119, 'sea_dir': None}, # Punt estratègic a l'extrem de la Terra Alta
     'Begur': {'lat': 41.9542, 'lon': 3.2076, 'sea_dir': (0, 180)},
     'Bellver de Cerdanya': {'lat': 42.3705, 'lon': 1.7770, 'sea_dir': None},
     'Berga': {'lat': 42.1051, 'lon': 1.8458, 'sea_dir': None},
@@ -272,26 +273,33 @@ CIUTATS_CATALUNYA = {
     'Cardedeu': {'lat': 41.6403, 'lon': 2.3582, 'sea_dir': (90, 180)},
     'Cardona': {'lat': 41.9138, 'lon': 1.6806, 'sea_dir': None},
     'Cassà de la Selva': {'lat': 41.8893, 'lon': 2.8736, 'sea_dir': (80, 170)},
-    'Castellbisbal': {'lat': 41.4776, 'lon': 1.9866, 'sea_dir': None},
     'Castellar del Vallès': {'lat': 41.6186, 'lon': 2.0875, 'sea_dir': None},
+    'Castellbisbal': {'lat': 41.4776, 'lon': 1.9866, 'sea_dir': None},
+    'Castelldefels': {'lat': 41.2806, 'lon': 1.9750, 'sea_dir': (100, 210)}, # Punt estratègic al Delta del Llobregat
     'Castellfollit de la Roca': {'lat': 42.2201, 'lon': 2.5517, 'sea_dir': None},
     'Castelló d\'Empúries': {'lat': 42.2582, 'lon': 3.0725, 'sea_dir': (70, 160)},
     'Centelles': {'lat': 41.7963, 'lon': 2.2203, 'sea_dir': None},
+    'Cervera': {'lat': 41.6709, 'lon': 1.2721, 'sea_dir': None}, # Capital de la Segarra
     'Cerdanyola del Vallès': {'lat': 41.4925, 'lon': 2.1415, 'sea_dir': (100, 200)},
+    'Falset': {'lat': 41.1444, 'lon': 0.8208, 'sea_dir': None}, # Capital del Priorat
     'Figueres': {'lat': 42.2662, 'lon': 2.9622, 'sea_dir': (70, 160)},
     'Flaçà': {'lat': 42.0494, 'lon': 2.9559, 'sea_dir': (80, 170)},
+    'Gandesa': {'lat': 41.0526, 'lon': 0.4337, 'sea_dir': None}, # Capital de la Terra Alta
     'Granollers': {'lat': 41.6083, 'lon': 2.2886, 'sea_dir': (90, 180)},
+    'Horta de Sant Joan': {'lat': 40.9545, 'lon': 0.3160, 'sea_dir': None}, # Afegit a la Terra Alta
     'Hostalric': {'lat': 41.7479, 'lon': 2.6360, 'sea_dir': None},
     'Igualada': {'lat': 41.5791, 'lon': 1.6174, 'sea_dir': None},
-    'L\'Ametlla de Mar': {'lat': 40.8824, 'lon': 0.8016, 'sea_dir': (90, 200)},
-    'L\'Escala': {'lat': 42.1235, 'lon': 3.1311, 'sea_dir': (0, 160)},
-    'L\'Hospitalet de Llobregat': {'lat': 41.3571, 'lon': 2.1030, 'sea_dir': (90, 190)},
     'La Bisbal d\'Empordà': {'lat': 41.9602, 'lon': 3.0378, 'sea_dir': (80, 170)},
     'La Jonquera': {'lat': 42.4194, 'lon': 2.8752, 'sea_dir': None},
+    'La Molina': {'lat': 42.3361, 'lon': 1.9463, 'sea_dir': None}, # Punt estratègic d'alta muntanya
     'La Pobla de Segur': {'lat': 42.2472, 'lon': 0.9678, 'sea_dir': None},
     'La Selva del Camp': {'lat': 41.2131, 'lon': 1.1384, 'sea_dir': (110, 220)},
     'La Sénia': {'lat': 40.6322, 'lon': 0.2831, 'sea_dir': None},
     'La Seu d\'Urgell': {'lat': 42.3582, 'lon': 1.4593, 'sea_dir': None},
+    'Les Borges Blanques': {'lat': 41.5224, 'lon': 0.8674, 'sea_dir': None}, # Capital de Les Garrigues
+    'L\'Ametlla de Mar': {'lat': 40.8824, 'lon': 0.8016, 'sea_dir': (90, 200)},
+    'L\'Escala': {'lat': 42.1235, 'lon': 3.1311, 'sea_dir': (0, 160)},
+    'L\'Hospitalet de Llobregat': {'lat': 41.3571, 'lon': 2.1030, 'sea_dir': (90, 190)},
     'Llagostera': {'lat': 41.8291, 'lon': 2.8931, 'sea_dir': (80, 180)},
     'Llançà': {'lat': 42.3625, 'lon': 3.1539, 'sea_dir': (0, 150)},
     'Lloret de Mar': {'lat': 41.7005, 'lon': 2.8450, 'sea_dir': (80, 180)},
@@ -299,9 +307,11 @@ CIUTATS_CATALUNYA = {
     'Manlleu': {'lat': 42.0016, 'lon': 2.2844, 'sea_dir': None},
     'Manresa': {'lat': 41.7230, 'lon': 1.8268, 'sea_dir': None},
     'Mataró': {'lat': 41.5388, 'lon': 2.4449, 'sea_dir': (90, 180)},
+    'Mollerussa': {'lat': 41.6315, 'lon': 0.8931, 'sea_dir': None}, # Capital del Pla d'Urgell
     'Mollet del Vallès': {'lat': 41.5385, 'lon': 2.2144, 'sea_dir': (100, 200)},
     'Montblanc': {'lat': 41.3761, 'lon': 1.1610, 'sea_dir': None},
     'Montcada i Reixac': {'lat': 41.4851, 'lon': 2.1884, 'sea_dir': (100, 200)},
+    'Móra d\'Ebre': {'lat': 41.0945, 'lon': 0.6450, 'sea_dir': None}, # Capital de la Ribera d'Ebre
     'Olesa de Montserrat': {'lat': 41.5451, 'lon': 1.8955, 'sea_dir': None},
     'Olot': {'lat': 42.1818, 'lon': 2.4900, 'sea_dir': None},
     'Palamós': {'lat': 41.8465, 'lon': 3.1287, 'sea_dir': (80, 190)},
@@ -316,6 +326,7 @@ CIUTATS_CATALUNYA = {
     'Rubí': {'lat': 41.4936, 'lon': 2.0323, 'sea_dir': (100, 200)},
     'Sabadell': {'lat': 41.5483, 'lon': 2.1075, 'sea_dir': (100, 200)},
     'Salou': {'lat': 41.0763, 'lon': 1.1417, 'sea_dir': (110, 220)},
+    'Sant Celoni': {'lat': 41.6903, 'lon': 2.4908, 'sea_dir': None}, # Punt estratègic al Montseny
     'Sant Cugat del Vallès': {'lat': 41.4727, 'lon': 2.0863, 'sea_dir': (100, 200)},
     'Sant Feliu de Guíxols': {'lat': 41.7801, 'lon': 3.0278, 'sea_dir': (80, 190)},
     'Sant Feliu de Llobregat': {'lat': 41.3833, 'lon': 2.0500, 'sea_dir': (100, 200)},
@@ -332,8 +343,11 @@ CIUTATS_CATALUNYA = {
     'Solsona': {'lat': 41.9942, 'lon': 1.5161, 'sea_dir': None},
     'Sort': {'lat': 42.4131, 'lon': 1.1278, 'sea_dir': None},
     'Soses': {'lat': 41.5358, 'lon': 0.5186, 'sea_dir': None},
+    'Tàrrega': {'lat': 41.6469, 'lon': 1.1415, 'sea_dir': None}, # Capital de l'Urgell
     'Terrassa': {'lat': 41.5615, 'lon': 2.0084, 'sea_dir': (100, 200)},
+    'Tordera': {'lat': 41.7011, 'lon': 2.7183, 'sea_dir': None}, # Punt estratègic prelitoral del Maresme
     'Tortosa': {'lat': 40.8126, 'lon': 0.5211, 'sea_dir': (60, 160)},
+    'Tossa de Mar': {'lat': 41.7167, 'lon': 2.9333, 'sea_dir': (90, 200)}, # Punt estratègic a la Selva marítima
     'Tremp': {'lat': 42.1664, 'lon': 0.8953, 'sea_dir': None},
     'Valls': {'lat': 41.2872, 'lon': 1.2505, 'sea_dir': (110, 220)},
     'Vic': {'lat': 41.9301, 'lon': 2.2545, 'sea_dir': None},
@@ -345,14 +359,12 @@ CIUTATS_CATALUNYA = {
     'Viladecans': {'lat': 41.3155, 'lon': 2.0194, 'sea_dir': (100, 200)},
     'Vilassar de Dalt': {'lat': 41.5167, 'lon': 2.3583, 'sea_dir': None},
     'Vilassar de Mar': {'lat': 41.5057, 'lon': 2.3920, 'sea_dir': (90, 180)},
-    'Horta de Sant Joan': {'lat': 40.9545, 'lon': 0.3160, 'sea_dir': None},
     
     # Punts Marins
     'Costes de Girona (Mar)':   {'lat': 42.05, 'lon': 3.30, 'sea_dir': (0, 360)},
     'Litoral Barceloní (Mar)': {'lat': 41.40, 'lon': 2.90, 'sea_dir': (0, 360)},
     'Aigües de Tarragona (Mar)': {'lat': 40.90, 'lon': 2.00, 'sea_dir': (0, 360)},
 }
-
 POBLES_MAPA_REFERENCIA = {
     # Capitals de província (es poden repetir si també vols que surtin sempre al mapa)
     "Barcelona": {'lat': 41.3851, 'lon': 2.1734}, "Girona": {'lat': 41.9831, 'lon': 2.8249},
