@@ -6376,9 +6376,10 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió final amb heatmap, isòlines i marcador).
-    Mostra un mapa estàtic de la comarca amb un gradient visual, línies de contorn
-    de la convergència i un marcador que assenyala el punt de màxima intensitat.
+    PESTANYA D'ANÀLISI COMARCAL (Versió final amb Matplotlib).
+    Mostra un mapa estàtic de la comarca amb un gradient de convergència
+    professional, isòlines numerades i un marcador del punt màxim.
+    L'estil visual és idèntic al del mapa principal de Catalunya.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6387,74 +6388,82 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
     with col_mapa:
         st.markdown("##### Focus de Convergència a la Zona")
-        gdf_comarques = carregar_dades_geografiques()
-        if gdf_comarques is None:
-            st.error("No s'ha pogut carregar el mapa de comarques.")
-            return
+        
+        with st.spinner("Generant mapa d'alta resolució de la comarca..."):
+            gdf_comarques = carregar_dades_geografiques()
+            if gdf_comarques is None:
+                st.error("No s'ha pogut carregar el mapa de comarques.")
+                return
 
-        property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_comarques.columns), 'nom_comar')
-        comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
+            property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_comarques.columns), 'nom_comar')
+            comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
 
-        m = folium.Map(tiles="CartoDB positron", zoom_control=False, scrollWheelZoom=False, dragging=False, doubleClickZoom=False)
+            if comarca_shape.empty:
+                st.warning(f"No s'ha trobat la geometria per a la comarca '{comarca}'.")
+                return
 
-        if not comarca_shape.empty:
-            folium.GeoJson(comarca_shape, style_function=lambda x: {'fillColor': '#007bff', 'color': 'black', 'weight': 2.5, 'fillOpacity': 0.1}).add_to(m)
+            # --- CÀLCUL DE L'EXTENSIÓ DEL MAPA AMB UN MARGE ---
             bounds = comarca_shape.total_bounds
-            m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+            margin_lon = (bounds[2] - bounds[0]) * 0.2
+            margin_lat = (bounds[3] - bounds[1]) * 0.2
+            map_extent = [bounds[0] - margin_lon, bounds[2] + margin_lon, bounds[1] - margin_lat, bounds[3] + margin_lat]
+            
+            # --- CREACIÓ DEL MAPA AMB MATPLOTLIB ---
+            plt.style.use('default') # Tornem a l'estil clar per a aquest mapa
+            fig, ax = crear_mapa_base(map_extent)
 
-        if map_data and valor_conv > 10:
-            lons, lats = map_data['lons'], map_data['lats']
-            grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100))
-            u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
-            grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-            grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-            convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
-            convergence_scaled = np.nan_to_num(convergence_scaled) # Assegurem que no hi hagi NaNs
+            # Dibuixem la forma de la comarca
+            ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(),
+                              facecolor='none', edgecolor='blue', linewidth=2.5,
+                              linestyle='--', zorder=10)
 
-            # 1. Dibuixem el HEATMAP (gradient de fons)
-            heat_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': convergence_scaled.flatten()}).query("conv > 15")
-            if not heat_df.empty:
-                heat_data = [[row['lat'], row['lon'], row['conv']] for _, row in heat_df.iterrows()]
-                gradient_map = {0.2: '#28a745', 0.4: '#ffc107', 0.6: '#fd7e14', 0.8: '#dc3545', 1.0: '#9370DB'}
-                HeatMap(heat_data, min_opacity=0.3, max_val=100, radius=25, blur=20, gradient=gradient_map).add_to(m)
+            if map_data and valor_conv > 15:
+                # --- COPIEM LA LÒGICA DEL MAPA PRINCIPAL ---
+                lons, lats = map_data['lons'], map_data['lats']
+                grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 150), np.linspace(map_extent[2], map_extent[3], 150))
+                u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
+                grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+                grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+                grid_dewpoint = griddata((lons, lats), map_data['dewpoint_data'], (grid_lon, grid_lat), 'linear')
 
-            # --- NOU BLOC: CREACIÓ I DIBUIX DE LES ISÒLINES DE CONVERGÈNCIA ---
-            line_levels = [20, 40, 60, 80]
-            fig_contour = plt.figure()
-            ax_contour = fig_contour.add_subplot(111)
-            contours = ax_contour.contour(grid_lon, grid_lat, convergence_scaled, levels=line_levels, colors='black', linewidths=0)
-            plt.close(fig_contour) # Evitem que es mostri el gràfic de matplotlib
+                with np.errstate(invalid='ignore'):
+                    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+                    convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
+                    convergence[np.isnan(convergence)] = 0
+                    DEWPOINT_THRESHOLD = 14 if nivell_sel >= 950 else 12
+                    humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
+                    effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0)
+                
+                smoothed_convergence = gaussian_filter(effective_convergence, sigma=1.5)
+                smoothed_convergence[smoothed_convergence < 15] = 0
 
-            geojson_contours = geojsoncontour.contour_to_geojson(
-                contour=contours,
-                ndigits=2,
-                unit=' '
-            )
+                # --- DIBUIX DEL GRADIENT I LES ISÒLINES NUMERADES ---
+                if np.any(smoothed_convergence > 0):
+                    colors_conv = ['#5BC0DE', "#FBFF00", "#DC6D05", "#EC8383", "#F03D3D", "#FF0000", "#7C7EF0", "#0408EAFF", "#000070"]
+                    cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_personalitzada", colors_conv)
+                    fill_levels = np.arange(20, 151, 5)
+                    ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels, cmap=cmap_conv, alpha=0.7, zorder=3, transform=ccrs.PlateCarree(), extend='max')
 
-            style_map = { '20': {'color': '#6c757d', 'weight': 1.5}, '40': {'color': '#000000', 'weight': 2},
-                          '60': {'color': '#3c0000', 'weight': 2.5}, '80': {'color': '#ffffff', 'weight': 3} }
+                    line_levels = [20, 40, 60, 80, 100]
+                    contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors='black', linestyles='--', linewidths=1.2, zorder=4, transform=ccrs.PlateCarree())
+                    
+                    # AFEGIM ELS NÚMEROS A LES LÍNIES
+                    labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
+                    for label in labels:
+                        label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.6))
+                
+                # Afegim un marcador per al punt de màxima convergència dins la comarca
+                points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
+                gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
+                points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
+                if not points_in_comarca.empty:
+                    max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
+                    ax.plot(max_conv_point.geometry.x, max_conv_point.geometry.y, 'X', color='red', markersize=10, markeredgecolor='white', zorder=11, transform=ccrs.PlateCarree())
 
-            folium.GeoJson(
-                geojson_contours,
-                style_function=lambda feature: style_map.get(feature['properties']['title'].strip(), {'color': 'black', 'weight': 1}),
-                tooltip=folium.GeoJsonTooltip(fields=['title'], aliases=['Convergència:'])
-            ).add_to(m)
-            # --- FI DEL NOU BLOC D'ISÒLINES ---
 
-            # 3. Dibuixem el MARCADOR en el punt exacte de màxima convergència
-            points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': convergence_scaled.flatten()})
-            gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
-            points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
-            if not points_in_comarca.empty:
-                max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
-                folium.Marker(
-                    location=[max_conv_point.geometry.y, max_conv_point.geometry.x],
-                    tooltip=f"Focus Màxim: {max_conv_point.conv:.0f}",
-                    icon=folium.Icon(color='red', icon='crosshairs', prefix='fa') # Icona més adequada
-                ).add_to(m)
-
-        st_folium(m, width="100%", height=450, key=f"map_final_{comarca}")
+            ax.set_title(f"Focus de Convergència a {comarca}", weight='bold', fontsize=12)
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
 
     # La columna del diagnòstic a la dreta es manté sense canvis
     with col_diagnostic:
@@ -6503,6 +6512,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             </div>
             """, unsafe_allow_html=True)
             st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
+            
 
             
 def seleccionar_poble(nom_poble):
