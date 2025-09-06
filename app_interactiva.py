@@ -6328,7 +6328,8 @@ def run_est_peninsula_app():
         with st.spinner("Carregant mapa de situació de la península..."):
             alertes_totals = calcular_alertes_per_zona_peninsula(hourly_index_sel, nivell_sel)
             alertes_filtrades = filtrar_alertes(alertes_totals, st.session_state.alert_filter_level_peninsula)
-            map_output = ui_mapa_display_personalitzat(alertes_filtrades, hourly_index_sel, show_labels=st.session_state.show_comarca_labels_peninsula)
+            # CRIDA A LA NOVA FUNCIÓ DE MAPA PER A LA PENÍNSULA
+            map_output = ui_mapa_display_peninsula(alertes_filtrades, hourly_index_sel, show_labels=st.session_state.show_comarca_labels_peninsula)
         
         ui_llegenda_mapa_principal()
 
@@ -7108,6 +7109,126 @@ def run_catalunya_app():
                 st.rerun()
         else:
              st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
+
+
+
+
+def ui_mapa_display_peninsula(alertes_per_zona, hourly_index, show_labels):
+    """
+    Funció de VISUALITZACIÓ específica per al mapa de l'Est Peninsular.
+    """
+    st.markdown("#### Mapa de Situació")
+    
+    selected_area_str = st.session_state.get('selected_area_peninsula')
+
+    # Prepara les dades per a la memòria cau
+    alertes_tuple = tuple(sorted((k, float(v)) for k, v in alertes_per_zona.items()))
+    
+    # Prepara les dades del mapa (aquesta funció la crearàs al següent pas)
+    map_data = preparar_dades_mapa_peninsula_cachejat(
+        alertes_tuple, 
+        selected_area_str, 
+        show_labels
+    )
+    
+    if not map_data:
+        st.error("No s'han pogut generar les dades per al mapa de la península.")
+        return None
+
+    # Paràmetres per centrar el mapa a la península
+    map_params = {
+        "location": [40.8, -1.0], "zoom_start": 7, # <-- Coordenades i zoom per a la península
+        "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+        "attr": "Tiles &copy; Esri &mdash; and the GIS User Community",
+        "scrollWheelZoom": True, "dragging": True, "zoom_control": True, "doubleClickZoom": True,
+        "max_bounds": [[38.0, -4.5], [43.5, 1.5]], "min_zoom": 7, "max_zoom": 12
+    }
+
+    m = folium.Map(**map_params)
+
+    def style_function(feature):
+        nom_feature_raw = feature.get('properties', {}).get(map_data["property_name"])
+        style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
+        if nom_feature_raw:
+            nom_feature = nom_feature_raw.strip().replace('.', '')
+            style = map_data["styles"].get(nom_feature, style)
+            cleaned_selected_area = selected_area_str.strip().replace('.', '') if selected_area_str else ''
+            if nom_feature == cleaned_selected_area:
+                style.update({'fillColor': '#007bff', 'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.5})
+        return style
+
+    folium.GeoJson(
+        map_data["gdf"], style_function=style_function,
+        highlight_function=lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5},
+        tooltip=folium.GeoJsonTooltip(fields=[map_data["property_name"]], aliases=['Zona:']) # Canviem l'àlies
+    ).add_to(m)
+
+    for marker in map_data["markers"]:
+        icon = folium.DivIcon(html=marker['icon_html'])
+        folium.Marker(location=marker['location'], icon=icon, tooltip=marker['tooltip']).add_to(m)
+    
+    return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
+
+
+
+
+@st.cache_data(ttl=600, show_spinner="Preparant dades del mapa de la península...")
+def preparar_dades_mapa_peninsula_cachejat(alertes_tuple, selected_area_str, show_labels):
+    """
+    Funció CACHEADA que prepara les dades per al mapa de la península.
+    """
+    alertes_per_zona = dict(alertes_tuple)
+    
+    # CRIDA A LA FUNCIÓ DE CÀRREGA ESPECÍFICA DE LA PENÍNSULA
+    gdf = carregar_dades_geografiques_peninsula()
+    if gdf is None: return None
+
+    property_name = 'nom_zona'
+    if property_name not in gdf.columns:
+        print("Error Crític: L'arxiu 'peninsula_zones.geojson' ha de tenir una propietat anomenada 'nom_zona'.")
+        return None
+
+    def get_color_from_convergence(value):
+        if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
+        if value >= 100: return '#9370DB', '#FFFFFF'
+        if value >= 60: return '#DC3545', '#FFFFFF'
+        if value >= 40: return '#FD7E14', '#FFFFFF'
+        if value >= 20: return '#28A745', '#FFFFFF'
+        return '#6c757d', '#FFFFFF'
+
+    styles_dict = {}
+    for feature in gdf.iterfeatures():
+        nom_feature_raw = feature.get('properties', {}).get(property_name)
+        if nom_feature_raw and isinstance(nom_feature_raw, str):
+            nom_feature = nom_feature_raw.strip().replace('.', '')
+            conv_value = alertes_per_zona.get(nom_feature)
+            alert_color, _ = get_color_from_convergence(conv_value)
+            styles_dict[nom_feature] = {
+                'fillColor': alert_color, 'color': alert_color,
+                'fillOpacity': 0.55 if conv_value else 0.25,
+                'weight': 2.5 if conv_value else 1
+            }
+
+    markers_data = []
+    if show_labels:
+        for zona, conv_value in alertes_per_zona.items():
+            # UTILITZA LES CAPITALS DE ZONA DE LA PENÍNSULA
+            capital_info = CAPITALS_ZONA_PENINSULA.get(zona)
+            if capital_info:
+                bg_color, text_color = get_color_from_convergence(conv_value)
+                icon_html = f"""<div style="position: relative; background-color: {bg_color}; color: {text_color}; padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color}; font-family: sans-serif; font-size: 11px; font-weight: bold; text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5); transform: translate(-50%, -100%);"><div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div><div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>{zona}: {conv_value:.0f}</div>"""
+                markers_data.append({
+                    'location': [capital_info['lat'], capital_info['lon']],
+                    'icon_html': icon_html,
+                    'tooltip': f"Zona: {zona}"
+                })
+
+    return {
+        "gdf": gdf.to_json(),
+        "property_name": property_name,
+        "styles": styles_dict,
+        "markers": markers_data
+    }
 
 
 def seleccionar_poble(nom_poble):
