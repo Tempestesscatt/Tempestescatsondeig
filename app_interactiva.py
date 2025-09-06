@@ -5481,6 +5481,50 @@ def direccio_moviment(des_de_graus):
     return cap_on_va
 
 
+
+def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
+    """
+    Gestiona la interfície de la pestanya "Anàlisi de Mapes" per a Catalunya,
+    incloent els selectors de capa i zoom.
+    """
+    st.markdown("#### Mapes de Pronòstic (Model AROME)")
+    
+    col_capa, col_zoom = st.columns(2)
+    with col_capa:
+        mapa_sel = st.selectbox("Selecciona la capa del mapa:", 
+                               ["Anàlisi de Vent i Convergència", "Vent a 700hPa", "Vent a 300hPa"], 
+                               key="map_cat")
+    with col_zoom: 
+        zoom_sel = st.selectbox("Nivell de Zoom:", 
+                               options=list(MAP_ZOOM_LEVELS_CAT.keys()), 
+                               key="zoom_cat")
+    
+    selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
+    
+    with st.spinner(f"Carregant i generant mapa... (només la primera vegada)"):
+        if "Convergència" in mapa_sel:
+            # Crida a la funció per al mapa de convergència
+            fig = generar_mapa_cachejat_cat(hourly_index_sel, nivell_sel, timestamp_str, tuple(selected_extent))
+            if fig is None:
+                st.error(f"Error en carregar les dades per al mapa de convergència.")
+            else:
+                st.pyplot(fig, use_container_width=True)
+                plt.close(fig) # Important per alliberar memòria
+        
+        else:
+            # Crida a la funció per als mapes de vent
+            nivell_vent = 700 if "700" in mapa_sel else 300
+            fig = generar_mapa_vents_cachejat_cat(hourly_index_sel, nivell_vent, timestamp_str, tuple(selected_extent))
+            if fig is None:
+                st.error(f"Error en carregar les dades per al mapa de vent a {nivell_vent}hPa.")
+            else:
+                st.pyplot(fig, use_container_width=True)
+                plt.close(fig) # Important per alliberar memòria
+
+    if "Convergència" in mapa_sel:
+        ui_explicacio_convergencia()
+
+
 def quadrant_capitals(cap_on_va):
     """
     Dona el quadrant cardinal i les capitals de comarca a vigilar.
