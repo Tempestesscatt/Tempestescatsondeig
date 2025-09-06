@@ -6312,7 +6312,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
     with col_mapa:
         st.markdown("##### Focus de Convergència a la Zona")
         with st.spinner("Generant mapa de gradient comarcal..."):
-            gdf_comarques, _ = carregar_dades_geografiques_i_mapeig()
+            gdf_comarques, _ = carregar_dades_geografiques()
             if gdf_comarques is None:
                 st.error("No s'ha pogut carregar el mapa de comarques.")
                 return
@@ -6369,7 +6369,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         st.info(f"**Nota:** Aquesta anàlisi es basa en la convergència de vent a **{nivell_sel} hPa**. La formació final de tempestes depèn també de la inestabilitat (CAPE) i la presència d'inhibició (CIN), que pots consultar a la pestanya 'Anàlisi Vertical'.", icon="ℹ️")
 
 
-        def crear_gradient_convergencia_per_comarca(map_data, comarca_shape):
+def crear_gradient_convergencia_per_comarca(map_data, comarca_shape):
     """
     Genera una imatge PNG transparent d'un gradient de convergència,
     retallada a la forma de la comarca seleccionada.
