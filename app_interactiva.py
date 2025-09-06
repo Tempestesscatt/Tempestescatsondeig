@@ -45,6 +45,7 @@ from shapely.geometry import Point
 
 
 
+
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever")
 
@@ -3647,10 +3648,7 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ FINAL AMB ESCALA AJUSTADA (30-150):
-    - Detecció i visualització de la convergència a partir de 30.
-    - Paleta de colors i línies de contorn optimitzades per al rang 30-150.
-    - Manté l'estil net, sense llegendes i amb isos negres.
+    VERSIÓ FINAL AMB ESCALA AJUSTADA I CORRECCIÓ D'ERRORS.
     """
     # Tornem a l'estil per defecte (fons clar)
     plt.style.use('default')
@@ -3679,7 +3677,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     # --- STREAMLINES DEL VENT ---
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.5, density=6.5, arrowsize=0.3, zorder=4, transform=ccrs.PlateCarree())
     
-    # --- 3. CÀLCUL I FILTRATGE DE CONVERGÈNCIA (LLINDAR A 30) ---
+    # --- 3. CÀLCUL I FILTRATGE DE CONVERGÈNCIA ---
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
@@ -3687,15 +3685,15 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
         DEWPOINT_THRESHOLD = 14 if nivell >= 950 else 12
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
         
-        # <<-- CANVI CLAU: El llindar ara és 30 -->>
-        effective_convergence = np.where(convergence >= 20 & humid_mask, convergence, 0)
+        # Correcció d'un altre petit bug: s'han d'utilitzar parèntesis amb l'operador '&'
+        effective_convergence = np.where((convergence >= 20) & (humid_mask), convergence, 0)
 
+    # Aquesta és la línia que donava l'error 'NameError'
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
     
-    # <<-- CANVI CLAU: El filtre post-suavitzat també és 30 -->>
     smoothed_convergence[smoothed_convergence < 20] = 0
     
-    # --- 4. DIBUIX DE LA CONVERGÈNCIA (NOVA ESCALA 30-150) ---
+    # --- 4. DIBUIX DE LA CONVERGÈNCIA ---
     if np.any(smoothed_convergence > 0):
         colors_conv = [
             '#5BC0DE', "#FBFF00", "#DC6D05", "#EC8383", "#F03D3D", 
@@ -3703,14 +3701,12 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
         ]
         cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_personalitzada", colors_conv)
         
-        # <<-- CANVI CLAU: El farciment comença a 30 i acaba a 151 -->>
         fill_levels = np.arange(30, 151, 5)
         ax.contourf(grid_lon, grid_lat, smoothed_convergence,
                     levels=fill_levels, cmap=cmap_conv, alpha=0.99,
                     zorder=3, transform=ccrs.PlateCarree(), extend='max')
 
-        # <<-- CANVI CLAU: Nous nivells per a les línies de contorn -->>
-        line_levels = [20,30, 50, 70, 90, 120]
+        line_levels = [20, 30, 50, 70, 90, 120]
         contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
                               levels=line_levels, 
                               colors='black',
