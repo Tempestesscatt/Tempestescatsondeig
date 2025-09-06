@@ -6221,7 +6221,8 @@ def crear_mapa_forecast_combinat_est_peninsula(lons, lats, speed_data, dir_data,
 
 def run_est_peninsula_app():
     """
-    Funció principal per a l'Est Peninsular, ara amb selector de temps interactiu (-4h a +8h).
+    Funció principal per a l'Est Peninsular, amb selector de temps interactiu (-4h a +8h)
+    compatible amb versions anteriors de Streamlit.
     """
     # --- GESTIÓ D'ESTAT INICIAL ---
     if 'selected_area_peninsula' not in st.session_state: st.session_state.selected_area_peninsula = "--- Selecciona una província al mapa ---"
@@ -6232,22 +6233,35 @@ def run_est_peninsula_app():
     # ... (La resta de la capçalera i botons de navegació es manté igual)
     st.divider()
 
-    # --- NOU BLOC: SELECTOR DE TEMPS INTERACTIU ---
+    # --- NOU BLOC: SELECTOR DE TEMPS COMPATIBLE ---
     with st.container(border=True):
         now_local = datetime.now(TIMEZONE_EST_PENINSULA)
         now_hour = now_local.hour
         
-        # Creem el slider de temps
-        time_offset = st.slider(
+        # 1. Creem les opcions i les etiquetes manualment
+        time_options = list(range(-4, 9)) # De -4 a +8
+        time_labels = []
+        for offset in time_options:
+            if offset == 0:
+                label = f"Ara ({now_hour:02d}:00h)"
+            else:
+                target_hour = (now_hour + offset) % 24
+                sign = "+" if offset > 0 else ""
+                label = f"Ara {sign}{offset}h ({target_hour:02d}:00h)"
+            time_labels.append(label)
+        
+        # 2. Utilitzem st.select_slider
+        selected_label = st.select_slider(
             "Selector d'Hora:",
-            min_value=-4,
-            max_value=8,
-            value=0,
-            step=1,
-            format_func=lambda offset: format_slider_label(offset, now_hour),
+            options=time_labels,
+            value=f"Ara ({now_hour:02d}:00h)", # Valor per defecte
             key="time_selector_peninsula"
         )
         
+        # 3. Trobem l'offset a partir de l'etiqueta seleccionada
+        selected_index = time_labels.index(selected_label)
+        time_offset = time_options[selected_index]
+
         # Calculem la data i hora objectiu a partir de l'offset seleccionat
         target_dt = (now_local + timedelta(hours=time_offset)).replace(minute=0, second=0, microsecond=0)
         
@@ -6255,7 +6269,6 @@ def run_est_peninsula_app():
         start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         hourly_index_sel = int((target_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
         
-        # Nivell d'anàlisi (es pot mantenir fix o fer-lo un selector)
         nivell_sel = 925
 
     # --- LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
@@ -6347,7 +6360,6 @@ def run_est_peninsula_app():
                 st.rerun()
         else:
             st.info("Fes clic en una província del mapa per veure'n les localitats.", icon="👆")
-       
 
 
 def ui_pestanya_analisi_provincial(provincia, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
