@@ -6213,7 +6213,7 @@ def run_catalunya_app():
 
     # --- PAS 5: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # --- VISTA D'ANÀLISI DETALLADA (Aquest bloc no canvia) ---
+        # --- VISTA D'ANÀLISI DETALLADA ---
         poble_sel = st.session_state.poble_sel
         with st.spinner(f"Carregant anàlisi completa per a {poble_sel}..."):
             lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
@@ -6221,11 +6221,16 @@ def run_catalunya_app():
             map_data_conv, error_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
         
         st.success(f"### Anàlisi per a: {poble_sel}")
-        if st.button("⬅️ Tornar al mapa de selecció"):
-            st.session_state.poble_sel = "--- Selecciona una localitat ---"
-            st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
-            if 'active_tab_cat' in st.session_state: del st.session_state['active_tab_cat']
-            st.rerun()
+        
+        # --- MODIFICACIÓ CLAU: DOS BOTONS DE NAVEGACIÓ ---
+        col_nav1, col_nav2 = st.columns(2)
+        with col_nav1:
+            st.button("⬅️ Tornar a la Comarca", on_click=tornar_a_seleccio_comarca, use_container_width=True,
+                      help=f"Torna a la llista de municipis de {st.session_state.selected_area}.")
+        with col_nav2:
+            st.button("🗺️ Tornar al Mapa General", on_click=tornar_al_mapa_general, use_container_width=True,
+                      help="Torna al mapa de selecció de totes les comarques de Catalunya.")
+        # --- FI DE LA MODIFICACIÓ ---
             
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
         
@@ -6324,33 +6329,28 @@ def run_catalunya_app():
             alertes_filtrades = filtrar_alertes(alertes_totals, st.session_state.alert_filter_level)
             map_output = ui_mapa_display_personalitzat(alertes_filtrades, hourly_index_sel)
 
-        # --- NOU BLOC: LÒGICA DE LA FLETXA INDICADORA AMB TEXT ---
         indicator_html_string = ""
         selected_area = st.session_state.get('selected_area')
         
         if selected_area and "---" not in selected_area:
             cleaned_area_name = selected_area.strip().replace('.', '')
-            # Busquem el valor a les alertes *totals* per tenir sempre una referència
             conv_value_selected = alertes_totals.get(cleaned_area_name)
             
             def calcular_posicio_llegenda(valor):
                 if not isinstance(valor, (int, float)) or valor < 20:
                     return None
-                # Limitem el valor entre 20 i 100 per al càlcul de la posició
                 valor_clamped = max(20, min(valor, 100))
-                # Calculem el percentatge dins del rang de la barra (20 a 100)
                 posicio_percent = ((valor_clamped - 20) / (100 - 20)) * 100
                 return posicio_percent
             
             arrow_position_percent = calcular_posicio_llegenda(conv_value_selected)
 
             if arrow_position_percent is not None:
-                # Injectem el CSS per a l'indicador
                 st.markdown(f"""
                 <style>
                 .legend-indicator {{
                     position: absolute;
-                    top: 80px; /* Posició vertical precisa just sobre la barra */
+                    top: 80px; 
                     left: {arrow_position_percent}%;
                     transform: translateX(-50%);
                     display: flex;
@@ -6378,7 +6378,6 @@ def run_catalunya_app():
                 </style>
                 """, unsafe_allow_html=True)
 
-                # Generem l'HTML que s'injectarà
                 indicator_html_string = (
                     f'<div class="legend-indicator">'
                     f'  <div class="indicator-text">({int(conv_value_selected)})</div>'
@@ -6386,9 +6385,7 @@ def run_catalunya_app():
                     f'</div>'
                 )
         
-        # Mostrem la llegenda, passant-li l'indicador (que serà una cadena buida si no hi ha res seleccionat)
         ui_llegenda_mapa_principal(indicator_html=indicator_html_string)
-        # --- FI DEL NOU BLOC ---
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
