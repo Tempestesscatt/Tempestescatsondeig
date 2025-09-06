@@ -5786,10 +5786,10 @@ def ui_pestanya_mapes_uk(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
 
 
 @st.cache_data(ttl=600, show_spinner="Preparant dades del mapa...")
-def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index):
+def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index, show_labels):
     """
-    Funció CACHEADA que fa el treball pesat. Aquesta versió accepta correctament
-    els 3 paràmetres per evitar el TypeError.
+    Funció CACHEADA que fa el treball pesat. Ara accepta 'show_labels'
+    per decidir si genera les dades dels marcadors de text.
     """
     alertes_per_zona = dict(alertes_tuple)
     
@@ -5823,16 +5823,19 @@ def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index)
             }
 
     markers_data = []
-    for zona, conv_value in alertes_per_zona.items():
-        capital_info = CAPITALS_COMARCA.get(zona)
-        if capital_info:
-            bg_color, text_color = get_color_from_convergence(conv_value)
-            icon_html = f"""<div style="position: relative; background-color: {bg_color}; color: {text_color}; padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color}; font-family: sans-serif; font-size: 11px; font-weight: bold; text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5); transform: translate(-50%, -100%);"><div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div><div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>{zona}: {conv_value:.0f}</div>"""
-            markers_data.append({
-                'location': [capital_info['lat'], capital_info['lon']],
-                'icon_html': icon_html,
-                'tooltip': f"Comarca: {zona}"
-            })
+    # --- MODIFICACIÓ CLAU AQUÍ ---
+    # Només generem les dades dels marcadors si l'usuari ho ha demanat.
+    if show_labels:
+        for zona, conv_value in alertes_per_zona.items():
+            capital_info = CAPITALS_COMARCA.get(zona)
+            if capital_info:
+                bg_color, text_color = get_color_from_convergence(conv_value)
+                icon_html = f"""<div style="position: relative; background-color: {bg_color}; color: {text_color}; padding: 6px 12px; border-radius: 8px; border: 2px solid {text_color}; font-family: sans-serif; font-size: 11px; font-weight: bold; text-align: center; min-width: 80px; box-shadow: 3px 3px 5px rgba(0,0,0,0.5); transform: translate(-50%, -100%);"><div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div><div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>{zona}: {conv_value:.0f}</div>"""
+                markers_data.append({
+                    'location': [capital_info['lat'], capital_info['lon']],
+                    'icon_html': icon_html,
+                    'tooltip': f"Comarca: {zona}"
+                })
 
     return {
         "gdf": gdf.to_json(),
@@ -5840,43 +5843,6 @@ def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index)
         "styles": styles_dict,
         "markers": markers_data
     }
-
-
-def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
-    st.markdown("#### Mapes de Pronòstic (Model AROME)")
-    
-    col_capa, col_zoom = st.columns(2)
-    with col_capa:
-        mapa_sel = st.selectbox("Selecciona la capa del mapa:", 
-                               ["Anàlisi de Vent i Convergència", "Vent a 700hPa", "Vent a 300hPa"], 
-                               key="map_cat")
-    with col_zoom: 
-        zoom_sel = st.selectbox("Nivell de Zoom:", 
-                               options=list(MAP_ZOOM_LEVELS_CAT.keys()), 
-                               key="zoom_cat")
-    
-    selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
-    
-    with st.spinner(f"Carregant i generant mapa... (només la primera vegada)"):
-        if "Convergència" in mapa_sel:
-            # Crida a la funció per al mapa de convergència
-            fig = generar_mapa_cachejat_cat(hourly_index_sel, nivell_sel, timestamp_str, tuple(selected_extent))
-            if fig is None:
-                st.error(f"Error en carregar les dades per al mapa de convergència.")
-            else:
-                st.pyplot(fig, use_container_width=True)
-        
-        else:
-            # Crida a la funció per als mapes de vent
-            nivell_vent = 700 if "700" in mapa_sel else 300
-            fig = generar_mapa_vents_cachejat_cat(hourly_index_sel, nivell_vent, timestamp_str, tuple(selected_extent))
-            if fig is None:
-                st.error(f"Error en carregar les dades per al mapa de vent a {nivell_vent}hPa.")
-            else:
-                st.pyplot(fig, use_container_width=True)
-
-    if "Convergència" in mapa_sel:
-        ui_explicacio_convergencia()
 
 
 
@@ -6207,7 +6173,7 @@ def run_canada_app():
 
 
 def run_catalunya_app():
-    # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
+    # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL (Sense canvis) ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
@@ -6225,7 +6191,7 @@ def run_catalunya_app():
             st.rerun()
     st.divider()
 
-    # --- PAS 2, 3, 4: GESTIÓ D'ESTAT I SELECTORS GLOBALS ---
+    # --- PAS 2, 3, 4: GESTIÓ D'ESTAT I SELECTORS GLOBALS (Amb noves opcions) ---
     if 'selected_area' not in st.session_state: st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
     if 'poble_sel' not in st.session_state: st.session_state.poble_sel = "--- Selecciona una localitat ---"
     
@@ -6244,11 +6210,11 @@ def run_catalunya_app():
     local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_num))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-    alertes_zona = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
-
+    
     # --- PAS 5: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # --- VISTA D'ANÀLISI DETALLADA ---
+        # --- AQUEST BLOC ES MANTÉ EXACTAMENT IGUAL ---
+        # (Codi de la VISTA D'ANÀLISI DETALLADA)
         poble_sel = st.session_state.poble_sel
         with st.spinner(f"Carregant anàlisi completa per a {poble_sel}..."):
             lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
@@ -6288,6 +6254,7 @@ def run_catalunya_app():
         if error_msg: 
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
         elif data_tuple:
+            alertes_zona = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
             params_calc = data_tuple[1]
             if map_data_conv:
                 conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
@@ -6300,8 +6267,6 @@ def run_catalunya_app():
                 comarca_actual = get_comarca_for_poble(poble_sel)
                 if comarca_actual:
                     valor_conv_comarcal = alertes_zona.get(comarca_actual, 0)
-                    # --- LÍNIA CORREGIDA ---
-                    # Ara li passem el paràmetre 'hora_sel_str' que faltava
                     ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calc, hora_sel_str, data_tuple)
                 else:
                     st.warning(f"No s'ha pogut determinar la comarca per a {poble_sel}.")
@@ -6339,9 +6304,30 @@ def run_catalunya_app():
              st.info("👇 Fes clic en una de les pestanyes de dalt per començar l'anàlisi.", icon="ℹ️")
 
     else: 
-        # --- VISTA DE SELECCIÓ (MAPA INTERACTIU + LLEGENDA + BOTONS) ---
+        # --- VISTA DE SELECCIÓ (MAPA INTERACTIU + LLEGENDA + NOUS CONTROLS) ---
+        
+        # --- BLOC NOU: CONTROLS DE VISUALITZACIÓ ---
+        st.session_state.setdefault('show_comarca_labels', False)
+        st.session_state.setdefault('alert_filter_level', 'Tots')
+
+        with st.container(border=True):
+            st.markdown("##### Opcions de Visualització del Mapa")
+            col_filter, col_labels = st.columns(2)
+            with col_filter:
+                st.selectbox(
+                    "Filtrar avisos per nivell:",
+                    options=["Tots", "Moderat i superior", "Alt i superior", "Molt Alt i superior", "Només Extrems"],
+                    key="alert_filter_level"
+                )
+            with col_labels:
+                st.toggle("Mostrar noms de les comarques amb avís", key="show_comarca_labels")
+        # --- FI DEL BLOC NOU ---
+        
         with st.spinner("Carregant mapa de situació de Catalunya..."):
-            map_output = ui_mapa_display_personalitzat(alertes_zona, hourly_index_sel)
+            alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
+            # Filtrem les alertes abans de passar-les al mapa
+            alertes_filtrades = filtrar_alertes(alertes_totals, st.session_state.alert_filter_level)
+            map_output = ui_mapa_display_personalitzat(alertes_filtrades, hourly_index_sel)
 
         ui_llegenda_mapa_principal()
 
@@ -6647,6 +6633,26 @@ def seleccionar_poble(nom_poble):
         st.session_state.active_tab_cat_index = 0
 
 
+
+
+def filtrar_alertes(alertes_totals, nivell_seleccionat):
+    """
+    Filtra el diccionari d'alertes per mostrar només les que superen un llindar.
+    """
+    LLINDARS = {
+        "Tots": 0,
+        "Moderat i superior": 20,
+        "Alt i superior": 40,
+        "Molt Alt i superior": 60,
+        "Només Extrems": 100
+    }
+    llindar_valor = LLINDARS.get(nivell_seleccionat, 0)
+    
+    if llindar_valor == 0:
+        return alertes_totals
+    
+    return {zona: valor for zona, valor in alertes_totals.items() if valor >= llindar_valor}
+    
 def ui_llegenda_mapa_principal():
     """
     Mostra una llegenda gràfica i millorada per al mapa principal de situació.
