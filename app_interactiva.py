@@ -7108,6 +7108,7 @@ def run_catalunya_app():
 def ui_mapa_display_peninsula(alertes_per_zona, hourly_index, show_labels):
     """
     Funció de VISUALITZACIÓ específica per al mapa de l'Est Peninsular.
+    (Versió amb color de selecció groc)
     """
     st.markdown("#### Mapa de Situació")
     
@@ -7122,7 +7123,6 @@ def ui_mapa_display_peninsula(alertes_per_zona, hourly_index, show_labels):
     )
     
     if not map_data:
-        # L'error ja es mostra a la funció de preparació.
         return None
 
     map_params = {
@@ -7142,14 +7142,17 @@ def ui_mapa_display_peninsula(alertes_per_zona, hourly_index, show_labels):
             nom_feature = nom_feature_raw.strip().replace('.', '')
             style = map_data["styles"].get(nom_feature, style)
             cleaned_selected_area = selected_area_str.strip().replace('.', '') if selected_area_str else ''
+            
+            # --- CANVI CLAU AQUÍ ---
+            # Si la província és la seleccionada, la pintem de groc amb vora negra.
             if nom_feature == cleaned_selected_area:
-                style.update({'fillColor': '#007bff', 'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.5})
+                style.update({'fillColor': '#FFC107', 'color': '#000000', 'weight': 3, 'fillOpacity': 0.6})
         return style
 
     folium.GeoJson(
         map_data["gdf"], style_function=style_function,
         highlight_function=lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5},
-        tooltip=folium.GeoJsonTooltip(fields=[map_data["property_name"]], aliases=['Provincia:']) # <-- Canvi important aquí
+        tooltip=folium.GeoJsonTooltip(fields=[map_data["property_name"]], aliases=['Provincia:'])
     ).add_to(m)
 
     for marker in map_data["markers"]:
