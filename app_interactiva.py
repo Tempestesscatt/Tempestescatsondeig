@@ -634,6 +634,7 @@ CIUTATS_PER_COMARCA = {
     },
     "Baix Llobregat": {
         'Castellbisbal': {'lat': 41.4776, 'lon': 1.9866, 'sea_dir': None},
+        'Castelldefels': {'lat': 41.2806, 'lon': 1.9750, 'sea_dir': (100, 210)},
         'L\'Hospitalet de Llobregat': {'lat': 41.3571, 'lon': 2.1030, 'sea_dir': (90, 190)},
         'Olesa de Montserrat': {'lat': 41.5451, 'lon': 1.8955, 'sea_dir': None},
         'Sant Feliu de Llobregat': {'lat': 41.3833, 'lon': 2.0500, 'sea_dir': (100, 200)},
@@ -648,6 +649,7 @@ CIUTATS_PER_COMARCA = {
     },
     "Cerdanya": {
         'Bellver de Cerdanya': {'lat': 42.3705, 'lon': 1.7770, 'sea_dir': None},
+        'La Molina': {'lat': 42.3361, 'lon': 1.9463, 'sea_dir': None},
         'Puigcerdà': {'lat': 42.4331, 'lon': 1.9287, 'sea_dir': None},
     },
     "Conca de Barberà": {
@@ -657,6 +659,9 @@ CIUTATS_PER_COMARCA = {
         'Sant Pere de Ribes': {'lat': 41.2599, 'lon': 1.7725, 'sea_dir': (100, 220)},
         'Sitges': {'lat': 41.2351, 'lon': 1.8117, 'sea_dir': (100, 220)},
         'Vilanova i la Geltrú': {'lat': 41.2241, 'lon': 1.7252, 'sea_dir': (100, 200)},
+    },
+    "Garrigues": {
+        'Les Borges Blanques': {'lat': 41.5224, 'lon': 0.8674, 'sea_dir': None},
     },
     "Garrotxa": {
         'Castellfollit de la Roca': {'lat': 42.2201, 'lon': 2.5517, 'sea_dir': None},
@@ -680,6 +685,7 @@ CIUTATS_PER_COMARCA = {
         'Mataró': {'lat': 41.5388, 'lon': 2.4449, 'sea_dir': (90, 180)},
         'Pineda de Mar': {'lat': 41.6277, 'lon': 2.6908, 'sea_dir': (90, 180)},
         'Santa Susanna': {'lat': 41.6366, 'lon': 2.7098, 'sea_dir': (90, 180)},
+        'Tordera': {'lat': 41.7011, 'lon': 2.7183, 'sea_dir': None},
         'Vilassar de Dalt': {'lat': 41.5167, 'lon': 2.3583, 'sea_dir': None},
         'Vilassar de Mar': {'lat': 41.5057, 'lon': 2.3920, 'sea_dir': (90, 180)},
     },
@@ -710,9 +716,21 @@ CIUTATS_PER_COMARCA = {
     "Pla de l'Estany": {
         'Banyoles': {'lat': 42.1197, 'lon': 2.7667, 'sea_dir': (80, 170)},
     },
+    "Pla d_Urgell": {
+        'Mollerussa': {'lat': 41.6315, 'lon': 0.8931, 'sea_dir': None},
+    },
+    "Priorat": {
+        'Falset': {'lat': 41.1444, 'lon': 0.8208, 'sea_dir': None},
+    },
+    "Ribera d_Ebre": {
+        'Móra d\'Ebre': {'lat': 41.0945, 'lon': 0.6450, 'sea_dir': None},
+    },
     "Ripollès": {
         'Ripoll': {'lat': 42.2013, 'lon': 2.1903, 'sea_dir': None},
         'Sant Joan de les Abadesses': {'lat': 42.2355, 'lon': 2.2858, 'sea_dir': None},
+    },
+    "Segarra": {
+        'Cervera': {'lat': 41.6709, 'lon': 1.2721, 'sea_dir': None},
     },
     "Segrià": {
         'Lleida': {'lat': 41.6177, 'lon': 0.6200, 'sea_dir': None},
@@ -724,6 +742,7 @@ CIUTATS_PER_COMARCA = {
         'Hostalric': {'lat': 41.7479, 'lon': 2.6360, 'sea_dir': None},
         'Lloret de Mar': {'lat': 41.7005, 'lon': 2.8450, 'sea_dir': (80, 180)},
         'Santa Coloma de Farners': {'lat': 41.8596, 'lon': 2.6703, 'sea_dir': None},
+        'Tossa de Mar': {'lat': 41.7167, 'lon': 2.9333, 'sea_dir': (90, 200)},
         'Vidreres': {'lat': 41.7876, 'lon': 2.7788, 'sea_dir': (80, 180)},
     },
     "Solsonès": {
@@ -733,6 +752,14 @@ CIUTATS_PER_COMARCA = {
         'Altafulla': {'lat': 41.1417, 'lon': 1.3750, 'sea_dir': (110, 220)},
         'Salou': {'lat': 41.0763, 'lon': 1.1417, 'sea_dir': (110, 220)},
         'Tarragona': {'lat': 41.1189, 'lon': 1.2445, 'sea_dir': (110, 220)},
+    },
+    "Terra Alta": {
+        'Batea': {'lat': 41.0954, 'lon': 0.3119, 'sea_dir': None},
+        'Gandesa': {'lat': 41.0526, 'lon': 0.4337, 'sea_dir': None},
+        'Horta de Sant Joan': {'lat': 40.9545, 'lon': 0.3160, 'sea_dir': None},
+    },
+    "Urgell": {
+        'Tàrrega': {'lat': 41.6469, 'lon': 1.1415, 'sea_dir': None},
     },
     "Val d'Aran": {
         'Vielha': {'lat': 42.7027, 'lon': 0.7966, 'sea_dir': None},
@@ -752,9 +779,9 @@ CIUTATS_PER_COMARCA = {
         'Cardedeu': {'lat': 41.6403, 'lon': 2.3582, 'sea_dir': (90, 180)},
         'Granollers': {'lat': 41.6083, 'lon': 2.2886, 'sea_dir': (90, 180)},
         'Mollet del Vallès': {'lat': 41.5385, 'lon': 2.2144, 'sea_dir': (100, 200)},
+        'Sant Celoni': {'lat': 41.6903, 'lon': 2.4908, 'sea_dir': None},
     },
 }
-
 # Genera una llista plana a partir de la nova estructura per compatibilitat
 CIUTATS_CATALUNYA = {
     ciutat: dades 
