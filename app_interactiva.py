@@ -42,7 +42,7 @@ import geopandas as gpd
 from shapely.geometry import Point
 from folium.plugins import HeatMap
 import geojsoncontour
-
+from matplotlib.patches import Polygon
 
 
 
@@ -6376,10 +6376,9 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió final amb Matplotlib).
-    Mostra un mapa estàtic de la comarca amb un gradient de convergència
-    professional, isòlines numerades i un marcador del punt màxim.
-    L'estil visual és idèntic al del mapa principal de Catalunya.
+    PESTANYA D'ANÀLISI COMARCAL (Versió final amb TRAJECTÒRIA DE PRONÒSTIC).
+    Mostra un mapa estàtic de la comarca amb un gradient, isòlines, marcador
+    i un plomall visual que indica la direcció de desplaçament de la tempesta.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6402,30 +6401,24 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                 st.warning(f"No s'ha trobat la geometria per a la comarca '{comarca}'.")
                 return
 
-            # --- CÀLCUL DE L'EXTENSIÓ DEL MAPA AMB UN MARGE ---
             bounds = comarca_shape.total_bounds
-            margin_lon = (bounds[2] - bounds[0]) * 0.2
-            margin_lat = (bounds[3] - bounds[1]) * 0.2
+            margin_lon = (bounds[2] - bounds[0]) * 0.2; margin_lat = (bounds[3] - bounds[1]) * 0.2
             map_extent = [bounds[0] - margin_lon, bounds[2] + margin_lon, bounds[1] - margin_lat, bounds[3] + margin_lat]
             
-            # --- CREACIÓ DEL MAPA AMB MATPLOTLIB ---
-            plt.style.use('default') # Tornem a l'estil clar per a aquest mapa
+            plt.style.use('default')
             fig, ax = crear_mapa_base(map_extent)
 
-            # Dibuixem la forma de la comarca
-            ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(),
-                              facecolor='none', edgecolor='blue', linewidth=2.5,
-                              linestyle='--', zorder=10)
+            ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=10)
 
             if map_data and valor_conv > 15:
-                # --- COPIEM LA LÒGICA DEL MAPA PRINCIPAL ---
                 lons, lats = map_data['lons'], map_data['lats']
                 grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 150), np.linspace(map_extent[2], map_extent[3], 150))
+                grid_dewpoint = griddata((lons, lats), map_data['dewpoint_data'], (grid_lon, grid_lat), 'linear')
+
                 u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
                 grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
                 grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-                grid_dewpoint = griddata((lons, lats), map_data['dewpoint_data'], (grid_lon, grid_lat), 'linear')
-
+                
                 with np.errstate(invalid='ignore'):
                     dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
                     convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
@@ -6437,7 +6430,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                 smoothed_convergence = gaussian_filter(effective_convergence, sigma=1.5)
                 smoothed_convergence[smoothed_convergence < 15] = 0
 
-                # --- DIBUIX DEL GRADIENT I LES ISÒLINES NUMERADES ---
                 if np.any(smoothed_convergence > 0):
                     colors_conv = ['#5BC0DE', "#FBFF00", "#DC6D05", "#EC8383", "#F03D3D", "#FF0000", "#7C7EF0", "#0408EAFF", "#000070"]
                     cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_personalitzada", colors_conv)
@@ -6446,29 +6438,67 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
                     line_levels = [20, 40, 60, 80, 100]
                     contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors='black', linestyles='--', linewidths=1.2, zorder=4, transform=ccrs.PlateCarree())
-                    
-                    # AFEGIM ELS NÚMEROS A LES LÍNIES
                     labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
                     for label in labels:
                         label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.6))
                 
-                # Afegim un marcador per al punt de màxima convergència dins la comarca
                 points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
                 points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
+                
                 if not points_in_comarca.empty:
                     max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
-                    ax.plot(max_conv_point.geometry.x, max_conv_point.geometry.y, 'X', color='red', markersize=10, markeredgecolor='white', zorder=11, transform=ccrs.PlateCarree())
+                    px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
+                    ax.plot(px, py, 'X', color='red', markersize=10, markeredgecolor='white', zorder=12, transform=ccrs.PlateCarree())
 
+                    # --- NOU BLOC: DIBUIX DE LA TRAJECTÒRIA DE PRONÒSTIC ---
+                    if params_calc:
+                        motion_vector = params_calc.get('RM') or params_calc.get('Mean_Wind')
+                        if motion_vector and not pd.isna(motion_vector[0]):
+                            u_storm, v_storm = motion_vector[0] * units('m/s'), motion_vector[1] * units('m/s')
+                            storm_dir_from = mpcalc.wind_direction(u_storm, v_storm).m
+                            storm_dir_to = (storm_dir_from + 180) % 360
+                            
+                            # Convertim la direcció a un format matemàtic per al dibuix
+                            dir_rad = np.deg2rad(90 - storm_dir_to)
+                            
+                            # Paràmetres del plomall (pots ajustar-los)
+                            length = 0.4  # Llargada en graus de longitud/latitud
+                            spread_deg = 35 # Obertura del con en graus
+                            
+                            # Vèrtexs del polígon que forma el plomall
+                            end_center_x = px + length * np.cos(dir_rad)
+                            end_center_y = py + length * np.sin(dir_rad)
+                            
+                            angle_left = np.deg2rad(90 - (storm_dir_to - spread_deg / 2))
+                            end_left_x = px + length * np.cos(angle_left)
+                            end_left_y = py + length * np.sin(angle_left)
+                            
+                            angle_right = np.deg2rad(90 - (storm_dir_to + spread_deg / 2))
+                            end_right_x = px + length * np.cos(angle_right)
+                            end_right_y = py + length * np.sin(angle_right)
+                            
+                            # Creem i dibuixem el polígon
+                            forecast_plume = Polygon(
+                                [(px, py), (end_left_x, end_left_y), (end_right_x, end_right_y)],
+                                facecolor='#D2B48C', alpha=0.6, edgecolor='black', linewidth=1.5,
+                                linestyle='--', transform=ccrs.PlateCarree(), zorder=5
+                            )
+                            ax.add_patch(forecast_plume)
+                            
+                            # Dibuixem una fletxa central
+                            ax.arrow(px, py, (end_center_x - px)*0.8, (end_center_y - py)*0.8,
+                                     color='black', linestyle='--', width=0.001, head_width=0.015,
+                                     head_length=0.02, transform=ccrs.PlateCarree(), zorder=6)
+                    # --- FI DEL NOU BLOC DE TRAJECTÒRIA ---
 
             ax.set_title(f"Focus de Convergència a {comarca}", weight='bold', fontsize=12)
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
 
-    # La columna del diagnòstic a la dreta es manté sense canvis
     with col_diagnostic:
+        # ... (Aquesta part es manté exactament igual que abans) ...
         st.markdown("##### Diagnòstic de la Zona")
-        # ... (Aquí va tota la lògica del text de diagnòstic, que ja tenies bé) ...
         if valor_conv >= 100:
             nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
         elif valor_conv >= 60:
@@ -6493,7 +6523,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         else:
             mucin = params_calc.get('MUCIN', 0) or 0
             mucape = params_calc.get('MUCAPE', 0) or 0
-
+            
             vered_titol, vered_color, vered_emoji, vered_desc = "", "", "", ""
             if mucin < -75:
                 vered_titol, vered_color, vered_emoji = "Inhibida", "#DC3545", "👎"
@@ -6512,7 +6542,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             </div>
             """, unsafe_allow_html=True)
             st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
-            
+
 
             
 def seleccionar_poble(nom_poble):
