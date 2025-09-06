@@ -6223,13 +6223,13 @@ def crear_mapa_forecast_combinat_est_peninsula(lons, lats, speed_data, dir_data,
 def run_est_peninsula_app():
     """
     Funció principal que gestiona la lògica per a la zona de l'Est Peninsular,
-    ara amb mapa interactiu.
+    amb mapa interactiu i controls de visualització.
     """
     # --- PAS 1: GESTIÓ D'ESTAT INICIAL ---
     if 'selected_area_peninsula' not in st.session_state: st.session_state.selected_area_peninsula = "--- Selecciona una zona al mapa ---"
     if 'poble_selector_est_peninsula' not in st.session_state: st.session_state.poble_selector_est_peninsula = "--- Selecciona una localitat ---"
     
-    # --- PAS 2: CAPÇALERA I SELECTORS GLOBALS ---
+    # --- PAS 2: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Est Península</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
@@ -6257,14 +6257,12 @@ def run_est_peninsula_app():
     st.divider()
 
     # --- PAS 3: CÀLCUL DE LA DATA I HORA ---
-    with st.container(border=True):
-        now_local = datetime.now(TIMEZONE_EST_PENINSULA)
-        dia_sel_str = now_local.strftime('%d/%m/%Y')
-        hora_sel_str = f"{now_local.hour:02d}:00h"
-        nivell_sel = 925
-        local_dt = now_local.replace(minute=0, second=0, microsecond=0)
-        start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    now_local = datetime.now(TIMEZONE_EST_PENINSULA)
+    dia_sel_str = now_local.strftime('%d/%m/%Y'); hora_sel = now_local.hour
+    hora_sel_str = f"{hora_sel:02d}:00h"; nivell_sel = 925
+    local_dt = now_local.replace(minute=0, second=0, microsecond=0)
+    start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
 
     # --- PAS 4: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
     if st.session_state.poble_selector_est_peninsula and "---" not in st.session_state.poble_selector_est_peninsula:
@@ -6282,13 +6280,11 @@ def run_est_peninsula_app():
         cat_dt = local_dt.astimezone(TIMEZONE_CAT)
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_EST_PENINSULA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
 
-        # Menú de pestanyes per a l'anàlisi
         menu_options = ["Anàlisi Vertical", "Anàlisi de Mapes"]
         menu_icons = ["graph-up-arrow", "map-fill"]
         option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
                     orientation="horizontal", key="active_tab_est_peninsula", default_index=0)
 
-        # Lògica per mostrar el contingut de cada pestanya
         if st.session_state.active_tab_est_peninsula == "Anàlisi Vertical":
             with st.spinner(f"Carregant dades del sondeig AROME per a {poble_sel}..."):
                 data_tuple, final_index, error_msg = carregar_dades_sondeig_est_peninsula(lat_sel, lon_sel, hourly_index_sel)
@@ -6314,15 +6310,31 @@ def run_est_peninsula_app():
 
     else:
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
+        st.session_state.setdefault('show_comarca_labels_peninsula', False)
+        st.session_state.setdefault('alert_filter_level_peninsula', 'Tots')
+
+        with st.container(border=True):
+            st.markdown("##### Opcions de Visualització del Mapa")
+            col_filter, col_labels = st.columns(2)
+            with col_filter:
+                st.selectbox(
+                    "Filtrar avisos per nivell:",
+                    options=["Tots", "Moderat i superior", "Alt i superior", "Molt Alt i superior", "Només Extrems"],
+                    key="alert_filter_level_peninsula"
+                )
+            with col_labels:
+                st.toggle("Mostrar noms de les zones amb avís", key="show_comarca_labels_peninsula")
+        
         with st.spinner("Carregant mapa de situació de la península..."):
             alertes_totals = calcular_alertes_per_zona_peninsula(hourly_index_sel, nivell_sel)
-            map_output = ui_mapa_display_personalitzat(alertes_totals, hourly_index_sel)
+            alertes_filtrades = filtrar_alertes(alertes_totals, st.session_state.alert_filter_level_peninsula)
+            map_output = ui_mapa_display_personalitzat(alertes_filtrades, hourly_index_sel, show_labels=st.session_state.show_comarca_labels_peninsula)
         
         ui_llegenda_mapa_principal()
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
-            if "Comarca:" in raw_tooltip:
+            if "Zona:" in raw_tooltip:
                 clicked_area = raw_tooltip.split(':')[-1].strip()
                 if clicked_area != st.session_state.get('selected_area_peninsula'):
                     st.session_state.selected_area_peninsula = clicked_area
@@ -7625,26 +7637,22 @@ def generar_mapa_folium_catalunya(alertes_per_zona, selected_area_str):
     
     return m
     
-def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
+def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index, show_labels):
     """
-    Funció de VISUALITZACIÓ. Converteix les alertes a un format segur per a la memòria cau
-    i passa correctament tots els paràmetres necessaris.
+    Funció de VISUALITZACIÓ. Ara rep 'show_labels' com un paràmetre directe.
     """
     st.markdown("#### Mapa de Situació")
     
-    selected_area_str = st.session_state.get('selected_area')
+    selected_area_str = st.session_state.get('selected_area_peninsula') or st.session_state.get('selected_area')
 
     alertes_tuple = tuple(sorted((k, float(v)) for k, v in alertes_per_zona.items()))
     
-    # --- LÍNIA CORREGIDA AQUÍ ---
-    # Ara passem el quart paràmetre 'show_labels' que faltava, llegint-lo de l'estat de la sessió.
     map_data = preparar_dades_mapa_cachejat(
         alertes_tuple, 
         selected_area_str, 
         hourly_index, 
-        st.session_state.show_comarca_labels
+        show_labels  # <-- Ara utilitza el paràmetre rebut
     )
-    # --- FI DE LA CORRECCIÓ ---
     
     if not map_data:
         st.error("No s'han pogut generar les dades per al mapa.")
@@ -7686,7 +7694,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
     folium.GeoJson(
         map_data["gdf"], style_function=style_function,
         highlight_function=lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5},
-        tooltip=folium.GeoJsonTooltip(fields=[map_data["property_name"]], aliases=['Comarca:'])
+        tooltip=folium.GeoJsonTooltip(fields=[map_data["property_name"]], aliases=['Zona:'])
     ).add_to(m)
 
     for marker in map_data["markers"]:
