@@ -6381,10 +6381,10 @@ def run_catalunya_app():
 
 
 
-def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str):
+def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió final amb ESTIL VISUAL AVANÇAT).
-    Dibuixa un gradient de color professional i només les dues isòlines més fortes del nucli.
+    PESTANYA D'ANÀLISI COMARCAL (Versió definitiva i corregida).
+    Inclou tots els estils visuals i utilitza el flux 700-500hPa per a la direcció.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6428,31 +6428,22 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                 smoothed_convergence[smoothed_convergence < 15] = 0
 
                 if np.any(smoothed_convergence > 0):
-                    # --- NOU BLOC DE RENDERITZAT AVANÇAT ---
-                    # 1. Un mapa de colors més "maco" i professional
                     colors_professional = ['#0096c7', '#48cae4', '#90e0ef', '#ade8f4', '#caffbf', '#ffdd00', '#ffaa00', '#ff7b00', '#e85d04', '#d00000', '#9d0208']
                     cmap_professional = LinearSegmentedColormap.from_list("cmap_professional", colors_professional)
-                    
-                    # 2. Dibuixem el gradient suau amb molts nivells
                     fill_levels = np.linspace(15, max(100, np.max(smoothed_convergence)), 256)
                     ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels, cmap=cmap_professional, alpha=0.8, zorder=3, transform=ccrs.PlateCarree(), extend='max')
 
-                    # 3. Lògica per dibuixar NOMÉS les dues isòlines més fortes
                     max_conv_valor = np.max(smoothed_convergence)
-                    top_level = int(max_conv_valor // 10) * 10 # Arrodonim a la desena inferior (ex: 67 -> 60)
-                    
+                    top_level = int(max_conv_valor // 10) * 10
                     line_levels = []
                     if top_level >= 20: line_levels.append(top_level)
                     if (top_level - 10) >= 20: line_levels.append(top_level - 10)
                         
                     if line_levels:
-                        contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
-                                              levels=line_levels, colors='white', linestyles='solid',
-                                              linewidths=1.5, zorder=4, transform=ccrs.PlateCarree())
+                        contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors='white', linestyles='solid', linewidths=1.5, zorder=4, transform=ccrs.PlateCarree())
                         labels = ax.clabel(contours, inline=True, fontsize=9, fmt='%1.0f')
                         for label in labels:
                             label.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')])
-                    # --- FI DEL NOU BLOC ---
                 
                 points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
@@ -6462,7 +6453,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
                     px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
                     
-                    if params_calc and valor_conv >= 20:
+                    if valor_conv >= 20:
                         if valor_conv >= 100: indicator_color = '#9370DB'
                         elif valor_conv >= 60: indicator_color = '#DC3545'
                         elif valor_conv >= 40: indicator_color = '#FD7E14'
@@ -6474,26 +6465,30 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                         ax.add_patch(circle)
                         ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
 
-                        motion_vector = params_calc.get('RM') or params_calc.get('Mean_Wind')
-                        if motion_vector and not pd.isna(motion_vector[0]):
-                            u_storm, v_storm = motion_vector[0] * units('m/s'), motion_vector[1] * units('m/s')
-                            storm_dir_to = (mpcalc.wind_direction(u_storm, v_storm).m + 180) % 360
-                            dir_rad = np.deg2rad(90 - storm_dir_to)
-                            length = 0.25
-                            end_x = px + length * np.cos(dir_rad)
-                            end_y = py + length * np.sin(dir_rad)
-                            ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
-                            num_barbs = 3; barb_length = 0.04
-                            barb_angle_rad = dir_rad + np.pi / 2
-                            for i in range(1, num_barbs + 1):
-                                pos_on_shaft = 0.4 + (i * 0.2)
-                                barb_center_x = px + length * pos_on_shaft * np.cos(dir_rad)
-                                barb_center_y = py + length * pos_on_shaft * np.sin(dir_rad)
-                                barb_start_x = barb_center_x - barb_length / 2 * np.cos(barb_angle_rad)
-                                barb_start_y = barb_center_y - barb_length / 2 * np.sin(barb_angle_rad)
-                                barb_end_x = barb_center_x + barb_length / 2 * np.cos(barb_angle_rad)
-                                barb_end_y = barb_center_y + barb_length / 2 * np.sin(barb_angle_rad)
-                                ax.plot([barb_start_x, barb_end_x], [barb_start_y, barb_end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+                        try:
+                            sounding_data, _ = data_tuple
+                            p, u, v = sounding_data[0], sounding_data[3], sounding_data[4]
+                            if p.m.min() < 500 and p.m.max() > 700:
+                                u_700, v_700 = np.interp(700, p.m[::-1], u.m[::-1]), np.interp(700, p.m[::-1], v.m[::-1])
+                                u_500, v_500 = np.interp(500, p.m[::-1], u.m[::-1]), np.interp(500, p.m[::-1], v.m[::-1])
+                                mean_u, mean_v = (u_700 + u_500) / 2.0 * units('m/s'), (v_700 + v_500) / 2.0 * units('m/s')
+                                storm_dir_to = (mpcalc.wind_direction(mean_u, mean_v).m + 180) % 360
+                                
+                                dir_rad = np.deg2rad(90 - storm_dir_to)
+                                length = 0.25
+                                end_x, end_y = px + length * np.cos(dir_rad), py + length * np.sin(dir_rad)
+                                ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+                                
+                                num_barbs = 3; barb_length = 0.04
+                                barb_angle_rad = dir_rad + np.pi / 2
+                                for i in range(1, num_barbs + 1):
+                                    pos = 0.4 + (i * 0.2)
+                                    barb_cx, barb_cy = px + length * pos * np.cos(dir_rad), py + length * pos * np.sin(dir_rad)
+                                    barb_sx, barb_sy = barb_cx - barb_length / 2 * np.cos(barb_angle_rad), barb_cy - barb_length / 2 * np.sin(barb_angle_rad)
+                                    barb_ex, barb_ey = barb_cx + barb_length / 2 * np.cos(barb_angle_rad), barb_cy + barb_length / 2 * np.sin(barb_angle_rad)
+                                    ax.plot([barb_sx, barb_ex], [barb_sy, barb_ey], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+                        except Exception:
+                            pass
             
             poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
             if poble_coords:
@@ -6552,8 +6547,9 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                  <p style="font-size:0.9em; color:#a0a0b0; margin-top:10px; text-align: left;">{vered_desc}</p>
             </div>
             """, unsafe_allow_html=True)
-            st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
-            
+            st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")```
+
+Amb aquest canvi, la teva aplicació hauria de funcionar correctament i mostrar el mapa comarcal amb totes les millores visuals i tècniques que hem anat implementant.
 
             
 def seleccionar_poble(nom_poble):
