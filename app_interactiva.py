@@ -6376,9 +6376,8 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió final amb TRAJECTÒRIA DE PRONÒSTIC BLANCA).
-    Mostra un mapa estàtic de la comarca amb un gradient, isòlines, marcador
-    i un plomall visual blanc que indica la direcció de desplaçament de la tempesta.
+    PESTANYA D'ANÀLISI COMARCAL (Versió amb Z-ORDER CORREGIT).
+    Assegura que la trajectòria de pronòstic es dibuixa per sobre de la línia de la comarca.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6408,7 +6407,8 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             plt.style.use('default')
             fig, ax = crear_mapa_base(map_extent)
 
-            ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=10)
+            # Dibuixem la comarca en una capa intermèdia (zorder=7)
+            ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
 
             if map_data and valor_conv > 15:
                 lons, lats = map_data['lons'], map_data['lats']
@@ -6449,6 +6449,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                 if not points_in_comarca.empty:
                     max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
                     px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
+                    # El marcador del focus també el posem per sobre de la línia de comarca
                     ax.plot(px, py, 'X', color='red', markersize=10, markeredgecolor='white', zorder=12, transform=ccrs.PlateCarree())
 
                     if params_calc:
@@ -6466,26 +6467,28 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                             angle_right = np.deg2rad(90 - (storm_dir_to + spread_deg / 2))
                             end_right_x = px + length * np.cos(angle_right); end_right_y = py + length * np.sin(angle_right)
                             
-                            # --- CANVIS D'ESTIL APLICATS AQUÍ ---
+                            # --- CANVI D'ESTIL I Z-ORDER APLICAT AQUÍ ---
+                            # Augmentem el zorder a 11 per assegurar que estigui per sobre de la línia de comarca (zorder=7)
                             forecast_plume = Polygon(
                                 [(px, py), (end_left_x, end_left_y), (end_right_x, end_right_y)],
                                 facecolor='white', alpha=0.8, edgecolor='black', linewidth=1.5,
-                                linestyle='--', transform=ccrs.PlateCarree(), zorder=5
+                                linestyle='--', transform=ccrs.PlateCarree(), zorder=11
                             )
                             ax.add_patch(forecast_plume)
                             
+                            # La fletxa també ha d'anar per sobre
                             ax.arrow(px, py, (end_center_x - px)*0.8, (end_center_y - py)*0.8,
                                      color='black', linestyle='--', width=0.001, head_width=0.015,
-                                     head_length=0.02, transform=ccrs.PlateCarree(), zorder=6)
-                            # --- FI DELS CANVIS D'ESTIL ---
+                                     head_length=0.02, transform=ccrs.PlateCarree(), zorder=12)
+                            # --- FI DELS CANVIS ---
 
             ax.set_title(f"Focus de Convergència a {comarca}", weight='bold', fontsize=12)
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
 
     with col_diagnostic:
+        # Aquesta part no canvia, es manté exactament igual
         st.markdown("##### Diagnòstic de la Zona")
-        # ... (Aquesta part es manté exactament igual que abans) ...
         if valor_conv >= 100:
             nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
         elif valor_conv >= 60:
