@@ -6851,25 +6851,38 @@ def run_canada_app():
 
 
 def run_catalunya_app():
+    """
+    Funció principal que gestiona tota la lògica i la interfície per a la zona de Catalunya,
+    incloent el mapa interactiu de comarques i l'anàlisi detallada per localitat.
+    """
     # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
-    col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
+    
+    altres_zones = {
+        'est_peninsula': 'Est Península', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya', 
+        'italia': 'Itàlia', 'holanda': 'Holanda', 'japo': 'Japó', 
+        'uk': 'Regne Unit', 'canada': 'Canadà', 'noruega': 'Noruega'
+    }
+
+    col_text, col_nav, col_back, col_logout = st.columns([0.5, 0.2, 0.15, 0.15])
     with col_text:
-        if not is_guest:
-            st.markdown(f"Benvingut/da, {st.session_state.get('username', 'Usuari')}!")
-    with col_change:
-        if st.button("Canviar de Zona", use_container_width=True, help="Torna a la selecció de zona geogràfica"):
-            st.session_state.zone_selected = None
-            [st.session_state.pop(key, None) for key in ['selected_area', 'poble_sel', 'active_tab_cat']]
+        if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username', 'Usuari')}**!")
+    with col_nav:
+        nova_zona_key = st.selectbox("Canviar a:", options=list(altres_zones.keys()), format_func=lambda k: altres_zones[k], index=None, placeholder="Anar a...")
+        if nova_zona_key: st.session_state.zone_selected = nova_zona_key; st.rerun()
+    with col_back:
+        if st.button("⬅️ Zones", use_container_width=True, help="Tornar a la selecció de zona"):
+            keys_to_clear = [k for k in st.session_state if k not in ['logged_in', 'username', 'guest_mode', 'developer_mode']]
+            for key in keys_to_clear: del st.session_state[key]
             st.rerun()
     with col_logout:
         if st.button("Sortir" if is_guest else "Tanca Sessió", use_container_width=True):
-            st.session_state.clear()
+            for key in list(st.session_state.keys()): del st.session_state[key]
             st.rerun()
     st.divider()
 
-    # --- GESTIÓ D'ESTAT I SELECTORS GLOBALS ---
+    # --- PAS 2: GESTIÓ D'ESTAT I SELECTORS GLOBALS ---
     if 'selected_area' not in st.session_state: st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
     if 'poble_sel' not in st.session_state: st.session_state.poble_sel = "--- Selecciona una localitat ---"
     
@@ -6889,7 +6902,7 @@ def run_catalunya_app():
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
 
-    # --- LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
+    # --- PAS 3: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
         # --- VISTA D'ANÀLISI DETALLADA ---
         poble_sel = st.session_state.poble_sel
@@ -6941,15 +6954,15 @@ def run_catalunya_app():
                 if pd.notna(conv_puntual):
                     params_calc[f'CONV_{nivell_sel}hPa'] = conv_puntual
             
-            if active_tab == "Anàlisi Vertical":
-                ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
-            elif active_tab == "Anàlisi Comarcal":
+            if active_tab == "Anàlisi Comarcal":
                 comarca_actual = get_comarca_for_poble(poble_sel)
                 if comarca_actual:
                     valor_conv_comarcal = alertes_zona.get(comarca_actual, 0)
                     ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calc, hora_sel_str, data_tuple)
                 else:
                     st.warning(f"No s'ha pogut determinar la comarca per a {poble_sel}.")
+            elif active_tab == "Anàlisi Vertical":
+                ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
             elif active_tab == "Anàlisi de Mapes":
                 ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
             elif active_tab == "Simulació de Núvol":
@@ -7003,7 +7016,7 @@ def run_catalunya_app():
         with st.spinner("Carregant mapa de situació de Catalunya..."):
             alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
             alertes_filtrades = filtrar_alertes(alertes_totals, st.session_state.alert_filter_level)
-            map_output = ui_mapa_display_personalitzat(alertes_filtrades, hourly_index_sel)
+            map_output = ui_mapa_display_personalitzat(alertes_filtrades, hourly_index_sel, show_labels=st.session_state.show_comarca_labels)
 
         indicator_html_string = ""
         selected_area = st.session_state.get('selected_area')
@@ -7065,7 +7078,7 @@ def run_catalunya_app():
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
-            if "Comarca:" in raw_tooltip:
+            if "Comarca:" in raw_tooltip or "Zona:" in raw_tooltip:
                 clicked_area = raw_tooltip.split(':')[-1].strip().replace('.', '')
                 if clicked_area != st.session_state.get('selected_area'):
                     st.session_state.selected_area = clicked_area
@@ -7095,7 +7108,6 @@ def run_catalunya_app():
                 st.rerun()
         else:
              st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
-    
 
 
 def seleccionar_poble(nom_poble):
