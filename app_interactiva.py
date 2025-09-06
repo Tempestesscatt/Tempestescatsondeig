@@ -8088,13 +8088,64 @@ def ui_pestanya_mapes_est_peninsula(hourly_index_sel, timestamp_str, nivell_sel,
 
 
 
+
+def inject_custom_css():
+    st.markdown("""
+    <style>
+    /* --- ESTIL DEFINITIU I ROBUST PER A TOTS ELS SPINNERS --- */
+    /* ... (el teu codi de spinner es manté igual) ... */
+    
+    /* --- ESTIL DE L'ALERTA PARPELLEJANT (ES MANTÉ) --- */
+    /* ... (el teu codi de blinking es manté igual) ... */
+
+    /* --- NOU: ESTIL PER A LA VORA DAURADA ANIMADA --- */
+    .animated-border-gold {
+        position: relative;
+        overflow: hidden; /* Molt important per contenir el gradient */
+        border-radius: 12px; /* Coincideix amb el border-radius del contenidor de Streamlit */
+        padding: 2px; /* Espai per a la vora */
+        background: #1c1c1c; /* Color de fons del contenidor */
+    }
+
+    .animated-border-gold::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: conic-gradient(
+            from 0deg,
+            #FFD700, #F0E68C, #FFD700, #DAA520, #FFD700
+        );
+        animation: rotate-border 4s linear infinite;
+        z-index: 1; /* Per sota del contingut */
+    }
+
+    /* Aquesta classe contindrà el contingut real del botó */
+    .animated-border-content {
+        position: relative;
+        background: #121212; /* Color de fons intern, lleugerament diferent */
+        border-radius: 10px; /* Un pèl més petit que el contenidor exterior */
+        padding: 1rem; /* Ajusta el padding intern si cal */
+        z-index: 2; /* Per sobre de l'animació */
+    }
+
+    @keyframes rotate-border {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    /* --- FI DEL NOU ESTIL --- */
+    </style>
+    """, unsafe_allow_html=True)
+    
+
 def ui_zone_selection():
     st.markdown("<h1 style='text-align: center;'>Zona d'Anàlisi</h1>", unsafe_allow_html=True)
     st.markdown("---")
     st.info("🟢(tenen webcams)-🔥(Especialment recomanades) ", icon="🎞")
 
     def start_transition(zone_id):
-        """Callback per iniciar la transició de vídeo."""
         st.session_state['zone_selected'] = zone_id
         st.session_state['show_transition_video'] = True
 
@@ -8109,60 +8160,61 @@ def ui_zone_selection():
     
     with st.spinner('Carregant entorns geoespacials...'): time.sleep(1)
 
-    # --- NOVA ESTRUCTURA DE COLUMNES ---
-    # Fila 1: 2 columnes per a les zones principals
     row1_col1, row1_col2 = st.columns(2)
-    
-    # Fila 2: 4 columnes per a zones secundàries
     row2_col1, row2_col2, row2_col3, row2_col4 = st.columns(4)
-    
-    # Fila 3: 4 columnes per a la resta de zones
     row3_col1, row3_col2, row3_col3, row3_col4 = st.columns(4)
-    # --- FI DE LA NOVA ESTRUCTURA ---
 
-    def create_zone_button(col, path, title, key, zone_id, type="secondary", height="160px"):
-        with col, st.container(border=True):
+    # --- FUNCIÓ create_zone_button MODIFICADA ---
+    def create_zone_button(col, path, title, key, zone_id, type="secondary", height="160px", animated_border=False):
+        
+        # Si té vora animada, emboliquem tot el contingut
+        if animated_border:
+            col.markdown('<div class="animated-border-gold">', unsafe_allow_html=True)
+        
+        with col, st.container(border=not animated_border): # Només mostrem la vora de Streamlit si no és animada
+            # Si és animada, afegim una capa interna per al contingut
+            if animated_border:
+                st.markdown('<div class="animated-border-content">', unsafe_allow_html=True)
+            
             st.markdown(generar_html_imatge_estatica(path, height=height), unsafe_allow_html=True)
             
             display_title = title
-            if zone_id == 'italia':
-                display_title += " 🔥"
-            elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya', 'holanda', 'catalunya', 'noruega']:
-                display_title += " 🟢"
+            if zone_id == 'italia': display_title += " 🔥"
+            elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya', 'holanda', 'catalunya', 'noruega']: display_title += " 🟢"
             
             st.subheader(display_title)
             
             st.button(f"Analitzar {title}", key=key, use_container_width=True, type=type,
                       on_click=start_transition, args=(zone_id,))
+            
+            if animated_border:
+                st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- DIBUIX DELS BOTONS AMB EL NOU ORDRE ---
+        if animated_border:
+            col.markdown('</div>', unsafe_allow_html=True)
+    # --- FI DE LA MODIFICACIÓ ---
 
-    # Fila 1 (Principals)
-    create_zone_button(row1_col1, paths['cat'], "Catalunya", "btn_cat", "catalunya", "primary", height="200px")
-    create_zone_button(row1_col2, paths['peninsula'], "Est Península", "btn_peninsula", "est_peninsula", "primary", height="200px")
+    # Dibuixem els botons amb el nou paràmetre
+    create_zone_button(row1_col1, paths['cat'], "Catalunya", "btn_cat", "catalunya", "primary", height="200px", animated_border=True)
+    create_zone_button(row1_col2, paths['peninsula'], "Est Península", "btn_peninsula", "est_peninsula", "primary", height="200px", animated_border=True)
 
-    # Fila 2
     create_zone_button(row2_col1, paths['usa'], "Tornado Alley", "btn_usa", "valley_halley")
     create_zone_button(row2_col2, paths['ale'], "Alemanya", "btn_ale", "alemanya")
     create_zone_button(row2_col3, paths['ita'], "Itàlia", "btn_ita", "italia")
     create_zone_button(row2_col4, paths['hol'], "Holanda", "btn_hol", "holanda")
     
-    # Fila 3
     create_zone_button(row3_col1, paths['japo'], "Japó", "btn_japo", "japo")
     create_zone_button(row3_col2, paths['uk'], "Regne Unit", "btn_uk", "uk")
     create_zone_button(row3_col3, paths['can'], "Canadà", "btn_can", "canada")
     create_zone_button(row3_col4, paths['nor'], "Noruega", "btn_nor", "noruega")
-    # --- FI DEL DIBUIX DELS BOTONS ---
 
-    # --- Secció d'Arxius (es manté igual) ---
+    # Secció d'Arxius (es manté igual)
     st.markdown("---")
     
     with st.container(border=True):
         img_col, content_col = st.columns([0.4, 0.6])
-
         with img_col:
             st.markdown(generar_html_imatge_estatica(paths['arxiu'], height="180px"), unsafe_allow_html=True)
-
         with content_col:
             st.subheader("Arxius Tempestes ⛈️")
             st.write(
