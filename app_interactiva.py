@@ -8054,7 +8054,7 @@ def ui_zone_selection():
         'uk': "uk_preview.png", 'can': "canada_preview.png",
         'nor': "noruega_preview.png",
         'arxiu': "arxiu_preview.png",
-        'peninsula': "peninsula_preview.png"  # <-- Imatge per a la nova zona
+        'peninsula': "peninsula_preview.png"
     }
     
     with st.spinner('Carregant entorns geoespacials...'): time.sleep(1)
@@ -8062,7 +8062,7 @@ def ui_zone_selection():
     # Definim les files de columnes
     row1_col1, row1_col2, row1_col3, row1_col4 = st.columns(4)
     row2_col1, row2_col2, row2_col3, row2_col4 = st.columns(4)
-    row3_col1, row3_col2, _, _ = st.columns(4) # Ampliem la tercera fila
+    row3_col1, row3_col2, _, _ = st.columns(4)
 
     def create_zone_button(col, path, title, key, zone_id, type="secondary"):
         with col, st.container(border=True):
@@ -8079,6 +8079,7 @@ def ui_zone_selection():
             st.button(f"Analitzar {title}", key=key, use_container_width=True, type=type,
                       on_click=start_transition, args=(zone_id,))
 
+    # --- BLOC ÚNIC DE CREACIÓ DE BOTONS ---
     # Dibuixem els botons a les seves respectives files i columnes
     create_zone_button(row1_col1, paths['cat'], "Catalunya", "btn_cat", "catalunya", "primary")
     create_zone_button(row1_col2, paths['usa'], "Tornado Alley", "btn_usa", "valley_halley")
@@ -8091,59 +8092,10 @@ def ui_zone_selection():
     create_zone_button(row2_col4, paths['can'], "Canadà", "btn_can", "canada")
 
     create_zone_button(row3_col1, paths['nor'], "Noruega", "btn_nor", "noruega")
-    # Nou botó per a l'Est Peninsular
     create_zone_button(row3_col2, paths['peninsula'], "Est Península", "btn_peninsula", "est_peninsula")
+    # --- FI DEL BLOC ÚNIC ---
 
     # --- Secció d'Arxius ---
-    st.markdown("---")
-    
-    with st.container(border=True):
-        img_col, content_col = st.columns([0.4, 0.6])
-
-        with img_col:
-            st.markdown(generar_html_imatge_estatica(paths['arxiu'], height="180px"), unsafe_allow_html=True)
-
-        with content_col:
-            st.subheader("Arxius Tempestes ⛈️")
-            st.write(
-                """
-                Explora i analitza els **sondejos i mapes de situacions de temps sever passades**. 
-                Una eina essencial per a l'estudi de casos, la comparació de patrons i l'aprenentatge.
-                """
-            )
-            st.button("Consultar Arxius", key="btn_arxiu", use_container_width=True, type="primary",
-                      on_click=start_transition, args=("arxiu_tempestes",))
-
-
-    def create_zone_button(col, path, title, key, zone_id, type="secondary"):
-        with col, st.container(border=True):
-            st.markdown(generar_html_imatge_estatica(path, height="160px"), unsafe_allow_html=True)
-            
-            display_title = title
-            if zone_id == 'italia':
-                display_title += " 🔥"
-            elif zone_id in ['japo', 'uk', 'canada', 'valley_halley', 'alemanya', 'holanda', 'catalunya', 'noruega']:
-                display_title += " 🟢"
-            
-            st.subheader(display_title)
-            
-            st.button(f"Analitzar {title}", key=key, use_container_width=True, type=type,
-                      on_click=start_transition, args=(zone_id,))
-
-    # Dibuixem els botons a les seves respectives files i columnes
-    create_zone_button(row1_col1, paths['cat'], "Catalunya", "btn_cat", "catalunya", "primary")
-    create_zone_button(row1_col2, paths['usa'], "Tornado Alley", "btn_usa", "valley_halley")
-    create_zone_button(row1_col3, paths['ale'], "Alemanya", "btn_ale", "alemanya")
-    create_zone_button(row1_col4, paths['ita'], "Itàlia", "btn_ita", "italia")
-    
-    create_zone_button(row2_col1, paths['hol'], "Holanda", "btn_hol", "holanda")
-    create_zone_button(row2_col2, paths['japo'], "Japó", "btn_japo", "japo")
-    create_zone_button(row2_col3, paths['uk'], "Regne Unit", "btn_uk", "uk")
-    create_zone_button(row2_col4, paths['can'], "Canadà", "btn_can", "canada")
-
-    create_zone_button(row3_col1, paths['nor'], "Noruega", "btn_nor", "noruega")
-
-    # --- NOVA SECCIÓ D'ARXIUS (OCUPA TOT L'AMPLE) ---
     st.markdown("---")
     
     with st.container(border=True):
