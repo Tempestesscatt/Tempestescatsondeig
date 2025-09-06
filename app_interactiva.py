@@ -6389,9 +6389,6 @@ def run_est_peninsula_app():
             else:
                 st.warning("Aquesta província no té localitats predefinides per a l'anàlisi.")
             
-            if st.button("⬅️ Veure totes les províncies"):
-                st.session_state.selected_area_peninsula = "--- Selecciona una província al mapa ---"
-                st.rerun()
         else:
             st.info("Fes clic en una província del mapa per veure'n les localitats.", icon="👆")
 
@@ -6585,30 +6582,42 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
         'uk': 'Regne Unit', 
         'canada': 'Canadà', 
         'noruega': 'Noruega',
-        'est_peninsula': 'Est Península'  # <-- Nova zona afegida al diccionari
+        'est_peninsula': 'Est Península'
     }
-    del altres_zones[zona_activa]
+    # No volem que la zona activa aparegui a la llista per canviar
+    if zona_activa in altres_zones:
+        del altres_zones[zona_activa]
     
+    # --- DISSENY DE COLUMNES MODIFICAT ---
     col_text, col_nav, col_back, col_logout = st.columns([0.5, 0.2, 0.15, 0.15])
     
     with col_text:
         if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username', 'Usuari')}**!")
     with col_nav:
         nova_zona_key = st.selectbox("Canviar a:", options=list(altres_zones.keys()), format_func=lambda k: altres_zones[k], index=None, placeholder="Anar a...")
-        if nova_zona_key: st.session_state.zone_selected = nova_zona_key; st.rerun()
+        if nova_zona_key:
+            st.session_state.zone_selected = nova_zona_key
+            st.rerun()
+            
+    # --- NOU BOTÓ "TORNAR A ZONES" ---
     with col_back:
         if st.button("⬅️ Zones", use_container_width=True, help="Tornar a la selecció de zona"):
+            # Netejem les variables d'estat específiques de la zona actual, però mantenim l'estat del login
             keys_to_clear = [k for k in st.session_state if k not in ['logged_in', 'username', 'guest_mode', 'developer_mode']]
-            for key in keys_to_clear: del st.session_state[key]
+            for key in keys_to_clear:
+                del st.session_state[key]
             st.rerun()
+            
     with col_logout:
         if st.button("Sortir" if is_guest else "Tanca Sessió", use_container_width=True):
-            for key in list(st.session_state.keys()): del st.session_state[key]
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
             st.rerun()
 
+    # La resta de la funció per als selectors de cada zona es manté igual
     with st.container(border=True):
         if zona_activa == 'catalunya':
-            pass
+            pass # Catalunya té la seva pròpia lògica de mapa
         
         elif zona_activa == 'valley_halley':
             st.selectbox("Ciutat:", options=sorted(list(USA_CITIES.keys())), key="poble_selector_usa")
@@ -6626,9 +6635,9 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             st.selectbox("Ciutat:", options=sorted(list(CIUTATS_CANADA.keys())), key="poble_selector_canada")
         elif zona_activa == 'noruega':
             st.selectbox("Ciutat:", options=sorted(list(CIUTATS_NORUEGA.keys())), key="poble_selector_noruega")
-        # <-- Nou bloc elif per a la nova zona -->
         elif zona_activa == 'est_peninsula':
-            st.selectbox("Ciutat:", options=sorted(list(CIUTATS_EST_PENINSULA.keys())), key="poble_selector_est_peninsula")
+            # La zona de la península ara es gestiona amb la seva pròpia lògica de mapa/selectors
+            pass
 
 
 def ui_pestanya_mapes_japo(hourly_index_sel, timestamp_str, nivell_sel, poble_sel):
