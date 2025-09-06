@@ -6383,8 +6383,8 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió definitiva amb ISÒLINES DINÀMIQUES cada 5 unitats).
-    Combina el renderitzat suau amb línies de contorn adaptatives per al màxim detall.
+    PESTANYA D'ANÀLISI COMARCAL (Versió definitiva amb VORA NEGRA a l'indicador de direcció).
+    Afegeix un contorn negre a la fletxa i al cercle per a una visibilitat màxima.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6410,6 +6410,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
 
             if map_data and valor_conv > 15:
+                # ... (La part de càlcul i dibuix de la convergència es manté igual) ...
                 lons, lats = map_data['lons'], map_data['lats']
                 grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 150), np.linspace(map_extent[2], map_extent[3], 150))
                 grid_dewpoint = griddata((lons, lats), map_data['dewpoint_data'], (grid_lon, grid_lat), 'linear')
@@ -6423,33 +6424,18 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     DEWPOINT_THRESHOLD = 14 if nivell_sel >= 950 else 12
                     humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
                     effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0)
-                
                 smoothed_convergence = gaussian_filter(effective_convergence, sigma=3.5)
                 smoothed_convergence[smoothed_convergence < 15] = 0
-
                 if np.any(smoothed_convergence > 0):
                     colors_conv_professional = [(0.0, 0.6, 0.8, 0.6), (0.1, 0.8, 0.4, 0.7), (0.9, 0.9, 0.2, 0.8), (1.0, 0.5, 0.0, 0.9), (0.9, 0.0, 0.0, 1.0)]
                     cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_professional", colors_conv_professional)
                     fill_levels = np.linspace(20, 100, 128)
                     ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels, cmap=cmap_conv, alpha=0.85, zorder=3, transform=ccrs.PlateCarree(), extend='max')
-
-                    # --- BLOC MODIFICAT: ISÒLINES DINÀMIQUES CADA 5 UNITATS ---
-                    max_conv_valor = np.max(smoothed_convergence)
-                    min_contour_val = 20
-                    interval = 5
-
-                    if max_conv_valor >= min_contour_val:
-                        # Creem una llista de nivells des de 20 fins al màxim, en increments de 5
-                        line_levels = np.arange(min_contour_val, max_conv_valor, interval)
-                        
-                        if len(line_levels) > 0:
-                            contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
-                                                  levels=line_levels, colors='black', linestyles='--',
-                                                  linewidths=1.2, zorder=4, transform=ccrs.PlateCarree())
-                            labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
-                            for label in labels:
-                                label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.6))
-                    # --- FI DEL BLOC MODIFICAT ---
+                    line_levels = np.arange(20, np.max(smoothed_convergence), 5)
+                    if len(line_levels) > 0:
+                        contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors='black', linestyles='--', linewidths=1.2, zorder=4, transform=ccrs.PlateCarree())
+                        labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
+                        for label in labels: label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.6))
                 
                 points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
@@ -6465,9 +6451,14 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                         elif valor_conv >= 40: indicator_color = '#FD7E14'
                         else: indicator_color = '#28A745'
                         
-                        circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12)
+                        # --- CANVI: Afegim path_effects a tots els elements de l'indicador ---
+                        path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
+                        
+                        circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, 
+                                        transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
                         ax.add_patch(circle)
-                        ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree())
+                        ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, 
+                                zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
 
                         motion_vector = params_calc.get('RM') or params_calc.get('Mean_Wind')
                         if motion_vector and not pd.isna(motion_vector[0]):
@@ -6477,7 +6468,8 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                             length = 0.25
                             end_x = px + length * np.cos(dir_rad)
                             end_y = py + length * np.sin(dir_rad)
-                            ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12)
+                            ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, 
+                                    transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
                             num_barbs = 3; barb_length = 0.04
                             barb_angle_rad = dir_rad + np.pi / 2
                             for i in range(1, num_barbs + 1):
@@ -6488,7 +6480,8 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                                 barb_start_y = barb_center_y - barb_length / 2 * np.sin(barb_angle_rad)
                                 barb_end_x = barb_center_x + barb_length / 2 * np.cos(barb_angle_rad)
                                 barb_end_y = barb_center_y + barb_length / 2 * np.sin(barb_angle_rad)
-                                ax.plot([barb_start_x, barb_end_x], [barb_start_y, barb_end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12)
+                                ax.plot([barb_start_x, barb_end_x], [barb_start_y, barb_end_y], color=indicator_color, 
+                                        linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
             
             poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
             if poble_coords:
@@ -6503,7 +6496,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             plt.close(fig)
 
     with col_diagnostic:
-        # Aquesta part no canvia, es manté exactament igual
+        # Aquesta part es manté exactament igual
         st.markdown("##### Diagnòstic de la Zona")
         if valor_conv >= 100:
             nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
