@@ -6416,9 +6416,9 @@ def generar_icona_direccio(color, direccio_graus):
 def crear_llegenda_direccionalitat():
     """
     Mostra una llegenda visual i explicativa per al mapa de focus de convergència comarcal.
-    (Versió corregida per evitar que es mostri el codi HTML)
+    (Versió 2 - Anti-formatació de codi)
     """
-    # El CSS es pot mantenir igual
+    # El CSS es manté igual
     st.markdown("""
     <style>
         .legend-box { background-color: #2a2c34; border-radius: 10px; padding: 15px; border: 1px solid #444; margin-top: 15px; }
@@ -6434,34 +6434,34 @@ def crear_llegenda_direccionalitat():
     icona_alt = generar_icona_direccio('#FD7E14', 45)  # Taronja, cap al NE
     icona_molt_alt = generar_icona_direccio('#DC3545', 270) # Vermell, cap a l'Oest
 
-    # --- CORRECCIÓ CLAU: Construïm l'HTML sense indentació inicial ---
-    html_llegenda = f'''
-<div class="legend-box">
-    <div class="legend-title">Com Interpretar el Focus de Convergència</div>
-    <p style="font-size:0.9em; color:#a0a0b0;">El mapa mostra el punt de <b>màxima convergència</b> dins la comarca i la <b>direcció de desplaçament</b> prevista de la tempesta que es pugui formar.</p>
+    # --- CORRECCIÓ DEFINITIVA: Construïm l'HTML com una sola cadena llarga ---
+    # Aquesta tècnica evita que Streamlit interpreti el text com un bloc de codi.
+    html_llegenda = (
+        f'<div class="legend-box">'
+        f'    <div class="legend-title">Com Interpretar el Focus de Convergència</div>'
+        f'    <p style="font-size:0.9em; color:#a0a0b0;">El mapa mostra el punt de <b>màxima convergència</b> dins la comarca i la <b>direcció de desplaçament</b> prevista de la tempesta que es pugui formar.</p>'
+        f'    <div class="legend-section">'
+        f'        <div class="legend-icon-container">'
+        f'            <img src="data:image/png;base64,{icona_alt}" width="50">'
+        f'        </div>'
+        f'        <div class="legend-text-container">'
+        f'            <b>Intensitat (Color del Cercle):</b> Indica la força del "disparador".<br>'
+        f'            <span style="color:#FD7E14;">■ Taronja: Alt</span>, '
+        f'            <span style="color:#DC3545;">■ Vermell: Molt Alt</span>,'
+        f'            <span style="color:#9370DB;">■ Lila: Extrem.</span>'
+        f'        </div>'
+        f'    </div>'
+        f'    <div class="legend-section">'
+        f'        <div class="legend-icon-container">'
+        f'            <img src="data:image/png;base64,{icona_molt_alt}" width="50">'
+        f'        </div>'
+        f'        <div class="legend-text-container">'
+        f'            <b>Direcció (Fletxa):</b> Estima la trajectòria que seguirà la tempesta un cop formada, basant-se en el vent a nivells mitjans de l\'atmosfera (700-500hPa).'
+        f'        </div>'
+        f'    </div>'
+        f'</div>'
+    )
     
-    <div class="legend-section">
-        <div class="legend-icon-container">
-            <img src="data:image/png;base64,{icona_alt}" width="50">
-        </div>
-        <div class="legend-text-container">
-            <b>Intensitat (Color del Cercle):</b> Indica la força del "disparador".<br>
-            <span style="color:#FD7E14;">■ Taronja: Alt</span>, 
-            <span style="color:#DC3545;">■ Vermell: Molt Alt</span>,
-            <span style="color:#9370DB;">■ Lila: Extrem.</span>
-        </div>
-    </div>
-
-    <div class="legend-section">
-        <div class="legend-icon-container">
-            <img src="data:image/png;base64,{icona_molt_alt}" width="50">
-        </div>
-        <div class="legend-text-container">
-            <b>Direcció (Fletxa):</b> Estima la trajectòria que seguirà la tempesta un cop formada, basant-se en el vent a nivells mitjans de l'atmosfera (700-500hPa).
-        </div>
-    </div>
-</div>
-'''
     st.markdown(html_llegenda, unsafe_allow_html=True)
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
