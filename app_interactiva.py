@@ -6383,8 +6383,8 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió definitiva amb gradient viscós + isòlines).
-    Combina el renderitzat suau amb línies de contorn numerades per a màxima claredat.
+    PESTANYA D'ANÀLISI COMARCAL (Versió definitiva amb ISÒLINES DINÀMIQUES cada 5 unitats).
+    Combina el renderitzat suau amb línies de contorn adaptatives per al màxim detall.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6433,15 +6433,23 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     fill_levels = np.linspace(20, 100, 128)
                     ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels, cmap=cmap_conv, alpha=0.85, zorder=3, transform=ccrs.PlateCarree(), extend='max')
 
-                    # --- BLOC REINTRODUÏT: DIBUIX DE LES ISÒLINES NUMERADES ---
-                    line_levels = [20, 40, 60, 80, 100] # Començant a 20
-                    contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
-                                          levels=line_levels, colors='black', linestyles='--',
-                                          linewidths=1.2, zorder=4, transform=ccrs.PlateCarree())
-                    labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
-                    for label in labels:
-                        label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.6))
-                    # --- FI DEL BLOC REINTRODUÏT ---
+                    # --- BLOC MODIFICAT: ISÒLINES DINÀMIQUES CADA 5 UNITATS ---
+                    max_conv_valor = np.max(smoothed_convergence)
+                    min_contour_val = 20
+                    interval = 5
+
+                    if max_conv_valor >= min_contour_val:
+                        # Creem una llista de nivells des de 20 fins al màxim, en increments de 5
+                        line_levels = np.arange(min_contour_val, max_conv_valor, interval)
+                        
+                        if len(line_levels) > 0:
+                            contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
+                                                  levels=line_levels, colors='black', linestyles='--',
+                                                  linewidths=1.2, zorder=4, transform=ccrs.PlateCarree())
+                            labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
+                            for label in labels:
+                                label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.6))
+                    # --- FI DEL BLOC MODIFICAT ---
                 
                 points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
@@ -6451,37 +6459,36 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
                     px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
                     
-                    if params_calc:
-                        if valor_conv >= 20: # Només mostrem l'indicador si la convergència és rellevant
-                            if valor_conv >= 100: indicator_color = '#9370DB'
-                            elif valor_conv >= 60: indicator_color = '#DC3545'
-                            elif valor_conv >= 40: indicator_color = '#FD7E14'
-                            else: indicator_color = '#28A745'
-                            
-                            circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12)
-                            ax.add_patch(circle)
-                            ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree())
+                    if params_calc and valor_conv >= 20:
+                        if valor_conv >= 100: indicator_color = '#9370DB'
+                        elif valor_conv >= 60: indicator_color = '#DC3545'
+                        elif valor_conv >= 40: indicator_color = '#FD7E14'
+                        else: indicator_color = '#28A745'
+                        
+                        circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12)
+                        ax.add_patch(circle)
+                        ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree())
 
-                            motion_vector = params_calc.get('RM') or params_calc.get('Mean_Wind')
-                            if motion_vector and not pd.isna(motion_vector[0]):
-                                u_storm, v_storm = motion_vector[0] * units('m/s'), motion_vector[1] * units('m/s')
-                                storm_dir_to = (mpcalc.wind_direction(u_storm, v_storm).m + 180) % 360
-                                dir_rad = np.deg2rad(90 - storm_dir_to)
-                                length = 0.25
-                                end_x = px + length * np.cos(dir_rad)
-                                end_y = py + length * np.sin(dir_rad)
-                                ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12)
-                                num_barbs = 3; barb_length = 0.04
-                                barb_angle_rad = dir_rad + np.pi / 2
-                                for i in range(1, num_barbs + 1):
-                                    pos_on_shaft = 0.4 + (i * 0.2)
-                                    barb_center_x = px + length * pos_on_shaft * np.cos(dir_rad)
-                                    barb_center_y = py + length * pos_on_shaft * np.sin(dir_rad)
-                                    barb_start_x = barb_center_x - barb_length / 2 * np.cos(barb_angle_rad)
-                                    barb_start_y = barb_center_y - barb_length / 2 * np.sin(barb_angle_rad)
-                                    barb_end_x = barb_center_x + barb_length / 2 * np.cos(barb_angle_rad)
-                                    barb_end_y = barb_center_y + barb_length / 2 * np.sin(barb_angle_rad)
-                                    ax.plot([barb_start_x, barb_end_x], [barb_start_y, barb_end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12)
+                        motion_vector = params_calc.get('RM') or params_calc.get('Mean_Wind')
+                        if motion_vector and not pd.isna(motion_vector[0]):
+                            u_storm, v_storm = motion_vector[0] * units('m/s'), motion_vector[1] * units('m/s')
+                            storm_dir_to = (mpcalc.wind_direction(u_storm, v_storm).m + 180) % 360
+                            dir_rad = np.deg2rad(90 - storm_dir_to)
+                            length = 0.25
+                            end_x = px + length * np.cos(dir_rad)
+                            end_y = py + length * np.sin(dir_rad)
+                            ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12)
+                            num_barbs = 3; barb_length = 0.04
+                            barb_angle_rad = dir_rad + np.pi / 2
+                            for i in range(1, num_barbs + 1):
+                                pos_on_shaft = 0.4 + (i * 0.2)
+                                barb_center_x = px + length * pos_on_shaft * np.cos(dir_rad)
+                                barb_center_y = py + length * pos_on_shaft * np.sin(dir_rad)
+                                barb_start_x = barb_center_x - barb_length / 2 * np.cos(barb_angle_rad)
+                                barb_start_y = barb_center_y - barb_length / 2 * np.sin(barb_angle_rad)
+                                barb_end_x = barb_center_x + barb_length / 2 * np.cos(barb_angle_rad)
+                                barb_end_y = barb_center_y + barb_length / 2 * np.sin(barb_angle_rad)
+                                ax.plot([barb_start_x, barb_end_x], [barb_start_y, barb_end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12)
             
             poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
             if poble_coords:
@@ -6496,7 +6503,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             plt.close(fig)
 
     with col_diagnostic:
-        # Aquesta part es manté exactament igual
+        # Aquesta part no canvia, es manté exactament igual
         st.markdown("##### Diagnòstic de la Zona")
         if valor_conv >= 100:
             nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
