@@ -6607,7 +6607,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona):
     Funció de VISUALITZACIÓ. No està a la memòria cau.
     Obté les dades pre-processades de la memòria cau i construeix el mapa ràpidament.
     """
-    st.markdown("#### Mapa de Situació")
+    st.markdown("#### Mapa amb avisos convergents ")
     
     # Obtenim les dades pre-processades (les "instruccions") de la memòria cau
     map_data = preparar_dades_mapa_cachejat(alertes_per_zona)
