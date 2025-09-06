@@ -6223,7 +6223,7 @@ def crear_mapa_forecast_combinat_est_peninsula(lons, lats, speed_data, dir_data,
 def run_est_peninsula_app():
     """
     Funció principal que gestiona la lògica per a la zona de l'Est Peninsular,
-    amb mapa interactiu i controls de visualització.
+    amb mapa interactiu i controls de visualització millorats i diagnòstic d'errors.
     """
     # --- PAS 1: GESTIÓ D'ESTAT INICIAL ---
     if 'selected_area_peninsula' not in st.session_state: st.session_state.selected_area_peninsula = "--- Selecciona una zona al mapa ---"
@@ -6310,6 +6310,20 @@ def run_est_peninsula_app():
 
     else:
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
+        
+        # **NOVA SECCIÓ DE DIAGNÒSTIC**
+        gdf_zones = carregar_dades_geografiques_peninsula()
+        if gdf_zones is None:
+            st.error("Error crític en carregar el mapa de zones.")
+            st.warning("Revisa els següents punts:", icon="⚠️")
+            st.code("""
+1. Existeix un fitxer anomenat 'peninsula_zones.geojson' a la mateixa carpeta que l'aplicació?
+2. El fitxer NO està buit?
+3. El contingut del fitxer és un GeoJSON vàlid? (Pots verificar-ho a geojson.io)
+4. Cada polígon dins del fitxer té una propietat anomenada 'nom_zona'?
+            """, language="markdown")
+            return # Atura l'execució aquí si el mapa no es pot carregar
+
         st.session_state.setdefault('show_comarca_labels_peninsula', False)
         st.session_state.setdefault('alert_filter_level_peninsula', 'Tots')
 
@@ -6317,18 +6331,13 @@ def run_est_peninsula_app():
             st.markdown("##### Opcions de Visualització del Mapa")
             col_filter, col_labels = st.columns(2)
             with col_filter:
-                st.selectbox(
-                    "Filtrar avisos per nivell:",
-                    options=["Tots", "Moderat i superior", "Alt i superior", "Molt Alt i superior", "Només Extrems"],
-                    key="alert_filter_level_peninsula"
-                )
+                st.selectbox("Filtrar avisos per nivell:", options=["Tots", "Moderat i superior", "Alt i superior", "Molt Alt i superior", "Només Extrems"], key="alert_filter_level_peninsula")
             with col_labels:
                 st.toggle("Mostrar noms de les zones amb avís", key="show_comarca_labels_peninsula")
         
         with st.spinner("Carregant mapa de situació de la península..."):
             alertes_totals = calcular_alertes_per_zona_peninsula(hourly_index_sel, nivell_sel)
             alertes_filtrades = filtrar_alertes(alertes_totals, st.session_state.alert_filter_level_peninsula)
-            # CRIDA A LA NOVA FUNCIÓ DE MAPA PER A LA PENÍNSULA
             map_output = ui_mapa_display_peninsula(alertes_filtrades, hourly_index_sel, show_labels=st.session_state.show_comarca_labels_peninsula)
         
         ui_llegenda_mapa_principal()
@@ -6351,10 +6360,7 @@ def run_est_peninsula_app():
                 col_index = 0
                 for nom_poble in sorted(poblacions_a_mostrar.keys()):
                     with cols[col_index % 4]:
-                        st.button(
-                            nom_poble, key=f"btn_pen_{nom_poble.replace(' ', '_')}",
-                            on_click=seleccionar_poble_peninsula, args=(nom_poble,), use_container_width=True
-                        )
+                        st.button(nom_poble, key=f"btn_pen_{nom_poble.replace(' ', '_')}", on_click=seleccionar_poble_peninsula, args=(nom_poble,), use_container_width=True)
                     col_index += 1
             else:
                 st.warning("Aquesta zona no té localitats predefinides per a l'anàlisi.")
