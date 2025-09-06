@@ -6332,17 +6332,15 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc):
     """
-    PESTANYA D'ANÀLISI COMARCAL (V. FINAL + VALIDACIÓ).
-    - Mostra un mapa estàtic de la comarca.
-    - AFEGEIX un bloc de validació que utilitza les dades del sondeig (params_calc)
-      per determinar si la convergència és efectiva.
+    PESTANYA D'ANÀLISI COMARCAL (V. FINAL + VALIDACIÓ SENSE ASTERISCS).
     """
-    st.markdown(f"#### Anàlisi de Convergència per a la Comarca: **{comarca}**")
+    st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
 
     col_mapa, col_diagnostic = st.columns([0.6, 0.4], gap="large")
 
     with col_mapa:
+        # ... (Aquesta part del mapa no canvia i es queda igual) ...
         st.markdown("##### Focus de Convergència a la Zona")
         gdf_comarques = carregar_dades_geografiques()
         if gdf_comarques is None:
@@ -6394,12 +6392,13 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
     with col_diagnostic:
         st.markdown("##### Diagnòstic de la Zona")
         
+        # --- LÍNIES DE TEXT MODIFICADES (SENSE ASTERISCS) ---
         if valor_conv >= 60:
-            nivell_alerta, color_alerta, emoji, descripcio = "Molt Alt", "#DC3545", "🔴", f"S'ha detectat un focus de convergència **extremadament fort** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquesta és una senyal molt clara per a la formació imminent de tempestes, possiblement severes i organitzades."
+            nivell_alerta, color_alerta, emoji, descripcio = "Molt Alt", "#DC3545", "🔴", f"S'ha detectat un focus de convergència extremadament fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal molt clara per a la formació imminent de tempestes, possiblement severes i organitzades."
         elif valor_conv >= 40:
-            nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FD7E14", "🟠", f"Hi ha un focus de convergència **forta** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona."
+            nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FD7E14", "🟠", f"Hi ha un focus de convergència forta a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona."
         elif valor_conv >= 20:
-            nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#28A745", "🟢", f"S'observa una zona de convergència **moderada** a la comarca, amb un valor màxim de **{valor_conv:.0f}**. Aquesta condició pot ser suficient per iniciar tempestes si l'atmosfera és inestable."
+            nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#28A745", "🟢", f"S'observa una zona de convergència moderada a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes si l'atmosfera és inestable."
         else:
             nivell_alerta, color_alerta, emoji, descripcio = "Baix", "#6c757d", "⚪", "No es detecten focus de convergència significatius a la comarca. El forçament dinàmic per iniciar tempestes és feble."
 
@@ -6410,7 +6409,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         </div>
         """, unsafe_allow_html=True)
         
-        # --- NOU BLOC DE VALIDACIÓ AMB DADES DEL SONDEIG ---
         st.markdown("##### Validació Atmosfèrica")
         
         if not params_calc:
@@ -6419,20 +6417,20 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             mucin = params_calc.get('MUCIN', 0) or 0
             mucape = params_calc.get('MUCAPE', 0) or 0
             
-            CIN_THRESHOLD = -75  # Llindar per a una inhibició considerable
-            CAPE_THRESHOLD = 250 # Llindar mínim per a convecció
+            CIN_THRESHOLD = -75
+            CAPE_THRESHOLD = 250
             
             vered_titol, vered_color, vered_emoji, vered_desc = "", "", "", ""
 
             if mucin < CIN_THRESHOLD:
                 vered_titol, vered_color, vered_emoji = "Inhibida", "#DC3545", "👎"
-                vered_desc = f"Tot i la convergència, hi ha una **inhibició (CIN) molt forta** de **{mucin:.0f} J/kg**. Aquesta 'tapa' probablement impedirà que les tempestes es formin o es desenvolupin."
+                vered_desc = f"Tot i la convergència, hi ha una inhibició (CIN) molt forta de {mucin:.0f} J/kg. Aquesta 'tapa' probablement impedirà que les tempestes es formin o es desenvolupin."
             elif mucape < CAPE_THRESHOLD:
                 vered_titol, vered_color, vered_emoji = "Sense Energia", "#FD7E14", "🤔"
-                vered_desc = f"El disparador de la convergència existeix, però l'atmosfera té **molt poc 'combustible' (CAPE)**, amb només **{mucape:.0f} J/kg**. Les tempestes, si es formen, seran molt febles."
+                vered_desc = f"El disparador de la convergència existeix, però l'atmosfera té molt poc 'combustible' (CAPE), amb només {mucape:.0f} J/kg. Les tempestes, si es formen, seran molt febles."
             else:
                 vered_titol, vered_color, vered_emoji = "Efectiva", "#28A745", "👍"
-                vered_desc = f"**Les condicions són favorables!** La convergència troba una atmosfera amb **prou energia ({mucape:.0f} J/kg)** i una **inhibició feble ({mucin:.0f} J/kg)**. És molt probable que es formin tempestes."
+                vered_desc = f"Les condicions són favorables! La convergència troba una atmosfera amb prou energia ({mucape:.0f} J/kg) i una inhibició feble ({mucin:.0f} J/kg). És molt probable que es formin tempestes."
 
             st.markdown(f"""
             <div style="background-color: #262730; border-left: 8px solid {vered_color}; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
@@ -6440,9 +6438,9 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                 <div style="font-size: 1em; color: #a0a0b0; line-height: 1.6;">{vered_desc}</div>
             </div>
             """, unsafe_allow_html=True)
-            st.caption(f"Aquesta validació es basa en el sondeig vertical de **{poble_sel}**.")
+            st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
 
-        st.info(f"**Nota:** Aquesta anàlisi es basa en la convergència de vent a **{nivell_sel} hPa**. Per a més detalls, consulta la pestanya 'Anàlisi Vertical'.", icon="ℹ️")
+        st.info(f"Nota: Aquesta anàlisi es basa en la convergència de vent a {nivell_sel} hPa. Per a més detalls, consulta la pestanya 'Anàlisi Vertical'.", icon="ℹ️")
         
 def seleccionar_poble(nom_poble):
     """Callback segur que estableix la intenció de seleccionar un poble."""
