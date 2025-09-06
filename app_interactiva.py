@@ -6327,14 +6327,15 @@ def run_catalunya_app():
         # Mostrem la llegenda principal
         ui_llegenda_mapa_principal()
 
-        # --- NOU BLOC: LÒGICA DE LA FLETXA INDICADORA ---
+        # --- NOU BLOC: LÒGICA DE LA FLETXA INDICADORA AMB TEXT ---
         arrow_position_percent = None
+        conv_value_selected = None
         selected_area = st.session_state.get('selected_area')
+        
         if selected_area and "---" not in selected_area:
             cleaned_area_name = selected_area.strip().replace('.', '')
-            conv_value = alertes_filtrades.get(cleaned_area_name)
+            conv_value_selected = alertes_filtrades.get(cleaned_area_name)
             
-            # Funció per calcular la posició de la fletxa
             def calcular_posicio_llegenda(valor):
                 if not isinstance(valor, (int, float)) or valor < 20:
                     return None
@@ -6342,25 +6343,53 @@ def run_catalunya_app():
                 posicio_percent = ((valor_clamped - 20) / (100 - 20)) * 100
                 return posicio_percent
             
-            arrow_position_percent = calcular_posicio_llegenda(conv_value)
+            arrow_position_percent = calcular_posicio_llegenda(conv_value_selected)
 
-        # Si tenim una posició vàlida, injectem el CSS per a la fletxa
+        # Si tenim una posició, injectem el CSS i l'HTML per a l'indicador
         if arrow_position_percent is not None:
+            # Injectem el CSS per a l'indicador
             st.markdown(f"""
             <style>
-            .legend-gradient-bar::after {{
-                content: '▼';
-                color: white;
-                font-size: 24px;
+            .legend-indicator {{
                 position: absolute;
-                bottom: 78px; /* Ajusta aquest valor per pujar o baixar la fletxa */
+                top: 52px; /* Ajusta per alinear amb la part superior de la barra */
                 left: {arrow_position_percent}%;
                 transform: translateX(-50%);
-                text-shadow: 0px 0px 5px black;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                z-index: 10;
                 transition: left 0.3s ease-in-out;
+                pointer-events: none; /* Per no interferir amb el ratolí */
+            }}
+            .indicator-text {{
+                background-color: rgba(0, 0, 0, 0.7);
+                color: white;
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: bold;
+                white-space: nowrap;
+            }}
+            .indicator-arrow {{
+                color: white;
+                font-size: 20px;
+                line-height: 0.5;
+                text-shadow: 0px 0px 4px black;
             }}
             </style>
             """, unsafe_allow_html=True)
+
+            # Injectem l'element HTML de l'indicador dins de la llegenda
+            # Nota: Ho fem amb un hack, afegint-lo a un contenidor separat que se superposa
+            with st.container():
+                 st.markdown(
+                    f'<div class="legend-indicator">'
+                    f'  <div class="indicator-text">({int(conv_value_selected)})</div>'
+                    f'  <div class="indicator-arrow">▼</div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
         # --- FI DEL NOU BLOC ---
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
