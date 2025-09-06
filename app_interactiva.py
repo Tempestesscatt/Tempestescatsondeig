@@ -6242,7 +6242,6 @@ def run_catalunya_app():
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
         # --- VISTA D'ANÀLISI DETALLADA ---
         poble_sel = st.session_state.poble_sel
-        
         with st.spinner(f"Carregant anàlisi completa per a {poble_sel}..."):
             lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
             data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
@@ -6332,9 +6331,8 @@ def run_catalunya_app():
     else: 
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU + LLEGENDA + BOTONS) ---
         with st.spinner("Carregant mapa de situació de Catalunya..."):
-            map_output = ui_mapa_display_personalitzat(alertes_zona)
+            map_output = ui_mapa_display_personalitzat(alertes_zona, hourly_index_sel)
 
-        # Mostrem la llegenda just a sota del mapa principal
         ui_llegenda_mapa_principal()
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
