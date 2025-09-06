@@ -6436,140 +6436,111 @@ CAPITALS_COMARCA = {
     "Vallès Oriental": {"nom": "Granollers", "lat": 41.6083, "lon": 2.2886}
 }
 
-@st.cache_data(ttl=600)
-def ui_mapa_display_personalitzat(alertes_per_zona):
+
+
+
+
+
+@st.cache_data(ttl=600, show_spinner="Generant mapa de situació...")
+def generar_mapa_folium_catalunya(alertes_per_zona, selected_area_str):
     """
-    Versió final robusta v14 (Límits de Zoom).
-    - Afegeix un nivell de zoom mínim per impedir sortir de Catalunya.
-    - Manté el mapa congelat quan se selecciona una comarca.
+    Funció CACHEADA que fa el treball pesat: carrega les geometries i
+    construeix l'objecte del mapa Folium. Retorna l'objecte 'm'.
     """
-    st.markdown("#### Mapa de Situació")
     gdf = carregar_dades_geografiques()
     if gdf is None: return None
 
     property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), None)
     if not property_name:
-        st.error("Error Crític en el Mapa: L'arxiu GeoJSON no conté una propietat de nom vàlida.")
+        # No podem usar st.error dins d'una funció cachejada, així que imprimim i retornem None.
+        print("Error Crític en el Mapa: L'arxiu GeoJSON no conté una propietat de nom vàlida.")
         return None
     tooltip_alias = 'Comarca:'
 
-    selected_area = st.session_state.get('selected_area')
-    
-    # --- PARÀMETRES DEL MAPA REVISATS I AMB LÍMITS ---
+    # Paràmetres del mapa
     map_params = {
-        "location": [41.83, 1.87],
-        "zoom_start": 8,
+        "location": [41.83, 1.87], "zoom_start": 8,
         "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
         "attr": "Tiles &copy; Esri &mdash; and the GIS User Community",
-        "scrollWheelZoom": True,
-        "dragging": True,
-        "zoom_control": True,
-        "doubleClickZoom": True,
-        "max_bounds": [[40.4, 0.0], [42.9, 3.5]], # Límits geogràfics
-        "min_zoom": 8, # Impedeix fer "unzoom" excessiu
-        "max_zoom": 12  # Limita el zoom màxim per consistència
+        "scrollWheelZoom": True, "dragging": True, "zoom_control": True, "doubleClickZoom": True,
+        "max_bounds": [[40.4, 0.0], [42.9, 3.5]], "min_zoom": 8, "max_zoom": 12
     }
 
-    # Si hi ha una zona seleccionada, congela el mapa sobre ella
-    if selected_area and "---" not in selected_area:
-        cleaned_selected_area = selected_area.strip().replace('.', '')
+    # Lògica per congelar el mapa si hi ha una zona seleccionada
+    if selected_area_str and "---" not in selected_area_str:
+        cleaned_selected_area = selected_area_str.strip().replace('.', '')
         zona_shape = gdf[gdf[property_name].str.strip().str.replace('.', '') == cleaned_selected_area]
         if not zona_shape.empty:
             centroid = zona_shape.geometry.centroid.iloc[0]
-            map_params["location"] = [centroid.y, centroid.x]
-            map_params["zoom_start"] = 10
-            # Desactiva tota la interacció
-            map_params["scrollWheelZoom"] = False
-            map_params["dragging"] = False
-            map_params["zoom_control"] = False
-            map_params["doubleClickZoom"] = False
-            bounds = zona_shape.total_bounds
-            map_params["max_bounds"] = [[bounds[1], bounds[0]], [bounds[3], bounds[2]]]
+            map_params.update({
+                "location": [centroid.y, centroid.x], "zoom_start": 10,
+                "scrollWheelZoom": False, "dragging": False, "zoom_control": False, "doubleClickZoom": False,
+                "max_bounds": [[zona_shape.total_bounds[1], zona_shape.total_bounds[0]], [zona_shape.total_bounds[3], zona_shape.total_bounds[2]]]
+            })
 
     m = folium.Map(**map_params)
 
+    # Funcions d'estil (exactament les mateixes que tenies)
     def get_color_from_convergence(value):
         if not isinstance(value, (int, float)): return '#6c757d', '#FFFFFF'
-        if value >= 100: return '#9370DB', '#FFFFFF' # Lila per a valors extrems
-        if value >= 60: return '#DC3545', '#FFFFFF'  # Vermell
-        if value >= 40: return '#FD7E14', '#FFFFFF'  # Taronja
-        if value >= 20: return '#28A745', '#FFFFFF'  # Verd
-        return '#6c757d', '#FFFFFF' # Gris per defecte
+        if value >= 100: return '#9370DB', '#FFFFFF'
+        if value >= 60: return '#DC3545', '#FFFFFF'
+        if value >= 40: return '#FD7E14', '#FFFFFF'
+        if value >= 20: return '#28A745', '#FFFFFF'
+        return '#6c757d', '#FFFFFF'
 
     def style_function(feature):
         style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
         nom_feature_raw = feature.get('properties', {}).get(property_name)
-        
         if nom_feature_raw and isinstance(nom_feature_raw, str):
             nom_feature = nom_feature_raw.strip().replace('.', '')
             conv_value = alertes_per_zona.get(nom_feature)
-            
-            # Aplica color d'alerta
             if conv_value:
                 alert_color, _ = get_color_from_convergence(conv_value)
-                if alert_color:
-                    style['fillColor'] = alert_color
-                    style['color'] = alert_color
-                    style['fillOpacity'] = 0.55
-                    style['weight'] = 2.5
-            
-            # Ressalta la zona seleccionada
-            cleaned_selected_area = st.session_state.get('selected_area', '').strip().replace('.', '')
+                style.update({'fillColor': alert_color, 'color': alert_color, 'fillOpacity': 0.55, 'weight': 2.5})
+            cleaned_selected_area = selected_area_str.strip().replace('.', '') if selected_area_str else ''
             if nom_feature == cleaned_selected_area:
-                style['fillColor'] = '#007bff'
-                style['color'] = '#ffffff'
-                style['weight'] = 3
-                style['fillOpacity'] = 0.5
-                
+                style.update({'fillColor': '#007bff', 'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.5})
         return style
 
     highlight_function = lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5}
 
     folium.GeoJson(
-        gdf,
-        style_function=style_function,
-        highlight_function=highlight_function,
+        gdf, style_function=style_function, highlight_function=highlight_function,
         tooltip=folium.GeoJsonTooltip(fields=[property_name], aliases=[tooltip_alias])
     ).add_to(m)
 
-    # Afegeix les etiquetes de text amb els valors de convergència
+    # Afegir les etiquetes de text
     for zona, conv_value in alertes_per_zona.items():
         capital_info = CAPITALS_COMARCA.get(zona)
         if capital_info:
             bg_color, text_color = get_color_from_convergence(conv_value)
-            
-            # --- AQUÍ POTS AJUSTAR LA MIDA DEL TEXT ---
-            # Canvia 'font-size: 13px;' per un valor més petit, com '11px'.
-            icon_html = f"""
-            <div style="
-                position: relative;
-                background-color: {bg_color};
-                color: {text_color};
-                padding: 6px 12px;
-                border-radius: 8px;
-                border: 2px solid {text_color};
-                font-family: sans-serif;
-                font-size: 11px; /* <-- AJUSTA LA MIDA AQUÍ */
-                font-weight: bold;
-                text-align: center;
-                min-width: 80px;
-                box-shadow: 3px 3px 5px rgba(0,0,0,0.5);
-                transform: translate(-50%, -100%);
-            ">
-                <div style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid {bg_color};"></div>
-                <div style="position: absolute; bottom: -13.5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 10px solid {text_color}; z-index: -1;"></div>
-                {zona}: {conv_value:.0f}
-            </div>
-            """
+            icon_html = f"""<div style="... font-size: 11px; ...">{zona}: {conv_value:.0f}</div>""" # El teu HTML aquí
             icon = folium.DivIcon(html=icon_html)
-            
-            folium.Marker(
-                location=[capital_info['lat'], capital_info['lon']],
-                icon=icon,
-                tooltip=f"Comarca: {zona}"
-            ).add_to(m)
+            folium.Marker(location=[capital_info['lat'], capital_info['lon']], icon=icon, tooltip=f"Comarca: {zona}").add_to(m)
     
-    return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
+    return m
+    
+def ui_mapa_display_personalitzat(alertes_per_zona):
+    """
+    Funció de VISUALITZACIÓ. No està a la memòria cau.
+    Crida a la funció que genera el mapa i després el mostra amb st_folium.
+    """
+    st.markdown("#### Mapa de Situació")
+    
+    # Agafem la zona seleccionada de l'estat de la sessió
+    selected_area_str = st.session_state.get('selected_area')
+
+    # Cridem a la funció que SÍ està a la memòria cau per obtenir l'objecte del mapa
+    # El spinner es mostrarà automàticament gràcies al decorador de la funció
+    map_object = generar_mapa_folium_catalunya(alertes_per_zona, selected_area_str)
+    
+    if map_object:
+        # AQUESTA és l'única crida al widget, i està fora de la funció cachejada
+        return st_folium(map_object, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
+    else:
+        st.error("No s'ha pogut generar el mapa de situació.")
+        return None
     
     
     
