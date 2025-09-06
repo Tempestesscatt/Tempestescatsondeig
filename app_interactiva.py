@@ -6220,11 +6220,9 @@ def run_est_peninsula_app():
     Funció principal que gestiona la lògica per a la zona de l'Est Peninsular,
     amb mapa interactiu, alertes, selecció de zona i navegació a localitats.
     """
-    # --- GESTIÓ D'ESTAT INICIAL ---
     if 'selected_area_peninsula' not in st.session_state: st.session_state.selected_area_peninsula = "--- Selecciona una província al mapa ---"
     if 'poble_selector_est_peninsula' not in st.session_state: st.session_state.poble_selector_est_peninsula = "--- Selecciona una localitat ---"
     
-    # --- CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Est Península</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
@@ -6234,6 +6232,7 @@ def run_est_peninsula_app():
         'uk': 'Regne Unit', 'canada': 'Canadà', 'noruega': 'Noruega'
     }
     
+    # (La capçalera i navegació es manté igual)
     col_text, col_nav, col_back, col_logout = st.columns([0.5, 0.2, 0.15, 0.15])
     with col_text:
         if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username', 'Usuari')}**!")
@@ -6251,7 +6250,6 @@ def run_est_peninsula_app():
             st.rerun()
     st.divider()
 
-    # --- CÀLCUL DE LA DATA I HORA ---
     now_local = datetime.now(TIMEZONE_EST_PENINSULA)
     dia_sel_str = now_local.strftime('%d/%m/%Y'); hora_sel = now_local.hour
     hora_sel_str = f"{hora_sel:02d}:00h"; nivell_sel = 925
@@ -6259,30 +6257,24 @@ def run_est_peninsula_app():
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
 
-    # --- LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
     if st.session_state.poble_selector_est_peninsula and "---" not in st.session_state.poble_selector_est_peninsula:
-        # --- VISTA D'ANÀLISI DETALLADA D'UNA CIUTAT ---
         poble_sel = st.session_state.poble_selector_est_peninsula
         st.success(f"### Anàlisi per a: {poble_sel}")
         
         col_nav1, col_nav2 = st.columns(2)
-        with col_nav1:
-            st.button("⬅️ Tornar a la Província", on_click=tornar_a_seleccio_zona_peninsula, use_container_width=True)
-        with col_nav2:
-            st.button("🗺️ Tornar al Mapa General", on_click=tornar_al_mapa_general_peninsula, use_container_width=True)
+        with col_nav1: st.button("⬅️ Tornar a la Província", on_click=tornar_a_seleccio_zona_peninsula, use_container_width=True)
+        with col_nav2: st.button("🗺️ Tornar al Mapa General", on_click=tornar_al_mapa_general_peninsula, use_container_width=True)
 
         lat_sel, lon_sel = CIUTATS_EST_PENINSULA[poble_sel]['lat'], CIUTATS_EST_PENINSULA[poble_sel]['lon']
         cat_dt = local_dt.astimezone(TIMEZONE_CAT)
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} ({TIMEZONE_EST_PENINSULA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
 
-        # **NOVA LÒGICA DE MENÚ AMB PESTANYA PROVINCIAL**
         menu_options = ["Anàlisi Provincial", "Anàlisi Vertical", "Anàlisi de Mapes"]
         menu_icons = ["fullscreen", "graph-up-arrow", "map-fill"]
         
         active_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
                                 orientation="horizontal", key="active_tab_est_peninsula", default_index=0)
         
-        # Carreguem les dades només una vegada
         with st.spinner(f"Carregant dades per a {poble_sel}..."):
             data_tuple, final_index, error_msg_sounding = carregar_dades_sondeig_est_peninsula(lat_sel, lon_sel, hourly_index_sel)
             map_data_conv, error_msg_map = carregar_dades_mapa_est_peninsula(nivell_sel, hourly_index_sel)
@@ -6292,15 +6284,14 @@ def run_est_peninsula_app():
             st.error(f"No s'ha pogut carregar el sondeig: {formatar_missatge_error_api(error_msg_sounding)}")
         else:
             params_calc = data_tuple[1]
-            if map_data_conv:
-                params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+            if map_data_conv: params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
 
             if active_tab == "Anàlisi Provincial":
                 provincia_actual = st.session_state.selected_area_peninsula
                 valor_conv_provincial = alertes_zona.get(provincia_actual, 0)
-                # Reutilitzem la funció d'anàlisi comarcal, adaptant els noms
-                ui_pestanya_analisi_comarcal(
-                    comarca=provincia_actual,
+                # **CANVI CLAU: Cridem a la nova funció provincial**
+                ui_pestanya_analisi_provincial(
+                    provincia=provincia_actual,
                     valor_conv=valor_conv_provincial,
                     poble_sel=poble_sel,
                     timestamp_str=timestamp_str,
@@ -6318,8 +6309,7 @@ def run_est_peninsula_app():
                 ui_pestanya_mapes_est_peninsula(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
 
     else:
-        # --- VISTA DE SELECCIÓ (MAPA INTERACTIU DE PROVÍNCIES) ---
-        # (Aquesta part ja estava bé, la mantenim)
+        # (Aquesta part de la funció no necessita canvis)
         gdf_zones = carregar_dades_geografiques_peninsula()
         if gdf_zones is None: return
 
@@ -6368,6 +6358,181 @@ def run_est_peninsula_app():
         else:
             st.info("Fes clic en una província del mapa per veure'n les localitats.", icon="👆")
        
+
+
+def ui_pestanya_analisi_provincial(provincia, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
+    """
+    PESTANYA D'ANÀLISI PROVINCIAL. Utilitza el mapa de províncies de la península
+    i inclou tota la lògica de visualització de convergència i direccionalitat.
+    """
+    st.markdown(f"#### Anàlisi de Convergència per a la Província: {provincia}")
+    st.caption(timestamp_str.replace(poble_sel, provincia))
+
+    col_mapa, col_diagnostic = st.columns([0.6, 0.4], gap="large")
+
+    with col_mapa:
+        st.markdown("##### Focus de Convergència a la Zona")
+        
+        with st.spinner("Generant mapa d'alta resolució de la província..."):
+            gdf_provincies = carregar_dades_geografiques_peninsula()
+            if gdf_provincies is None: 
+                st.error("No s'ha pogut carregar el mapa de províncies.")
+                return
+            
+            property_name = 'NAME_2'
+            provincia_shape = gdf_provincies[gdf_provincies[property_name] == provincia]
+            
+            if provincia_shape.empty: 
+                st.error(f"No s'ha trobat la geometria per a la província '{provincia}'. Revisa que el nom coincideixi amb el del fitxer GeoJSON.")
+                return
+            
+            bounds = provincia_shape.total_bounds
+            margin_lon = (bounds[2] - bounds[0]) * 0.3
+            margin_lat = (bounds[3] - bounds[1]) * 0.3
+            map_extent = [bounds[0] - margin_lon, bounds[2] + margin_lon, bounds[1] - margin_lat, bounds[3] + margin_lat]
+            
+            plt.style.use('default')
+            fig, ax = crear_mapa_base(map_extent)
+            ax.add_geometries(provincia_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
+
+            if map_data and valor_conv > 15:
+                lons, lats = map_data['lons'], map_data['lats']
+                grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 150), np.linspace(map_extent[2], map_extent[3], 150))
+                grid_dewpoint = griddata((lons, lats), map_data['dewpoint_data'], (grid_lon, grid_lat), 'linear')
+                u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
+                grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+                grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+                
+                with np.errstate(invalid='ignore'):
+                    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+                    convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
+                    convergence[np.isnan(convergence)] = 0
+                    DEWPOINT_THRESHOLD = 14 if nivell_sel >= 950 else 12
+                    humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
+                    effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0)
+                
+                smoothed_convergence = gaussian_filter(effective_convergence, sigma=3.5)
+                smoothed_convergence[smoothed_convergence < 15] = 0
+
+                if np.any(smoothed_convergence > 0):
+                    fill_levels = [20, 30, 40, 60, 80, 100, 120]
+                    cmap = plt.get_cmap('plasma')
+                    norm = BoundaryNorm(fill_levels, ncolors=cmap.N, clip=True)
+                    ax.contourf(grid_lon, grid_lat, smoothed_convergence, 
+                                levels=fill_levels, cmap=cmap, norm=norm, 
+                                alpha=0.75, zorder=3, transform=ccrs.PlateCarree(), extend='max')
+                    line_levels = [30, 60, 100]
+                    contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, 
+                                          levels=line_levels, colors='black', 
+                                          linestyles='--', linewidths=0.8, alpha=0.7, 
+                                          zorder=4, transform=ccrs.PlateCarree())
+                    labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
+                    for label in labels:
+                        label.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
+
+                points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
+                gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
+                points_in_provincia = gpd.sjoin(gdf_points, provincia_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
+                
+                if not points_in_provincia.empty:
+                    max_conv_point = points_in_provincia.loc[points_in_provincia['conv'].idxmax()]
+                    px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
+                    
+                    if data_tuple and valor_conv >= 20:
+                        if valor_conv >= 100: indicator_color = '#9370DB'
+                        elif valor_conv >= 60: indicator_color = '#DC3545'
+                        elif valor_conv >= 40: indicator_color = '#FD7E14'
+                        else: indicator_color = '#28A745'
+                        
+                        path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
+                        
+                        circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+                        ax.add_patch(circle)
+                        ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
+
+                        try:
+                            sounding_data, _ = data_tuple
+                            p, u, v = sounding_data[0], sounding_data[3], sounding_data[4]
+                            if p.m.min() < 500 and p.m.max() > 700:
+                                u_700, v_700 = np.interp(700, p.m[::-1], u.m[::-1]), np.interp(700, p.m[::-1], v.m[::-1])
+                                u_500, v_500 = np.interp(500, p.m[::-1], u.m[::-1]), np.interp(500, p.m[::-1], v.m[::-1])
+                                mean_u, mean_v = (u_700 + u_500) / 2.0 * units('m/s'), (v_700 + v_500) / 2.0 * units('m/s')
+                                storm_dir_to = (mpcalc.wind_direction(mean_u, mean_v).m + 180) % 360
+                                
+                                dir_rad = np.deg2rad(90 - storm_dir_to)
+                                length = 0.25
+                                end_x, end_y = px + length * np.cos(dir_rad), py + length * np.sin(dir_rad)
+                                ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+                                
+                                num_barbs = 3; barb_length = 0.04
+                                barb_angle_rad = dir_rad + np.pi / 2
+                                for i in range(1, num_barbs + 1):
+                                    pos = 0.4 + (i * 0.2)
+                                    barb_cx, barb_cy = px + length * pos * np.cos(dir_rad), py + length * pos * np.sin(dir_rad)
+                                    barb_sx, barb_sy = barb_cx - barb_length / 2 * np.cos(barb_angle_rad), barb_cy - barb_length / 2 * np.sin(barb_angle_rad)
+                                    barb_ex, barb_ey = barb_cx + barb_length / 2 * np.cos(barb_angle_rad), barb_cy + barb_length / 2 * np.sin(barb_angle_rad)
+                                    ax.plot([barb_sx, barb_ex], [barb_sy, barb_ey], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+                        except Exception: pass
+            
+            poble_coords = CIUTATS_EST_PENINSULA.get(poble_sel)
+            if poble_coords:
+                lon_poble, lat_poble = poble_coords['lon'], poble_coords['lat']
+                ax.text(lon_poble, lat_poble, '( Tú )\n▼', transform=ccrs.PlateCarree(),
+                        fontsize=10, fontweight='bold', color='black',
+                        ha='center', va='bottom', zorder=14,
+                        path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')])
+
+            ax.set_title(f"Focus de Convergència a {provincia}", weight='bold', fontsize=12)
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
+
+    with col_diagnostic:
+        st.markdown("##### Diagnòstic de la Zona")
+        if valor_conv >= 100:
+            nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la província, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
+        elif valor_conv >= 60:
+            nivell_alerta, color_alerta, emoji, descripcio = "Molt Alt", "#DC3545", "🔴", f"S'ha detectat un focus de convergència extremadament fort a la província, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal molt clara per a la formació imminent de tempestes, possiblement severes i organitzades."
+        elif valor_conv >= 40:
+            nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FD7E14", "🟠", f"Hi ha un focus de convergència forta a la província, amb un valor màxim de {valor_conv:.0f}. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona."
+        elif valor_conv >= 20:
+            nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#28A745", "🟢", f"S'observa una zona de convergència moderada a la província, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes si l'atmosfera és inestable."
+        else:
+            nivell_alerta, color_alerta, emoji, descripcio = "Baix", "#6c757d", "⚪", f"No es detecten focus de convergència significatius (Valor: {valor_conv:.0f}). El forçament dinàmic per iniciar tempestes és feble o inexistent."
+
+        st.markdown(f"""
+        <div style="text-align: center; padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444;">
+             <span style="font-size: 1.2em; color: #FAFAFA;">{emoji} Potencial de Dispar: <strong style="color:{color_alerta}">{nivell_alerta}</strong></span>
+             <p style="font-size:0.95em; color:#a0a0b0; margin-top:10px; text-align: left;">{descripcio}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("##### Validació Atmosfèrica")
+        if not params_calc:
+            st.warning("No hi ha dades de sondeig disponibles per a la validació.")
+        else:
+            mucin = params_calc.get('MUCIN', 0) or 0
+            mucape = params_calc.get('MUCAPE', 0) or 0
+            
+            vered_titol, vered_color, vered_emoji, vered_desc = "", "", "", ""
+            if mucin < -75:
+                vered_titol, vered_color, vered_emoji = "Inhibida", "#DC3545", "👎"
+                vered_desc = f"Tot i la convergència, hi ha una inhibició (CIN) molt forta de **{mucin:.0f} J/kg** que actua com una 'tapa', dificultant o impedint el desenvolupament de tempestes."
+            elif mucape < 250:
+                vered_titol, vered_color, vered_emoji = "Sense Energia", "#FD7E14", "🤔"
+                vered_desc = f"El disparador existeix, però l'atmosfera té molt poc 'combustible' (CAPE), amb només **{mucape:.0f} J/kg**. Les tempestes, si es formen, seran febles."
+            else:
+                vered_titol, vered_color, vered_emoji = "Efectiva", "#28A745", "👍"
+                vered_desc = f"Les condicions són favorables! La convergència troba una atmosfera amb prou energia (**{mucape:.0f} J/kg**) i una inhibició baixa (**{mucin:.0f} J/kg**) per a desenvolupar tempestes."
+
+            st.markdown(f"""
+            <div style="text-align: center; padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444;">
+                 <span style="font-size: 1.1em; color: #FAFAFA;">{vered_emoji} Veredicte: Convergència <strong style="color:{vered_color}">{vered_titol}</strong></span>
+                 <p style="font-size:0.9em; color:#a0a0b0; margin-top:10px; text-align: left;">{vered_desc}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
+        
+        crear_llegenda_direccionalitat()
 
 
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya", convergencies=None):
