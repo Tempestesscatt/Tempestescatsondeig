@@ -3912,16 +3912,19 @@ def crear_mapa_forecast_combinat_japo(lons, lats, speed_data, dir_data, dewpoint
 
 
 
-st.cache_data(show_spinner="Carregant mapa de selecció de la península...")
+@st.cache_data(show_spinner="Carregant mapa de selecció de la península...")
 def carregar_dades_geografiques_peninsula():
     """ Carrega el fitxer GeoJSON amb les geometries de les zones de la península. """
     try:
         gdf_zones = gpd.read_file("peninsula_zones.geojson")
-        gdf_zones = gdf_zones.to_crs("EPSG:4326")
+        # --- LÍNIA CORREGIDA ---
+        # En lloc de transformar (to_crs), definim (set_crs) el sistema de coordenades.
+        gdf_zones = gdf_zones.set_crs("EPSG:4326", allow_override=True)
         return gdf_zones
     except Exception as e:
         st.error(f"Error crític: No s'ha pogut carregar l'arxiu 'peninsula_zones.geojson'. Assegura't que existeix. Detall: {e}")
         return None
+    
 
 @st.cache_data(ttl=1800, show_spinner="Analitzant focus de convergència a la península...")
 def calcular_alertes_per_zona_peninsula(hourly_index, nivell):
@@ -4407,19 +4410,14 @@ def carregar_dades_geografiques():
     """
     Versió final i robusta que busca automàticament el mapa personalitzat
     i, si no el troba, utilitza el mapa de comarques per defecte.
-    Aquesta versió corregeix el NameError.
     """
-    # Llista de noms d'arxiu per ordre de prioritat
     noms_possibles = ["mapes_personalitzat.geojson", "comarques.geojson"]
     file_to_load = None
-
-    # Busca el primer arxiu que existeixi
     for file in noms_possibles:
         if os.path.exists(file):
             file_to_load = file
             break
 
-    # Si no en troba cap, mostra un error
     if file_to_load is None:
         st.error(
             "**Error Crític: Mapa no trobat.**\n\n"
@@ -4428,10 +4426,11 @@ def carregar_dades_geografiques():
         )
         return None
 
-    # Si troba un arxiu, el carrega
     try:
         gdf = gpd.read_file(file_to_load)
-        gdf = gdf.to_crs("EPSG:4326")
+        # --- LÍNIA CORREGIDA ---
+        # Apliquem la mateixa solució que a la península per a més robustesa.
+        gdf = gdf.set_crs("EPSG:4326", allow_override=True)
         return gdf
     except Exception as e:
         st.error(f"S'ha produït un error en carregar l'arxiu de mapa '{file_to_load}': {e}")
