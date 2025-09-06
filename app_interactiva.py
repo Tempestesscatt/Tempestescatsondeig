@@ -6383,8 +6383,8 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió final amb ESTIL VISCÓS/SUAU).
-    Utilitza un suavitzat més intens i més nivells de color per a un efecte natural.
+    PESTANYA D'ANÀLISI COMARCAL (Versió final amb RENDERITZAT PROFESSIONAL "VISCÓS").
+    Utilitza tècniques avançades de contourf per a un efecte fluid i natural.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6407,7 +6407,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             
             plt.style.use('default')
             fig, ax = crear_mapa_base(map_extent)
-            ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
+            ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=10)
 
             if map_data and valor_conv > 15:
                 lons, lats = map_data['lons'], map_data['lats']
@@ -6424,24 +6424,25 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
                     effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0)
                 
-                # --- CANVI 1: Augmentem el suavitzat per a un efecte més "líquid" ---
-                smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
+                # --- CANVI 1: Augmentem el suavitzat (sigma més gran) ---
+                smoothed_convergence = gaussian_filter(effective_convergence, sigma=3.5)
                 smoothed_convergence[smoothed_convergence < 15] = 0
 
                 if np.any(smoothed_convergence > 0):
-                    colors_conv = ['#5BC0DE', "#FBFF00", "#DC6D05", "#EC8383", "#F03D3D", "#FF0000", "#7C7EF0", "#0408EAFF", "#000070"]
-                    cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_personalitzada", colors_conv)
+                    # --- CANVI 2: Nou mapa de colors professional ---
+                    colors_conv_professional = [
+                        (0.0, 0.6, 0.8, 0.6),  # Blauet transparent
+                        (0.1, 0.8, 0.4, 0.7),  # Verd llima
+                        (0.9, 0.9, 0.2, 0.8),  # Groc intens
+                        (1.0, 0.5, 0.0, 0.9),  # Taronja
+                        (0.9, 0.0, 0.0, 1.0)   # Vermell sòlid
+                    ]
+                    cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_professional", colors_conv_professional)
                     
-                    # --- CANVI 2: Augmentem molt el nombre de nivells per a un gradient suau ---
-                    fill_levels = np.linspace(20, 120, 100) # 100 passos de color
+                    # --- CANVI 3: Molts nivells per a un gradient suau ---
+                    fill_levels = np.linspace(20, 100, 128) # 128 passos de color
                     
-                    ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels, cmap=cmap_conv, alpha=0.7, zorder=3, transform=ccrs.PlateCarree(), extend='max')
-                    
-                    # Les línies de contorn es mantenen igual per a la informació clau
-                    line_levels = [20, 40, 60, 80, 100]
-                    contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors='black', linestyles='--', linewidths=1.2, zorder=4, transform=ccrs.PlateCarree())
-                    labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
-                    for label in labels: label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.6))
+                    ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels, cmap=cmap_conv, alpha=0.85, zorder=3, transform=ccrs.PlateCarree(), extend='max')
                 
                 points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
@@ -6452,41 +6453,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
                     ax.plot(px, py, 'X', color='red', markersize=10, markeredgecolor='white', zorder=12, transform=ccrs.PlateCarree())
 
-                    if params_calc:
-                        motion_vector = params_calc.get('RM') or params_calc.get('Mean_Wind')
-                        if motion_vector and not pd.isna(motion_vector[0]):
-                            u_storm, v_storm = motion_vector[0] * units('m/s'), motion_vector[1] * units('m/s')
-                            storm_speed_kmh = mpcalc.wind_speed(u_storm, v_storm).to('km/h').m
-                            storm_dir_to = (mpcalc.wind_direction(u_storm, v_storm).m + 180) % 360
-                            
-                            length = 0.45; spread_deg = 45
-                            angle_central_math = 90 - storm_dir_to
-                            theta1 = angle_central_math - spread_deg / 2
-                            theta2 = angle_central_math + spread_deg / 2
-
-                            forecast_cone = Wedge((px, py), length, theta1, theta2, facecolor='white', alpha=0.6, edgecolor='black', linewidth=1.5, linestyle='--', transform=ccrs.PlateCarree(), zorder=11)
-                            ax.add_patch(forecast_cone)
-                            
-                            dir_rad = np.deg2rad(angle_central_math)
-                            end_center_x = px + length * np.cos(dir_rad)
-                            end_center_y = py + length * np.sin(dir_rad)
-                            ax.plot([px, end_center_x], [py, end_center_y], color='black', linestyle='--', linewidth=1.2, transform=ccrs.PlateCarree(), zorder=12)
-
-                            if storm_speed_kmh > 5:
-                                try:
-                                    start_time = datetime.strptime(hora_sel_str, "%H:%Mh")
-                                    km_per_degree = 111.32 
-                                    for time_minutes in [20, 40, 60]: 
-                                        dist_km = storm_speed_kmh * (time_minutes / 60.0)
-                                        dist_deg = dist_km / km_per_degree
-                                        if dist_deg < length:
-                                            marker_x = px + dist_deg * np.cos(dir_rad)
-                                            marker_y = py + dist_deg * np.sin(dir_rad)
-                                            arrival_time = start_time + timedelta(minutes=time_minutes)
-                                            label = f"~{arrival_time.strftime('%H:%M')}"
-                                            ax.text(marker_x, marker_y, label, transform=ccrs.PlateCarree(), fontsize=8, color='black', weight='bold', ha='center', va='center', bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1), zorder=13)
-                                except (ValueError, TypeError): pass
-            
             poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
             if poble_coords:
                 lon_poble, lat_poble = poble_coords['lon'], poble_coords['lat']
