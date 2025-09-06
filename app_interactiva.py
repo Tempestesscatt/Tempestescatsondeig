@@ -6164,7 +6164,6 @@ def run_catalunya_app():
         nom_poble = st.session_state.poble_seleccionat_per_boto
         del st.session_state.poble_seleccionat_per_boto
         st.session_state.poble_sel = nom_poble
-        # Reiniciem la pestanya per defecte per assegurar que tot es carrega correctament
         if 'active_tab_cat' in st.session_state:
             del st.session_state['active_tab_cat']
         st.rerun()
@@ -6238,7 +6237,6 @@ def run_catalunya_app():
         )
         st.session_state.active_tab_cat = active_tab
 
-        # Càrrega de dades centralitzada per a totes les pestanyes
         with st.spinner(f"Carregant dades del model AROME per a {poble_sel}..."):
             data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
             map_data_conv, error_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
@@ -6257,10 +6255,8 @@ def run_catalunya_app():
                 if pd.notna(conv_puntual):
                     params_calc[f'CONV_{nivell_sel}hPa'] = conv_puntual
             
-            # Renderitzat de la pestanya activa
             if active_tab == "Anàlisi Vertical":
                 ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
-            
             elif active_tab == "Anàlisi Comarcal":
                 comarca_actual = get_comarca_for_poble(poble_sel)
                 if comarca_actual:
@@ -6268,10 +6264,8 @@ def run_catalunya_app():
                     ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calc)
                 else:
                     st.warning(f"No s'ha pogut determinar la comarca per a {poble_sel}.")
-            
             elif active_tab == "Anàlisi de Mapes":
                 ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
-            
             elif active_tab == "Simulació de Núvol":
                 st.markdown(f"#### Simulació del Cicle de Vida per a {poble_sel}")
                 st.caption(timestamp_str)
@@ -6295,7 +6289,6 @@ def run_catalunya_app():
                     else: st.info("Sense fase final.")
                 st.divider()
                 ui_guia_tall_vertical(params_calc, nivell_sel)
-            
             elif active_tab == "💬 Assistent IA" and not is_guest:
                 analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)
                 interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
