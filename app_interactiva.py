@@ -6179,39 +6179,74 @@ def carregar_dades_mapa_est_peninsula(nivell, hourly_index):
 
 def crear_mapa_forecast_combinat_est_peninsula(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str):
     """
-    Crea el mapa visual de vent i convergència per a l'Est Peninsular.
+    Crea el mapa visual de vent i convergència per a l'Est Peninsular,
+    amb un estil visual millorat i professional, similar al de Catalunya.
     """
+    # Usem un fons clar per a més claredat en els detalls
+    plt.style.use('default')
     fig, ax = crear_mapa_base(MAP_EXTENT_EST_PENINSULA)
-    if len(lons) < 4: return fig
-
-    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_EST_PENINSULA[0], MAP_EXTENT_EST_PENINSULA[1], 200), np.linspace(MAP_EXTENT_EST_PENINSULA[2], MAP_EXTENT_EST_PENINSULA[3], 200))
-    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'cubic')
-    grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'cubic')
-    u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
-    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
-    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'cubic')
     
-    colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
+    if len(lons) < 4: 
+        ax.set_title("Dades insuficients per generar el mapa")
+        return fig
+
+    # --- 1. INTERPOLACIÓ A GRAELLA D'ALTA RESOLUCIÓ ---
+    grid_lon, grid_lat = np.meshgrid(np.linspace(MAP_EXTENT_EST_PENINSULA[0], MAP_EXTENT_EST_PENINSULA[1], 300), np.linspace(MAP_EXTENT_EST_PENINSULA[2], MAP_EXTENT_EST_PENINSULA[3], 300))
+    grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'linear')
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'linear')
+    u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+    
+    # --- 2. MAPA DE VELOCITAT DEL VENT (FONS) ---
+    colors_wind = ['#d2d2f0', '#b4b4e6', '#78c8c8', '#50b48c', '#32cd32', '#64ff64', '#ffff00', '#f5d264', '#e6b478', '#d7788c', '#ff69b4', '#9f78dc']
     speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]
     custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
-    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.8, density=4.5, arrowsize=0.5, zorder=4, transform=ccrs.PlateCarree())
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree(), alpha=0.7)
     
-    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat); convergence_scaled = -(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s').magnitude * 1e5
-    convergence_in_humid_areas = np.where(grid_dewpoint >= 14, convergence_scaled, 0)
+    # --- 3. LÍNIES DE CORRENT (STREAMLINES) ---
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.5, density=6.5, arrowsize=0.3, zorder=4, transform=ccrs.PlateCarree())
     
-    fill_levels = [5, 10, 15, 25]; fill_colors = ['#ffc107', '#ff9800', '#f44336']
-    line_levels = [5, 10, 15]; line_colors = ['#e65100', '#bf360c', '#b71c1c']
-    
-    ax.contourf(grid_lon, grid_lat, convergence_in_humid_areas, levels=fill_levels, colors=fill_colors, alpha=0.6, zorder=5, transform=ccrs.PlateCarree())
-    contours = ax.contour(grid_lon, grid_lat, convergence_in_humid_areas, levels=line_levels, colors=line_colors, linestyles='--', linewidths=1.2, zorder=6, transform=ccrs.PlateCarree())
-    ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
+    # --- 4. CÀLCUL, FILTRATGE I SUAVITZAT DE LA CONVERGÈNCIA ---
+    with np.errstate(invalid='ignore'):
+        dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+        convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
+        convergence[np.isnan(convergence)] = 0
+        DEWPOINT_THRESHOLD = 14
+        humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
+        effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0)
 
+    # Suavitzem els resultats per a una visualització més natural
+    smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
+    smoothed_convergence[smoothed_convergence < 15] = 0
+    
+    # --- 5. DIBUIX DELS FOCUS DE CONVERGÈNCIA ---
+    if np.any(smoothed_convergence > 0):
+        fill_levels = [15, 25, 40, 60, 80, 100]
+        cmap = plt.get_cmap('plasma')
+        norm = BoundaryNorm(fill_levels, ncolors=cmap.N, clip=True)
+
+        ax.contourf(grid_lon, grid_lat, smoothed_convergence, 
+                    levels=fill_levels, cmap=cmap, norm=norm, 
+                    alpha=0.7, zorder=5, transform=ccrs.PlateCarree(), extend='max')
+
+        line_levels = [20, 40, 60]
+        contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, 
+                              levels=line_levels, colors='black', 
+                              linestyles='--', linewidths=0.8, alpha=0.8, 
+                              zorder=6, transform=ccrs.PlateCarree())
+        
+        labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
+        for label in labels:
+            label.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
+
+    # --- 6. ETIQUETES DE CIUTATS ---
     for city, coords in CIUTATS_EST_PENINSULA.items():
-        ax.plot(coords['lon'], coords['lat'], 'o', color='red', markersize=3, markeredgecolor='black', transform=ccrs.PlateCarree(), zorder=10)
-        ax.text(coords['lon'] + 0.1, coords['lat'] + 0.1, city, fontsize=8, transform=ccrs.PlateCarree(), zorder=10, path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
+        ax.plot(coords['lon'], coords['lat'], 'o', color='black', markersize=3, markeredgecolor='white', transform=ccrs.PlateCarree(), zorder=10)
+        ax.text(coords['lon'] + 0.05, coords['lat'] + 0.05, city, fontsize=8, color='white', transform=ccrs.PlateCarree(), zorder=11,
+                path_effects=[path_effects.withStroke(linewidth=2.5, foreground='black')])
 
-    ax.set_title(f"Vent i Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    ax.set_title(f"Vent i Nuclis de Convergència a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     return fig
 
 def run_est_peninsula_app():
