@@ -8059,14 +8059,20 @@ def ui_zone_selection():
     
     with st.spinner('Carregant entorns geoespacials...'): time.sleep(1)
 
-    # Definim les files de columnes
-    row1_col1, row1_col2, row1_col3, row1_col4 = st.columns(4)
+    # --- NOVA ESTRUCTURA DE COLUMNES ---
+    # Fila 1: 2 columnes per a les zones principals
+    row1_col1, row1_col2 = st.columns(2)
+    
+    # Fila 2: 4 columnes per a zones secundàries
     row2_col1, row2_col2, row2_col3, row2_col4 = st.columns(4)
-    row3_col1, row3_col2, _, _ = st.columns(4)
+    
+    # Fila 3: 4 columnes per a la resta de zones
+    row3_col1, row3_col2, row3_col3, row3_col4 = st.columns(4)
+    # --- FI DE LA NOVA ESTRUCTURA ---
 
-    def create_zone_button(col, path, title, key, zone_id, type="secondary"):
+    def create_zone_button(col, path, title, key, zone_id, type="secondary", height="160px"):
         with col, st.container(border=True):
-            st.markdown(generar_html_imatge_estatica(path, height="160px"), unsafe_allow_html=True)
+            st.markdown(generar_html_imatge_estatica(path, height=height), unsafe_allow_html=True)
             
             display_title = title
             if zone_id == 'italia':
@@ -8079,23 +8085,26 @@ def ui_zone_selection():
             st.button(f"Analitzar {title}", key=key, use_container_width=True, type=type,
                       on_click=start_transition, args=(zone_id,))
 
-    # --- BLOC ÚNIC DE CREACIÓ DE BOTONS ---
-    # Dibuixem els botons a les seves respectives files i columnes
-    create_zone_button(row1_col1, paths['cat'], "Catalunya", "btn_cat", "catalunya", "primary")
-    create_zone_button(row1_col2, paths['usa'], "Tornado Alley", "btn_usa", "valley_halley")
-    create_zone_button(row1_col3, paths['ale'], "Alemanya", "btn_ale", "alemanya")
-    create_zone_button(row1_col4, paths['ita'], "Itàlia", "btn_ita", "italia")
+    # --- DIBUIX DELS BOTONS AMB EL NOU ORDRE ---
+
+    # Fila 1 (Principals)
+    create_zone_button(row1_col1, paths['cat'], "Catalunya", "btn_cat", "catalunya", "primary", height="200px")
+    create_zone_button(row1_col2, paths['peninsula'], "Est Península", "btn_peninsula", "est_peninsula", "primary", height="200px")
+
+    # Fila 2
+    create_zone_button(row2_col1, paths['usa'], "Tornado Alley", "btn_usa", "valley_halley")
+    create_zone_button(row2_col2, paths['ale'], "Alemanya", "btn_ale", "alemanya")
+    create_zone_button(row2_col3, paths['ita'], "Itàlia", "btn_ita", "italia")
+    create_zone_button(row2_col4, paths['hol'], "Holanda", "btn_hol", "holanda")
     
-    create_zone_button(row2_col1, paths['hol'], "Holanda", "btn_hol", "holanda")
-    create_zone_button(row2_col2, paths['japo'], "Japó", "btn_japo", "japo")
-    create_zone_button(row2_col3, paths['uk'], "Regne Unit", "btn_uk", "uk")
-    create_zone_button(row2_col4, paths['can'], "Canadà", "btn_can", "canada")
+    # Fila 3
+    create_zone_button(row3_col1, paths['japo'], "Japó", "btn_japo", "japo")
+    create_zone_button(row3_col2, paths['uk'], "Regne Unit", "btn_uk", "uk")
+    create_zone_button(row3_col3, paths['can'], "Canadà", "btn_can", "canada")
+    create_zone_button(row3_col4, paths['nor'], "Noruega", "btn_nor", "noruega")
+    # --- FI DEL DIBUIX DELS BOTONS ---
 
-    create_zone_button(row3_col1, paths['nor'], "Noruega", "btn_nor", "noruega")
-    create_zone_button(row3_col2, paths['peninsula'], "Est Península", "btn_peninsula", "est_peninsula")
-    # --- FI DEL BLOC ÚNIC ---
-
-    # --- Secció d'Arxius ---
+    # --- Secció d'Arxius (es manté igual) ---
     st.markdown("---")
     
     with st.container(border=True):
