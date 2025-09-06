@@ -6135,6 +6135,7 @@ def run_canada_app():
     elif st.session_state.active_tab_canada == "Webcams en Directe":
         ui_pestanya_webcams(poble_sel, zona_activa="canada")
 
+
 def run_catalunya_app():
     # --- BLOC ANTI-BUG PER FORÇAR EL REDIBUIXAT EN SELECCIONAR POBLE ---
     if 'poble_seleccionat_per_boto' in st.session_state:
@@ -6152,7 +6153,7 @@ def run_catalunya_app():
     col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
     with col_text:
         if not is_guest:
-            st.markdown(f"Benvingut/da, **{st.session_state.get('username', 'Usuari')}**!")
+            st.markdown(f"Benvingut/da, {st.session_state.get('username', 'Usuari')}!")
     with col_change:
         if st.button("Canviar de Zona", use_container_width=True, help="Torna a la selecció de zona geogràfica"):
             st.session_state.zone_selected = None
@@ -6189,7 +6190,7 @@ def run_catalunya_app():
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
         # --- VISTA D'ANÀLISI DETALLADA ---
         poble_sel = st.session_state.poble_sel
-        st.success(f"### Anàlisi per a: **{poble_sel}**")
+        st.success(f"### Anàlisi per a: {poble_sel}")
         if st.button("⬅️ Tornar al mapa de selecció"):
             st.session_state.poble_sel = "--- Selecciona una localitat ---"
             st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
@@ -6223,7 +6224,7 @@ def run_catalunya_app():
         if final_index is not None and final_index != hourly_index_sel and not error_msg:
             adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
             adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
-            st.warning(f"**Avís:** Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+            st.warning(f"Avís: Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: {adjusted_local_time.strftime('%H:%Mh')}.")
         
         if error_msg: 
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg}")
@@ -6242,7 +6243,6 @@ def run_catalunya_app():
                 comarca_actual = get_comarca_for_poble(poble_sel)
                 if comarca_actual:
                     valor_conv_comarcal = alertes_zona.get(comarca_actual, 0)
-                    # <<<--- AQUESTA ÉS LA CRIDA ACTUALITZADA I CORRECTA ---
                     ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calc)
                 else:
                     st.warning(f"No s'ha pogut determinar la comarca per a {poble_sel}.")
@@ -6296,30 +6296,23 @@ def run_catalunya_app():
 
         selected_area = st.session_state.get('selected_area')
         if selected_area and "---" not in selected_area:
-            st.markdown(f"##### Selecciona una localitat a **{selected_area}**:")
-            
+            st.markdown(f"##### Selecciona una localitat a {selected_area}:")
             gdf = carregar_dades_geografiques()
             property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), 'nom_comar')
             poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
-            
             poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
-            
             if poblacions_a_mostrar:
                 cols = st.columns(4)
                 col_index = 0
                 for nom_poble in sorted(poblacions_a_mostrar.keys()):
                     with cols[col_index % 4]:
                         st.button(
-                            nom_poble,
-                            key=f"btn_{nom_poble.replace(' ', '_')}",
-                            on_click=seleccionar_poble,
-                            args=(nom_poble,),
-                            use_container_width=True
+                            nom_poble, key=f"btn_{nom_poble.replace(' ', '_')}",
+                            on_click=seleccionar_poble, args=(nom_poble,), use_container_width=True
                         )
                     col_index += 1
             else:
                 st.warning("Aquesta zona no té localitats predefinides per a l'anàlisi.")
-
             if st.button("⬅️ Veure totes les zones"):
                 st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
                 st.rerun()
