@@ -6173,7 +6173,7 @@ def run_canada_app():
 
 
 def run_catalunya_app():
-    # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL (Sense canvis) ---
+    # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
@@ -6191,7 +6191,7 @@ def run_catalunya_app():
             st.rerun()
     st.divider()
 
-    # --- PAS 2, 3, 4: GESTIÓ D'ESTAT I SELECTORS GLOBALS (Amb noves opcions) ---
+    # --- PAS 2, 3, 4: GESTIÓ D'ESTAT I SELECTORS GLOBALS ---
     if 'selected_area' not in st.session_state: st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
     if 'poble_sel' not in st.session_state: st.session_state.poble_sel = "--- Selecciona una localitat ---"
     
@@ -6210,11 +6210,10 @@ def run_catalunya_app():
     local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_num))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-    
+
     # --- PAS 5: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # --- AQUEST BLOC ES MANTÉ EXACTAMENT IGUAL ---
-        # (Codi de la VISTA D'ANÀLISI DETALLADA)
+        # --- VISTA D'ANÀLISI DETALLADA ---
         poble_sel = st.session_state.poble_sel
         with st.spinner(f"Carregant anàlisi completa per a {poble_sel}..."):
             lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
@@ -6304,9 +6303,7 @@ def run_catalunya_app():
              st.info("👇 Fes clic en una de les pestanyes de dalt per començar l'anàlisi.", icon="ℹ️")
 
     else: 
-        # --- VISTA DE SELECCIÓ (MAPA INTERACTIU + LLEGENDA + NOUS CONTROLS) ---
-        
-        # --- BLOC NOU: CONTROLS DE VISUALITZACIÓ ---
+        # --- VISTA DE SELECCIÓ (MAPA INTERACTIU + LLEGENDA + CONTROLS) ---
         st.session_state.setdefault('show_comarca_labels', False)
         st.session_state.setdefault('alert_filter_level', 'Tots')
 
@@ -6321,14 +6318,13 @@ def run_catalunya_app():
                 )
             with col_labels:
                 st.toggle("Mostrar noms de les comarques amb avís", key="show_comarca_labels")
-        # --- FI DEL BLOC NOU ---
         
         with st.spinner("Carregant mapa de situació de Catalunya..."):
             alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
-            # Filtrem les alertes abans de passar-les al mapa
             alertes_filtrades = filtrar_alertes(alertes_totals, st.session_state.alert_filter_level)
             map_output = ui_mapa_display_personalitzat(alertes_filtrades, hourly_index_sel)
 
+        # La llegenda només es mostra aquí
         ui_llegenda_mapa_principal()
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
