@@ -6253,8 +6253,7 @@ def crear_mapa_forecast_combinat_est_peninsula(lons, lats, speed_data, dir_data,
 
 def run_est_peninsula_app():
     """
-    Funció principal per a l'Est Peninsular, amb la lògica de càrrega de dades
-    corregida per a un funcionament correcte de les pestanyes.
+    Funció principal per a l'Est Peninsular, amb la navegació dins de la vista detallada.
     """
     # --- PAS 1: GESTIÓ D'ESTAT INICIAL ---
     if 'selected_area_peninsula' not in st.session_state: st.session_state.selected_area_peninsula = "--- Selecciona una província al mapa ---"
@@ -6284,7 +6283,13 @@ def run_est_peninsula_app():
         poble_sel = st.session_state.poble_selector_est_peninsula
         st.success(f"### Anàlisi per a: {poble_sel}")
         
-        # Generem els timestamps aquí perquè estiguin disponibles per a totes les pestanyes
+        # --- NOU: Botons de navegació interns a la vista detallada ---
+        col_nav1, col_nav2 = st.columns(2)
+        with col_nav1:
+            st.button("⬅️ Tornar a la Província", on_click=tornar_a_seleccio_zona_peninsula, use_container_width=True)
+        with col_nav2:
+            st.button("🗺️ Tornar al Mapa General", on_click=tornar_al_mapa_general_peninsula, use_container_width=True)
+
         lat_sel, lon_sel = CIUTATS_EST_PENINSULA[poble_sel]['lat'], CIUTATS_EST_PENINSULA[poble_sel]['lon']
         cat_dt = target_dt.astimezone(TIMEZONE_CAT)
         timestamp_str = f"{poble_sel} | {target_dt.strftime('%d/%m/%Y')} a les {target_dt.strftime('%H:%Mh')} ({TIMEZONE_EST_PENINSULA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
@@ -6295,7 +6300,7 @@ def run_est_peninsula_app():
         active_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
                                 orientation="horizontal", key="active_tab_est_peninsula_detail", default_index=0)
         
-        # --- LÒGICA DE CÀRREGA I VISUALITZACIÓ PER PESTANYA (CORREGIDA) ---
+        # Lògica de càrrega i visualització per pestanya
         if active_tab == "Anàlisi Provincial":
             with st.spinner(f"Carregant anàlisi provincial per a les {target_dt.strftime('%H:%Mh')}..."):
                 data_tuple, _, error_msg_sounding = carregar_dades_sondeig_est_peninsula(lat_sel, lon_sel, hourly_index_sel)
@@ -6326,7 +6331,6 @@ def run_est_peninsula_app():
 
     else:
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU DE PROVÍNCIES) ---
-        # (Aquesta part ja estava bé i no necessita canvis)
         gdf_zones = carregar_dades_geografiques_peninsula()
         if gdf_zones is None: return
 
