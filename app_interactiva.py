@@ -6383,8 +6383,8 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió definitiva i corregida).
-    Inclou tots els estils visuals i utilitza el flux 700-500hPa per a la direcció.
+    PESTANYA D'ANÀLISI COMARCAL (Versió amb CORRECCIÓ DE L'ERROR 'ValueError').
+    Assegura que les isòlines es passen a Matplotlib en ordre creixent.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6435,10 +6435,14 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
                     max_conv_valor = np.max(smoothed_convergence)
                     top_level = int(max_conv_valor // 10) * 10
+                    
                     line_levels = []
                     if top_level >= 20: line_levels.append(top_level)
                     if (top_level - 10) >= 20: line_levels.append(top_level - 10)
                         
+                    # --- CORRECCIÓ CLAU AQUÍ ---
+                    line_levels.sort() # Ordenem la llista per assegurar que sigui creixent
+
                     if line_levels:
                         contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors='white', linestyles='solid', linewidths=1.5, zorder=4, transform=ccrs.PlateCarree())
                         labels = ax.clabel(contours, inline=True, fontsize=9, fmt='%1.0f')
@@ -6453,7 +6457,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
                     px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
                     
-                    if valor_conv >= 20:
+                    if data_tuple and valor_conv >= 20:
                         if valor_conv >= 100: indicator_color = '#9370DB'
                         elif valor_conv >= 60: indicator_color = '#DC3545'
                         elif valor_conv >= 40: indicator_color = '#FD7E14'
@@ -6487,8 +6491,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                                     barb_sx, barb_sy = barb_cx - barb_length / 2 * np.cos(barb_angle_rad), barb_cy - barb_length / 2 * np.sin(barb_angle_rad)
                                     barb_ex, barb_ey = barb_cx + barb_length / 2 * np.cos(barb_angle_rad), barb_cy + barb_length / 2 * np.sin(barb_angle_rad)
                                     ax.plot([barb_sx, barb_ex], [barb_sy, barb_ey], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
-                        except Exception:
-                            pass
+                        except Exception: pass
             
             poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
             if poble_coords:
