@@ -6376,9 +6376,9 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió final amb TRAJECTÒRIA DE PRONÒSTIC).
+    PESTANYA D'ANÀLISI COMARCAL (Versió final amb TRAJECTÒRIA DE PRONÒSTIC BLANCA).
     Mostra un mapa estàtic de la comarca amb un gradient, isòlines, marcador
-    i un plomall visual que indica la direcció de desplaçament de la tempesta.
+    i un plomall visual blanc que indica la direcció de desplaçament de la tempesta.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6451,54 +6451,41 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
                     ax.plot(px, py, 'X', color='red', markersize=10, markeredgecolor='white', zorder=12, transform=ccrs.PlateCarree())
 
-                    # --- NOU BLOC: DIBUIX DE LA TRAJECTÒRIA DE PRONÒSTIC ---
                     if params_calc:
                         motion_vector = params_calc.get('RM') or params_calc.get('Mean_Wind')
                         if motion_vector and not pd.isna(motion_vector[0]):
                             u_storm, v_storm = motion_vector[0] * units('m/s'), motion_vector[1] * units('m/s')
                             storm_dir_from = mpcalc.wind_direction(u_storm, v_storm).m
                             storm_dir_to = (storm_dir_from + 180) % 360
-                            
-                            # Convertim la direcció a un format matemàtic per al dibuix
                             dir_rad = np.deg2rad(90 - storm_dir_to)
                             
-                            # Paràmetres del plomall (pots ajustar-los)
-                            length = 0.4  # Llargada en graus de longitud/latitud
-                            spread_deg = 35 # Obertura del con en graus
-                            
-                            # Vèrtexs del polígon que forma el plomall
-                            end_center_x = px + length * np.cos(dir_rad)
-                            end_center_y = py + length * np.sin(dir_rad)
-                            
+                            length = 0.4; spread_deg = 35
+                            end_center_x = px + length * np.cos(dir_rad); end_center_y = py + length * np.sin(dir_rad)
                             angle_left = np.deg2rad(90 - (storm_dir_to - spread_deg / 2))
-                            end_left_x = px + length * np.cos(angle_left)
-                            end_left_y = py + length * np.sin(angle_left)
-                            
+                            end_left_x = px + length * np.cos(angle_left); end_left_y = py + length * np.sin(angle_left)
                             angle_right = np.deg2rad(90 - (storm_dir_to + spread_deg / 2))
-                            end_right_x = px + length * np.cos(angle_right)
-                            end_right_y = py + length * np.sin(angle_right)
+                            end_right_x = px + length * np.cos(angle_right); end_right_y = py + length * np.sin(angle_right)
                             
-                            # Creem i dibuixem el polígon
+                            # --- CANVIS D'ESTIL APLICATS AQUÍ ---
                             forecast_plume = Polygon(
                                 [(px, py), (end_left_x, end_left_y), (end_right_x, end_right_y)],
-                                facecolor='#D2B48C', alpha=0.6, edgecolor='black', linewidth=1.5,
+                                facecolor='white', alpha=0.8, edgecolor='black', linewidth=1.5,
                                 linestyle='--', transform=ccrs.PlateCarree(), zorder=5
                             )
                             ax.add_patch(forecast_plume)
                             
-                            # Dibuixem una fletxa central
                             ax.arrow(px, py, (end_center_x - px)*0.8, (end_center_y - py)*0.8,
                                      color='black', linestyle='--', width=0.001, head_width=0.015,
                                      head_length=0.02, transform=ccrs.PlateCarree(), zorder=6)
-                    # --- FI DEL NOU BLOC DE TRAJECTÒRIA ---
+                            # --- FI DELS CANVIS D'ESTIL ---
 
             ax.set_title(f"Focus de Convergència a {comarca}", weight='bold', fontsize=12)
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
 
     with col_diagnostic:
-        # ... (Aquesta part es manté exactament igual que abans) ...
         st.markdown("##### Diagnòstic de la Zona")
+        # ... (Aquesta part es manté exactament igual que abans) ...
         if valor_conv >= 100:
             nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
         elif valor_conv >= 60:
