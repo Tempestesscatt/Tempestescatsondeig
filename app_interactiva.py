@@ -41,6 +41,7 @@ from streamlit_folium import st_folium
 import geopandas as gpd
 from shapely.geometry import Point
 from folium.plugins import HeatMap
+import geojsoncontour
 
 
 
@@ -6375,9 +6376,9 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió definitiva i estàtica).
-    Mostra un mapa estàtic de la comarca amb un heatmap de convergència
-    i un marcador que assenyala el punt de màxima intensitat.
+    PESTANYA D'ANÀLISI COMARCAL (Versió final amb heatmap, isòlines i marcador).
+    Mostra un mapa estàtic de la comarca amb un gradient visual, línies de contorn
+    de la convergència i un marcador que assenyala el punt de màxima intensitat.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6394,20 +6395,10 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_comarques.columns), 'nom_comar')
         comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
 
-        # --- CANVI CLAU: Paràmetres per fer el mapa ESTÀTIC ---
-        m = folium.Map(
-            tiles="CartoDB positron",
-            zoom_control=False,
-            scrollWheelZoom=False,
-            dragging=False,
-            doubleClickZoom=False
-        )
+        m = folium.Map(tiles="CartoDB positron", zoom_control=False, scrollWheelZoom=False, dragging=False, doubleClickZoom=False)
 
         if not comarca_shape.empty:
-            folium.GeoJson(
-                comarca_shape,
-                style_function=lambda x: {'fillColor': '#007bff', 'color': 'black', 'weight': 2.5, 'fillOpacity': 0.1}
-            ).add_to(m)
+            folium.GeoJson(comarca_shape, style_function=lambda x: {'fillColor': '#007bff', 'color': 'black', 'weight': 2.5, 'fillOpacity': 0.1}).add_to(m)
             bounds = comarca_shape.total_bounds
             m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
 
@@ -6419,17 +6410,40 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
             dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
             convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
+            convergence_scaled = np.nan_to_num(convergence_scaled) # Assegurem que no hi hagi NaNs
 
-            points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': convergence_scaled.flatten()}).dropna()
-            
             # 1. Dibuixem el HEATMAP (gradient de fons)
-            heat_df = points_df[points_df['conv'] > 15]
+            heat_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': convergence_scaled.flatten()}).query("conv > 15")
             if not heat_df.empty:
                 heat_data = [[row['lat'], row['lon'], row['conv']] for _, row in heat_df.iterrows()]
                 gradient_map = {0.2: '#28a745', 0.4: '#ffc107', 0.6: '#fd7e14', 0.8: '#dc3545', 1.0: '#9370DB'}
                 HeatMap(heat_data, min_opacity=0.3, max_val=100, radius=25, blur=20, gradient=gradient_map).add_to(m)
 
-            # 2. Dibuixem el MARCADOR en el punt exacte de màxima convergència
+            # --- NOU BLOC: CREACIÓ I DIBUIX DE LES ISÒLINES DE CONVERGÈNCIA ---
+            line_levels = [20, 40, 60, 80]
+            fig_contour = plt.figure()
+            ax_contour = fig_contour.add_subplot(111)
+            contours = ax_contour.contour(grid_lon, grid_lat, convergence_scaled, levels=line_levels, colors='black', linewidths=0)
+            plt.close(fig_contour) # Evitem que es mostri el gràfic de matplotlib
+
+            geojson_contours = geojsoncontour.contour_to_geojson(
+                contour=contours,
+                ndigits=2,
+                unit=' '
+            )
+
+            style_map = { '20': {'color': '#6c757d', 'weight': 1.5}, '40': {'color': '#000000', 'weight': 2},
+                          '60': {'color': '#3c0000', 'weight': 2.5}, '80': {'color': '#ffffff', 'weight': 3} }
+
+            folium.GeoJson(
+                geojson_contours,
+                style_function=lambda feature: style_map.get(feature['properties']['title'].strip(), {'color': 'black', 'weight': 1}),
+                tooltip=folium.GeoJsonTooltip(fields=['title'], aliases=['Convergència:'])
+            ).add_to(m)
+            # --- FI DEL NOU BLOC D'ISÒLINES ---
+
+            # 3. Dibuixem el MARCADOR en el punt exacte de màxima convergència
+            points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': convergence_scaled.flatten()})
             gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
             points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
             if not points_in_comarca.empty:
@@ -6437,16 +6451,15 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                 folium.Marker(
                     location=[max_conv_point.geometry.y, max_conv_point.geometry.x],
                     tooltip=f"Focus Màxim: {max_conv_point.conv:.0f}",
-                    icon=folium.Icon(color='red', icon='bolt')
+                    icon=folium.Icon(color='red', icon='crosshairs', prefix='fa') # Icona més adequada
                 ).add_to(m)
 
-        st_folium(m, width="100%", height=450, key=f"map_static_{comarca}")
+        st_folium(m, width="100%", height=450, key=f"map_final_{comarca}")
 
     # La columna del diagnòstic a la dreta es manté sense canvis
     with col_diagnostic:
         st.markdown("##### Diagnòstic de la Zona")
         # ... (Aquí va tota la lògica del text de diagnòstic, que ja tenies bé) ...
-        # L'enganxo a sota per si de cas
         if valor_conv >= 100:
             nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
         elif valor_conv >= 60:
@@ -6464,14 +6477,14 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
              <p style="font-size:0.95em; color:#a0a0b0; margin-top:10px; text-align: left;">{descripcio}</p>
         </div>
         """, unsafe_allow_html=True)
-        
+
         st.markdown("##### Validació Atmosfèrica")
         if not params_calc:
             st.warning("No hi ha dades de sondeig disponibles per a la validació.")
         else:
             mucin = params_calc.get('MUCIN', 0) or 0
             mucape = params_calc.get('MUCAPE', 0) or 0
-            
+
             vered_titol, vered_color, vered_emoji, vered_desc = "", "", "", ""
             if mucin < -75:
                 vered_titol, vered_color, vered_emoji = "Inhibida", "#DC3545", "👎"
@@ -6490,7 +6503,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             </div>
             """, unsafe_allow_html=True)
             st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
-            
+
             
 def seleccionar_poble(nom_poble):
     """Callback que s'activa en clicar un poble. Actualitza l'estat directament."""
