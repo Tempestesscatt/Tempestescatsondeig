@@ -6383,8 +6383,9 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str):
     """
-    PESTANYA D'ANÀlisi COMARCAL (Versió final amb MARCADOR DE TEXT 'Tú ▼').
-    Mostra un mapa estàtic de la comarca amb un pin de text personalitzat per a la ubicació.
+    PESTANYA D'ANÀLISI COMARCAL (Versió COMPLETA I DEFINITIVA).
+    Inclou: Fons verd, gradient de convergència, isòlines numerades,
+    con de pronòstic amb temps i marcador de posició.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6406,7 +6407,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             map_extent = [bounds[0] - margin_lon, bounds[2] + margin_lon, bounds[1] - margin_lat, bounds[3] + margin_lat]
             
             plt.style.use('default')
-            fig, ax = crear_mapa_base(map_extent)
+            fig, ax = crear_mapa_base(map_extent) # Aquesta crida ja utilitzarà el teu fons verd
             ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
 
             if map_data and valor_conv > 15:
@@ -6456,7 +6457,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                             theta1 = angle_central_math - spread_deg / 2
                             theta2 = angle_central_math + spread_deg / 2
 
-                            forecast_cone = Wedge((px, py), length, theta1, theta2, facecolor='white', alpha=0.7, edgecolor='black', linewidth=1.5, linestyle='--', transform=ccrs.PlateCarree(), zorder=11)
+                            forecast_cone = Wedge((px, py), length, theta1, theta2, facecolor='white', alpha=0.6, edgecolor='black', linewidth=1.5, linestyle='--', transform=ccrs.PlateCarree(), zorder=11)
                             ax.add_patch(forecast_cone)
                             
                             dir_rad = np.deg2rad(angle_central_math)
@@ -6479,28 +6480,20 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                                             ax.text(marker_x, marker_y, label, transform=ccrs.PlateCarree(), fontsize=8, color='black', weight='bold', ha='center', va='center', bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1), zorder=13)
                                 except (ValueError, TypeError): pass
             
-            # --- BLOC MODIFICAT: MARCADOR DE TEXT ---
             poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
             if poble_coords:
                 lon_poble, lat_poble = poble_coords['lon'], poble_coords['lat']
-                # Dibuixem el nou marcador de text amb un triangle a sota
-                ax.text(lon_poble, lat_poble, '( Tú )\n▼',
-                        transform=ccrs.PlateCarree(),
-                        fontsize=10,
-                        fontweight='bold',
-                        color='black',
-                        ha='center', va='bottom', # Alineació a la part inferior per a l'efecte de pin
-                        zorder=14,
-                        path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')]
-                       )
-            # --- FI DEL BLOC MODIFICAT ---
+                ax.text(lon_poble, lat_poble, '( Tú )\n▼', transform=ccrs.PlateCarree(),
+                        fontsize=10, fontweight='bold', color='black',
+                        ha='center', va='bottom', zorder=14,
+                        path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')])
 
             ax.set_title(f"Focus de Convergència a {comarca}", weight='bold', fontsize=12)
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
 
     with col_diagnostic:
-        # Aquesta part es manté exactament igual
+        # Aquesta part no canvia, es manté exactament igual
         st.markdown("##### Diagnòstic de la Zona")
         if valor_conv >= 100:
             nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
@@ -6545,6 +6538,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             </div>
             """, unsafe_allow_html=True)
             st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
+            
 
             
 def seleccionar_poble(nom_poble):
