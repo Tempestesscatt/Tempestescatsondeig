@@ -6836,7 +6836,8 @@ def generar_mapa_folium_catalunya(alertes_per_zona, selected_area_str):
     
 def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
     """
-    Funció de VISUALITZACIÓ. Converteix les alertes a un format segur per a la memòria cau.
+    Funció de VISUALITZACIÓ. Converteix les alertes a un format segur per a la memòria cau
+    i passa correctament tots els paràmetres necessaris.
     """
     st.markdown("#### Mapa de Situació")
     
@@ -6844,7 +6845,15 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
 
     alertes_tuple = tuple(sorted((k, float(v)) for k, v in alertes_per_zona.items()))
     
-    map_data = preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index)
+    # --- LÍNIA CORREGIDA AQUÍ ---
+    # Ara passem el quart paràmetre 'show_labels' que faltava, llegint-lo de l'estat de la sessió.
+    map_data = preparar_dades_mapa_cachejat(
+        alertes_tuple, 
+        selected_area_str, 
+        hourly_index, 
+        st.session_state.show_comarca_labels
+    )
+    # --- FI DE LA CORRECCIÓ ---
     
     if not map_data:
         st.error("No s'han pogut generar les dades per al mapa.")
@@ -6894,6 +6903,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
         folium.Marker(location=marker['location'], icon=icon, tooltip=marker['tooltip']).add_to(m)
     
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
+    
     
     
 def run_valley_halley_app():
