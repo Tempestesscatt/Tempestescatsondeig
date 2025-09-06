@@ -7005,8 +7005,22 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index):
         folium.Marker(location=marker['location'], icon=icon, tooltip=marker['tooltip']).add_to(m)
     
     return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
-    
-    
+
+
+def tornar_a_seleccio_comarca():
+    """Callback per tornar a la vista de selecció de municipis de la comarca actual."""
+    st.session_state.poble_sel = "--- Selecciona una localitat ---"
+    # Reseteja la pestanya activa per evitar inconsistències visuals
+    if 'active_tab_cat_index' in st.session_state:
+        st.session_state.active_tab_cat_index = 0
+
+def tornar_al_mapa_general():
+    """Callback per tornar a la vista principal del mapa de Catalunya."""
+    st.session_state.poble_sel = "--- Selecciona una localitat ---"
+    st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
+    if 'active_tab_cat_index' in st.session_state:
+        st.session_state.active_tab_cat_index = 0
+        
     
 def run_valley_halley_app():
     if 'poble_selector_usa' not in st.session_state or st.session_state.poble_selector_usa not in USA_CITIES:
