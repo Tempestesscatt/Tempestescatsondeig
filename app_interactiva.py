@@ -6281,19 +6281,33 @@ def run_catalunya_app():
                     st.caption(timestamp_str)
                     if 'regenerate_key' not in st.session_state: st.session_state.regenerate_key = 0
                     if st.button("🔄 Regenerar Totes les Animacions"): forcar_regeneracio_animacio()
+                    
                     with st.spinner("Generant simulacions visuals..."):
                         params_tuple = tuple(sorted(params_calc.items()))
                         gifs = generar_animacions_professionals(params_tuple, timestamp_str, st.session_state.regenerate_key)
+                    
                     col1, col2, col3 = st.columns(3)
+                    
                     with col1:
                         st.markdown("<h5 style='text-align: center;'>1. Iniciació</h5>", unsafe_allow_html=True)
-                        if gifs['iniciacio']: st.image(gifs['iniciacio']) else: st.info("Condicions estables.")
+                        if gifs['iniciacio']:
+                            st.image(gifs['iniciacio'])
+                        else:
+                            st.info("Condicions estables.")
+                    
                     with col2:
                         st.markdown("<h5 style='text-align: center;'>2. Maduresa</h5>", unsafe_allow_html=True)
-                        if gifs['maduresa']: st.image(gifs['maduresa']) else: st.info("Sense energia per a tempesta.")
+                        if gifs['maduresa']:
+                            st.image(gifs['maduresa'])
+                        else:
+                            st.info("Sense energia per a tempesta.")
+                    
                     with col3:
                         st.markdown("<h5 style='text-align: center;'>3. Dissipació</h5>", unsafe_allow_html=True)
-                        if gifs['dissipacio']: st.image(gifs['dissipacio']) else: st.info("Sense fase final.")
+                        if gifs['dissipacio']:
+                            st.image(gifs['dissipacio'])
+                        else:
+                            st.info("Sense fase final.")
                     st.divider()
                     ui_guia_tall_vertical(params_calc, nivell_sel)
                 elif active_tab == "💬 Assistent IA" and not is_guest:
@@ -6308,7 +6322,7 @@ def run_catalunya_app():
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU + BOTONS) ---
         with st.spinner("Carregant mapa de situació de Catalunya..."):
             # Carreguem totes les dades geogràfiques necessàries
-            gdf_comarques, comarca_map = carregar_dades_geografiques()
+            gdf_comarques, comarca_map = carregar_dades_geografiques_i_mapeig()
             gdf_municipis = carregar_dades_municipis()
             heatmap_data = preparar_dades_heatmap(hourly_index_sel, nivell_sel)
             
@@ -6353,7 +6367,46 @@ def run_catalunya_app():
              st.info("Fes clic en una comarca del mapa per veure'n els municipis i les localitats d'anàlisi.", icon="👆")
 
 
+@st.cache_data(ttl=1800, show_spinner="Analitzant focus de convergència...")
+def preparar_dades_heatmap(hourly_index, nivell):
+    """
+    Prepara les dades per a un HeatMap de Folium.
+    Calcula la convergència a tota la graella i retorna una llista de punts
+    amb la seva intensitat [latitud, longitud, pes].
+    """
+    CONV_THRESHOLD = 20  # Llindar a partir del qual es mostra un punt al mapa de calor
+    map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
+    if error or not map_data:
+        return []
 
+    try:
+        # Càlcul de la graella de convergència
+        lons, lats = map_data['lons'], map_data['lats']
+        grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 100), np.linspace(min(lats), max(lats), 100))
+        u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
+        grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+        grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+        with np.errstate(invalid='ignore'):
+            dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+            convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
+            convergence_scaled[np.isnan(convergence_scaled)] = 0
+
+        # Filtra els punts que superen el llindar
+        hot_points_indices = np.where(convergence_scaled > CONV_THRESHOLD)
+        
+        # Crea la llista de dades en el format que HeatMap necessita: [[lat, lon, pes], ...]
+        heatmap_data = [
+            [lat, lon, conv] for lat, lon, conv in zip(
+                grid_lat[hot_points_indices],
+                grid_lon[hot_points_indices],
+                convergence_scaled[hot_points_indices]
+            )
+        ]
+        return heatmap_data
+
+    except Exception as e:
+        print(f"Error a preparar_dades_heatmap: {e}")
+        return []
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data):
     """
