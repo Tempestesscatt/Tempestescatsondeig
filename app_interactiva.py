@@ -5698,10 +5698,10 @@ def on_day_change_usa():
 @st.cache_data(ttl=600, show_spinner="Preparant dades del mapa...")
 def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index):
     """
-    Funció CACHEADA que fa el treball pesat. Ara rep una tupla d'alertes per
-    assegurar la compatibilitat amb la memòria cau.
+    Funció CACHEADA que fa el treball pesat. Aquesta versió accepta correctament
+    els 3 paràmetres per evitar el TypeError.
     """
-    # <<<--- CANVI CLAU: Reconstruïm el diccionari a partir de la tupla ---
+    # Reconstruïm el diccionari a partir de la tupla
     alertes_per_zona = dict(alertes_tuple)
     
     gdf = carregar_dades_geografiques()
@@ -5720,7 +5720,7 @@ def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index)
         if value >= 20: return '#28A745', '#FFFFFF'
         return '#6c757d', '#FFFFFF'
 
-    # La resta de la funció no canvia
+    # La resta de la funció és idèntica i ja funciona correctament
     styles_dict = {}
     for feature in gdf.iterfeatures():
         nom_feature_raw = feature.get('properties', {}).get(property_name)
@@ -5955,6 +5955,82 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
 
     if "Convergència" in mapa_sel:
         ui_explicacio_convergencia()
+
+
+
+
+@st.cache_resource(ttl=1800, show_spinner=False)
+def generar_mapa_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
+    """
+    Funció generadora que crea i desa a la memòria cau el mapa de convergència.
+    Només s'executa si els paràmetres (hora, nivell, zoom) canvien.
+    """
+    map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
+    if error or not map_data:
+        # Retorna None si no es poden carregar les dades
+        return None
+    
+    # El tuple es converteix de nou a llista per a la funció de dibuix
+    map_extent_list = list(map_extent_tuple)
+    
+    fig = crear_mapa_forecast_combinat_cat(
+        map_data['lons'], map_data['lats'], 
+        map_data['speed_data'], map_data['dir_data'], 
+        map_data['dewpoint_data'], nivell, 
+        timestamp_str, map_extent_list
+    )
+    return fig
+
+
+def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str, map_extent):
+    """
+    Crea un mapa que mostra la velocitat del vent (color de fons) i la direcció (línies).
+    """
+    fig, ax = crear_mapa_base(map_extent)
+    grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 200), np.linspace(map_extent[2], map_extent[3], 200))
+    u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
+    
+    # Interpolació ràpida
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'linear')
+    
+    colors_wind = ['#d1d1f0', '#6495ed', '#add8e6', '#90ee90', '#32cd32', '#adff2f', '#f0e68c', '#d2b48c', '#bc8f8f', '#cd5c5c', '#c71585', '#9370db']
+    speed_levels = [0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 220, 250]
+    custom_cmap = ListedColormap(colors_wind)
+    norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree())
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.7, density=2.5, zorder=3, transform=ccrs.PlateCarree())
+    
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm_speed, cmap=custom_cmap), ax=ax, orientation='vertical', shrink=0.7)
+    cbar.set_label("Velocitat del Vent (km/h)")
+    ax.set_title(f"Vent a {nivell} hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    
+    afegir_etiquetes_ciutats(ax, map_extent)
+    
+    return fig
+
+
+@st.cache_resource(ttl=1800, show_spinner=False)
+def generar_mapa_vents_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
+    """
+    Funció generadora que crea i desa a la memòria cau els mapes de vent (700/300hPa).
+    """
+    variables = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
+    map_data, error = carregar_dades_mapa_base_cat(variables, hourly_index)
+    
+    if error or not map_data:
+        return None
+        
+    map_extent_list = list(map_extent_tuple)
+    
+    fig = crear_mapa_vents_cat(
+        map_data['lons'], map_data['lats'], 
+        map_data[variables[0]], map_data[variables[1]], 
+        nivell, timestamp_str, map_extent_list
+    )
+    return fig
             
 def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp_str):
     """
