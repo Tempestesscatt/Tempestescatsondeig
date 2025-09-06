@@ -6223,10 +6223,10 @@ def crear_mapa_forecast_combinat_est_peninsula(lons, lats, speed_data, dir_data,
 def run_est_peninsula_app():
     """
     Funció principal que gestiona la lògica per a la zona de l'Est Peninsular,
-    amb mapa interactiu i controls de visualització millorats i diagnòstic d'errors.
+    adaptada per funcionar amb un mapa de províncies i amb diagnòstic d'errors.
     """
     # --- PAS 1: GESTIÓ D'ESTAT INICIAL ---
-    if 'selected_area_peninsula' not in st.session_state: st.session_state.selected_area_peninsula = "--- Selecciona una zona al mapa ---"
+    if 'selected_area_peninsula' not in st.session_state: st.session_state.selected_area_peninsula = "--- Selecciona una província al mapa ---"
     if 'poble_selector_est_peninsula' not in st.session_state: st.session_state.poble_selector_est_peninsula = "--- Selecciona una localitat ---"
     
     # --- PAS 2: CAPÇALERA I NAVEGACIÓ GLOBAL ---
@@ -6272,7 +6272,7 @@ def run_est_peninsula_app():
         
         col_nav1, col_nav2 = st.columns(2)
         with col_nav1:
-            st.button("⬅️ Tornar a la Zona", on_click=tornar_a_seleccio_zona_peninsula, use_container_width=True)
+            st.button("⬅️ Tornar a la Província", on_click=tornar_a_seleccio_zona_peninsula, use_container_width=True)
         with col_nav2:
             st.button("🗺️ Tornar al Mapa General", on_click=tornar_al_mapa_general_peninsula, use_container_width=True)
 
@@ -6309,20 +6309,17 @@ def run_est_peninsula_app():
             ui_pestanya_mapes_est_peninsula(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
 
     else:
-        # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
-        
-        # **NOVA SECCIÓ DE DIAGNÒSTIC**
+        # --- VISTA DE SELECCIÓ (MAPA INTERACTIU DE PROVÍNCIES) ---
         gdf_zones = carregar_dades_geografiques_peninsula()
         if gdf_zones is None:
             st.error("Error crític en carregar el mapa de zones.")
             st.warning("Revisa els següents punts:", icon="⚠️")
             st.code("""
 1. Existeix un fitxer anomenat 'peninsula_zones.geojson' a la mateixa carpeta que l'aplicació?
-2. El fitxer NO està buit?
-3. El contingut del fitxer és un GeoJSON vàlid? (Pots verificar-ho a geojson.io)
-4. Cada polígon dins del fitxer té una propietat anomenada 'nom_zona'?
+2. El fitxer NO està buit i té un format GeoJSON vàlid?
+3. Cada polígon dins del fitxer té una propietat anomenada 'NAME_2' (o similar) que coincideix amb les claus dels teus diccionaris?
             """, language="markdown")
-            return # Atura l'execució aquí si el mapa no es pot carregar
+            return
 
         st.session_state.setdefault('show_comarca_labels_peninsula', False)
         st.session_state.setdefault('alert_filter_level_peninsula', 'Tots')
@@ -6333,7 +6330,7 @@ def run_est_peninsula_app():
             with col_filter:
                 st.selectbox("Filtrar avisos per nivell:", options=["Tots", "Moderat i superior", "Alt i superior", "Molt Alt i superior", "Només Extrems"], key="alert_filter_level_peninsula")
             with col_labels:
-                st.toggle("Mostrar noms de les zones amb avís", key="show_comarca_labels_peninsula")
+                st.toggle("Mostrar noms de les províncies amb avís", key="show_comarca_labels_peninsula")
         
         with st.spinner("Carregant mapa de situació de la península..."):
             alertes_totals = calcular_alertes_per_zona_peninsula(hourly_index_sel, nivell_sel)
@@ -6344,7 +6341,7 @@ def run_est_peninsula_app():
 
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
-            if "Zona:" in raw_tooltip:
+            if "Provincia:" in raw_tooltip:
                 clicked_area = raw_tooltip.split(':')[-1].strip()
                 if clicked_area != st.session_state.get('selected_area_peninsula'):
                     st.session_state.selected_area_peninsula = clicked_area
@@ -6363,13 +6360,13 @@ def run_est_peninsula_app():
                         st.button(nom_poble, key=f"btn_pen_{nom_poble.replace(' ', '_')}", on_click=seleccionar_poble_peninsula, args=(nom_poble,), use_container_width=True)
                     col_index += 1
             else:
-                st.warning("Aquesta zona no té localitats predefinides per a l'anàlisi.")
+                st.warning("Aquesta província no té localitats predefinides per a l'anàlisi.")
             
-            if st.button("⬅️ Veure totes les zones"):
-                st.session_state.selected_area_peninsula = "--- Selecciona una zona al mapa ---"
+            if st.button("⬅️ Veure totes les províncies"):
+                st.session_state.selected_area_peninsula = "--- Selecciona una província al mapa ---"
                 st.rerun()
         else:
-            st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
+            st.info("Fes clic en una província del mapa per veure'n les localitats.", icon="👆")
        
 
 
