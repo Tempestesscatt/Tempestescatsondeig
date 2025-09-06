@@ -26,3 +26,4 @@ folium
 streamlit-folium
 geopandas
 streamlit-javascript
+topojson
