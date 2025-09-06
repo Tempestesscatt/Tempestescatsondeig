@@ -6253,30 +6253,26 @@ def crear_mapa_forecast_combinat_est_peninsula(lons, lats, speed_data, dir_data,
 
 def run_est_peninsula_app():
     """
-    Funció principal per a l'Est Peninsular, amb la capçalera de navegació global
-    i la lògica del mapa interactiu.
+    Funció principal per a l'Est Peninsular, amb la lògica de càrrega de dades
+    corregida per a un funcionament correcte de les pestanyes.
     """
-    # --- PAS 1: CRIDAR LA CAPÇALERA GLOBAL ---
-    # Aquesta línia assegura que els botons de navegació apareguin sempre.
-    ui_capcalera_selectors(None, zona_activa="est_peninsula")
-    
-    # --- PAS 2: GESTIÓ D'ESTAT INICIAL ---
+    # --- PAS 1: GESTIÓ D'ESTAT INICIAL ---
     if 'selected_area_peninsula' not in st.session_state: st.session_state.selected_area_peninsula = "--- Selecciona una província al mapa ---"
     if 'poble_selector_est_peninsula' not in st.session_state: st.session_state.poble_selector_est_peninsula = "--- Selecciona una localitat ---"
     
+    # --- PAS 2: CAPÇALERA I NAVEGACIÓ GLOBAL ---
+    ui_capcalera_selectors(None, zona_activa="est_peninsula")
+
     # --- PAS 3: CÀLCUL DE LA DATA I HORA AMB EL SLIDER ---
     now_local = datetime.now(TIMEZONE_EST_PENINSULA)
     now_hour = now_local.hour
     
-    time_options = list(range(-4, 9)); time_labels = []
-    for offset in time_options:
-        label = f"Ara ({now_hour:02d}:00h)" if offset == 0 else f"Ara {'+' if offset > 0 else ''}{offset}h ({(now_hour + offset) % 24:02d}:00h)"
-        time_labels.append(label)
+    time_options = list(range(-4, 9))
+    time_labels = [f"Ara ({now_hour:02d}:00h)" if offset == 0 else f"Ara {'+' if offset > 0 else ''}{offset}h ({(now_hour + offset) % 24:02d}:00h)" for offset in time_options]
     
     selected_label = st.select_slider("Selector d'Hora:", options=time_labels, value=f"Ara ({now_hour:02d}:00h)", key="time_selector_peninsula")
     
-    selected_index = time_labels.index(selected_label)
-    time_offset = time_options[selected_index]
+    time_offset = time_options[time_labels.index(selected_label)]
     target_dt = (now_local + timedelta(hours=time_offset)).replace(minute=0, second=0, microsecond=0)
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((target_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
@@ -6288,8 +6284,7 @@ def run_est_peninsula_app():
         poble_sel = st.session_state.poble_selector_est_peninsula
         st.success(f"### Anàlisi per a: {poble_sel}")
         
-        # Els botons de navegació ja són a la capçalera, aquí no calen
-        
+        # Generem els timestamps aquí perquè estiguin disponibles per a totes les pestanyes
         lat_sel, lon_sel = CIUTATS_EST_PENINSULA[poble_sel]['lat'], CIUTATS_EST_PENINSULA[poble_sel]['lon']
         cat_dt = target_dt.astimezone(TIMEZONE_CAT)
         timestamp_str = f"{poble_sel} | {target_dt.strftime('%d/%m/%Y')} a les {target_dt.strftime('%H:%Mh')} ({TIMEZONE_EST_PENINSULA.zone}) / {cat_dt.strftime('%H:%Mh')} (CAT)"
@@ -6300,15 +6295,44 @@ def run_est_peninsula_app():
         active_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", 
                                 orientation="horizontal", key="active_tab_est_peninsula_detail", default_index=0)
         
-        with st.spinner(f"Carregant dades per a les {target_dt.strftime('%H:%Mh')}..."):
-            data_tuple, final_index, error_msg_sounding = carregar_dades_sondeig_est_peninsula(lat_sel, lon_sel, hourly_index_sel)
-            map_data_conv, error_msg_map = carregar_dades_mapa_est_peninsula(nivell_sel, hourly_index_sel)
-            alertes_zona = calcular_alertes_per_zona_peninsula(hourly_index_sel, nivell_sel)
+        # --- LÒGICA DE CÀRREGA I VISUALITZACIÓ PER PESTANYA (CORREGIDA) ---
+        if active_tab == "Anàlisi Provincial":
+            with st.spinner(f"Carregant anàlisi provincial per a les {target_dt.strftime('%H:%Mh')}..."):
+                data_tuple, _, error_msg_sounding = carregar_dades_sondeig_est_peninsula(lat_sel, lon_sel, hourly_index_sel)
+                map_data_conv, _ = carregar_dades_mapa_est_peninsula(nivell_sel, hourly_index_sel)
+                alertes_zona = calcular_alertes_per_zona_peninsula(hourly_index_sel, nivell_sel)
 
-        # (La resta de la lògica de pestanyes es manté igual)
-        
+            if data_tuple is None or error_msg_sounding:
+                st.error(f"No s'ha pogut carregar el sondeig: {formatar_missatge_error_api(error_msg_sounding)}")
+            else:
+                params_calc = data_tuple[1]
+                if map_data_conv: params_calc[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+                provincia_actual = st.session_state.selected_area_peninsula
+                valor_conv_provincial = alertes_zona.get(provincia_actual, 0)
+                ui_pestanya_analisi_provincial(provincia_actual, valor_conv_provincial, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calc, target_dt.strftime('%H:%Mh'), data_tuple)
+
+        elif active_tab == "Anàlisi Vertical":
+            with st.spinner(f"Carregant dades del sondeig AROME per a {poble_sel}..."):
+                data_tuple, final_index, error_msg = carregar_dades_sondeig_est_peninsula(lat_sel, lon_sel, hourly_index_sel)
+            
+            if data_tuple is None or error_msg:
+                st.error(f"No s'ha pogut carregar el sondeig: {formatar_missatge_error_api(error_msg)}")
+            else:
+                params_calc = data_tuple[1]
+                ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, target_dt.strftime('%H:%Mh'), timestamp_str)
+
+        elif active_tab == "Anàlisi de Mapes":
+            ui_pestanya_mapes_est_peninsula(hourly_index_sel, timestamp_str, nivell_sel, poble_sel)
+
     else:
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU DE PROVÍNCIES) ---
+        # (Aquesta part ja estava bé i no necessita canvis)
+        gdf_zones = carregar_dades_geografiques_peninsula()
+        if gdf_zones is None: return
+
+        st.session_state.setdefault('show_comarca_labels_peninsula', False)
+        st.session_state.setdefault('alert_filter_level_peninsula', 'Tots')
+
         with st.container(border=True):
             st.markdown("##### Opcions de Visualització del Mapa")
             col_filter, col_labels = st.columns(2)
