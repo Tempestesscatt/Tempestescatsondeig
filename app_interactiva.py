@@ -6508,8 +6508,8 @@ def crear_llegenda_direccionalitat():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió amb CORRECCIÓ DE L'ERROR 'ValueError' i LLEGENDA VISUAL).
-    Assegura que les isòlines es passen a Matplotlib en ordre creixent i mostra la nova llegenda.
+    PESTANYA D'ANÀLISI COMARCAL (Versió amb ESTIL VISUAL DEL MAPA MILLORAT).
+    Utilitza una paleta de colors professional ('plasma') i nivells discrets per a més claredat.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6553,26 +6553,33 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                 smoothed_convergence[smoothed_convergence < 15] = 0
 
                 if np.any(smoothed_convergence > 0):
-                    colors_professional = ['#0096c7', '#48cae4', '#90e0ef', '#ade8f4', '#caffbf', '#ffdd00', '#ffaa00', '#ff7b00', '#e85d04', '#d00000', '#9d0208']
-                    cmap_professional = LinearSegmentedColormap.from_list("cmap_professional", colors_professional)
-                    fill_levels = np.linspace(15, max(100, np.max(smoothed_convergence)), 256)
-                    ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels, cmap=cmap_professional, alpha=0.8, zorder=3, transform=ccrs.PlateCarree(), extend='max')
-
-                    max_conv_valor = np.max(smoothed_convergence)
-                    top_level = int(max_conv_valor // 10) * 10
+                    # --- NOU BLOC DE DIBUIX AMB ESTIL MILLORAT ---
+                    # 1. Definim nivells discrets i clars per al farciment de color.
+                    fill_levels = [20, 30, 40, 60, 80, 100, 120]
                     
-                    line_levels = []
-                    if top_level >= 20: line_levels.append(top_level)
-                    if (top_level - 10) >= 20: line_levels.append(top_level - 10)
-                        
-                    line_levels.sort()
+                    # 2. Utilitzem una paleta de colors professional ('plasma') i una normalització per nivells.
+                    cmap = plt.get_cmap('plasma')
+                    norm = BoundaryNorm(fill_levels, ncolors=cmap.N, clip=True)
 
-                    if line_levels:
-                        contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors='white', linestyles='solid', linewidths=1.5, zorder=4, transform=ccrs.PlateCarree())
-                        labels = ax.clabel(contours, inline=True, fontsize=9, fmt='%1.0f')
-                        for label in labels:
-                            label.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')])
-                
+                    # 3. Dibuixem el farciment de color amb una certa transparència.
+                    ax.contourf(grid_lon, grid_lat, smoothed_convergence, 
+                                levels=fill_levels, cmap=cmap, norm=norm, 
+                                alpha=0.75, zorder=3, transform=ccrs.PlateCarree(), extend='max')
+
+                    # 4. Dibuixem isòlines subtils per als llindars més importants.
+                    line_levels = [30, 60, 100]
+                    contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, 
+                                          levels=line_levels, colors='black', 
+                                          linestyles='--', linewidths=0.8, alpha=0.7, 
+                                          zorder=4, transform=ccrs.PlateCarree())
+                    
+                    # 5. Afegim etiquetes a les isòlines amb un fons blanc per a llegibilitat.
+                    labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
+                    for label in labels:
+                        label.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
+                    # --- FI DEL NOU BLOC DE DIBUIX ---
+
+                # La lògica per trobar el punt màxim i dibuixar la direccionalitat es manté igual
                 points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
                 points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
@@ -6630,6 +6637,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             plt.close(fig)
 
     with col_diagnostic:
+        # Aquesta part es manté exactament igual
         st.markdown("##### Diagnòstic de la Zona")
         if valor_conv >= 100:
             nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
@@ -6675,10 +6683,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             """, unsafe_allow_html=True)
             st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
         
-        # <<<--- TRUCADA A LA NOVA FUNCIÓ DE LLEGENDA ---
-        # Aquesta línia afegeix la llegenda visual al final de la columna de diagnòstic.
         crear_llegenda_direccionalitat()
-
 
             
 def seleccionar_poble(nom_poble):
