@@ -3928,8 +3928,13 @@ def carregar_dades_geografiques_peninsula():
 
 @st.cache_data(ttl=1800, show_spinner="Analitzant focus de convergència a la península...")
 def calcular_alertes_per_zona_peninsula(hourly_index, nivell):
-    """ Calcula els valors màxims de convergència per a cada zona de la península. """
-    CONV_THRESHOLD = 20
+    """
+    Calcula els valors màxims de convergència per a cada zona de la península.
+    (Versió amb llindar de detecció ajustat a 15)
+    """
+    # --- LÍNIA CORREGIDA ---
+    CONV_THRESHOLD = 15 # Llindar mínim per començar a considerar una alerta, igual que a Catalunya.
+    
     map_data, error = carregar_dades_mapa_est_peninsula(nivell, hourly_index)
     gdf_zones = carregar_dades_geografiques_peninsula()
 
@@ -3937,7 +3942,7 @@ def calcular_alertes_per_zona_peninsula(hourly_index, nivell):
         return {}
 
     try:
-        property_name = 'nom_zona'
+        property_name = 'NAME_2' # Assegura't que aquest sigui el nom correcte
         lons, lats = map_data['lons'], map_data['lats']
         grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 150), np.linspace(min(lats), max(lats), 150))
         u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
@@ -3970,7 +3975,6 @@ def calcular_alertes_per_zona_peninsula(hourly_index, nivell):
     except Exception as e:
         print(f"Error dins de calcular_alertes_per_zona_peninsula: {e}")
         return {}
-
 
 
 
