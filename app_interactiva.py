@@ -4236,40 +4236,46 @@ def ui_pestanya_webcams(poble_sel, zona_activa):
         
         st.components.v1.html(f'<iframe width="100%" height="500" src="{windy_url}" frameborder="0"></iframe>', height=520)
 
-@st.cache_data(show_spinner="Carregant mapa de selecció...")
+
+
+@st.cache_data(show_spinner="Carregant geometries municipals...")
+def carregar_dades_municipis():
+    """
+    Carrega el fitxer GeoJSON amb les geometries de tots els municipis de Catalunya.
+    """
+    try:
+        # Aquesta línia llegeix el teu arxiu de municipis
+        gdf_municipis = gpd.read_file("municipis.geojson")
+        gdf_municipis = gdf_municipis.to_crs("EPSG:4326")
+        # Convertim el codi de comarca a número per assegurar la compatibilitat
+        gdf_municipis['comarca'] = pd.to_numeric(gdf_municipis['comarca'])
+        return gdf_municipis
+    except Exception as e:
+        st.error(f"Error crític: No s'ha pogut carregar l'arxiu 'municipis.geojson'. Assegura't que existeix. Detall: {e}")
+        return None
+
+@st.cache_data(show_spinner="Carregant dades geogràfiques...")
 def carregar_dades_geografiques():
     """
-    Versió final i robusta que busca automàticament el mapa personalitzat
-    i, si no el troba, utilitza el mapa de comarques per defecte.
-    Aquesta versió corregeix el NameError.
+    Carrega el mapa de comarques i crea un diccionari per mapejar
+    el nom de la comarca al seu codi numèric.
     """
-    # Llista de noms d'arxiu per ordre de prioritat
-    noms_possibles = ["mapes_personalitzat.geojson", "comarques.geojson"]
-    file_to_load = None
-
-    # Busca el primer arxiu que existeixi
-    for file in noms_possibles:
-        if os.path.exists(file):
-            file_to_load = file
-            break
-
-    # Si no en troba cap, mostra un error
-    if file_to_load is None:
-        st.error(
-            "**Error Crític: Mapa no trobat.**\n\n"
-            "No s'ha trobat l'arxiu `mapa_personalitzat.geojson` ni `comarques.geojson` a la carpeta de l'aplicació. "
-            "Assegura't que almenys un d'aquests dos arxius existeixi."
-        )
-        return None
-
-    # Si troba un arxiu, el carrega
     try:
-        gdf = gpd.read_file(file_to_load)
-        gdf = gdf.to_crs("EPSG:4326")
-        return gdf
+        gdf_comarques = gpd.read_file("comarques.geojson")
+        gdf_comarques = gdf_comarques.to_crs("EPSG:4326")
+        
+        # Creem el diccionari de mapeig (nom -> codi)
+        if 'nomcomar' in gdf_comarques.columns and 'codicomar' in gdf_comarques.columns:
+            gdf_comarques['codicomar'] = pd.to_numeric(gdf_comarques['codicomar'])
+            comarca_map = pd.Series(gdf_comarques.codicomar.values, index=gdf_comarques.nomcomar).to_dict()
+        else:
+            comarca_map = {}
+            st.warning("L'arxiu 'comarques.geojson' no conté les columnes 'nomcomar' i 'codicomar'. No es podran mostrar els municipis.")
+
+        return gdf_comarques, comarca_map
     except Exception as e:
-        st.error(f"S'ha produït un error en carregar l'arxiu de mapa '{file_to_load}': {e}")
-        return None
+        st.error(f"Error en carregar l'arxiu de comarques: {e}")
+        return None, {}
 
 
 def on_poble_select():
@@ -6085,18 +6091,17 @@ def run_canada_app():
         ui_pestanya_webcams(poble_sel, zona_activa="canada")
 
 def run_catalunya_app():
-    # --- NOU BLOC: LÒGICA ANTI-BUG PER FORÇAR EL REDIBUIXAT ---
+    # --- LÒGICA ANTI-BUG PER FORÇAR EL REDIBUIXAT EN SELECCIONAR POBLE ---
     if 'poble_seleccionat_per_boto' in st.session_state:
         nom_poble = st.session_state.poble_seleccionat_per_boto
         del st.session_state.poble_seleccionat_per_boto
         st.session_state.poble_sel = nom_poble
-        # Important: Reiniciem la pestanya per defecte perquè el missatge aparegui
+        # Reiniciem la pestanya per defecte en canviar de poble
         if 'active_tab_cat' in st.session_state:
             del st.session_state['active_tab_cat']
         st.rerun()
-    # --- FI DEL NOU BLOC ---
 
-    # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
+    # --- CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     col_text, col_change, col_logout = st.columns([0.7, 0.15, 0.15])
@@ -6106,6 +6111,7 @@ def run_catalunya_app():
     with col_change:
         if st.button("Canviar de Zona", use_container_width=True, help="Torna a la selecció de zona geogràfica"):
             st.session_state.zone_selected = None
+            # Neteja les claus específiques de Catalunya per a un reinici net
             [st.session_state.pop(key, None) for key in ['selected_area', 'poble_sel', 'active_tab_cat']]
             st.rerun()
     with col_logout:
@@ -6114,7 +6120,7 @@ def run_catalunya_app():
             st.rerun()
     st.divider()
 
-    # --- PAS 2, 3, 4 (Gestió d'estat i selectors) ---
+    # --- GESTIÓ D'ESTAT I SELECTORS GLOBALS ---
     if 'selected_area' not in st.session_state: st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
     if 'poble_sel' not in st.session_state: st.session_state.poble_sel = "--- Selecciona una localitat ---"
     
@@ -6135,9 +6141,9 @@ def run_catalunya_app():
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
     alertes_zona = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
 
-    # --- PAS 5: LÒGICA PRINCIPAL ---
+    # --- LÒGICA PRINCIPAL DE VISUALITZACIÓ ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # --- VISTA D'ANÀLISI DETALLADA ---
+        # --- VISTA D'ANÀLISI DETALLADA (QUAN UN POBLE ESTÀ SELECCIONAT) ---
         poble_sel = st.session_state.poble_sel
         st.success(f"### Anàlisi per a: **{poble_sel}**")
         if st.button("⬅️ Tornar al mapa de selecció"):
@@ -6155,20 +6161,14 @@ def run_catalunya_app():
             menu_options.append("💬 Assistent IA")
             menu_icons.append("chat-quote-fill")
 
-        # Gestió de la pestanya per defecte
         if 'active_tab_cat' not in st.session_state:
-            st.session_state.active_tab_cat_index = 0 # Comença a la primera
+            st.session_state.active_tab_cat_index = 0
         
         active_tab = option_menu(
-            menu_title=None, 
-            options=menu_options, 
-            icons=menu_icons, 
-            menu_icon="cast", 
-            orientation="horizontal",
-            key='option_menu_widget', # Clau única per al widget
+            menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", 
+            orientation="horizontal", key='option_menu_widget',
             default_index=st.session_state.active_tab_cat_index
         )
-        # Actualitza l'estat si l'usuari canvia de pestanya
         st.session_state.active_tab_cat = active_tab
 
         if 'poble_sel' in st.session_state and st.session_state.poble_sel != "--- Selecciona una localitat ---":
@@ -6233,10 +6233,20 @@ def run_catalunya_app():
              st.info("👇 Fes clic en una de les pestanyes de dalt per començar l'anàlisi.", icon="ℹ️")
 
     else: 
-        # --- VISTA DE SELECCIÓ (MAPA INTERACTIU + BOTONS) ---
+        # --- VISTA DE SELECCIÓ (QUAN NO HI HA POBLE SELECCIONAT) ---
         with st.spinner("Carregant mapa de situació de Catalunya..."):
-            map_output = ui_mapa_display_personalitzat(alertes_zona)
-
+            # Carreguem totes les dades geogràfiques necessàries abans de cridar el mapa
+            gdf_comarques, comarca_map = carregar_dades_geografiques()
+            gdf_municipis = carregar_dades_municipis()
+            
+            map_output = ui_mapa_display_personalitzat(
+                alertes_zona,
+                gdf_comarques,
+                comarca_map,
+                gdf_municipis,
+                st.session_state.get('selected_area')
+            )
+            
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
             if "Comarca:" in raw_tooltip:
@@ -6249,11 +6259,7 @@ def run_catalunya_app():
         if selected_area and "---" not in selected_area:
             st.markdown(f"##### Selecciona una localitat a **{selected_area}**:")
             
-            gdf = carregar_dades_geografiques()
-            property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), 'nom_comar')
-            poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
-            
-            poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
+            poblacions_a_mostrar = CIUTATS_PER_COMARCA.get(selected_area.strip().replace('.', ''), {})
             
             if poblacions_a_mostrar:
                 cols = st.columns(4)
@@ -6269,13 +6275,13 @@ def run_catalunya_app():
                         )
                     col_index += 1
             else:
-                st.warning("Aquesta zona no té localitats predefinides per a l'anàlisi.")
+                st.warning("Aquesta comarca no té localitats predefinides per a l'anàlisi detallada.")
 
             if st.button("⬅️ Veure totes les zones"):
                 st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
                 st.rerun()
         else:
-             st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
+             st.info("Fes clic en una comarca del mapa per veure'n els municipis i les localitats d'anàlisi.", icon="👆")
 
 
 
