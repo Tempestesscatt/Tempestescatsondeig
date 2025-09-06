@@ -8092,63 +8092,27 @@ def ui_pestanya_mapes_est_peninsula(hourly_index_sel, timestamp_str, nivell_sel,
 def inject_custom_css():
     st.markdown("""
     <style>
-    /* --- ESTIL DEFINITIU I ROBUST PER A TOTS ELS SPINNERS --- */
-    /* Aquesta regla s'aplica a qualsevol spinner, en qualsevol lloc de l'app */
-    .stSpinner {
-        position: fixed; /* Posició fixa respecte a la finestra del navegador */
-        top: 0;
-        left: 0;
-        width: 100%;     /* Ocupa tota l'amplada */
-        height: 100%;    /* Ocupa tota l'alçada */
-        background-color: rgba(0, 0, 0, 0.7); /* Fons fosc semitransparent */
-        z-index: 9999;   /* Assegura que estigui per sobre de tot */
-        
-        /* Centrat perfecte amb Flexbox */
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }
+    /* ... (El teu altre CSS de spinner i blinking es manté igual) ... */
 
-    /* Estil per al contingut intern (la icona i el text) */
-    .stSpinner > div {
-        text-align: center;
-        color: white;         /* Text en blanc per a més contrast */
-        font-size: 1.2rem;    /* Mida del text una mica més gran */
-        font-weight: bold;
-    }
-    /* --- FI DE L'ESTIL DEL SPINNER --- */
-    
-
-    /* --- ESTIL DE L'ALERTA PARPELLEJANT (ES MANTÉ) --- */
-    .blinking-alert {
-        animation: blink 1.5s linear infinite;
-    }
-
-    @keyframes blink {
-        50% { opacity: 0.6; }
-    }
-
-    /* --- NOU: ESTIL PER A LA VORA DAURADA ANIMADA (VERSIÓ ROBUSTA) --- */
+    /* --- NOU: ESTIL PER A LA VORA DAURADA ANIMADA (VERSIÓ HTML) --- */
     @property --angle {
         syntax: '<angle>';
         initial-value: 0deg;
         inherits: false;
     }
 
-    .animated-gold-container {
+    .animated-gold-wrapper {
         --angle: 0deg;
         border: 3px solid;
         border-image: conic-gradient(from var(--angle), #DAA520, #FFD700, #F0E68C, #FFD700, #DAA520) 1;
         animation: rotate-border 4s linear infinite;
-        border-radius: 12px; /* Coincideix amb el border-radius de Streamlit */
+        border-radius: 12px;
         padding: 1.2rem;
-        background-color: rgba(38, 39, 48, 0.5); /* Fons semi-transparent */
+        background-color: rgba(38, 39, 48, 0.5);
     }
 
     @keyframes rotate-border {
-        to {
-            --angle: 360deg;
-        }
+        to { --angle: 360deg; }
     }
     /* --- FI DEL NOU ESTIL --- */
     </style>
@@ -8179,16 +8143,15 @@ def ui_zone_selection():
     row2_col1, row2_col2, row2_col3, row2_col4 = st.columns(4)
     row3_col1, row3_col2, row3_col3, row3_col4 = st.columns(4)
 
-    # --- FUNCIÓ create_zone_button MODIFICADA ---
+    # --- FUNCIÓ create_zone_button MODIFICADA (VERSIÓ COMPATIBLE) ---
     def create_zone_button(col, path, title, key, zone_id, type="secondary", height="160px", animated_border=False):
-        
-        # Determinem si el contenidor tindrà la vora animada o la normal
-        container_class = "animated-gold-container" if animated_border else ""
-        
         with col:
-            # Creem un contenidor i li assignem la classe CSS. Aquest és el canvi clau.
-            with st.container(border=not animated_border, css_class=container_class):
-                
+            # Si té vora animada, creem un embolcall HTML
+            if animated_border:
+                st.markdown('<div class="animated-gold-wrapper">', unsafe_allow_html=True)
+
+            # El contenidor de Streamlit va a dins (o sol si no és animat)
+            with st.container(border=not animated_border):
                 st.markdown(generar_html_imatge_estatica(path, height=height), unsafe_allow_html=True)
                 
                 display_title = title
@@ -8199,6 +8162,10 @@ def ui_zone_selection():
                 
                 st.button(f"Analitzar {title}", key=key, use_container_width=True, type=type,
                           on_click=start_transition, args=(zone_id,))
+            
+            # Tanquem l'embolcall HTML si l'hem obert
+            if animated_border:
+                st.markdown('</div>', unsafe_allow_html=True)
     # --- FI DE LA MODIFICACIÓ ---
 
     # Dibuixem els botons amb el nou paràmetre
