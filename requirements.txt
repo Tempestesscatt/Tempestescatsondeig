@@ -27,3 +27,4 @@ streamlit-folium
 geopandas
 streamlit-javascript
 topojson
+geojsoncontour
