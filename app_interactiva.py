@@ -800,27 +800,7 @@ CIUTATS_PER_COMARCA = {
         'Sant Celoni': {'lat': 41.6903, 'lon': 2.4908, 'sea_dir': None},
     },
 }
-# Genera una llista plana a partir de la nova estructura per compatibilitat
-CIUTATS_CATALUNYA = {
-    ciutat: dades 
-    for comarca in CIUTATS_PER_COMARCA.values() 
-    for ciutat, dades in comarca.items()
-}
 
-# Afegeix els punts marins manualment
-PUNTS_MAR = {
-    'Costes de Girona (Mar)':   {'lat': 42.05, 'lon': 3.30, 'sea_dir': (0, 360)},
-    'Litoral Barceloní (Mar)': {'lat': 41.40, 'lon': 2.90, 'sea_dir': (0, 360)},
-    'Aigües de Tarragona (Mar)': {'lat': 40.90, 'lon': 2.00, 'sea_dir': (0, 360)},
-}
-CIUTATS_CATALUNYA.update(PUNTS_MAR)
-
-# Defineix les llistes necessàries a partir de la principal
-POBLACIONS_TERRA = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' not in k}
-CIUTATS_CONVIDAT = {
-    'Barcelona': CIUTATS_CATALUNYA['Barcelona'], 'Girona': CIUTATS_CATALUNYA['Girona'],
-    'Lleida': CIUTATS_CATALUNYA['Lleida'], 'Tarragona': CIUTATS_CATALUNYA['Tarragona']
-}
 
 # --- Constants per Tornado Alley ---
 API_URL_USA = "https://api.open-meteo.com/v1/forecast"
