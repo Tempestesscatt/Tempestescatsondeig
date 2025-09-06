@@ -6379,8 +6379,9 @@ def run_catalunya_app():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió final amb TRAJECTÒRIA I MARCADORS).
-    Dibuixa un con de pronòstic estret amb marcadors de distància i temps.
+    PESTANYA D'ANÀLISI COMARCAL (Versió final amb MARCADOR DE POSICIÓ 📍).
+    Mostra un mapa estàtic de la comarca amb gradient, isòlines, pronòstic
+    i un pin que indica la ubicació de la localitat seleccionada.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6406,7 +6407,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
 
             if map_data and valor_conv > 15:
-                # ... (La part de càlcul i dibuix de la convergència es manté igual) ...
                 lons, lats = map_data['lons'], map_data['lats']
                 grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 150), np.linspace(map_extent[2], map_extent[3], 150))
                 grid_dewpoint = griddata((lons, lats), map_data['dewpoint_data'], (grid_lon, grid_lat), 'linear')
@@ -6441,7 +6441,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
                     ax.plot(px, py, 'X', color='red', markersize=10, markeredgecolor='white', zorder=12, transform=ccrs.PlateCarree())
 
-                    # --- BLOC DE PRONÒSTIC ACTUALITZAT ---
                     if params_calc:
                         motion_vector = params_calc.get('RM') or params_calc.get('Mean_Wind')
                         if motion_vector and not pd.isna(motion_vector[0]):
@@ -6450,9 +6449,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                             storm_dir_from = mpcalc.wind_direction(u_storm, v_storm).m
                             storm_dir_to = (storm_dir_from + 180) % 360
                             
-                            # Paràmetres del con (més estret)
                             length = 0.45; spread_deg = 45
-
                             angle_central_math = 90 - storm_dir_to
                             theta1 = angle_central_math - spread_deg / 2
                             theta2 = angle_central_math + spread_deg / 2
@@ -6460,43 +6457,48 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                             forecast_cone = Wedge((px, py), length, theta1, theta2, facecolor='white', alpha=0.7, edgecolor='black', linewidth=1.5, linestyle='--', transform=ccrs.PlateCarree(), zorder=11)
                             ax.add_patch(forecast_cone)
                             
-                            # Línia central (ara la farem servir per als marcadors)
                             dir_rad = np.deg2rad(angle_central_math)
                             end_center_x = px + length * np.cos(dir_rad)
                             end_center_y = py + length * np.sin(dir_rad)
                             ax.plot([px, end_center_x], [py, end_center_y], color='black', linestyle='--', linewidth=1, transform=ccrs.PlateCarree(), zorder=12)
 
-                            # NOU: Càlcul i dibuix de marcadors de temps/distància
-                            if storm_speed_kmh > 5: # Només si la tempesta es mou
+                            if storm_speed_kmh > 5:
                                 try:
                                     start_time = datetime.strptime(hora_sel_str, "%H:%Mh")
-                                    # Aproximació: 1 grau de latitud ≈ 111 km
                                     km_per_degree = 111.32 
-                                    
                                     for dist_km in [10, 20, 30]:
                                         dist_deg = dist_km / km_per_degree
                                         if dist_deg < length:
                                             marker_x = px + dist_deg * np.cos(dir_rad)
                                             marker_y = py + dist_deg * np.sin(dir_rad)
-                                            
                                             time_minutes = (dist_km / storm_speed_kmh) * 60
                                             arrival_time = start_time + timedelta(minutes=time_minutes)
                                             label = f"~{arrival_time.strftime('%H:%M')}"
-                                            
-                                            # Dibuixem el text de l'hora
-                                            ax.text(marker_x, marker_y, label, transform=ccrs.PlateCarree(),
-                                                    fontsize=7, color='black', weight='bold', ha='center', va='bottom',
-                                                    bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1), zorder=13)
-                                except ValueError: # Si l'hora no es pot parsejar, no fem res
+                                            ax.text(marker_x, marker_y, label, transform=ccrs.PlateCarree(), fontsize=7, color='black', weight='bold', ha='center', va='bottom', bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1), zorder=13)
+                                except ValueError:
                                     pass
-                    # --- FI DEL BLOC DE PRONÒSTIC ---
+            
+            # --- NOU BLOC: MARCADOR DE LA LOCALITAT SELECCIONADA ---
+            # Obtenim les coordenades del poble que estem analitzant
+            poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
+            if poble_coords:
+                lon_poble, lat_poble = poble_coords['lon'], poble_coords['lat']
+                # Dibuixem l'emoji '📍' al mapa amb una vora blanca per a més visibilitat
+                ax.text(lon_poble, lat_poble, '📍',
+                        transform=ccrs.PlateCarree(),
+                        fontsize=20,
+                        ha='center', va='center',
+                        zorder=14, # El zorder més alt per estar per sobre de tot
+                        path_effects=[path_effects.withStroke(linewidth=3, foreground='white')]
+                       )
+            # --- FI DEL NOU BLOC ---
 
             ax.set_title(f"Focus de Convergència a {comarca}", weight='bold', fontsize=12)
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
 
     with col_diagnostic:
-        # Aquesta part es manté exactament igual que abans
+        # Aquesta part no canvia, es manté exactament igual
         st.markdown("##### Diagnòstic de la Zona")
         if valor_conv >= 100:
             nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
