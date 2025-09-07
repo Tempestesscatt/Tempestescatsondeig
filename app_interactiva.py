@@ -63,31 +63,29 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
 
-
+EMOJI_FOLDER = "emojis"
 
 NUVOL_EMOJI_MAP = {
-    "Altocúmulus Lenticular": "emojis/lenticular.png",
-    "Nimbostratus (Pluja Contínua)": "emojis/nimbostratus.png",
-    "Potencial de Supercèl·lula": "emojis/supercell.png",
-    "Tempestes Organitzades": "emojis/multicell.png",
-    "Tempesta Aïllada (Molt energètica)": "emojis/cb_isolated.png",
-    "Tempesta Comuna": "emojis/cumulonimbus.png",
-    "Cúmuls de creixement": "emojis/congestus.png",
-    "Vels de Cirrus (Molt Alts)": "emojis/cirrus.png",
-    "Cirrostratus (Cel blanquinós)": "emojis/cirrostratus.png",
-    "Altostratus / Altocúmulus": "emojis/altocumulus.png",
-    "Estratus (Boira alta / Cel tancat)": "emojisstratus.png",
-    "Cúmuls de bon temps": "emojis/cumulus.png",
-    "Cel Serè": "emojis/clear_sky.png",
+    "Altocúmulus Lenticular": "lenticular.png",
+    "Nimbostratus (Pluja Contínua)": "nimbostratus.png",
+    "Potencial de Supercèl·lula": "supercell.png",
+    "Tempestes Organitzades": "multicell.png",
+    "Tempesta Aïllada (Molt energètica)": "cb_isolated.png",
+    "Tempesta Comuna": "cumulonimbus.png",
+    "Cúmuls de creixement": "congestus.png",
+    "Vels de Cirrus (Molt Alts)": "cirrus.png",
+    "Cirrostratus (Cel blanquinós)": "cirrostratus.png",
+    "Altostratus / Altocúmulus": "altocumulus.png",
+    "Estratus (Boira alta / Cel tancat)": "stratus.png",
+    "Cúmuls de bon temps": "cumulus.png",
+    "Cel Serè": "clear_sky.png",
 }
-
-
 
 @st.cache_data
 def get_image_as_base64(path):
     """
     Funció que llegeix un arxiu d'imatge, el converteix a Base64 i ho desa a la memòria cau.
-    Retorna None si l'arxiu no existeix.
+    Ara rep la RUTA COMPLETA de l'arxiu.
     """
     if not os.path.exists(path):
         print(f"ADVERTÈNCIA: No s'ha trobat l'arxiu d'icona: {path}")
@@ -2141,14 +2139,34 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva amb Icones Personalitzades.
-    Processa la llista de diagnòstics, obté l'ID de la icona, la converteix
-    a Base64 i genera les etiquetes <img> per a una visualització personalitzada.
+    Versió Definitiva amb Icones Personalitzades (v37.1).
+    Mostra la graella de paràmetres del sondeig. Està dissenyada per gestionar
+    la llista de diagnòstics de 'analitzar_potencial_meteorologic', construeix
+    la ruta a les imatges de les icones, les converteix a Base64 i genera les
+    etiquetes <img> per a una visualització totalment personalitzada.
     """
-    # El codi de TOOLTIPS i styled_metric/qualitative es manté igual
-    TOOLTIPS = { 'SBCAPE': "...", 'MUCAPE': "...", 'CONV_PUNTUAL': "...", 'SBCIN': "...", 'MUCIN': "...", 'LI': "...", 'PWAT': "...", 'LCL_Hgt': "...", 'LFC_Hgt': "...", 'EL_Hgt': "...", 'BWD_0-6km': "...", 'BWD_0-1km': "...", 'T_500hPa': "...", 'PUNTUACIO_TEMPESTA': "...", 'AMENACA_CALAMARSA': "...", 'AMENACA_LLAMPS': "..." }
+    # El diccionari de Tooltips es manté igual per a les ajudes contextuals
+    TOOLTIPS = {
+        'SBCAPE': "Energia Potencial Convectiva Disponible (CAPE) des de la Superfície. Mesura el 'combustible' per a les tempestes a partir d'una bombolla d'aire a la superfície.",
+        'MUCAPE': "El CAPE més alt possible a l'atmosfera (Most Unstable). Útil per detectar inestabilitat elevada, fins i tot si la superfície és estable.",
+        'CONV_PUNTUAL': f"Força de la convergència de vent EXACTAMENT al punt de {poble_sel}. Actua com el 'disparador' local i és la dada que correspon a aquest sondeig.",
+        'SBCIN': "Inhibició Convectiva (CIN) des de la Superfície. És l'energia necessària per vèncer l'estabilitat inicial. Valors molt negatius actuen com una 'tapa' que impedeix les tempestes.",
+        'MUCIN': "La CIN associada al MUCAPE.",
+        'LI': "Índex d'Elevació (Lifted Index). Mesura la diferència de temperatura a 500hPa entre l'entorn i una bombolla d'aire elevada. Valors molt negatius indiquen una forta inestabilitat.",
+        'PWAT': "Aigua Precipitable Total (Precipitable Water). Quantitat total de vapor d'aigua en la columna atmosfàrica. Valors alts indiquen potencial per a pluges fortes.",
+        'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació (LCL). És l'alçada a la qual es formarà la base del núvol. Valors baixos (<1000m) afavoreixen el temps sever.",
+        'LFC_Hgt': "Alçada del Nivell de Convecció Lliure (LFC). És l'alçada a partir de la qual una bombolla d'aire puja lliurement sense necessitat de forçament.",
+        'EL_Hgt': "Alçada del Nivell d'Equilibri (EL). És l'alçada estimada del cim de la tempesta (top del cumulonimbus).",
+        'BWD_0-6km': "Cisallament del Vent (Bulk Wind Shear) entre 0 i 6 km. Crucial per a l'organització de les tempestes (multicèl·lules, supercèl·lules).",
+        'BWD_0-1km': "Cisallament del Vent entre 0 i 1 km. Important per a la rotació a nivells baixos (tornados).",
+        'T_500hPa': "Temperatura a 500 hPa (uns 5.500 metres). Temperatures molt fredes en alçada disparen la inestabilitat.",
+        'PUNTUACIO_TEMPESTA': "Índex de 0 a 10 que valora el potencial global de formació de tempestes, combinant els ingredients clau.",
+        'AMENACA_CALAMARSA': "Probabilitat de calamarsa de mida significativa (>2 cm). Es basa en la potència del corrent ascendent (MAX_UPDRAFT) i l'alçada de la isoterma de 0°C.",
+        'AMENACA_LLAMPS': "Potencial d'activitat elèctrica. S'estima a partir de la inestabilitat (LI) i la profunditat de la tempesta (EL_Hgt)."
+    }
+
+    # Funció auxiliar per a les mètriques numèriques
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
-        # ... (codi de la funció sense canvis)
         color = "#FFFFFF"; val_str = "---"
         is_numeric = isinstance(value, (int, float, np.number))
         if pd.notna(value) and is_numeric:
@@ -2160,11 +2178,20 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
                 color = get_color_global(value, param_key, reverse_colors)
             val_str = f"{value:.{precision}f}"
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
-        st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit}){tooltip_html}</span><strong style="font-size: 1.6em; color: {color}; line-height: 1.1;">{val_str}</strong></div>""", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
+            <span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit}){tooltip_html}</span>
+            <strong style="font-size: 1.6em; color: {color}; line-height: 1.1;">{val_str}</strong>
+        </div>""", unsafe_allow_html=True)
+
+    # Funció auxiliar per a les mètriques qualitatives
     def styled_qualitative(label, text, color, tooltip_text=""):
-        # ... (codi de la funció sense canvis)
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
-        st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br><strong style="font-size: 1.6em; color: {color};">{text}</strong></div>""", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
+            <span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br>
+            <strong style="font-size: 1.6em; color: {color};">{text}</strong>
+        </div>""", unsafe_allow_html=True)
 
     st.markdown("##### Paràmetres del Sondeig")
     
@@ -2182,35 +2209,40 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         # --- BLOC D'HTML PER A LES ICONES PERSONALITZADES ---
         analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
         
-        emojis_html_list = []
+        icons_html_list = []
         if analisi_temps_list:
             descripcions = " / ".join([d['descripcio'] for d in analisi_temps_list])
             for diag in analisi_temps_list:
                 icon_filename = diag.get('icon_id')
                 if icon_filename:
-                    # Cridem a la nostra funció cachejada per obtenir la imatge
-                    base64_image = get_image_as_base64(icon_filename)
+                    # Construïm la ruta completa a l'arxiu
+                    full_path = os.path.join(EMOJI_FOLDER, icon_filename)
+                    # Cridem a la funció cachejada per obtenir la imatge en Base64
+                    base64_image = get_image_as_base64(full_path)
+                    
                     if base64_image:
                         # Generem l'etiqueta <img> amb l'estil desitjat
-                        emojis_html_list.append(
+                        icons_html_list.append(
                             f'<img src="data:image/png;base64,{base64_image}" '
                             'style="height: 1.8em; vertical-align: middle; margin-right: 8px;" '
                             f'title="{diag["descripcio"]}">'
                         )
-                    else: emojis_html_list.append("❓") # Fallback si no troba l'arxiu
-                else: emojis_html_list.append("❓")
+                    else: 
+                        icons_html_list.append("❓") # Fallback si no troba l'arxiu
+                else: 
+                    icons_html_list.append("❓") # Fallback si no hi ha 'icon_id'
         else:
-            emojis_html_list = ["❓"]
+            icons_html_list = ["❓"]
             descripcions = "Anàlisi no disponible"
             
-        emojis_html = "".join(emojis_html_list)
+        icons_html = "".join(icons_html_list)
         # --- FI DEL BLOC D'HTML ---
 
         st.markdown(f"""
             <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
                 <span style="font-size: 0.8em; color: #FAFAFA;">Tipus de Cel Previst</span>
-                <strong style="font-size: 1.8em; line-height: 1.2;">{emojis_html}</strong>
-                <span style="font-size: 0.8em; color: #E0E0E0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{descripcions}</span>
+                <strong style="font-size: 1.8em; line-height: 1.2;">{icons_html}</strong>
+                <span style="font-size: 0.8em; color: #E0E0E0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{descripcions}">{descripcions}</span>
             </div>""", unsafe_allow_html=True)
 
     cols = st.columns(3)
@@ -8689,11 +8721,11 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v37.0 - Retorn d'Icones Personalitzades.
-    Aquesta versió retorna un 'icon_id' (nom d'arxiu) en lloc d'un emoji,
-    per a ser processat per la interfície d'usuari amb imatges personalitzades.
+    Sistema de Diagnòstic v37.1 - Utilitza el nou mapa d'icones sense rutes.
+    La lògica meteorològica és la mateixa, però ara retorna noms d'arxiu nets.
     """
     diagnostics = []
+    # ... (Extracció de paràmetres com abans, sense canvis) ...
     mucape = params.get('MUCAPE', 0) or 0
     mucin = params.get('MUCIN', 0) or 0
     bwd_6km = params.get('BWD_0-6km', 0) or 0
@@ -8736,7 +8768,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     if not diagnostics:
         if mucape > 50 and rh_baixa > 60:
              desc = "Cúmuls de bon temps"
-             diagnostics.append({'icon_id': NUVOL_EMOJI_MAP[desc], 'descripcio': desc, 'veredicte': "Cel amb petits cúmuls decoratius que indiquen bon temps.", 'factor_clau': "CAPE gairebé inexistent."})
+             diagnostics.append({'icon_id': NUVOL_EMOJI_MAP[desc], 'descripcio': desc, 'veredicte': "Cel amb petits cúmuls decoratius.", 'factor_clau': "CAPE gairebé inexistent."})
         else:
             desc = "Cel Serè"
             diagnostics.append({'icon_id': NUVOL_EMOJI_MAP[desc], 'descripcio': desc, 'veredicte': "Temps estable i sec.", 'factor_clau': "Atmosfera seca i/o inhibida."})
