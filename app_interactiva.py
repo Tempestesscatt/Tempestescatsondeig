@@ -2141,12 +2141,12 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva amb Disseny Flexible i Professional (v40.1).
-    - El contenidor del 'Tipus de Cel Previst' ja no té una alçada fixa,
-      permetent que s'expandeixi automàticament per a mostrar múltiples
-      diagnòstics sense trencar el disseny.
+    Versió Definitiva amb Disseny Flexible i Renderització Corregida (v40.2).
+    - Separa l'estil del contenidor principal a una classe CSS dedicada (.diagnosis-box)
+      per evitar conflictes de renderització amb st.markdown.
+    - Assegura que l'HTML final sigui net i s'interpreti sempre correctament.
     """
-    # ... (El codi de TOOLTIPS i les funcions styled_metric/qualitative es manté igual) ...
+    # El codi de TOOLTIPS i les funcions styled_metric/qualitative es manté igual
     TOOLTIPS = { 'SBCAPE': "...", 'MUCAPE': "...", 'CONV_PUNTUAL': "...", 'SBCIN': "...", 'MUCIN': "...", 'LI': "...", 'PWAT': "...", 'LCL_Hgt': "...", 'LFC_Hgt': "...", 'EL_Hgt': "...", 'BWD_0-6km': "...", 'BWD_0-1km': "...", 'T_500hPa': "...", 'PUNTUACIO_TEMPESTA': "...", 'AMENACA_CALAMARSA': "...", 'AMENACA_LLAMPS': "..." }
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
         color = "#FFFFFF"; val_str = "---"
@@ -2167,15 +2167,28 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
 
     st.markdown("##### Paràmetres del Sondeig")
     
+    # --- CANVI CLAU: S'AFEGEIX LA CLASSE '.diagnosis-box' AL CSS ---
     st.markdown("""
     <style>
+        .diagnosis-box {
+            text-align: center;
+            padding: 8px;
+            border-radius: 10px;
+            background-color: #2a2c34;
+            margin-bottom: 10px;
+            min-height: 78px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
         .cloud-diagnosis-container {
             display: flex;
             flex-wrap: wrap;
             justify-content: center;
             align-items: center;
             gap: 15px;
-            padding-top: 5px; /* Petit espai superior */
+            margin-top: 5px;
         }
         .cloud-item {
             display: flex;
@@ -2184,7 +2197,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
             text-align: center;
         }
         .cloud-icon {
-            height: 2.5em; /* Mida de la icona */
+            height: 2.5em;
         }
         .cloud-text {
             font-size: 0.8em;
@@ -2222,15 +2235,13 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
                 combined_html_list.append(item_html)
         else:
             base64_fallback = NUVOL_ICON_BASE64["fallback"]
-            combined_html_list.append(f'<img src="{base64_fallback}" class="cloud-icon" title="Anàlisi no disponible">')
+            combined_html_list.append(f'<div class="cloud-item"><img src="{base64_fallback}" class="cloud-icon"><span class="cloud-text">Anàlisi no disp.</span></div>')
 
         final_html_content = "".join(combined_html_list)
 
-        # --- CANVI CLAU: ELIMINEM 'height: 78px' i afegim 'min-height' ---
-        # `min-height` assegura que la caixa no sigui massa petita si només hi ha un element.
-        # `padding-bottom` afegeix espai si el contingut creix.
+        # --- CANVI CLAU: L'HTML ÉS MOLT MÉS NET ARA ---
         html_content = f"""
-            <div style="text-align: center; padding: 5px; padding-bottom: 10px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; min-height: 78px; display: flex; flex-direction: column; justify-content: center;">
+            <div class="diagnosis-box">
                 <span style="font-size: 0.8em; color: #FAFAFA;">Tipus de Cel Previst</span>
                 <div class="cloud-diagnosis-container">
                     {final_html_content}
@@ -2257,7 +2268,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols[0]: styled_qualitative("Calamarsa Gran (>2cm)", amenaces['calamarsa']['text'], amenaces['calamarsa']['color'], tooltip_text=TOOLTIPS.get('AMENACA_CALAMARSA'))
     with cols[1]: styled_qualitative("Índex de Potencial", f"{puntuacio_resultat['score']} / 10", puntuacio_resultat['color'], tooltip_text=TOOLTIPS.get('PUNTUACIO_TEMPESTA'))
     with cols[2]: styled_qualitative("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], tooltip_text=TOOLTIPS.get('AMENACA_LLAMPS'))
-
+    
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
     """
     Sistema de Diagnòstic v2.0: Analitza els fenòmens eòlics a diferents nivells
