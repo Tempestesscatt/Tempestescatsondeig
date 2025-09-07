@@ -65,44 +65,21 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 EMOJI_FOLDER = "emojis"
 
+# --- BLOC D'ICONES PERSONALITZADES INCRUSTADES (v39.1 - Claus Sincronitzades) ---
 NUVOL_ICON_BASE64 = {
-    # Icona per a Cel Serè
     "Cel Serè": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI0ZGQzEwNyI+PHBhdGggZD0iTTEyIDJjLTUuNTIgMCAxMCA0LjQ4IDEwIDEwcy00LjQ4IDEwLTEwIDEwUzIgMTcuNTIgMiAxMiA2LjQ4IDIgMTIgMnptMCAyYy00LjQxIDAtOCAzLjU5LTggOHMzLjU5IDggOCA4IDgtMy41OSA4LTgtMy41OS04LTgtOHptMCAzYzIuNzYgMCA1IDIuMjQgNSA1cy0yLjI0IDUtNSA1LTUtMi4yNC01LTUgMi4yNC01IDUtNXoiLz48L3N2Zz4=",
-    
-    # Icona per a Cúmuls de bon temps
-    "Cúmuls de bon temps": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI2YwZjBmMCI+PHBhdGggZD0iTTQ2LjYxIDE5LjA1QTExLjUgMTEuNSAwIDAgMC আয়Ni41IDE2YTExLjUgMTEuNSAwIDAgMC0xMS41IDExLjVBMy41IDMuNSAwIDAgMCAyMS41IDI1SDIydi0xYTExLjUgMTEuNSAwIDAgMC05LjYyIDUuMjZBOS41IDkuNSAwIDAgMCAxNiAzMy41YTkuNSA5LjUgMCAwIDAgOS41IDkuNUg0N2E5LjUgOS41IDAgMCAwIDAtMTloLTQuMzktLjA1eiIvPjwvc3ZnPg==",
-    
-    # Icona per a Estratus
-    "Estratus (Boira alta / Cel tancat)": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI2NlY2VjZSI+PHJlY3QgeD0iNCIgeT0iMjgiIHdpZHRoPSI1NiIgaGVpZ2h0PSIxMCIgcng9IjUiLz48L3N2Zz4=",
-    
-    # Icona per a Altocúmulus
-    "Altostratus / Altocúmulus": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI2Q4ZDhkOCI+PHJlY3QgeD0iNCIgeT0iMjIiIHdpZHRoPSI1NiIgaGVpZ2h0PSI4IiByeD0iNCIvPjxyZWN0IHg9IjEwIiB5PSIzNCIgd2lkdGg9IjQ0IiBoZWlnaHQ9IjgiIHJ4PSI0Ii8+PC9zdmc+",
-    
-    # Icona per a Cirrus (Molt Alts)
+    "Cúmuls de bon temps": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI2YwZjBmMCI+PHBhdGggZD0iTTQ2LjYxIDE5LjA1QTExLjUgMTEuNSAwIDAgMCA0Ni41IDE2YTExLjUgMTEuNSAwIDAgMC0xMS41IDExLjVBMy41IDMuNSAwIDAgMCAyMS41IDI1SDIydi0xYTExLjUgMTEuNSAwIDAgMC05LjYyIDUuMjZBOS41IDkuNSAwIDAgMCAxNiAzMy41YTkuNSA5LjUgMCAwIDAgOS41IDkuNUg0N2E5LjUgOS41IDAgMCAwIDAtMTloLTQuMzktLjA1eiIvPjwvc3ZnPg==",
+    "Estratus (Boira alta / Cel tancat)": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI2NlY2VjZSI+PHJlY3QgeD0iNCIgeT0iMjgiIHdpZHRoPSI1NiIgaGVpZHRoPSIxMCIgcng9IjUiLz48L3N2Zz4=",
+    "Altostratus / Altocúmulus": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI2Q4ZDhkOCI+PHJlY3QgeD0iNCIgeT0iMjIiIHdpZHRoPSI1NiIgaGVpZHRoPSI4IiByeD0iNCIvPjxyZWN0IHg9IjEwIiB5PSIzNCIgd2lkdGg9IjQ0IiBoZWlnaHQ9IjgiIHJ4PSI0Ii8+PC9zdmc+",
     "Vels de Cirrus (Molt Alts)": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZTBlMGUwIiBzdHJva2Utd2lkdGg9IjIiPjxwYXRoIGQ9Ik0xMCAyNSBTIDMwIDE1IDQwIDMwIi8+PHBhdGggZD0iTTIwIDM1IFMgNDAgMjUgNTQgNDIiLz48L3N2Zz4=",
-    
-    # Icona per a Cirrostratus
     "Cirrostratus (Cel blanquinós)": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI2YwZjBmMCIgb3BhY2l0eT0iMC41Ij48cmVjdCB3aWR0aD0iNjQiIGhlaWdodD0iNjQiLz48L3N2Zz4=",
-    
-    # Icona per a Congestus
     "Cúmuls de creixement": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI2Y5ZjlmOSI+PHBhdGggZD0iTTQ2LjYxIDE5LjA1QTExLjUgMTEuNSAwIDAgMCA0Ni41IDE2YTExLjUgMTEuNSAwIDAgMC0xMS41IDExLjVBMTEuNSAxMS41IDAgMCAwIDIyIDE3di0zYTguNSA4LjUgMCAwIDAtOC41IDguNEE5LjUgOS41IDAgMCAwIDE2IDM0LjVhOS41IDkuNSAwIDAgMCA5LjUgOS41SDQ3YTkuNSA5LjUgMCAwIDAgMC0xOWgtLjM5eiIvPjwvc3ZnPg==",
-    
-    # Icona per a Cumulonimbus (Tempesta Comuna)
-    "Tempesta Comuna": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJhIiB4MT0iMCUiIHgyPSIwJSIgeTE9IjAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2YwZjBmMCIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2EwYTBhMCIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxwYXRoIGQ9Ik00NyAzMy41YTkuNSA5LjUgMCAwIDEtOS41IDkuNUgyMi41YTkuNSA5LjUgMCAwIDEgMC0xOWw2LjQ3LS4wMkExMS41IDExLjUgMCAwIDEgMjEgMTZhMTEuNSAxMS41IDAgMCAxIDIzLjQ1LTQuNDUgMTEuNSAxMS41IDAgMCAxIDExLjA1IDEwLjQ3eiIgZmlsbD0idXJsKCNhKSIvPjxwYXRoIGQ9Ik0yNSA0OGw0LThoLTdsNC04LTEwIDEyaDdsLTUgOCIgZmlsbD0iI0ZGQzEwNyIvPjwvc3ZnPg==",
-    
-    # Icona per a Tempesta Aïllada Molt Energètica
+    "Tempesta Comuna": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJhIiB4MT0iMCUiIHgyPSIwJSIgeTE9IjAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2YwZjBmMCIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2EwYTBhMCIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxwYXRoIGQ9Ik00NyAzMy41YTkuNSA5LjUgMCAwIDEgMCAxOUgyMi41YTkuNSA5LjUgMCAwIDEgMC0xOWw2LjQ3LS4wMkExMS41IDExLjUgMCAwIDEgMjEgMTZhMTEuNSAxMS41IDAgMCAxIDIzLjQ1LTQuNDUgMTEuNSAxMS41IDAgMCAxIDExLjA1IDEwLjQ3eiIgZmlsbD0idXJsKCNhKSIvPjxwYXRoIGQ9Ik0yNSA0OGw0LThoLTdsNC04LTEwIDEyaDdsLTUgOCIgZmlsbD0iI0ZGQzEwNyIvPjwvc3ZnPg==",
     "Tempesta Aïllada (Molt energètica)": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJhIiB4MT0iMCUiIHgyPSIwJSIgeTE9IjAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2ZmZiIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iIzgwODA4MCIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxwYXRoIGQ9Ik00NyAzMy41YTkuNSA5LjUgMCAwIDEgMCAxOUgyMi41YTkuNSA5LjUgMCAwIDEgMC0xOWw2LjQ3LS4wMkExMS41IDExLjUgMCAwIDEgMjEgMTZhMTEuNSAxMS41IDAgMCAxIDI4LjQtLjQ3IDExLjUgMTEuNSAwIDAgMSAxMC41NyA5Ljk3eiIgZmlsbD0idXJsKCNhKSIvPjxwYXRoIGQ9Ik0yNSA0OGw0LThoLTdsNC04LTEwIDEyaDdsLTUgOCIgZmlsbD0iI0ZGM0MxQiIvPjwvc3ZnPg==",
-    
-    # Icona per a Multicèl·lula
     "Tempestes Organitzades": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJhIiB4MT0iMCUiIHgyPSIwJSIgeTE9IjAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2YwZjBmMCIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2EwYTBhMCIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxwYXRoIGQ9Ik00NyAzMy41YTkuNSA5LjUgMCAwIDEgMCAxOUgxNmE5LjUgOS41IDAgMSAxIDAtMTlsOC40Ny0uMDJBMTQuNSAxNC41IDAgMCAxIDE1IDE2YTE0LjUgMTQuNSAwIDAgMSAyOS0N2ExMS41IDExLjUgMCAwIDEgMTIgMTIuNDd6IiBmaWxsPSJ1cmwoI2EpIi8+PHBhdGggZD0iTTI1IDQ4bDMtNmgtNWwzLTYtOCA5aDVsLTMgNiIgZmlsbD0iI0ZGQzEwNyIvPjxwYXRoIGQ9Ik0zOCA0OGwzLTZoLTVsMy02LTggOWg1bC0zIDYiIGZpbGw9IiNGRkMxMDciLz48L3N2Zz4=",
-    
-    # Icona per a Supercèl·lula
     "Potencial de Supercèl·lula": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGRlZnM+PHJhZGlhbEdyYWRpZW50IGlkPSJhIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjZmZmIi8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMzMzIi8+PC9yYWRpYWxHcmFkaWVudD48L2RlZnM+PHBhdGggZD0iTTQ5IDM0YTkuNSA5LjUgMCAwIDEgMCAxOEgyMWE5LjUgOS41IDAgMCAxIDAtMThsNC40Ny0uMDJBMTYuNSAxNi41IDAgMCAxIDE1IDEyYTE2LjUgMTYuNSAwIDEgMSAzMiA3IDEwLjUgMTAuNSAwIDAgMSAxMiAxMi40N3oiIGZpbGw9InVybCgjYSkiLz48cGF0aCBkPSJNMzIgNDVjLTQuNDIgMC04IDMuNTgtOCA4czMuNTggOCA4IDggOC0zLjU4IDgtOC0zLjU4LTgtOC04em0wIDNjMi43NiAwIDUgMi4yNCA1IDVzLTIuMjQgNS01IDUtNS0yLjI0LTUtNSAyLjI0LTUgNS01eiIgZmlsbD0iI0ZGM0MxQiIvPjwvc3ZnPg==",
-    
-    # Icona per a Nimbostratus
     "Nimbostratus (Pluja Contínua)": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHBhdGggZD0iTTQ2LjYxIDE5LjA1QTExLjUgMTEuNSAwIDAgMCAyNSAyMi41VjQ3YTkuNSA5LjUgMCAwIDAgMTkgMGgtLjM5QTEwLjUgMTAuNSAwIDAgMCA0My41IDE5YTkuNSA5LjUgMCAwIDAgMy4xMS40NXoiIGZpbGw9IiM4MDgwODAiLz48cGF0aCBkPSJNMjIgNTh2LTZsMiAyIDI LTIgMiAyIDI LTIgMiAyIDI LTIgMiAyIDI LTIgMiAydi00bC0yLTItMiAyLTIgLTItMiAyLTIgLTItMiAyLTIgLTItMiAyeiIgZmlsbD0iIzQ2ODJCNCJvIHBhY2l0eT0iMC44Ii8+PC9zdmc+",
-    
-    # Icona de fallback per a errors
+    "Altocúmulus Lenticular": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI2YwZjBmMCI+PHBhdGggZD0iTTMyIDIzLjVjLTE1LjQ2IDAtMjggMy4zNi0yOCAxMCAxNSA2LjY0IDI4IDEwIDI4IDEwczEzLjU0LTMuMzYgMjgtMTBjMC02LjY0LTEyLjU0LTEwLTI4LTEweiIvPjwvc3ZnPg==",
     "fallback": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmMGMwYyI+PHBhdGggZD0iTTEgMjFoMjJMMTIgMiAxIDIxem0xMi0zaC0ydi0yaDJ2MnptMC00aC0ydi00aDJ2NHoiLz48L3N2Zz4="
 }
 
@@ -8705,33 +8682,23 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v39.2 - Corregit i Definitiu.
-    Aquesta versió soluciona el 'NameError' eliminant qualsevol referència a l'antic
-    diccionari 'NUVOL_EMOJI_MAP'. Ara, la funció només retorna la descripció del
-    fenomen, i la interfície s'encarrega de buscar la icona corresponent al
-    diccionari 'NUVOL_ICON_BASE64'.
+    Sistema de Diagnòstic v39.3 - Claus Sincronitzades.
+    Aquesta versió genera descripcions que coincideixen exactament amb les claus
+    del diccionari d'icones NUVOL_ICON_BASE64.
     """
-    # --- 1. Llista per emmagatzemar els resultats ---
     diagnostics = []
-
-    # --- 2. EXTRACCIÓ DELS PARÀMETRES CLAU ---
     mucape = params.get('MUCAPE', 0) or 0
     mucin = params.get('MUCIN', 0) or 0
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     pwat = params.get('PWAT', 0) or 0
-    
     rh_capes = params.get('RH_CAPES', {'baixa': 0, 'mitjana': 0, 'alta': 0, 'molt_alta': 0})
     rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
     rh_mitjana = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0
     rh_alta = rh_capes.get('alta', 0) if pd.notna(rh_capes.get('alta')) else 0
     rh_molt_alta = rh_capes.get('molt_alta', 0) if pd.notna(rh_capes.get('molt_alta')) else 0
-
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
-    
     wspd_500hpa = params.get('WSPD_500hPa', 0) or 0
-
-    # --- 3. AVALUACIÓ INDEPENDENT DE FENÒMENS (LÒGICA CHECKLIST) ---
 
     # CHECK 1: Lenticulars
     if mucape < 150 and wspd_500hpa > 45 and rh_mitjana > 60:
@@ -8743,7 +8710,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
         desc = "Nimbostratus (Pluja Contínua)"
         diagnostics.append({'descripcio': desc, 'veredicte': "Cel cobert amb pluja generalitzada i persistent.", 'factor_clau': "Saturació profunda."})
 
-    # CHECK 3: Potencial Convectiu (si no hi ha una "tapa" infranquejable)
+    # CHECK 3: Potencial Convectiu
     if mucin > -100 and conv > 10:
         if mucape > 2000 and bwd_6km > 35: desc = "Potencial de Supercèl·lula"; diagnostics.append({'descripcio': desc, 'veredicte': "Condicions explosives per a tempestes severes.", 'factor_clau': "CAPE extrem i cisallament."})
         elif mucape > 800 and bwd_6km > 25: desc = "Tempestes Organitzades"; diagnostics.append({'descripcio': desc, 'veredicte': "Potencial per a sistemes de tempestes organitzats.", 'factor_clau': "Equilibri CAPE/cisallament."})
@@ -8751,14 +8718,14 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
         elif mucape > 500: desc = "Tempesta Comuna"; diagnostics.append({'descripcio': desc, 'veredicte': "Condicions per a tempestes d'estiu, amb xàfecs.", 'factor_clau': "CAPE suficient."})
         elif mucape > 100: desc = "Cúmuls de creixement"; diagnostics.append({'descripcio': desc, 'veredicte': "Núvols amb desenvolupament vertical, possibles xàfecs.", 'factor_clau': "CAPE marginal."})
 
-    # CHECK 4: Núvols Estables (si hi ha "tapa" o no hi ha "disparador")
+    # CHECK 4: Núvols Estables
     if mucin < -100 or conv < 10:
         if rh_molt_alta > 65: desc = "Vels de Cirrus (Molt Alts)"; diagnostics.append({'descripcio': desc, 'veredicte': "Humitat a les capes més altes formant vels de gel.", 'factor_clau': "Humitat a >250hPa."})
         if rh_alta > 70: desc = "Cirrostratus (Cel blanquinós)"; diagnostics.append({'descripcio': desc, 'veredicte': "Humitat a nivells alts, però l'estabilitat impedeix el desenvolupament.", 'factor_clau': "Inhibició forta."})
         if rh_mitjana > 75: desc = "Altostratus / Altocúmulus"; diagnostics.append({'descripcio': desc, 'veredicte': "Cel cobert per núvols mitjans.", 'factor_clau': "Inhibició forta."})
         if rh_baixa > 80: desc = "Estratus (Boira alta / Cel tancat)"; diagnostics.append({'descripcio': desc, 'veredicte': "Núvols baixos persistents.", 'factor_clau': "Inhibició forta."})
     
-    # --- 4. GESTIÓ DEL RESULTAT FINAL ---
+    # GESTIÓ FINAL
     if not diagnostics:
         if mucape > 50 and rh_baixa > 60:
              desc = "Cúmuls de bon temps"
