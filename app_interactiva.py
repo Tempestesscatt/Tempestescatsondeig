@@ -8620,11 +8620,15 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v33.0 - Lògica Bàsica i Variada.
-    Aquesta versió prioritza la simplicitat i la varietat en els resultats,
-    seguint un arbre de decisions més intuïtiu i menys rígid.
+    Sistema de Diagnòstic v34.0 - Diagnòstic Múltiple.
+    Aquesta versió avalua de forma independent diferents fenòmens meteorològics
+    i pot retornar una llista amb múltiples diagnòstics si les condicions
+    permeten la coexistència de diferents tipus de núvols.
     """
-    # --- 1. EXTRACCIÓ DELS PARÀMETRES CLAU ---
+    # --- 1. Llista per emmagatzemar els resultats ---
+    diagnostics = []
+
+    # --- 2. EXTRACCIÓ DELS PARÀMETRES CLAU ---
     mucape = params.get('MUCAPE', 0) or 0
     mucin = params.get('MUCIN', 0) or 0
     bwd_6km = params.get('BWD_0-6km', 0) or 0
@@ -8638,65 +8642,58 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
     
-    wspd_500hpa = params.get('WSPD_500hPa', 0) or 0
+    wspd_500hpa = params.get('WSPD_500hpa', 0) or 0
 
-    # --- 2. LÒGICA DE DIAGNÒSTIC JERÀRQUICA I SIMPLIFICADA ---
+    # --- 3. AVALUACIÓ INDEPENDENT DE FENÒMENS ---
 
-    # ESCENARI 1: CONDICIONS PER A FENÒMENS ESPECIALS (NO CONVECTIUS)
-    # Comprovació de lenticulars: requereix estabilitat (poc CAPE) i vent molt fort en alçada.
+    # CHECK 1: Condicions per a Lenticulars (requereix estabilitat)
     if mucape < 150 and wspd_500hpa > 45 and rh_mitjana > 60:
-        return {
+        diagnostics.append({
             'emoji': "🛸", 'descripcio': "Altocúmulus Lenticular",
-            'veredicte': "Atmosfera estable amb un potent flux de vent en alçada. Ideal per a núvols lenticulars a sotavent de les muntanyes.",
-            'factor_clau': "Fort vent a nivells alts i estabilitat."
-        }
-    
-    # Comprovació de pluja estratiforme: requereix molta humitat a tots els nivells, però sense energia per a tempestes.
-    if mucape < 200 and rh_baixa > 85 and rh_mitjana > 80 and pwat > 25:
-        return {
-            'emoji': "🌧️", 'descripcio': "Nimbostratus (Pluja Contínua)",
-            'veredicte': "Cel completament cobert amb pluja generalitzada i persistent. Poca o nul·la activitat elèctrica.",
-            'factor_clau': "Saturació profunda de l'atmosfera."
-        }
+            'veredicte': "Atmosfera estable amb potent flux de vent en alçada, ideal per a núvols lenticulars a sotavent de les muntanyes.",
+            'factor_clau': "Fort vent en alçada i estabilitat."
+        })
 
-    # ESCENARI 2: CONDICIONS QUE IMPEDEIXEN LES TEMPESTES
-    # Si hi ha una "tapa" molt forta (CIN alt) o no hi ha cap "disparador" (convergència), la convecció no començarà.
+    # CHECK 2: Condicions per a Nimbostratus (requereix saturació profunda)
+    if mucape < 200 and rh_baixa > 85 and rh_mitjana > 80 and pwat > 25:
+        diagnostics.append({
+            'emoji': "🌧️", 'descripcio': "Nimbostratus (Pluja Contínua)",
+            'veredicte': "Cel cobert amb pluja generalitzada i persistent, sense activitat elèctrica.",
+            'factor_clau': "Saturació profunda de l'atmosfera."
+        })
+
+    # CHECK 3: Potencial Convectiu (només si NO hi ha una tapa infranquejable)
+    if mucin > -100 and conv > 10:
+        if mucape > 2000 and bwd_6km > 35:
+            diagnostics.append({'emoji': "🌪️", 'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Condicions explosives per a tempestes severes amb rotació.", 'factor_clau': "CAPE extrem i cisallament molt alt."})
+        elif mucape > 800 and bwd_6km > 25:
+            diagnostics.append({'emoji': "⛈️", 'descripcio': "Tempestes Organitzades (Multicèl·lula)", 'veredicte': "Potencial per a sistemes de tempestes organitzats i duradors.", 'factor_clau': "Bon equilibri CAPE/cisallament."})
+        elif mucape > 1500 and bwd_6km < 20:
+            diagnostics.append({'emoji': "🌩️", 'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Tempestes aïllades però molt potents, amb risc de calamarsa gran.", 'factor_clau': "CAPE molt alt, sense organització."})
+        elif mucape > 500:
+            diagnostics.append({'emoji': "⚡", 'descripcio': "Tempesta Comuna (Cumulonimbus)", 'veredicte': "Condicions per a tempestes d'estiu, amb xàfecs i activitat elèctrica.", 'factor_clau': "CAPE suficient."})
+        elif mucape > 100:
+            diagnostics.append({'emoji': "☁️", 'descripcio': "Cúmuls de creixement (Congestus)", 'veredicte': "Núvols amb desenvolupament vertical, podrien deixar xàfecs molt aïllats.", 'factor_clau': "CAPE marginal."})
+
+    # CHECK 4: Núvols Estables (només si hi ha una "tapa" o no hi ha "disparador")
     if mucin < -100 or conv < 10:
         if rh_alta > 70:
-            return {'emoji': "🌫️", 'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Hi ha humitat a nivells alts, però una forta estabilitat impedeix qualsevol desenvolupament.", 'factor_clau': "Inhibició forta."}
-        if rh_mitjana > 75:
-            return {'emoji': "☁️", 'descripcio': "Altostratus / Altocúmulus", 'veredicte': "Cel cobert per núvols mitjans. No s'espera pluja significativa.", 'factor_clau': "Inhibició forta."}
-        if rh_baixa > 80:
-            return {'emoji': "☁️", 'descripcio': "Estratus (Boira alta / Cel tancat)", 'veredicte': "Núvols baixos i persistents sense desenvolupament vertical.", 'factor_clau': "Inhibició forta."}
-        
-        # Si no hi ha humitat i hi ha inhibició, el cel estarà serè.
-        return {'emoji': "☀️", 'descripcio': "Cel Serè (Ambient estable)", 'veredicte': "Temps estable. L'atmosfera està 'tapada' i no permet la formació de núvols.", 'factor_clau': "Forta inhibició i/o falta de disparador."}
+            diagnostics.append({'emoji': "🌫️", 'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Humitat a nivells alts, però l'estabilitat impedeix el desenvolupament.", 'factor_clau': "Inhibició forta."})
+        elif rh_mitjana > 75:
+            diagnostics.append({'emoji': "☁️", 'descripcio': "Altostratus / Altocúmulus", 'veredicte': "Cel cobert per núvols mitjans sense pluja significativa.", 'factor_clau': "Inhibició forta."})
+        elif rh_baixa > 80:
+            diagnostics.append({'emoji': "☁️", 'descripcio': "Estratus (Boira alta / Cel tancat)", 'veredicte': "Núvols baixos persistents sense desenvolupament.", 'factor_clau': "Inhibició forta."})
 
-    # ESCENARI 3: POTENCIAL CONVECTIU (HI HA "COMBUSTIBLE" I NO HI HA "TAPA")
-    # Si arribem aquí, vol dir que les tempestes SÓN possibles. Ara classifiquem la seva intensitat i organització.
+    # --- 4. GESTIÓ DEL RESULTAT FINAL ---
     
-    # Cas 3.1: Energia molt alta i organització (Supercèl·lules)
-    if mucape > 2000 and bwd_6km > 35:
-        return {'emoji': "🌪️", 'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Condicions explosives. Combinació perfecta d'energia i organització per a tempestes severes amb rotació.", 'factor_clau': "CAPE extrem i cisallament molt alt."}
-    
-    # Cas 3.2: Energia moderada i organització (Multicèl·lules)
-    elif mucape > 800 and bwd_6km > 25:
-        return {'emoji': "⛈️", 'descripcio': "Tempestes Organitzades (Multicèl·lula)", 'veredicte': "Potencial per a la formació de sistemes de tempestes organitzats que poden ser forts i duradors.", 'factor_clau': "Bon equilibri entre CAPE i cisallament."}
-        
-    # Cas 3.3: Molta energia però poca organització (Tempestes de pols)
-    elif mucape > 1500 and bwd_6km < 20:
-        return {'emoji': "🌩️", 'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Es formaran tempestes aïllades però molt potents, amb forts corrents verticals. Risc de calamarsa gran.", 'factor_clau': "CAPE molt alt, però sense organització."}
-
-    # Cas 3.4: Energia suficient per a tempestes normals
-    elif mucape > 500:
-        return {'emoji': "⚡", 'descripcio': "Tempesta Comuna (Cumulonimbus)", 'veredicte': "Condicions típiques per a la formació de tempestes d'estiu, amb xàfecs i activitat elèctrica.", 'factor_clau': "CAPE suficient per al desenvolupament."}
-
-    # Cas 3.5: Poca energia, només per a núvols de creixement
-    elif mucape > 100:
-        return {'emoji': "☁️", 'descripcio': "Cúmuls de creixement (Congestus)", 'veredicte': "Es formaran núvols amb cert desenvolupament vertical, que podrien deixar algun xàfec molt aïllat i dèbil.", 'factor_clau': "CAPE marginal."}
-
-    # Cas 3.6: Sense energia suficient per a res més que núvols de bon temps
-    else:
-        return {'emoji': "🌤️", 'descripcio': "Cúmuls de bon temps (Humilis)", 'veredicte': "Cel amb petits cúmuls decoratius que indiquen bon temps i estabilitat.", 'factor_clau': "CAPE gairebé inexistent."}
-if __name__ == "__main__":
+    # Si, després de totes les comprovacions, la llista està buida, significa que el cel està serè.
+    if not diagnostics:
+        # Afegim un petit matís: si hi ha una mica d'energia i humitat, seran cúmuls de bon temps.
+        if mucape > 50 and rh_baixa > 60:
+             diagnostics.append({'emoji': "🌤️", 'descripcio': "Cúmuls de bon temps (Humilis)", 'veredicte': "Cel amb petits cúmuls decoratius que indiquen bon temps.", 'factor_clau': "CAPE gairebé inexistent."})
+        else:
+            diagnostics.append({'emoji': "☀️", 'descripcio': "Cel Serè", 'veredicte': "Temps estable i sec. Condicions no favorables per a la formació de núvols.", 'factor_clau': "Atmosfera seca i/o inhibida."})
+            
+    # Retornem la llista completa de diagnòstics trobats.
+    return diagnostics
     main()
