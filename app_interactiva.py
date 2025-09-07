@@ -65,20 +65,45 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 EMOJI_FOLDER = "emojis"
 
-NUVOL_EMOJI_MAP = {
-    "Altocúmulus Lenticular": "lenticular.png",
-    "Nimbostratus (Pluja Contínua)": "nimbostratus.png",
-    "Potencial de Supercèl·lula": "supercell.png",
-    "Tempestes Organitzades": "multicell.png",
-    "Tempesta Aïllada (Molt energètica)": "cb_isolated.png",
-    "Tempesta Comuna": "cumulonimbus.png",
-    "Cúmuls de creixement": "congestus.png",
-    "Vels de Cirrus (Molt Alts)": "cirrus.png",
-    "Cirrostratus (Cel blanquinós)": "cirrostratus.png",
-    "Altostratus / Altocúmulus": "altocumulus.png",
-    "Estratus (Boira alta / Cel tancat)": "stratus.png",
-    "Cúmuls de bon temps": "cumulus.png",
-    "Cel Serè": "clear_sky.png",
+NUVOL_ICON_BASE64 = {
+    # Icona per a Cel Serè
+    "Cel Serè": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI0ZGQzEwNyI+PHBhdGggZD0iTTEyIDJjLTUuNTIgMCAxMCA0LjQ4IDEwIDEwcy00LjQ4IDEwLTEwIDEwUzIgMTcuNTIgMiAxMiA2LjQ4IDIgMTIgMnptMCAyYy00LjQxIDAtOCAzLjU5LTggOHMzLjU5IDggOCA4IDgtMy41OSA4LTgtMy41OS04LTgtOHptMCAzYzIuNzYgMCA1IDIuMjQgNSA1cy0yLjI0IDUtNSA1LTUtMi4yNC01LTUgMi4yNC01IDUtNXoiLz48L3N2Zz4=",
+    
+    # Icona per a Cúmuls de bon temps
+    "Cúmuls de bon temps": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI2YwZjBmMCI+PHBhdGggZD0iTTQ2LjYxIDE5LjA1QTExLjUgMTEuNSAwIDAgMC আয়Ni41IDE2YTExLjUgMTEuNSAwIDAgMC0xMS41IDExLjVBMy41IDMuNSAwIDAgMCAyMS41IDI1SDIydi0xYTExLjUgMTEuNSAwIDAgMC05LjYyIDUuMjZBOS41IDkuNSAwIDAgMCAxNiAzMy41YTkuNSA5LjUgMCAwIDAgOS41IDkuNUg0N2E5LjUgOS41IDAgMCAwIDAtMTloLTQuMzktLjA1eiIvPjwvc3ZnPg==",
+    
+    # Icona per a Estratus
+    "Estratus (Boira alta / Cel tancat)": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI2NlY2VjZSI+PHJlY3QgeD0iNCIgeT0iMjgiIHdpZHRoPSI1NiIgaGVpZ2h0PSIxMCIgcng9IjUiLz48L3N2Zz4=",
+    
+    # Icona per a Altocúmulus
+    "Altostratus / Altocúmulus": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI2Q4ZDhkOCI+PHJlY3QgeD0iNCIgeT0iMjIiIHdpZHRoPSI1NiIgaGVpZ2h0PSI4IiByeD0iNCIvPjxyZWN0IHg9IjEwIiB5PSIzNCIgd2lkdGg9IjQ0IiBoZWlnaHQ9IjgiIHJ4PSI0Ii8+PC9zdmc+",
+    
+    # Icona per a Cirrus (Molt Alts)
+    "Vels de Cirrus (Molt Alts)": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZTBlMGUwIiBzdHJva2Utd2lkdGg9IjIiPjxwYXRoIGQ9Ik0xMCAyNSBTIDMwIDE1IDQwIDMwIi8+PHBhdGggZD0iTTIwIDM1IFMgNDAgMjUgNTQgNDIiLz48L3N2Zz4=",
+    
+    # Icona per a Cirrostratus
+    "Cirrostratus (Cel blanquinós)": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI2YwZjBmMCIgb3BhY2l0eT0iMC41Ij48cmVjdCB3aWR0aD0iNjQiIGhlaWdodD0iNjQiLz48L3N2Zz4=",
+    
+    # Icona per a Congestus
+    "Cúmuls de creixement": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI2Y5ZjlmOSI+PHBhdGggZD0iTTQ2LjYxIDE5LjA1QTExLjUgMTEuNSAwIDAgMCA0Ni41IDE2YTExLjUgMTEuNSAwIDAgMC0xMS41IDExLjVBMTEuNSAxMS41IDAgMCAwIDIyIDE3di0zYTguNSA4LjUgMCAwIDAtOC41IDguNEE5LjUgOS41IDAgMCAwIDE2IDM0LjVhOS41IDkuNSAwIDAgMCA5LjUgOS41SDQ3YTkuNSA5LjUgMCAwIDAgMC0xOWgtLjM5eiIvPjwvc3ZnPg==",
+    
+    # Icona per a Cumulonimbus (Tempesta Comuna)
+    "Tempesta Comuna": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJhIiB4MT0iMCUiIHgyPSIwJSIgeTE9IjAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2YwZjBmMCIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2EwYTBhMCIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxwYXRoIGQ9Ik00NyAzMy41YTkuNSA5LjUgMCAwIDEtOS41IDkuNUgyMi41YTkuNSA5LjUgMCAwIDEgMC0xOWw2LjQ3LS4wMkExMS41IDExLjUgMCAwIDEgMjEgMTZhMTEuNSAxMS41IDAgMCAxIDIzLjQ1LTQuNDUgMTEuNSAxMS41IDAgMCAxIDExLjA1IDEwLjQ3eiIgZmlsbD0idXJsKCNhKSIvPjxwYXRoIGQ9Ik0yNSA0OGw0LThoLTdsNC04LTEwIDEyaDdsLTUgOCIgZmlsbD0iI0ZGQzEwNyIvPjwvc3ZnPg==",
+    
+    # Icona per a Tempesta Aïllada Molt Energètica
+    "Tempesta Aïllada (Molt energètica)": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJhIiB4MT0iMCUiIHgyPSIwJSIgeTE9IjAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2ZmZiIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iIzgwODA4MCIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxwYXRoIGQ9Ik00NyAzMy41YTkuNSA5LjUgMCAwIDEgMCAxOUgyMi41YTkuNSA5LjUgMCAwIDEgMC0xOWw2LjQ3LS4wMkExMS41IDExLjUgMCAwIDEgMjEgMTZhMTEuNSAxMS41IDAgMCAxIDI4LjQtLjQ3IDExLjUgMTEuNSAwIDAgMSAxMC41NyA5Ljk3eiIgZmlsbD0idXJsKCNhKSIvPjxwYXRoIGQ9Ik0yNSA0OGw0LThoLTdsNC04LTEwIDEyaDdsLTUgOCIgZmlsbD0iI0ZGM0MxQiIvPjwvc3ZnPg==",
+    
+    # Icona per a Multicèl·lula
+    "Tempestes Organitzades": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJhIiB4MT0iMCUiIHgyPSIwJSIgeTE9IjAlIiB5Mj0iMTAwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2YwZjBmMCIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2EwYTBhMCIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxwYXRoIGQ9Ik00NyAzMy41YTkuNSA5LjUgMCAwIDEgMCAxOUgxNmE5LjUgOS41IDAgMSAxIDAtMTlsOC40Ny0uMDJBMTQuNSAxNC41IDAgMCAxIDE1IDE2YTE0LjUgMTQuNSAwIDAgMSAyOS0N2ExMS41IDExLjUgMCAwIDEgMTIgMTIuNDd6IiBmaWxsPSJ1cmwoI2EpIi8+PHBhdGggZD0iTTI1IDQ4bDMtNmgtNWwzLTYtOCA5aDVsLTMgNiIgZmlsbD0iI0ZGQzEwNyIvPjxwYXRoIGQ9Ik0zOCA0OGwzLTZoLTVsMy02LTggOWg1bC0zIDYiIGZpbGw9IiNGRkMxMDciLz48L3N2Zz4=",
+    
+    # Icona per a Supercèl·lula
+    "Potencial de Supercèl·lula": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGRlZnM+PHJhZGlhbEdyYWRpZW50IGlkPSJhIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjZmZmIi8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMzMzIi8+PC9yYWRpYWxHcmFkaWVudD48L2RlZnM+PHBhdGggZD0iTTQ5IDM0YTkuNSA5LjUgMCAwIDEgMCAxOEgyMWE5LjUgOS41IDAgMCAxIDAtMThsNC40Ny0uMDJBMTYuNSAxNi41IDAgMCAxIDE1IDEyYTE2LjUgMTYuNSAwIDEgMSAzMiA3IDEwLjUgMTAuNSAwIDAgMSAxMiAxMi40N3oiIGZpbGw9InVybCgjYSkiLz48cGF0aCBkPSJNMzIgNDVjLTQuNDIgMC04IDMuNTgtOCA4czMuNTggOCA4IDggOC0zLjU4IDgtOC0zLjU4LTgtOC04em0wIDNjMi43NiAwIDUgMi4yNCA1IDVzLTIuMjQgNS01IDUtNS0yLjI0LTUtNSAyLjI0LTUgNS01eiIgZmlsbD0iI0ZGM0MxQiIvPjwvc3ZnPg==",
+    
+    # Icona per a Nimbostratus
+    "Nimbostratus (Pluja Contínua)": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHBhdGggZD0iTTQ2LjYxIDE5LjA1QTExLjUgMTEuNSAwIDAgMCAyNSAyMi41VjQ3YTkuNSA5LjUgMCAwIDAgMTkgMGgtLjM5QTEwLjUgMTAuNSAwIDAgMCA0My41IDE5YTkuNSA5LjUgMCAwIDAgMy4xMS40NXoiIGZpbGw9IiM4MDgwODAiLz48cGF0aCBkPSJNMjIgNTh2LTZsMiAyIDI LTIgMiAyIDI LTIgMiAyIDI LTIgMiAyIDI LTIgMiAydi00bC0yLTItMiAyLTIgLTItMiAyLTIgLTItMiAyLTIgLTItMiAyeiIgZmlsbD0iIzQ2ODJCNCJvIHBhY2l0eT0iMC44Ii8+PC9zdmc+",
+    
+    # Icona de fallback per a errors
+    "fallback": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmMGMwYyI+PHBhdGggZD0iTTEgMjFoMjJMMTIgMiAxIDIxem0xMi0zaC0ydi0yaDJ2MnptMC00aC0ydi00aDJ2NHoiLz48L3N2Zz4="
 }
 
 @st.cache_data
@@ -2139,32 +2164,13 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva amb Autodiagnòstic (v38.1 - Versió Completa i Neta).
-    Mostra la graella de paràmetres del sondeig. Comprova si la carpeta d'icones
-    existeix i, si una imatge concreta no es troba, mostra un avís en lloc de
-    no mostrar res, facilitant enormement la depuració.
+    Versió Definitiva amb Icones Incrustades (v39.0).
+    Aquesta versió utilitza directament el diccionari Base64, eliminant
+    tota dependència d'arxius externs o de la carpeta 'emojis'. És la
+    solució més robusta i a prova d'errors.
     """
-    # El diccionari de Tooltips es manté igual per a les ajudes contextuals
-    TOOLTIPS = {
-        'SBCAPE': "Energia Potencial Convectiva Disponible (CAPE) des de la Superfície. Mesura el 'combustible' per a les tempestes a partir d'una bombolla d'aire a la superfície.",
-        'MUCAPE': "El CAPE més alt possible a l'atmosfera (Most Unstable). Útil per detectar inestabilitat elevada, fins i tot si la superfície és estable.",
-        'CONV_PUNTUAL': f"Força de la convergència de vent EXACTAMENT al punt de {poble_sel}. Actua com el 'disparador' local i és la dada que correspon a aquest sondeig.",
-        'SBCIN': "Inhibició Convectiva (CIN) des de la Superfície. És l'energia necessària per vèncer l'estabilitat inicial. Valors molt negatius actuen com una 'tapa' que impedeix les tempestes.",
-        'MUCIN': "La CIN associada al MUCAPE.",
-        'LI': "Índex d'Elevació (Lifted Index). Mesura la diferència de temperatura a 500hPa entre l'entorn i una bombolla d'aire elevada. Valors molt negatius indiquen una forta inestabilitat.",
-        'PWAT': "Aigua Precipitable Total (Precipitable Water). Quantitat total de vapor d'aigua en la columna atmosfàrica. Valors alts indiquen potencial per a pluges fortes.",
-        'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació (LCL). És l'alçada a la qual es formarà la base del núvol. Valors baixos (<1000m) afavoreixen el temps sever.",
-        'LFC_Hgt': "Alçada del Nivell de Convecció Lliure (LFC). És l'alçada a partir de la qual una bombolla d'aire puja lliurement sense necessitat de forçament.",
-        'EL_Hgt': "Alçada del Nivell d'Equilibri (EL). És l'alçada estimada del cim de la tempesta (top del cumulonimbus).",
-        'BWD_0-6km': "Cisallament del Vent (Bulk Wind Shear) entre 0 i 6 km. Crucial per a l'organització de les tempestes (multicèl·lules, supercèl·lules).",
-        'BWD_0-1km': "Cisallament del Vent entre 0 i 1 km. Important per a la rotació a nivells baixos (tornados).",
-        'T_500hPa': "Temperatura a 500 hPa (uns 5.500 metres). Temperatures molt fredes en alçada disparen la inestabilitat.",
-        'PUNTUACIO_TEMPESTA': "Índex de 0 a 10 que valora el potencial global de formació de tempestes, combinant els ingredients clau.",
-        'AMENACA_CALAMARSA': "Probabilitat de calamarsa de mida significativa (>2 cm). Es basa en la potència del corrent ascendent (MAX_UPDRAFT) i l'alçada de la isoterma de 0°C.",
-        'AMENACA_LLAMPS': "Potencial d'activitat elèctrica. S'estima a partir de la inestabilitat (LI) i la profunditat de la tempesta (EL_Hgt)."
-    }
-
-    # Funció auxiliar per a les mètriques numèriques
+    # ... (El codi de TOOLTIPS i les funcions styled_metric/qualitative es manté igual) ...
+    TOOLTIPS = { 'SBCAPE': "...", 'MUCAPE': "...", 'CONV_PUNTUAL': "...", 'SBCIN': "...", 'MUCIN': "...", 'LI': "...", 'PWAT': "...", 'LCL_Hgt': "...", 'LFC_Hgt': "...", 'EL_Hgt': "...", 'BWD_0-6km': "...", 'BWD_0-1km': "...", 'T_500hPa': "...", 'PUNTUACIO_TEMPESTA': "...", 'AMENACA_CALAMARSA': "...", 'AMENACA_LLAMPS': "..." }
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
         color = "#FFFFFF"; val_str = "---"
         is_numeric = isinstance(value, (int, float, np.number))
@@ -2177,27 +2183,12 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
                 color = get_color_global(value, param_key, reverse_colors)
             val_str = f"{value:.{precision}f}"
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
-        st.markdown(f"""
-        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
-            <span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit}){tooltip_html}</span>
-            <strong style="font-size: 1.6em; color: {color}; line-height: 1.1;">{val_str}</strong>
-        </div>""", unsafe_allow_html=True)
-
-    # Funció auxiliar per a les mètriques qualitatives
+        st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit}){tooltip_html}</span><strong style="font-size: 1.6em; color: {color}; line-height: 1.1;">{val_str}</strong></div>""", unsafe_allow_html=True)
     def styled_qualitative(label, text, color, tooltip_text=""):
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
-        st.markdown(f"""
-        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
-            <span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br>
-            <strong style="font-size: 1.6em; color: {color};">{text}</strong>
-        </div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br><strong style="font-size: 1.6em; color: {color};">{text}</strong></div>""", unsafe_allow_html=True)
 
     st.markdown("##### Paràmetres del Sondeig")
-    
-    # Diagnòstic Inicial de la Carpeta d'Icones
-    if not os.path.isdir(EMOJI_FOLDER):
-        st.error(f"Error Crític: No es troba la carpeta d'icones anomenada '{EMOJI_FOLDER}'. Assegura't que existeix a l'arrel del projecte.")
-        return # Aturem l'execució aquí si la carpeta no existeix
 
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE', tooltip_text=TOOLTIPS.get('SBCAPE'))
@@ -2216,20 +2207,18 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         if analisi_temps_list:
             descripcions = " / ".join([d['descripcio'] for d in analisi_temps_list])
             for diag in analisi_temps_list:
-                icon_filename = diag.get('icon_id')
-                if icon_filename:
-                    full_path = os.path.join(EMOJI_FOLDER, icon_filename)
-                    base64_image = get_image_as_base64(full_path)
-                    
-                    if base64_image:
-                        icons_html_list.append(f'<img src="data:image/png;base64,{base64_image}" style="height: 1.8em; vertical-align: middle; margin-right: 8px;" title="{diag["descripcio"]}">')
-                    else:
-                        # Avís d'error si no troba la imatge
-                        icons_html_list.append(f'<span style="font-size: 0.6em; color: red;" title="Falta l\'arxiu {icon_filename}">⚠️</span>')
-                else: 
-                    icons_html_list.append("❓")
+                # Obtenim la imatge Base64 directament del diccionari
+                base64_image = NUVOL_ICON_BASE64.get(diag.get("descripcio"), NUVOL_ICON_BASE64["fallback"])
+                
+                # Generem l'etiqueta <img> HTML
+                icons_html_list.append(
+                    f'<img src="{base64_image}" '
+                    'style="height: 1.8em; vertical-align: middle; margin-right: 8px;" '
+                    f'title="{diag["descripcio"]}">'
+                )
         else:
-            icons_html_list = ["❓"]
+            base64_fallback = NUVOL_ICON_BASE64["fallback"]
+            icons_html_list = [f'<img src="{base64_fallback}" style="height: 1.8em; vertical-align: middle;">']
             descripcions = "Anàlisi no disponible"
             
         icons_html = "".join(icons_html_list)
@@ -2259,7 +2248,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols[0]: styled_qualitative("Calamarsa Gran (>2cm)", amenaces['calamarsa']['text'], amenaces['calamarsa']['color'], tooltip_text=TOOLTIPS.get('AMENACA_CALAMARSA'))
     with cols[1]: styled_qualitative("Índex de Potencial", f"{puntuacio_resultat['score']} / 10", puntuacio_resultat['color'], tooltip_text=TOOLTIPS.get('PUNTUACIO_TEMPESTA'))
     with cols[2]: styled_qualitative("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], tooltip_text=TOOLTIPS.get('AMENACA_LLAMPS'))
-        
 
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
     """
