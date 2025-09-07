@@ -8618,26 +8618,20 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
     else:
         st.info("Selecciona un esdeveniment de la llista superior per veure'n els detalls.", icon="👆")
 
-
-
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v30.0 - Detecció de Lenticulars per Vent en Alçada.
-    1. Comprova si hi ha condicions per a núvols lenticulars (estabilitat + vent fort en alçada).
-    2. Si no, comprova si hi ha saturació per a pluja estratiforme (Nimbostratus).
-    3. Si no, comprova inhibició o falta de disparador per a convecció i classifica núvols.
-    4. Si no, comprova si l'LFC és massa alt.
-    5. Si tot es supera, classifica la tempesta convectiva.
+    Sistema de Diagnòstic v31.0 - Llindars d'Humitat Dinàmics.
+    Els llindars de RH per a la formació de núvols s'ajusten a la temperatura
+    en alçada (T_500hPa), reconeixent que l'aire fred se satura amb menys humitat.
     """
-    # --- 1. EXTRACCIÓ COMPLETA I ROBUSTA DE PARÀMETRES ---
-    sbcape = params.get('SBCAPE', 0) or 0
-    mlcape = params.get('MLCAPE', 0) or 0
+    # --- 1. EXTRACCIÓ COMPLETA DE PARÀMETRES ---
     mucape = params.get('MUCAPE', 0) or 0
     mucin = params.get('MUCIN', 0) or 0
     lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     srh_3km = params.get('SRH_0-3km', 0) or 0
     pwat = params.get('PWAT', 0) or 0
+    t_500hpa = params.get('T_500hPa', -15) or -15 # Temperatura a 500hPa
 
     rh_capes = params.get('RH_CAPES', {'baixa': 0, 'mitjana': 0, 'alta': 0})
     rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
@@ -8647,64 +8641,76 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
     
-    # --- NOUS PARÀMETRES DE VENT EN ALÇADA (s'assumeix que s'afegeixen a params_calc) ---
-    wspd_700hpa = params.get('WSPD_700hPa', 0) or 0 # S'espera en nusos (kt)
-    wspd_500hpa = params.get('WSPD_500hPa', 0) or 0 # S'espera en nusos (kt)
+    wspd_700hpa = params.get('WSPD_700hPa', 0) or 0
+    wspd_500hpa = params.get('WSPD_500hPa', 0) or 0
 
-    # --- NOU FILTRE PRIORITARI: DETECCIÓ DE NÚVOLS LENTICULARS ---
-    LLINDAR_VENT_FORT_KT = 40 # ~75 km/h, llindar per a vents forts en alçada
-    if mucape < 150 and (wspd_700hpa > LLINDAR_VENT_FORT_KT or wspd_500hpa > LLINDAR_VENT_FORT_KT) and rh_mitjana > 65:
+    # --- 2. CÀLCUL DELS LLINDARS D'HUMITAT DINÀMICS ---
+    # Llindars base per a una atmosfera "normal" (T_500hPa ~ -15°C)
+    llindar_rh_alt = 70
+    llindar_rh_mitja = 75
+    llindar_rh_baixa = 80
+    
+    # Ajustem els llindars si l'atmosfera és més freda o més càlida
+    if t_500hpa < -25: # Aire molt fred
+        llindar_rh_alt -= 15   # 55%
+        llindar_rh_mitja -= 15 # 60%
+    elif t_500hpa < -18: # Aire fred
+        llindar_rh_alt -= 10   # 60%
+        llindar_rh_mitja -= 10 # 65%
+    
+    # --- 3. LÒGICA DE DIAGNÒSTIC JERÀRQUICA ---
+
+    # FILTRE PRIORITARI: LENTICULARS
+    LLINDAR_VENT_FORT_KT = 40
+    if mucape < 150 and (wspd_700hpa > LLINDAR_VENT_FORT_KT or wspd_500hpa > LLINDAR_VENT_FORT_KT) and rh_mitjana > (llindar_rh_mitja - 5): # Llindar una mica més relaxat per a lenticulars
         return {
-            'emoji': "🛸", # S'assemblen a plats voladors
-            'descripcio': "Altocúmulus Lenticular",
-            'veredicte': "Atmosfera estable amb un potent flux de vent en alçada. Condicions ideals per a la formació de núvols lenticulars a sotavent de les muntanyes.",
-            'factor_clau': "Fort vent a nivells mitjans/alts i estabilitat atmosfèrica."
+            'emoji': "🛸", 'descripcio': "Altocúmulus Lenticular",
+            'veredicte': "Atmosfera estable amb potent flux de vent en alçada. Condicions ideals per a la formació de núvols lenticulars a sotavent de les muntanyes.",
+            'factor_clau': "Fort vent a nivells mitjans/alts i estabilitat."
         }
 
-    # --- FILTRE PER A NIMBOSTRATUS (SEGONA PRIORITAT) ---
-    if rh_baixa > 80 and rh_mitjana > 75 and pwat >= 15:
-        precip_desc = "Plugims"
+    # FILTRE SECUNDARI: NIMBOSTRATUS (Pluja estratiforme)
+    if rh_baixa > llindar_rh_baixa and rh_mitjana > llindar_rh_mitja and pwat >= 15:
+        precip_desc = "Plujims"
         if pwat >= 30: precip_desc = "Pluges fortes / Xàfecs"
         elif pwat >= 15: precip_desc = "Pluges moderades"
-        
         return {
-            'emoji': "🌧️",
-            'descripcio': f"Nimbostratus ({precip_desc})",
-            'veredicte': "Cel cobert amb precipitació estratiforme generalitzada. Poca o nul·la activitat elèctrica.",
+            'emoji': "🌧️", 'descripcio': f"Nimbostratus ({precip_desc})",
+            'veredicte': "Cel cobert amb precipitació estratiforme. Poca activitat elèctrica.",
             'factor_clau': "Saturació a capes baixes i mitjanes."
         }
 
-    # --- FILTRE PRINCIPAL: INHIBICIÓ O SENSE DISPARADOR ---
+    # FILTRE PRINCIPAL: SENSE CONVECCIÓ (INHIBICIÓ O SENSE DISPARADOR)
     if mucin < -75 or conv < 20:
-        if rh_alta >= 60:
-            return {'emoji': "🌫️" if rh_alta >= 75 else "🌤️", 'descripcio': "Cirrostratus / Cirrus", 'veredicte': "Cel amb núvols alts que poden difuminar el sol.", 'factor_clau': "Inhibició, humitat alta."}
-        if rh_mitjana >= 65:
-            return {'emoji': "☁️" if rh_mitjana >= 80 else "🌥️", 'descripcio': "Altostratus / Altocúmulus", 'veredicte': "Cel variable amb núvols a nivells mitjans.", 'factor_clau': "Inhibició, humitat mitjana."}
-        if rh_baixa >= 70:
-            return {'emoji': "☁️" if rh_baixa >= 80 else "🌥️", 'descripcio': "Estratus / Estratocúmulus", 'veredicte': "Cel cobert amb núvols baixos o boira.", 'factor_clau': "Inhibició, humitat baixa."}
+        if rh_alta >= llindar_rh_alt:
+            return {'emoji': "🌫️" if rh_alta >= (llindar_rh_alt + 10) else "🌤️", 'descripcio': "Cirrostratus / Cirrus", 'veredicte': "Cel amb núvols alts.", 'factor_clau': "Inhibició, humitat alta."}
+        if rh_mitjana >= llindar_rh_mitja:
+            return {'emoji': "☁️" if rh_mitjana >= (llindar_rh_mitja + 10) else "🌥️", 'descripcio': "Altostratus / Altocúmulus", 'veredicte': "Cel variable amb núvols mitjans.", 'factor_clau': "Inhibició, humitat mitjana."}
+        if rh_baixa >= llindar_rh_baixa:
+            return {'emoji': "☁️" if rh_baixa >= (llindar_rh_baixa + 10) else "🌥️", 'descripcio': "Estratus / Estratocúmulus", 'veredicte': "Cel cobert amb núvols baixos.", 'factor_clau': "Inhibició, humitat baixa."}
         
-        return {'emoji': "☀️", 'descripcio': "Cel Serè", 'veredicte': "Temps estable. Condicions no favorables per a la formació de núvols.", 'factor_clau': "Inhibició o falta de disparador i baixa humitat."}
+        return {'emoji': "☀️", 'descripcio': "Cel Serè", 'veredicte': "Temps estable. Condicions no favorables per a la formació de núvols.", 'factor_clau': "Inhibició i/o baixa humitat."}
 
-    # --- FILTRE CLAU: LFC > 3000m (CONVECCIÓ DE BASE ALTA) ---
+    # FILTRE CONVECCIÓ DE BASE ALTA
     if lfc_hgt > 3000:
-        desc = "Altocúmulus Castellanus" if rh_baixa < 60 else "Stratocumulus Castellanus"
-        return {'emoji': "🌥️", 'descripcio': desc, 'veredicte': "Potencial per a convecció de base elevada. No s'esperen tempestes organitzades a la superfície.", 'factor_clau': f"LFC elevat ({lfc_hgt:.0f} m)."}
+        desc = "Altocúmulus Castellanus" if rh_baixa < (llindar_rh_baixa - 10) else "Stratocumulus Castellanus"
+        return {'emoji': "🌥️", 'descripcio': desc, 'veredicte': "Potencial per a convecció de base elevada. Baix risc a superfície.", 'factor_clau': f"LFC elevat ({lfc_hgt:.0f} m)."}
 
-    # --- SI ARRIBEM AQUÍ (LFC < 3000m), CLASSIFIQUEM LA TEMPESTA ---
+    # CLASSIFICACIÓ FINAL DE LA TEMPESTA CONVECTIVA
     if mucape > 1500 and bwd_6km > 35 and srh_3km > 200:
-        return {'emoji': "🌪️", 'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Condicions molt favorables per a la formació de tempestes rotatòries i severes.", 'factor_clau': "Alt CAPE, fort cisallament i helicitat."}
+        return {'emoji': "🌪️", 'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Condicions molt favorables per a tempestes rotatòries i severes.", 'factor_clau': "Alt CAPE, fort cisallament i helicitat."}
     
     elif mucape > 1000 and bwd_6km > 25:
-        return {'emoji': "⛈️", 'descripcio': "Tempestes Organitzades (Multicèl·lula)", 'veredicte': "Potencial per a la formació de grups de tempestes o línies organitzades.", 'factor_clau': "CAPE moderat-alt i cisallament suficient."}
+        return {'emoji': "⛈️", 'descripcio': "Tempestes Organitzades (Multicèl·lula)", 'veredicte': "Potencial per a grups de tempestes o línies organitzades.", 'factor_clau': "CAPE moderat-alt i cisallament."}
         
     elif mucape > 800:
-        return {'emoji': "🌩️", 'descripcio': "Tempesta Aïllada (Cumulonimbus)", 'veredicte': "Condicions favorables per al desenvolupament de tempestes aïllades, possiblement fortes.", 'factor_clau': "CAPE suficient per a un desenvolupament vertical complet."}
+        return {'emoji': "🌩️", 'descripcio': "Tempesta Aïllada (Cumulonimbus)", 'veredicte': "Condicions per a tempestes aïllades, possiblement fortes.", 'factor_clau': "CAPE suficient per a un desenvolupament complet."}
 
     elif mucape > 400:
-        return {'emoji': "☁️", 'descripcio': "Cúmuls Moderats (Congestus)", 'veredicte': "Potencial per a núvols de creixement moderat que podrien deixar xàfecs aïllats.", 'factor_clau': "CAPE moderat, humitat present."}
+        return {'emoji': "☁️", 'descripcio': "Cúmuls Moderats (Congestus)", 'veredicte': "Potencial per a núvols de creixement moderat i xàfecs aïllats.", 'factor_clau': "CAPE moderat."}
 
     else:
-        return {'emoji': "🌤️", 'descripcio': "Cúmuls Dispersos (Humilis)", 'veredicte': "Es formaran petits cúmuls de bon temps amb poc o cap desenvolupament vertical.", 'factor_clau': "CAPE molt baix."}
-    
+        return {'emoji': "🌤️", 'descripcio': "Cúmuls Dispersos (Humilis)", 'veredicte': "Petits cúmuls de bon temps amb poc desenvolupament.", 'factor_clau': "CAPE molt baix."}
+        
 if __name__ == "__main__":
     main()
