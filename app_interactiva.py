@@ -8684,9 +8684,9 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v42.0 - Definitiu i Sincronitzat.
-    Aquesta versió genera descripcions que coincideixen exactament amb les claus
-    del diccionari d'icones NUVOL_ICON_BASE64.
+    Sistema de Diagnòstic v42.1 - Corregit i Sincronitzat.
+    Aquesta versió corregeix l'ambigüitat en el cas de temps estable,
+    assegurant que la icona i el text es corresponguin correctament.
     """
     diagnostics = []
     mucape = params.get('MUCAPE', 0) or 0
@@ -8712,7 +8712,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
         desc = "Nimbostratus (Pluja Contínua)"
         diagnostics.append({'descripcio': desc, 'veredicte': "Cel cobert amb pluja generalitzada i persistent.", 'factor_clau': "Saturació profunda."})
 
-    # CHECK 3: Potencial Convectiu (amb llindars relaxats)
+    # CHECK 3: Potencial Convectiu
     if mucin > -150 and conv > 5:
         if mucape > 2000 and bwd_6km > 35: desc = "Potencial de Supercèl·lula"; diagnostics.append({'descripcio': desc, 'veredicte': "Condicions explosives per a tempestes severes.", 'factor_clau': "CAPE extrem i cisallament."})
         elif mucape > 800 and bwd_6km > 25: desc = "Tempestes Organitzades"; diagnostics.append({'descripcio': desc, 'veredicte': "Potencial per a sistemes de tempestes organitzats.", 'factor_clau': "Equilibri CAPE/cisallament."})
@@ -8723,18 +8723,29 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     # CHECK 4: Núvols Estables
     if mucin < -75 or conv < 10:
         if rh_molt_alta > 65: desc = "Vels de Cirrus (Molt Alts)"; diagnostics.append({'descripcio': desc, 'veredicte': "Humitat a les capes més altes formant vels de gel.", 'factor_clau': "Humitat a >250hPa."})
-        if rh_alta > 70: desc = "Cirrostratus (Cel blanquinós)"; diagnostics.append({'descripcio': desc, 'veredicte': "Humitat a nivells alts, però l'estabilitat impedeix el desenvolupament.", 'factor_clau': "Inhibició forta."})
-        if rh_mitjana > 75: desc = "Altostratus / Altocúmulus"; diagnostics.append({'descripcio': desc, 'veredicte': "Cel cobert per núvols mitjans.", 'factor_clau': "Inhibició forta."})
-        if rh_baixa > 80: desc = "Estratus (Boira alta / Cel tancat)"; diagnostics.append({'descripcio': desc, 'veredicte': "Núvols baixos persistents.", 'factor_clau': "Inhibició forta."})
+        elif rh_alta > 70: desc = "Cirrostratus (Cel blanquinós)"; diagnostics.append({'descripcio': desc, 'veredicte': "Humitat a nivells alts, però l'estabilitat impedeix el desenvolupament.", 'factor_clau': "Inhibició forta."})
+        elif rh_mitjana > 75: desc = "Altostratus / Altocúmulus"; diagnostics.append({'descripcio': desc, 'veredicte': "Cel cobert per núvols mitjans.", 'factor_clau': "Inhibició forta."})
+        elif rh_baixa > 80: desc = "Estratus (Boira alta / Cel tancat)"; diagnostics.append({'descripcio': desc, 'veredicte': "Núvols baixos persistents.", 'factor_clau': "Inhibició forta."})
     
-    # GESTIÓ FINAL
+    # GESTIÓ FINAL: Aquest bloc s'assegura que sempre hi hagi un resultat.
     if not diagnostics:
         if mucape > 50 and rh_baixa > 60:
-             desc = "Cúmuls de bon temps"
-             diagnostics.append({'descripcio': desc, 'veredicte': "Cel amb petits cúmuls decoratius que indiquen bon temps.", 'factor_clau': "CAPE gairebé inexistent."})
+             diagnostics.append({
+                 'descripcio': "Cúmuls de bon temps", 
+                 'veredicte': "Cel amb petits cúmuls decoratius que indiquen bon temps.", 
+                 'factor_clau': "CAPE gairebé inexistent."
+             })
         else:
-            desc = "Cel Serè"
-            diagnostics.append({'descripcio': desc, 'veredicte': "Temps estable i sec.", 'factor_clau': "Atmosfera seca i/o inhibida."})
+             # >>> BLOC CORREGIT <<<
+             # Aquesta correcció resol l'ambigüitat.
+             # La 'descripcio' ha de coincidir exactament amb la clau de la icona ("Cel Serè").
+             # El 'veredicte' és el text descriptiu que veu l'usuari.
+             # D'aquesta manera, la icona del sol es mostrarà correctament juntament amb el text "Temps estable i sec.".
+             diagnostics.append({
+                 'descripcio': "Cel Serè", 
+                 'veredicte': "Temps estable i sec.", 
+                 'factor_clau': "Atmosfera seca i/o inhibida."
+             })
             
     return diagnostics
 
