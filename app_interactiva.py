@@ -8622,9 +8622,9 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v29.0 - Afegeix detecció de Nimbostratus.
+    Sistema de Diagnòstic v29.1 - Afegeix detecció més granular de tipus de núvols basats en humitat.
     1. Comprova si hi ha saturació per a pluja estratiforme (Nimbostratus).
-    2. Si no, comprova inhibició o falta de disparador per a convecció.
+    2. Si no, comprova inhibició o falta de disparador per a convecció i classifica núvols.
     3. Si no, comprova si l'LFC és massa alt.
     4. Si tot es supera, classifica la tempesta convectiva.
     """
@@ -8634,8 +8634,8 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     srh_3km = params.get('SRH_0-3km', 0) or 0
-    pwat = params.get('PWAT', 0) or 0 # PWAT ara s'extreu aquí
-    
+    pwat = params.get('PWAT', 0) or 0
+
     rh_capes = params.get('RH_CAPES', {'baixa': 0, 'mitjana': 0, 'alta': 0})
     rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
     rh_mitjana = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0
@@ -8645,34 +8645,43 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     conv = params.get(conv_key, 0) or 0
 
     # --- NOU BLOC: FILTRE PER A NIMBOSTRATUS (PRIORITARI) ---
-    # Comprovem si hi ha una capa molt humida a nivells baixos i mitjans,
-    # condició típica per a la pluja estratiforme contínua.
     if rh_baixa > 85 and rh_mitjana > 80:
-        # Si hi ha saturació, determinem la intensitat de la pluja amb el PWAT
         if pwat >= 35: precip_desc = "Pluges fortes / Xàfecs"
         elif pwat >= 20: precip_desc = "Pluges"
         else: precip_desc = "Plujims"
-        
+
         return {
             'emoji': "🌧️",
             'descripcio': f"Nimbostratus ({precip_desc})",
             'veredicte': "Cel cobert amb precipitació estratiforme generalitzada. Poca o nul·la activitat elèctrica.",
             'factor_clau': "Saturació a capes baixes i mitjanes."
         }
-    # --- FI DEL NOU BLOC ---
 
-    # --- 2. FILTRE PRINCIPAL: INHIBICIÓ O SENSE DISPARADOR (ara és el segon pas) ---
+    # --- 2. FILTRE PRINCIPAL: INHIBICIÓ O SENSE DISPARADOR (ara amb més detall de núvols) ---
     if mucin < -100 or conv < 25:
-        if rh_baixa > 80: return {'emoji': "☁️", 'descripcio': "Cel Cobert (Estratus)", 'veredicte': "Capa de núvols baixos sense desenvolupament vertical.", 'factor_clau': "Inhibició o falta de disparador."}
-        if rh_mitjana > 70: return {'emoji': "🌥️", 'descripcio': "Núvols Mitjans (Altocúmulus)", 'veredicte': "Cel variable amb núvols a nivells mitjans.", 'factor_clau': "Inhibició o falta de disparador."}
-        if rh_alta > 60: return {'emoji': "🌤️", 'descripcio': "Núvols Alts (Cirrus)", 'veredicte': "Cel poc ennuvolat amb núvols alts.", 'factor_clau': "Inhibició o falta de disparador."}
-        return {'emoji': "☀️", 'descripcio': "Cel Serè", 'veredicte': "Temps estable. Les condicions no són favorables per a la convecció.", 'factor_clau': "Inhibició o falta de disparador."}
+        # Avaluem la humitat de dalt a baix per a la classificació de núvols sense convecció
+        if rh_alta > 80:
+            return {'emoji': "🌫️", 'descripcio': "Cirrostratus/Cirrus dens", 'veredicte': "Cel blanquinós amb núvols alts de gel, possiblement formació d'halo.", 'factor_clau': "Inhibició, humitat alta."}
+        if rh_alta > 60:
+            return {'emoji': "🌤️", 'descripcio': "Cirrus/Cirrocúmulus", 'veredicte': "Cel poc ennuvolat amb núvols alts i prims.", 'factor_clau': "Inhibició, humitat alta."}
+        if rh_mitjana > 85:
+            return {'emoji': "☁️", 'descripcio': "Altostratus", 'veredicte': "Cel cobert amb núvols grisos a nivells mitjans, pot preveure pluja lleugera.", 'factor_clau': "Inhibició, humitat mitjana."}
+        if rh_mitjana > 70:
+            return {'emoji': "🌥️", 'descripcio': "Altocúmulus", 'veredicte': "Cel variable amb núvols a nivells mitjans, aspecte de 'moutons'.", 'factor_clau': "Inhibició, humitat mitjana."}
+        if rh_baixa > 85:
+            return {'emoji': "☁️", 'descripcio': "Estratus/Boira", 'veredicte': "Cel cobert amb núvols molt baixos o boira, visibilitat reduïda.", 'factor_clau': "Inhibició, humitat baixa."}
+        if rh_baixa > 70:
+            return {'emoji': "🌥️", 'descripcio': "Estratosúmulus", 'veredicte': "Cel amb bancs de núvols baixos dispersos.", 'factor_clau': "Inhibició, humitat baixa."}
+        
+        # Si no hi ha prou humitat a cap capa per formar núvols
+        return {'emoji': "☀️", 'descripcio': "Cel Serè", 'veredicte': "Temps estable. Les condicions no són favorables per a la convecció ni per a núvols significatius.", 'factor_clau': "Inhibició o falta de disparador i baixa humitat."}
 
     # --- 3. FILTRE CLAU: LFC > 3000m (CONVECCIÓ DE BASE ALTA) ---
     if lfc_hgt > 3000:
         desc = "Altocúmulus Castellanus"
         veredicte = "Potencial per a convecció de base elevada. No s'esperen tempestes organitzades a la superfície."
-        if rh_baixa > 70: desc = "Stratocumulus Castellanus"
+        if rh_baixa > 70: # Si hi ha prou humitat a baix per a base més baixa, però LFC encara alt
+            desc = "Stratocumulus Castellanus"
         return {'emoji': "🌥️", 'descripcio': desc, 'veredicte': veredicte, 'factor_clau': f"LFC elevat ({lfc_hgt:.0f} m)."}
 
     # --- 4. SI ARRIBEM AQUÍ (LFC < 3000m), CLASSIFIQUEM LA TEMPESTA ---
@@ -8689,10 +8698,11 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
         return {'emoji': "☁️", 'descripcio': "Desenvolupament Vertical (Congestus)", 'veredicte': "Potencial per a núvols de gran creixement que podrien deixar xàfecs aïllats.", 'factor_clau': "CAPE moderat, suficient per a congestus."}
 
     else: # MUCAPE < 400
-        return {'emoji': "🌤️", 'descripcio': "Núvols de Bon Temps (Cúmuls)", 'veredicte': "Es formaran petits cúmuls de bon temps amb poc o cap desenvolupament vertical.", 'factor_clau': "CAPE baix."}
-
-
-
+        # Aquest bloc també pot tenir més detall basat en la humitat si el CAPE és molt baix
+        if rh_baixa > 60:
+            return {'emoji': "🌤️", 'descripcio': "Cúmuls (Humilis)", 'veredicte': "Es formaran petits cúmuls de bon temps amb poc desenvolupament vertical a causa de la humitat residual.", 'factor_clau': "CAPE baix, humitat present."}
+        else:
+            return {'emoji': "☀️", 'descripcio': "Cel Serè", 'veredicte': "Temps molt estable amb cel clar.", 'factor_clau': "CAPE molt baix i poca humitat."}
     
 if __name__ == "__main__":
     main()
