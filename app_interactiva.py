@@ -63,13 +63,12 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
 
-EMOJI_FOLDER = "emojis"
 
-# --- BLOC D'ICONES PERSONALITZADES (v42.2 - Definitiu, Minimalista i Incrustat) ---
-# Aquest diccionari conté totes les icones en format SVG/Base64.
-# Aquesta és la solució més robusta i no requereix cap carpeta o arxiu extern.
+# --- BLOC D'ICONES PERSONALITZADES (v42.3 - Icona de Sol Millorada) ---
 NUVOL_ICON_BASE64 = {
-    "Cel Serè": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI0ZGRDcwMCI+PGNpcmNsZSBjeD0iMzIiIGN5PSIzMiIgcj0iMTIiLz48cGF0aCBkPSJNMzIgOCBWMTYgTTMyIDQ4IFY1NiBNOCA MzIgSDE2IE00OCAzMiBINjYgTTE2IDE2IEwyMiAyMiBNNDIgNDIgTDQ4IDQ4IE0xNiA0OCBMMjIgNDIgTTQyIDIyIEw0OCAxNiIgc3Ryb2tlPSIjRkZENzAwIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPg==",
+    # >>> AQUESTA ÉS L'ÚNICA LÍNIA MODIFICADA <<<
+    "Cel Serè": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGNpcmNsZSBjeD0iMzIiIGN5PSIzMiIgcj0iMTMiIGZpbGw9IiNGRkQ3MDAiLz48bGluZSB4MT0iMzIiIHkxPSI1IiB4Mj0iMzIiIHkyPSIxNSIgc3Ryb2tlPSIjRkZENzAwIiBzdHJva2Utd2lkdGg9IjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxsaW5lIHgxPSIzMiIgeTE9IjQ5IiB4Mj0iMzIiIHkyPSI1OSIgc3Ryb2tlPSIjRkZENzAwIiBzdHJva2Utd2lkdGg9IjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxsaW5lIHgxPSI1IiB5MT0iMzIiIHgyPSIxNSIgeTI9IjMyIiBzdHJva2U9IiNGRkQ3MDAiIHN0cm9rZS13aWR0aD0iNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PGxpbmUgeDE9IjQ5IiB5MT0iMzIiIHgyPSI1OSIgeTI9IjMyIiBzdHJva2U9IiNGRkQ3MDAiIHN0cm9rZS13aWR0aD0iNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PGxpbmUgeDE9IjEyLjIiIHkxPSIxMi4yIiB4Mj0iMTkuMiIgeTI9IjE5LjIiIHN0cm9rZT0iI0ZGRDcwMCIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48bGluZSB4MT0iNDQuOCIgeTE9IjQ0LjgiIHgyPSI1MS44IiB5Mj0iNTEuOCIgc3Ryb2tlPSIjRkZENzAwIiBzdHJva2Utd2lkdGg9IjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxsaW5lIHgxPSIxMi4yIiB5MT0iNTEuOCIgeDI9IjE5LjIiIHkyPSI0NC44IiBzdHJva2U9IiNGRkQ3MDAiIHN0cm9rZS13aWR0aD0iNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PGxpbmUgeDE9IjQ0LjgiIHkxPSIxOS4yIiB4Mj0iNTEuOCIgeTI9IjEyLjIiIHN0cm9rZT0iI0ZGRDcwMCIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48L3N2Zz4=",
+    
     "Cúmuls de bon temps": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI0YwRjBGMyI+PHBhdGggZD0iTSAyMCA0NCBDIDEyIDQ0IDEyIDM0IDIwIDM0IEMgMjIgMjYgMzAgMjYgMzIgMzAgQyAzNiAyNCA0NiAyNCA1MCAzMiBDIDU4IDMyIDU4IDQyIDUwIDQyIEggMjAgWiIvPjwvc3ZnPg==",
     "Estratus (Boira alta / Cel tancat)": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI0QzRDNEMyI+PHJlY3QgeD0iNCIgeT0iMjYiIHdpZHRoPSI1NiIgaGVpZHRoPSI4IiByeD0iNCIvPjxyZWN0IHg9IjEwIiB5PSIzNiIgd2lkdGg9IjQ0IiBoZWlnaHQ9IjgiIHJ4PSI0Ii8+PC9zdmc+",
     "Altostratus / Altocúmulus": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI0UwRTBFMyI+PHBhdGggZD0iTSA1MCAzMCBDIDU4IDMwIDU4IDQwIDUwIDQwIEggMjAgQyAxMiA0MCAxMiAzMCAyMCAzMCBDIDIyIDI0IDMwIDI0IDMyIDI4IEMgMzYgMjIgNDYgMjIgNTAgMzAgWiIvPjxwYXRoIGQ9Ik0gNDQgNDggQyA1MiA0OCA1MiA1NiA0NCA1NiBIIDI0IEMgMTYgNTYgMTYgNDggMjQgNDggQyAyNiA0MiAzNCA0MiAzNiA0NiBDIDM4IDQyIDQyIDQyIDQ0IDQ4IFoiIGZpbGw9IiNDQ0NDQ0YiLz48L3N2Zz4=",
@@ -85,17 +84,7 @@ NUVOL_ICON_BASE64 = {
     "fallback": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAIjSURBVHhe7dtBaxNBFAbgRzQx3QRDFLsJ2lBqaW+9iAe9eBNLBTuUgh4UFDwIHgT/gB68CILoJwgCFtSjV1NLUbSoUhTEy1OQlCBoQ7eZeX+Yk501Z3Y2956HBEk2kZ2dZ9+Zve0W/P8PISAEhIAQEAJCQAgIASHQzwDdX30yPfr0Vfo2N/c/0vP5T/T69euf/16/uTmdzs7O4lYISAHj7xJQgAJ+CSgYgV3b0QAAAABJRU5ErkJggg=="
 }
 
-@st.cache_data
-def get_image_as_base64(path):
-    """
-    Funció que llegeix un arxiu d'imatge, el converteix a Base64 i ho desa a la memòria cau.
-    Ara rep la RUTA COMPLETA de l'arxiu.
-    """
-    if not os.path.exists(path):
-        print(f"ADVERTÈNCIA: No s'ha trobat l'arxiu d'icona: {path}")
-        return None
-    with open(path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode()
+
     
 
 WEBCAM_LINKS = {
