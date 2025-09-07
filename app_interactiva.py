@@ -8705,57 +8705,67 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v37.1 - Utilitza el nou mapa d'icones sense rutes.
-    La lògica meteorològica és la mateixa, però ara retorna noms d'arxiu nets.
+    Sistema de Diagnòstic v39.2 - Corregit i Definitiu.
+    Aquesta versió soluciona el 'NameError' eliminant qualsevol referència a l'antic
+    diccionari 'NUVOL_EMOJI_MAP'. Ara, la funció només retorna la descripció del
+    fenomen, i la interfície s'encarrega de buscar la icona corresponent al
+    diccionari 'NUVOL_ICON_BASE64'.
     """
+    # --- 1. Llista per emmagatzemar els resultats ---
     diagnostics = []
-    # ... (Extracció de paràmetres com abans, sense canvis) ...
+
+    # --- 2. EXTRACCIÓ DELS PARÀMETRES CLAU ---
     mucape = params.get('MUCAPE', 0) or 0
     mucin = params.get('MUCIN', 0) or 0
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     pwat = params.get('PWAT', 0) or 0
+    
     rh_capes = params.get('RH_CAPES', {'baixa': 0, 'mitjana': 0, 'alta': 0, 'molt_alta': 0})
     rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
     rh_mitjana = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0
     rh_alta = rh_capes.get('alta', 0) if pd.notna(rh_capes.get('alta')) else 0
     rh_molt_alta = rh_capes.get('molt_alta', 0) if pd.notna(rh_capes.get('molt_alta')) else 0
+
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
+    
     wspd_500hpa = params.get('WSPD_500hPa', 0) or 0
+
+    # --- 3. AVALUACIÓ INDEPENDENT DE FENÒMENS (LÒGICA CHECKLIST) ---
 
     # CHECK 1: Lenticulars
     if mucape < 150 and wspd_500hpa > 45 and rh_mitjana > 60:
         desc = "Altocúmulus Lenticular"
-        diagnostics.append({'icon_id': NUVOL_EMOJI_MAP[desc], 'descripcio': desc, 'veredicte': "Atmosfera estable amb potent flux de vent en alçada, ideal per a núvols lenticulars.", 'factor_clau': "Fort vent en alçada i estabilitat."})
+        diagnostics.append({'descripcio': desc, 'veredicte': "Atmosfera estable amb potent flux de vent en alçada, ideal per a núvols lenticulars.", 'factor_clau': "Fort vent en alçada i estabilitat."})
 
     # CHECK 2: Nimbostratus
     if mucape < 200 and rh_baixa > 85 and rh_mitjana > 80 and pwat > 25:
         desc = "Nimbostratus (Pluja Contínua)"
-        diagnostics.append({'icon_id': NUVOL_EMOJI_MAP[desc], 'descripcio': desc, 'veredicte': "Cel cobert amb pluja generalitzada i persistent.", 'factor_clau': "Saturació profunda."})
+        diagnostics.append({'descripcio': desc, 'veredicte': "Cel cobert amb pluja generalitzada i persistent.", 'factor_clau': "Saturació profunda."})
 
-    # CHECK 3: Potencial Convectiu
+    # CHECK 3: Potencial Convectiu (si no hi ha una "tapa" infranquejable)
     if mucin > -100 and conv > 10:
-        if mucape > 2000 and bwd_6km > 35: desc = "Potencial de Supercèl·lula"; diagnostics.append({'icon_id': NUVOL_EMOJI_MAP[desc], 'descripcio': desc, 'veredicte': "Condicions explosives per a tempestes severes.", 'factor_clau': "CAPE extrem i cisallament."})
-        elif mucape > 800 and bwd_6km > 25: desc = "Tempestes Organitzades"; diagnostics.append({'icon_id': NUVOL_EMOJI_MAP[desc], 'descripcio': desc, 'veredicte': "Potencial per a sistemes de tempestes organitzats.", 'factor_clau': "Equilibri CAPE/cisallament."})
-        elif mucape > 1500 and bwd_6km < 20: desc = "Tempesta Aïllada (Molt energètica)"; diagnostics.append({'icon_id': NUVOL_EMOJI_MAP[desc], 'descripcio': desc, 'veredicte': "Tempestes aïllades però molt potents, risc de calamarsa.", 'factor_clau': "CAPE molt alt, sense organització."})
-        elif mucape > 500: desc = "Tempesta Comuna"; diagnostics.append({'icon_id': NUVOL_EMOJI_MAP[desc], 'descripcio': desc, 'veredicte': "Condicions per a tempestes d'estiu, amb xàfecs.", 'factor_clau': "CAPE suficient."})
-        elif mucape > 100: desc = "Cúmuls de creixement"; diagnostics.append({'icon_id': NUVOL_EMOJI_MAP[desc], 'descripcio': desc, 'veredicte': "Núvols amb desenvolupament vertical, possibles xàfecs.", 'factor_clau': "CAPE marginal."})
+        if mucape > 2000 and bwd_6km > 35: desc = "Potencial de Supercèl·lula"; diagnostics.append({'descripcio': desc, 'veredicte': "Condicions explosives per a tempestes severes.", 'factor_clau': "CAPE extrem i cisallament."})
+        elif mucape > 800 and bwd_6km > 25: desc = "Tempestes Organitzades"; diagnostics.append({'descripcio': desc, 'veredicte': "Potencial per a sistemes de tempestes organitzats.", 'factor_clau': "Equilibri CAPE/cisallament."})
+        elif mucape > 1500 and bwd_6km < 20: desc = "Tempesta Aïllada (Molt energètica)"; diagnostics.append({'descripcio': desc, 'veredicte': "Tempestes aïllades però molt potents, risc de calamarsa.", 'factor_clau': "CAPE molt alt, sense organització."})
+        elif mucape > 500: desc = "Tempesta Comuna"; diagnostics.append({'descripcio': desc, 'veredicte': "Condicions per a tempestes d'estiu, amb xàfecs.", 'factor_clau': "CAPE suficient."})
+        elif mucape > 100: desc = "Cúmuls de creixement"; diagnostics.append({'descripcio': desc, 'veredicte': "Núvols amb desenvolupament vertical, possibles xàfecs.", 'factor_clau': "CAPE marginal."})
 
-    # CHECK 4: Núvols Estables
+    # CHECK 4: Núvols Estables (si hi ha "tapa" o no hi ha "disparador")
     if mucin < -100 or conv < 10:
-        if rh_molt_alta > 65: desc = "Vels de Cirrus (Molt Alts)"; diagnostics.append({'icon_id': NUVOL_EMOJI_MAP[desc], 'descripcio': desc, 'veredicte': "Humitat a les capes més altes formant vels de gel.", 'factor_clau': "Humitat a >250hPa."})
-        if rh_alta > 70: desc = "Cirrostratus (Cel blanquinós)"; diagnostics.append({'icon_id': NUVOL_EMOJI_MAP[desc], 'descripcio': desc, 'veredicte': "Humitat a nivells alts, però l'estabilitat impedeix el desenvolupament.", 'factor_clau': "Inhibició forta."})
-        if rh_mitjana > 75: desc = "Altostratus / Altocúmulus"; diagnostics.append({'icon_id': NUVOL_EMOJI_MAP[desc], 'descripcio': desc, 'veredicte': "Cel cobert per núvols mitjans.", 'factor_clau': "Inhibició forta."})
-        if rh_baixa > 80: desc = "Estratus (Boira alta / Cel tancat)"; diagnostics.append({'icon_id': NUVOL_EMOJI_MAP[desc], 'descripcio': desc, 'veredicte': "Núvols baixos persistents.", 'factor_clau': "Inhibició forta."})
+        if rh_molt_alta > 65: desc = "Vels de Cirrus (Molt Alts)"; diagnostics.append({'descripcio': desc, 'veredicte': "Humitat a les capes més altes formant vels de gel.", 'factor_clau': "Humitat a >250hPa."})
+        if rh_alta > 70: desc = "Cirrostratus (Cel blanquinós)"; diagnostics.append({'descripcio': desc, 'veredicte': "Humitat a nivells alts, però l'estabilitat impedeix el desenvolupament.", 'factor_clau': "Inhibició forta."})
+        if rh_mitjana > 75: desc = "Altostratus / Altocúmulus"; diagnostics.append({'descripcio': desc, 'veredicte': "Cel cobert per núvols mitjans.", 'factor_clau': "Inhibició forta."})
+        if rh_baixa > 80: desc = "Estratus (Boira alta / Cel tancat)"; diagnostics.append({'descripcio': desc, 'veredicte': "Núvols baixos persistents.", 'factor_clau': "Inhibició forta."})
     
-    # GESTIÓ FINAL
+    # --- 4. GESTIÓ DEL RESULTAT FINAL ---
     if not diagnostics:
         if mucape > 50 and rh_baixa > 60:
              desc = "Cúmuls de bon temps"
-             diagnostics.append({'icon_id': NUVOL_EMOJI_MAP[desc], 'descripcio': desc, 'veredicte': "Cel amb petits cúmuls decoratius.", 'factor_clau': "CAPE gairebé inexistent."})
+             diagnostics.append({'descripcio': desc, 'veredicte': "Cel amb petits cúmuls decoratius que indiquen bon temps.", 'factor_clau': "CAPE gairebé inexistent."})
         else:
             desc = "Cel Serè"
-            diagnostics.append({'icon_id': NUVOL_EMOJI_MAP[desc], 'descripcio': desc, 'veredicte': "Temps estable i sec.", 'factor_clau': "Atmosfera seca i/o inhibida."})
+            diagnostics.append({'descripcio': desc, 'veredicte': "Temps estable i sec.", 'factor_clau': "Atmosfera seca i/o inhibida."})
             
     return diagnostics
 
