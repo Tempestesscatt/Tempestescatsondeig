@@ -2141,12 +2141,12 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva amb Disseny Flexible i Renderització Corregida (v40.2).
-    - Separa l'estil del contenidor principal a una classe CSS dedicada (.diagnosis-box)
-      per evitar conflictes de renderització amb st.markdown.
-    - Assegura que l'HTML final sigui net i s'interpreti sempre correctament.
+    Versió Definitiva amb Renderització Nativa (v41.0).
+    Aquesta versió elimina completament l'ús d'HTML complex per a les icones.
+    En lloc d'això, utilitza les columnes natives de Streamlit i `st.image` per
+    mostrar cada diagnòstic, garantint una renderització robusta i a prova d'errors.
     """
-    # El codi de TOOLTIPS i les funcions styled_metric/qualitative es manté igual
+    # ... (El codi de TOOLTIPS i les funcions styled_metric/qualitative es manté igual) ...
     TOOLTIPS = { 'SBCAPE': "...", 'MUCAPE': "...", 'CONV_PUNTUAL': "...", 'SBCIN': "...", 'MUCIN': "...", 'LI': "...", 'PWAT': "...", 'LCL_Hgt': "...", 'LFC_Hgt': "...", 'EL_Hgt': "...", 'BWD_0-6km': "...", 'BWD_0-1km': "...", 'T_500hPa': "...", 'PUNTUACIO_TEMPESTA': "...", 'AMENACA_CALAMARSA': "...", 'AMENACA_LLAMPS': "..." }
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
         color = "#FFFFFF"; val_str = "---"
@@ -2167,46 +2167,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
 
     st.markdown("##### Paràmetres del Sondeig")
     
-    # --- CANVI CLAU: S'AFEGEIX LA CLASSE '.diagnosis-box' AL CSS ---
-    st.markdown("""
-    <style>
-        .diagnosis-box {
-            text-align: center;
-            padding: 8px;
-            border-radius: 10px;
-            background-color: #2a2c34;
-            margin-bottom: 10px;
-            min-height: 78px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-        }
-        .cloud-diagnosis-container {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            align-items: center;
-            gap: 15px;
-            margin-top: 5px;
-        }
-        .cloud-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-        }
-        .cloud-icon {
-            height: 2.5em;
-        }
-        .cloud-text {
-            font-size: 0.8em;
-            color: #E0E0E0;
-            margin-top: 4px;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE', tooltip_text=TOOLTIPS.get('SBCAPE'))
     with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
@@ -2218,37 +2178,30 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
     with cols[2]:
-        analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
-        
-        combined_html_list = []
-        if analisi_temps_list:
-            for diag in analisi_temps_list:
-                descripcio = diag.get("descripcio", "Desconegut")
-                base64_image = NUVOL_ICON_BASE64.get(descripcio, NUVOL_ICON_BASE64["fallback"])
+        # --- BLOC DE RENDERITZACIÓ NATIVA (NOU I DEFINITIU) ---
+        with st.container(border=True, height=98): # Contenidor amb alçada fixa
+            st.markdown('<p style="text-align:center; margin-bottom: 5px; font-size: 0.8em;">Tipus de Cel Previst</p>', unsafe_allow_html=True)
+            
+            analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
+            
+            # Creem tantes columnes com diagnòstics tinguem
+            if analisi_temps_list:
+                num_diagnostics = len(analisi_temps_list)
+                cols_diagnostics = st.columns(num_diagnostics)
                 
-                item_html = f"""
-                <div class="cloud-item" title="{diag.get('veredicte', '')}">
-                    <img src="{base64_image}" class="cloud-icon">
-                    <span class="cloud-text">{descripcio}</span>
-                </div>
-                """
-                combined_html_list.append(item_html)
-        else:
-            base64_fallback = NUVOL_ICON_BASE64["fallback"]
-            combined_html_list.append(f'<div class="cloud-item"><img src="{base64_fallback}" class="cloud-icon"><span class="cloud-text">Anàlisi no disp.</span></div>')
+                for i, diag in enumerate(analisi_temps_list):
+                    with cols_diagnostics[i]:
+                        descripcio = diag.get("descripcio", "Desconegut")
+                        base64_image = NUVOL_ICON_BASE64.get(descripcio, NUVOL_ICON_BASE64["fallback"])
+                        
+                        # Mostrem la imatge directament amb st.image
+                        st.image(base64_image, width=40, use_column_width='auto')
+                        # Mostrem el text a sota amb st.caption i centrat
+                        st.caption(f'<p style="text-align:center; margin-top:-10px;">{descripcio}</p>', unsafe_allow_html=True)
+            else:
+                st.warning("Sense dades")
+        # --- FI DEL BLOC NOU ---
 
-        final_html_content = "".join(combined_html_list)
-
-        # --- CANVI CLAU: L'HTML ÉS MOLT MÉS NET ARA ---
-        html_content = f"""
-            <div class="diagnosis-box">
-                <span style="font-size: 0.8em; color: #FAFAFA;">Tipus de Cel Previst</span>
-                <div class="cloud-diagnosis-container">
-                    {final_html_content}
-                </div>
-            </div>"""
-        
-        st.markdown(html_content, unsafe_allow_html=True)
 
     cols = st.columns(3)
     with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
@@ -2268,7 +2221,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols[0]: styled_qualitative("Calamarsa Gran (>2cm)", amenaces['calamarsa']['text'], amenaces['calamarsa']['color'], tooltip_text=TOOLTIPS.get('AMENACA_CALAMARSA'))
     with cols[1]: styled_qualitative("Índex de Potencial", f"{puntuacio_resultat['score']} / 10", puntuacio_resultat['color'], tooltip_text=TOOLTIPS.get('PUNTUACIO_TEMPESTA'))
     with cols[2]: styled_qualitative("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], tooltip_text=TOOLTIPS.get('AMENACA_LLAMPS'))
-    
+        
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
     """
     Sistema de Diagnòstic v2.0: Analitza els fenòmens eòlics a diferents nivells
