@@ -78,7 +78,7 @@ NUVOL_ICON_BASE64 = {
 
     # --- Núvols Alts (Cirriformes) ---
     "Cirrostratus (Cel blanquinós)": "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgNjQgNjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTggMzAgSDU2IiBzdHJva2U9IiNEREQiIHN0cm9rZS13aWR0aD0iMiIvPjwvc3ZnPg==",
-    "Vels de Cirrus (Molt Alts)": "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgNjQgNjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTExIDI0IEMyNSAxNSA0MCAzMCA1MiAyMCIgc3Ryb2tlPSIjRUVFIiBzdHJva2Utd2lkdGg9IjIiIGZpbGw9Im5vbmUiLz48L3N2Zz4=",
+    "Vels de Cirrus (Molt Alts)": "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgNjQgMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGcgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRTBFMUU2IiBzdHJva2Utd2lkdGg9IjIuNSI+PHBhdGggZD0iTTUgMTAgYzAgMCwxMCAtNSwyMCAtNSBzMTAgMywyMCA1IiBvcGFjaXR5PSIwLjMiLz48cGF0aCBkPSJNMTAgMTUgYzAgMCwxMiAtNywyMiAtNyBzMTIgNCAyMiA2IiBvcGFjaXR5PSIwLjIiLz48cGF0aCBkPSJNMTUgOCAxIGMxMCAwLDIwIDUsMjAgNSA0IiBvcGFjaXR5PSIwLjMiLz48L2c+PC9zdmc+",
     "Cirrus Castellanus": "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgNjQgNjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGxpbmUgeDE9IjIwIiB5MT0iMzIiIHgyPSIzMiIgeTI9IjI2IiBzdHJva2U9IiNFRUUiIHN0cm9rZS13aWR0aD0iMiIvPjxsaW5lIHgxPSIzMiIgeTE9IjI2IiB4Mj0iNDQiIHkyPSIzMiIgc3Ryb2tlPSIjRUVFIiBzdHJva2Utd2lkdGg9IjIiLz48L3N2Zz4=",
     "Altocúmulus Lenticular": "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgNjQgNjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGVsbGlwc2UgY3g9IjMyIiBjeT0iMzIiIHJ4PSIyMCIgcnk9IjYiIGZpbGw9IiNGRkZGRkYiLz48L3N2Zz4=",
 
