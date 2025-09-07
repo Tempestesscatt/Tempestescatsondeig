@@ -8674,11 +8674,15 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v42.1 - Corregit i Sincronitzat.
-    Aquesta versió corregeix l'ambigüitat en el cas de temps estable,
-    assegurant que la icona i el text es corresponguin correctament.
+    Sistema de Diagnòstic v43.0 - Anàlisi Multinivell d'Alta Sensibilitat.
+    Aquesta versió prioritza els patrons meteorològics dominants. Si no n'hi ha cap,
+    analitza la humitat capa per capa, podent retornar múltiples diagnòstics de núvols
+    per a una descripció del cel molt més detallada i precisa.
     """
     diagnostics = []
+    major_pattern_found = False
+
+    # Extracció de paràmetres (sense canvis)
     mucape = params.get('MUCAPE', 0) or 0
     mucin = params.get('MUCIN', 0) or 0
     bwd_6km = params.get('BWD_0-6km', 0) or 0
@@ -8692,50 +8696,65 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     conv = params.get(conv_key, 0) or 0
     wspd_500hpa = params.get('WSPD_500hPa', 0) or 0
 
-    # CHECK 1: Lenticulars
-    if mucape < 150 and wspd_500hpa > 45 and rh_mitjana > 60:
-        desc = "Altocúmulus Lenticular"
-        diagnostics.append({'descripcio': desc, 'veredicte': "Atmosfera estable amb potent flux de vent en alçada, ideal per a núvols lenticulars.", 'factor_clau': "Fort vent en alçada i estabilitat."})
+    # --- PAS 1: DETECCIÓ DE PATRONS METEOROLÒGICS DOMINANTS I EXCLOENTS ---
 
-    # CHECK 2: Nimbostratus
-    if mucape < 200 and rh_baixa > 85 and rh_mitjana > 80 and pwat > 25:
-        desc = "Nimbostratus (Pluja Contínua)"
-        diagnostics.append({'descripcio': desc, 'veredicte': "Cel cobert amb pluja generalitzada i persistent.", 'factor_clau': "Saturació profunda."})
-
-    # CHECK 3: Potencial Convectiu
+    # CHECK 1.1: Potencial Convectiu (el més important)
     if mucin > -150 and conv > 5:
-        if mucape > 2000 and bwd_6km > 35: desc = "Potencial de Supercèl·lula"; diagnostics.append({'descripcio': desc, 'veredicte': "Condicions explosives per a tempestes severes.", 'factor_clau': "CAPE extrem i cisallament."})
-        elif mucape > 800 and bwd_6km > 25: desc = "Tempestes Organitzades"; diagnostics.append({'descripcio': desc, 'veredicte': "Potencial per a sistemes de tempestes organitzats.", 'factor_clau': "Equilibri CAPE/cisallament."})
-        elif mucape > 1500 and bwd_6km < 20: desc = "Tempesta Aïllada (Molt energètica)"; diagnostics.append({'descripcio': desc, 'veredicte': "Tempestes aïllades però molt potents, risc de calamarsa.", 'factor_clau': "CAPE molt alt, sense organització."})
-        elif mucape > 500: desc = "Tempesta Comuna"; diagnostics.append({'descripcio': desc, 'veredicte': "Condicions per a tempestes d'estiu, amb xàfecs.", 'factor_clau': "CAPE suficient."})
-        elif mucape > 100: desc = "Cúmuls de creixement"; diagnostics.append({'descripcio': desc, 'veredicte': "Núvols amb desenvolupament vertical, possibles xàfecs.", 'factor_clau': "CAPE marginal."})
-
-    # CHECK 4: Núvols Estables
-    if mucin < -75 or conv < 10:
-        if rh_molt_alta > 65: desc = "Vels de Cirrus (Molt Alts)"; diagnostics.append({'descripcio': desc, 'veredicte': "Humitat a les capes més altes formant vels de gel.", 'factor_clau': "Humitat a >250hPa."})
-        elif rh_alta > 70: desc = "Cirrostratus (Cel blanquinós)"; diagnostics.append({'descripcio': desc, 'veredicte': "Humitat a nivells alts, però l'estabilitat impedeix el desenvolupament.", 'factor_clau': "Inhibició forta."})
-        elif rh_mitjana > 75: desc = "Altostratus / Altocúmulus"; diagnostics.append({'descripcio': desc, 'veredicte': "Cel cobert per núvols mitjans.", 'factor_clau': "Inhibició forta."})
-        elif rh_baixa > 80: desc = "Estratus (Boira alta / Cel tancat)"; diagnostics.append({'descripcio': desc, 'veredicte': "Núvols baixos persistents.", 'factor_clau': "Inhibició forta."})
+        if mucape > 2000 and bwd_6km > 35: 
+            diagnostics.append({'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Condicions explosives per a tempestes severes."})
+            major_pattern_found = True
+        elif mucape > 800 and bwd_6km > 25: 
+            diagnostics.append({'descripcio': "Tempestes Organitzades", 'veredicte': "Potencial per a sistemes de tempestes organitzats."})
+            major_pattern_found = True
+        elif mucape > 1500 and bwd_6km < 20: 
+            diagnostics.append({'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Tempestes aïllades però molt potents, risc de calamarsa."})
+            major_pattern_found = True
+        elif mucape > 500: 
+            diagnostics.append({'descripcio': "Tempesta Comuna", 'veredicte': "Condicions per a tempestes d'estiu, amb xàfecs."})
+            major_pattern_found = True
     
-    # GESTIÓ FINAL: Aquest bloc s'assegura que sempre hi hagi un resultat.
+    # CHECK 1.2: Nimbostratus (si no hi ha tempesta)
+    if not major_pattern_found and mucape < 200 and rh_baixa > 85 and rh_mitjana > 80 and pwat > 25:
+        diagnostics.append({'descripcio': "Nimbostratus (Pluja Contínua)", 'veredicte': "Cel cobert amb pluja generalitzada i persistent."})
+        major_pattern_found = True
+
+    # CHECK 1.3: Lenticulars (si no hi ha cap dels anteriors)
+    if not major_pattern_found and mucape < 150 and wspd_500hpa > 45 and rh_mitjana > 60:
+        diagnostics.append({'descripcio': "Altocúmulus Lenticular", 'veredicte': "Atmosfera estable amb potent flux de vent en alçada."})
+        major_pattern_found = True
+
+    # --- PAS 2: ANÀLISI DETALLADA PER CAPES (NOMÉS SI NO S'HA TROBAT UN PATRÓ DOMINANT) ---
+    
+    if not major_pattern_found:
+        # Capes Altes (> 5500m)
+        if rh_molt_alta > 65:
+            diagnostics.append({'descripcio': "Vels de Cirrus (Molt Alts)", 'veredicte': "Humitat a les capes més altes formant vels de gel."})
+        elif rh_alta > 70:
+            diagnostics.append({'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Humitat a nivells alts, cel d'aspecte lletós."})
+
+        # Capes Mitjanes (2000-5500m)
+        if rh_mitjana > 75:
+            diagnostics.append({'descripcio': "Altostratus / Altocúmulus", 'veredicte': "Cel cobert per núvols mitjans."})
+
+        # Capes Baixes (< 2000m)
+        if rh_baixa > 80:
+            # Si hi ha molta humitat baixa, pot ser Estratus o Cúmuls en desenvolupament
+            if mucape > 100:
+                diagnostics.append({'descripcio': "Cúmuls de creixement", 'veredicte': "Núvols amb desenvolupament vertical, possibles xàfecs."})
+            else:
+                diagnostics.append({'descripcio': "Estratus (Boira alta / Cel tancat)", 'veredicte': "Núvols baixos persistents, cel cobert."})
+        elif rh_baixa > 60 and mucape > 50:
+            # Si hi ha menys humitat però una mica d'energia, són cúmuls de bon temps
+            diagnostics.append({'descripcio': "Cúmuls de bon temps", 'veredicte': "Cel amb petits cúmuls decoratius."})
+
+    # --- PAS 3: GESTIÓ FINAL ---
+    # Si, després de totes les comprovacions, la llista continua buida, el cel està serè.
     if not diagnostics:
-        if mucape > 50 and rh_baixa > 60:
-             diagnostics.append({
-                 'descripcio': "Cúmuls de bon temps", 
-                 'veredicte': "Cel amb petits cúmuls decoratius que indiquen bon temps.", 
-                 'factor_clau': "CAPE gairebé inexistent."
-             })
-        else:
-             # >>> BLOC CORREGIT <<<
-             # Aquesta correcció resol l'ambigüitat.
-             # La 'descripcio' ha de coincidir exactament amb la clau de la icona ("Cel Serè").
-             # El 'veredicte' és el text descriptiu que veu l'usuari.
-             # D'aquesta manera, la icona del sol es mostrarà correctament juntament amb el text "Temps estable i sec.".
-             diagnostics.append({
-                 'descripcio': "Cel Serè", 
-                 'veredicte': "Temps estable i sec.", 
-                 'factor_clau': "Atmosfera seca i/o inhibida."
-             })
+        diagnostics.append({
+            'descripcio': "Cel Serè", 
+            'veredicte': "Temps estable i sec.", 
+            'factor_clau': "Atmosfera seca i/o inhibida."
+        })
             
     return diagnostics
 
