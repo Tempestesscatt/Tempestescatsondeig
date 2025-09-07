@@ -2141,10 +2141,11 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva amb Icones Incrustades (v39.0).
-    Aquesta versió utilitza directament el diccionari Base64, eliminant
-    tota dependència d'arxius externs o de la carpeta 'emojis'. És la
-    solució més robusta i a prova d'errors.
+    Versió Definitiva amb Disseny Professional i a Prova de Fallades (v40.0).
+    - Mostra sempre la icona i el seu text descriptiu junts.
+    - Pot mostrar múltiples diagnòstics de cel de manera elegant.
+    - Utilitza una icona de "fallback" des del diccionari Base64, eliminant
+      qualsevol possibilitat de veure imatges trencades o emojis d'error.
     """
     # ... (El codi de TOOLTIPS i les funcions styled_metric/qualitative es manté igual) ...
     TOOLTIPS = { 'SBCAPE': "...", 'MUCAPE': "...", 'CONV_PUNTUAL': "...", 'SBCIN': "...", 'MUCIN': "...", 'LI': "...", 'PWAT': "...", 'LCL_Hgt': "...", 'LFC_Hgt': "...", 'EL_Hgt': "...", 'BWD_0-6km': "...", 'BWD_0-1km': "...", 'T_500hPa': "...", 'PUNTUACIO_TEMPESTA': "...", 'AMENACA_CALAMARSA': "...", 'AMENACA_LLAMPS': "..." }
@@ -2166,6 +2167,33 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br><strong style="font-size: 1.6em; color: {color};">{text}</strong></div>""", unsafe_allow_html=True)
 
     st.markdown("##### Paràmetres del Sondeig")
+    
+    # Afegim el CSS per a les noves icones combinades
+    st.markdown("""
+    <style>
+        .cloud-diagnosis-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+        }
+        .cloud-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        .cloud-icon {
+            height: 2.5em; /* Mida de la icona */
+        }
+        .cloud-text {
+            font-size: 0.8em;
+            color: #E0E0E0;
+            margin-top: 4px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
 
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE', tooltip_text=TOOLTIPS.get('SBCAPE'))
@@ -2180,32 +2208,38 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols[2]:
         analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
         
-        icons_html_list = []
+        # --- NOU BLOC DE RENDERITZACIÓ COMBINADA ---
+        combined_html_list = []
         if analisi_temps_list:
-            descripcions = " / ".join([d['descripcio'] for d in analisi_temps_list])
             for diag in analisi_temps_list:
-                # Obtenim la imatge Base64 directament del diccionari
-                base64_image = NUVOL_ICON_BASE64.get(diag.get("descripcio"), NUVOL_ICON_BASE64["fallback"])
+                descripcio = diag.get("descripcio", "Desconegut")
+                # Obtenim la imatge Base64. Si no la troba, utilitza la de 'fallback'.
+                base64_image = NUVOL_ICON_BASE64.get(descripcio, NUVOL_ICON_BASE64["fallback"])
                 
-                # Generem l'etiqueta <img> HTML
-                icons_html_list.append(
-                    f'<img src="{base64_image}" '
-                    'style="height: 1.8em; vertical-align: middle; margin-right: 8px;" '
-                    f'title="{diag["descripcio"]}">'
-                )
+                # Creem un bloc HTML per a cada diagnòstic (icona + text)
+                item_html = f"""
+                <div class="cloud-item" title="{diag.get('veredicte', '')}">
+                    <img src="{base64_image}" class="cloud-icon">
+                    <span class="cloud-text">{descripcio}</span>
+                </div>
+                """
+                combined_html_list.append(item_html)
         else:
             base64_fallback = NUVOL_ICON_BASE64["fallback"]
-            icons_html_list = [f'<img src="{base64_fallback}" style="height: 1.8em; vertical-align: middle;">']
-            descripcions = "Anàlisi no disponible"
-            
-        icons_html = "".join(icons_html_list)
+            combined_html_list.append(f'<img src="{base64_fallback}" class="cloud-icon" title="Anàlisi no disponible">')
 
+        # Unim tots els blocs d'icona+text
+        final_html_content = "".join(combined_html_list)
+
+        # Renderitzem el contenidor final
         st.markdown(f"""
             <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
                 <span style="font-size: 0.8em; color: #FAFAFA;">Tipus de Cel Previst</span>
-                <strong style="font-size: 1.8em; line-height: 1.2;">{icons_html}</strong>
-                <span style="font-size: 0.8em; color: #E0E0E0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{descripcions}">{descripcions}</span>
+                <div class="cloud-diagnosis-container">
+                    {final_html_content}
+                </div>
             </div>""", unsafe_allow_html=True)
+        # --- FI DEL NOU BLOC ---
 
     cols = st.columns(3)
     with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
