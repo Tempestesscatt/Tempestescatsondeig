@@ -2141,11 +2141,10 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva amb Disseny Professional i a Prova de Fallades (v40.0).
-    - Mostra sempre la icona i el seu text descriptiu junts.
-    - Pot mostrar múltiples diagnòstics de cel de manera elegant.
-    - Utilitza una icona de "fallback" des del diccionari Base64, eliminant
-      qualsevol possibilitat de veure imatges trencades o emojis d'error.
+    Versió Definitiva amb Disseny Flexible i Professional (v40.1).
+    - El contenidor del 'Tipus de Cel Previst' ja no té una alçada fixa,
+      permetent que s'expandeixi automàticament per a mostrar múltiples
+      diagnòstics sense trencar el disseny.
     """
     # ... (El codi de TOOLTIPS i les funcions styled_metric/qualitative es manté igual) ...
     TOOLTIPS = { 'SBCAPE': "...", 'MUCAPE': "...", 'CONV_PUNTUAL': "...", 'SBCIN': "...", 'MUCIN': "...", 'LI': "...", 'PWAT': "...", 'LCL_Hgt': "...", 'LFC_Hgt': "...", 'EL_Hgt': "...", 'BWD_0-6km': "...", 'BWD_0-1km': "...", 'T_500hPa': "...", 'PUNTUACIO_TEMPESTA': "...", 'AMENACA_CALAMARSA': "...", 'AMENACA_LLAMPS': "..." }
@@ -2168,7 +2167,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
 
     st.markdown("##### Paràmetres del Sondeig")
     
-    # Afegim el CSS per a les noves icones combinades
     st.markdown("""
     <style>
         .cloud-diagnosis-container {
@@ -2177,6 +2175,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
             justify-content: center;
             align-items: center;
             gap: 15px;
+            padding-top: 5px; /* Petit espai superior */
         }
         .cloud-item {
             display: flex;
@@ -2208,15 +2207,12 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols[2]:
         analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
         
-        # --- NOU BLOC DE RENDERITZACIÓ COMBINADA ---
         combined_html_list = []
         if analisi_temps_list:
             for diag in analisi_temps_list:
                 descripcio = diag.get("descripcio", "Desconegut")
-                # Obtenim la imatge Base64. Si no la troba, utilitza la de 'fallback'.
                 base64_image = NUVOL_ICON_BASE64.get(descripcio, NUVOL_ICON_BASE64["fallback"])
                 
-                # Creem un bloc HTML per a cada diagnòstic (icona + text)
                 item_html = f"""
                 <div class="cloud-item" title="{diag.get('veredicte', '')}">
                     <img src="{base64_image}" class="cloud-icon">
@@ -2228,18 +2224,20 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
             base64_fallback = NUVOL_ICON_BASE64["fallback"]
             combined_html_list.append(f'<img src="{base64_fallback}" class="cloud-icon" title="Anàlisi no disponible">')
 
-        # Unim tots els blocs d'icona+text
         final_html_content = "".join(combined_html_list)
 
-        # Renderitzem el contenidor final
-        st.markdown(f"""
-            <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
+        # --- CANVI CLAU: ELIMINEM 'height: 78px' i afegim 'min-height' ---
+        # `min-height` assegura que la caixa no sigui massa petita si només hi ha un element.
+        # `padding-bottom` afegeix espai si el contingut creix.
+        html_content = f"""
+            <div style="text-align: center; padding: 5px; padding-bottom: 10px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; min-height: 78px; display: flex; flex-direction: column; justify-content: center;">
                 <span style="font-size: 0.8em; color: #FAFAFA;">Tipus de Cel Previst</span>
                 <div class="cloud-diagnosis-container">
                     {final_html_content}
                 </div>
-            </div>""", unsafe_allow_html=True)
-        # --- FI DEL NOU BLOC ---
+            </div>"""
+        
+        st.markdown(html_content, unsafe_allow_html=True)
 
     cols = st.columns(3)
     with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
