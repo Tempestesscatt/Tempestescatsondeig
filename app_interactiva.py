@@ -2139,11 +2139,10 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva amb Icones Personalitzades (v37.1).
-    Mostra la graella de paràmetres del sondeig. Està dissenyada per gestionar
-    la llista de diagnòstics de 'analitzar_potencial_meteorologic', construeix
-    la ruta a les imatges de les icones, les converteix a Base64 i genera les
-    etiquetes <img> per a una visualització totalment personalitzada.
+    Versió Definitiva amb Autodiagnòstic (v38.1 - Versió Completa i Neta).
+    Mostra la graella de paràmetres del sondeig. Comprova si la carpeta d'icones
+    existeix i, si una imatge concreta no es troba, mostra un avís en lloc de
+    no mostrar res, facilitant enormement la depuració.
     """
     # El diccionari de Tooltips es manté igual per a les ajudes contextuals
     TOOLTIPS = {
@@ -2195,6 +2194,11 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
 
     st.markdown("##### Paràmetres del Sondeig")
     
+    # Diagnòstic Inicial de la Carpeta d'Icones
+    if not os.path.isdir(EMOJI_FOLDER):
+        st.error(f"Error Crític: No es troba la carpeta d'icones anomenada '{EMOJI_FOLDER}'. Assegura't que existeix a l'arrel del projecte.")
+        return # Aturem l'execució aquí si la carpeta no existeix
+
     cols = st.columns(3)
     with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE', tooltip_text=TOOLTIPS.get('SBCAPE'))
     with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
@@ -2206,7 +2210,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
     with cols[2]:
-        # --- BLOC D'HTML PER A LES ICONES PERSONALITZADES ---
         analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
         
         icons_html_list = []
@@ -2215,28 +2218,21 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
             for diag in analisi_temps_list:
                 icon_filename = diag.get('icon_id')
                 if icon_filename:
-                    # Construïm la ruta completa a l'arxiu
                     full_path = os.path.join(EMOJI_FOLDER, icon_filename)
-                    # Cridem a la funció cachejada per obtenir la imatge en Base64
                     base64_image = get_image_as_base64(full_path)
                     
                     if base64_image:
-                        # Generem l'etiqueta <img> amb l'estil desitjat
-                        icons_html_list.append(
-                            f'<img src="data:image/png;base64,{base64_image}" '
-                            'style="height: 1.8em; vertical-align: middle; margin-right: 8px;" '
-                            f'title="{diag["descripcio"]}">'
-                        )
-                    else: 
-                        icons_html_list.append("❓") # Fallback si no troba l'arxiu
+                        icons_html_list.append(f'<img src="data:image/png;base64,{base64_image}" style="height: 1.8em; vertical-align: middle; margin-right: 8px;" title="{diag["descripcio"]}">')
+                    else:
+                        # Avís d'error si no troba la imatge
+                        icons_html_list.append(f'<span style="font-size: 0.6em; color: red;" title="Falta l\'arxiu {icon_filename}">⚠️</span>')
                 else: 
-                    icons_html_list.append("❓") # Fallback si no hi ha 'icon_id'
+                    icons_html_list.append("❓")
         else:
             icons_html_list = ["❓"]
             descripcions = "Anàlisi no disponible"
             
         icons_html = "".join(icons_html_list)
-        # --- FI DEL BLOC D'HTML ---
 
         st.markdown(f"""
             <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
