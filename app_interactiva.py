@@ -8681,10 +8681,8 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v43.0 - Anàlisi Multinivell d'Alta Sensibilitat.
-    Aquesta versió prioritza els patrons meteorològics dominants. Si no n'hi ha cap,
-    analitza la humitat capa per capa, podent retornar múltiples diagnòstics de núvols
-    per a una descripció del cel molt més detallada i precisa.
+    Sistema de Diagnòstic v44.0 - Anàlisi Multinivell d'Alta Sensibilitat amb Detalls Fins.
+    Distingeix entre diferents tipus de cúmuls i detecta inestabilitat a nivells alts (Castellanus).
     """
     diagnostics = []
     major_pattern_found = False
@@ -8702,7 +8700,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
     wspd_500hpa = params.get('WSPD_500hPa', 0) or 0
-    wspd_10m = params.get('WSPD_10m', 0) or 0 # Vent a 10m per als Fractocúmuls
+    wspd_10m = params.get('WSPD_10m', 0) or 0
 
     # --- PAS 1: DETECCIÓ DE PATRONS METEOROLÒGICS DOMINANTS I EXCLOENTS ---
 
@@ -8748,7 +8746,9 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
 
         # Capes Baixes (< 2000m)
         if rh_baixa > 80:
-            if 150 <= mucape < 500:
+            if mucape > 100 and conv > 10:
+                diagnostics.append({'descripcio': "Cúmuls de creixement", 'veredicte': "Núvols amb desenvolupament vertical, possibles xàfecs."})
+            elif 100 <= mucape < 400:
                 diagnostics.append({'descripcio': "Cúmuls mediocris", 'veredicte': "Cúmuls amb creixement limitat per una capa estable."})
             else:
                 diagnostics.append({'descripcio': "Estratus (Boira alta / Cel tancat)", 'veredicte': "Núvols baixos persistents, cel cobert."})
@@ -8765,6 +8765,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
             'factor_clau': "Atmosfera seca i/o inhibida."
         })
             
-    return diagnostics
+    # Retorna un màxim de 3 diagnòstics per no saturar la interfície
+    return diagnostics[:3]
 if __name__ == "__main__":
     main()
