@@ -8632,10 +8632,9 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v34.0 - Diagnòstic Múltiple.
-    Aquesta versió avalua de forma independent diferents fenòmens meteorològics
-    i pot retornar una llista amb múltiples diagnòstics si les condicions
-    permeten la coexistència de diferents tipus de núvols.
+    Sistema de Diagnòstic v35.0 - Anàlisi Completa de la Troposfera.
+    Aquesta versió utilitza una anàlisi de 4 capes (baixa, mitjana, alta, molt alta)
+    per a un diagnòstic de núvols estables molt més precís, cobrint fins a 100 hPa.
     """
     # --- 1. Llista per emmagatzemar els resultats ---
     diagnostics = []
@@ -8646,67 +8645,54 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     pwat = params.get('PWAT', 0) or 0
     
-    rh_capes = params.get('RH_CAPES', {'baixa': 0, 'mitjana': 0, 'alta': 0})
+    rh_capes = params.get('RH_CAPES', {'baixa': 0, 'mitjana': 0, 'alta': 0, 'molt_alta': 0})
     rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
     rh_mitjana = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0
     rh_alta = rh_capes.get('alta', 0) if pd.notna(rh_capes.get('alta')) else 0
+    rh_molt_alta = rh_capes.get('molt_alta', 0) if pd.notna(rh_capes.get('molt_alta')) else 0 # <-- NOU
 
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
     
-    wspd_500hpa = params.get('WSPD_500hpa', 0) or 0
+    wspd_500hpa = params.get('WSPD_500hPa', 0) or 0
 
     # --- 3. AVALUACIÓ INDEPENDENT DE FENÒMENS ---
 
-    # CHECK 1: Condicions per a Lenticulars (requereix estabilitat)
+    # CHECK 1: Lenticulars
     if mucape < 150 and wspd_500hpa > 45 and rh_mitjana > 60:
-        diagnostics.append({
-            'emoji': "🛸", 'descripcio': "Altocúmulus Lenticular",
-            'veredicte': "Atmosfera estable amb potent flux de vent en alçada, ideal per a núvols lenticulars a sotavent de les muntanyes.",
-            'factor_clau': "Fort vent en alçada i estabilitat."
-        })
+        diagnostics.append({'emoji': "🛸", 'descripcio': "Altocúmulus Lenticular", 'veredicte': "Atmosfera estable amb potent flux de vent en alçada, ideal per a núvols lenticulars.", 'factor_clau': "Fort vent en alçada i estabilitat."})
 
-    # CHECK 2: Condicions per a Nimbostratus (requereix saturació profunda)
+    # CHECK 2: Nimbostratus
     if mucape < 200 and rh_baixa > 85 and rh_mitjana > 80 and pwat > 25:
-        diagnostics.append({
-            'emoji': "🌧️", 'descripcio': "Nimbostratus (Pluja Contínua)",
-            'veredicte': "Cel cobert amb pluja generalitzada i persistent, sense activitat elèctrica.",
-            'factor_clau': "Saturació profunda de l'atmosfera."
-        })
+        diagnostics.append({'emoji': "🌧️", 'descripcio': "Nimbostratus (Pluja Contínua)", 'veredicte': "Cel cobert amb pluja generalitzada i persistent.", 'factor_clau': "Saturació profunda."})
 
-    # CHECK 3: Potencial Convectiu (només si NO hi ha una tapa infranquejable)
+    # CHECK 3: Potencial Convectiu (si no hi ha una "tapa" infranquejable)
     if mucin > -100 and conv > 10:
-        if mucape > 2000 and bwd_6km > 35:
-            diagnostics.append({'emoji': "🌪️", 'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Condicions explosives per a tempestes severes amb rotació.", 'factor_clau': "CAPE extrem i cisallament molt alt."})
-        elif mucape > 800 and bwd_6km > 25:
-            diagnostics.append({'emoji': "⛈️", 'descripcio': "Tempestes Organitzades (Multicèl·lula)", 'veredicte': "Potencial per a sistemes de tempestes organitzats i duradors.", 'factor_clau': "Bon equilibri CAPE/cisallament."})
-        elif mucape > 1500 and bwd_6km < 20:
-            diagnostics.append({'emoji': "🌩️", 'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Tempestes aïllades però molt potents, amb risc de calamarsa gran.", 'factor_clau': "CAPE molt alt, sense organització."})
-        elif mucape > 500:
-            diagnostics.append({'emoji': "⚡", 'descripcio': "Tempesta Comuna (Cumulonimbus)", 'veredicte': "Condicions per a tempestes d'estiu, amb xàfecs i activitat elèctrica.", 'factor_clau': "CAPE suficient."})
-        elif mucape > 100:
-            diagnostics.append({'emoji': "☁️", 'descripcio': "Cúmuls de creixement (Congestus)", 'veredicte': "Núvols amb desenvolupament vertical, podrien deixar xàfecs molt aïllats.", 'factor_clau': "CAPE marginal."})
+        if mucape > 2000 and bwd_6km > 35: diagnostics.append({'emoji': "🌪️", 'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Condicions explosives per a tempestes severes amb rotació.", 'factor_clau': "CAPE extrem i cisallament."})
+        elif mucape > 800 and bwd_6km > 25: diagnostics.append({'emoji': "⛈️", 'descripcio': "Tempestes Organitzades", 'veredicte': "Potencial per a sistemes de tempestes organitzats i duradors.", 'factor_clau': "Equilibri CAPE/cisallament."})
+        elif mucape > 1500 and bwd_6km < 20: diagnostics.append({'emoji': "🌩️", 'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Tempestes aïllades però molt potents, amb risc de calamarsa gran.", 'factor_clau': "CAPE molt alt, sense organització."})
+        elif mucape > 500: diagnostics.append({'emoji': "⚡", 'descripcio': "Tempesta Comuna", 'veredicte': "Condicions per a tempestes d'estiu, amb xàfecs i activitat elèctrica.", 'factor_clau': "CAPE suficient."})
+        elif mucape > 100: diagnostics.append({'emoji': "☁️", 'descripcio': "Cúmuls de creixement", 'veredicte': "Núvols amb desenvolupament vertical, podrien deixar xàfecs aïllats.", 'factor_clau': "CAPE marginal."})
 
-    # CHECK 4: Núvols Estables (només si hi ha una "tapa" o no hi ha "disparador")
+    # CHECK 4: Núvols Estables (si hi ha "tapa" o no hi ha "disparador")
     if mucin < -100 or conv < 10:
-        if rh_alta > 70:
+        # --- BLOC MODIFICAT: AVALUACIÓ JERÀRQUICA DE DALT A BAIX ---
+        if rh_molt_alta > 65: # Llindar més baix per a capes molt fredes
+            diagnostics.append({'emoji': "✨", 'descripcio': "Vels de Cirrus (Molt Alts)", 'veredicte': "Presència d'humitat a les capes més altes de la troposfera, formant vels de gel.", 'factor_clau': "Humitat a >250hPa."})
+        elif rh_alta > 70:
             diagnostics.append({'emoji': "🌫️", 'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Humitat a nivells alts, però l'estabilitat impedeix el desenvolupament.", 'factor_clau': "Inhibició forta."})
         elif rh_mitjana > 75:
             diagnostics.append({'emoji': "☁️", 'descripcio': "Altostratus / Altocúmulus", 'veredicte': "Cel cobert per núvols mitjans sense pluja significativa.", 'factor_clau': "Inhibició forta."})
         elif rh_baixa > 80:
             diagnostics.append({'emoji': "☁️", 'descripcio': "Estratus (Boira alta / Cel tancat)", 'veredicte': "Núvols baixos persistents sense desenvolupament.", 'factor_clau': "Inhibició forta."})
-
-    # --- 4. GESTIÓ DEL RESULTAT FINAL ---
     
-    # Si, després de totes les comprovacions, la llista està buida, significa que el cel està serè.
+    # --- 4. GESTIÓ DEL RESULTAT FINAL ---
     if not diagnostics:
-        # Afegim un petit matís: si hi ha una mica d'energia i humitat, seran cúmuls de bon temps.
         if mucape > 50 and rh_baixa > 60:
-             diagnostics.append({'emoji': "🌤️", 'descripcio': "Cúmuls de bon temps (Humilis)", 'veredicte': "Cel amb petits cúmuls decoratius que indiquen bon temps.", 'factor_clau': "CAPE gairebé inexistent."})
+             diagnostics.append({'emoji': "🌤️", 'descripcio': "Cúmuls de bon temps", 'veredicte': "Cel amb petits cúmuls decoratius que indiquen bon temps.", 'factor_clau': "CAPE gairebé inexistent."})
         else:
             diagnostics.append({'emoji': "☀️", 'descripcio': "Cel Serè", 'veredicte': "Temps estable i sec. Condicions no favorables per a la formació de núvols.", 'factor_clau': "Atmosfera seca i/o inhibida."})
             
-    # Retornem la llista completa de diagnòstics trobats.
     return diagnostics
 
 if __name__ == "__main__":
