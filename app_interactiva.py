@@ -76,7 +76,7 @@ NUVOL_EMOJI_MAP = {
     "Vels de Cirrus (Molt Alts)": "emojis/cirrus.png",
     "Cirrostratus (Cel blanquinós)": "emojis/cirrostratus.png",
     "Altostratus / Altocúmulus": "emojis/altocumulus.png",
-    "Estratus (Boira alta / Cel tancat)": "emojis/stratus.png",
+    "Estratus (Boira alta / Cel tancat)": "emojisstratus.png",
     "Cúmuls de bon temps": "emojis/cumulus.png",
     "Cel Serè": "emojis/clear_sky.png",
 }
