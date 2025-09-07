@@ -2099,7 +2099,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         color = "#FFFFFF"; val_str = "---"
         is_numeric = isinstance(value, (int, float, np.number))
         if pd.notna(value) and is_numeric:
-            # Lògica de color específica per a convergència
             if 'CONV' in param_key:
                 conv_thresholds = [5, 15, 30, 40]
                 conv_colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
@@ -2136,13 +2135,26 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
     with cols[2]:
-        analisi_temps = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
-        emoji = analisi_temps['emoji']; descripcio = analisi_temps['descripcio']
+        # --- BLOC CORREGIT ---
+        # 1. Cridem a la funció, que ara retorna una LLISTA de diccionaris
+        analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
+        
+        # 2. Comprovem si la llista té contingut (sempre ho hauria de fer)
+        if analisi_temps_list:
+            # 3. Unim els emojis i les descripcions de TOTS els diagnòstics trobats
+            emojis = " ".join([d['emoji'] for d in analisi_temps_list])
+            descripcions = " / ".join([d['descripcio'] for d in analisi_temps_list])
+        else:
+            # 4. Codi de seguretat en cas que la llista estigui buida
+            emojis = "❓"
+            descripcions = "Anàlisi no disponible"
+        # --- FI DE LA CORRECCIÓ ---
+
         st.markdown(f"""
             <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
                 <span style="font-size: 0.8em; color: #FAFAFA;">Tipus de Cel Previst</span>
-                <strong style="font-size: 1.8em; line-height: 1;">{emoji}</strong>
-                <span style="font-size: 0.8em; color: #E0E0E0;">{descripcio}</span>
+                <strong style="font-size: 1.8em; line-height: 1;">{emojis}</strong>
+                <span style="font-size: 0.8em; color: #E0E0E0;">{descripcions}</span>
             </div>""", unsafe_allow_html=True)
 
     cols = st.columns(3)
