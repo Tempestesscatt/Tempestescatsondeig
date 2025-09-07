@@ -2141,10 +2141,10 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva amb Renderització Nativa (v41.0).
-    Aquesta versió elimina completament l'ús d'HTML complex per a les icones.
-    En lloc d'això, utilitza les columnes natives de Streamlit i `st.image` per
-    mostrar cada diagnòstic, garantint una renderització robusta i a prova d'errors.
+    Versió Final i Polida (v41.1).
+    - Utilitza `use_container_width` a st.image per a alinear-se amb les
+      últimes versions de Streamlit i eliminar la DeprecationWarning.
+    - S'ha eliminat el codi de depuració intern per a una execució neta.
     """
     # ... (El codi de TOOLTIPS i les funcions styled_metric/qualitative es manté igual) ...
     TOOLTIPS = { 'SBCAPE': "...", 'MUCAPE': "...", 'CONV_PUNTUAL': "...", 'SBCIN': "...", 'MUCIN': "...", 'LI': "...", 'PWAT': "...", 'LCL_Hgt': "...", 'LFC_Hgt': "...", 'EL_Hgt': "...", 'BWD_0-6km': "...", 'BWD_0-1km': "...", 'T_500hPa': "...", 'PUNTUACIO_TEMPESTA': "...", 'AMENACA_CALAMARSA': "...", 'AMENACA_LLAMPS': "..." }
@@ -2178,30 +2178,24 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
     with cols[2]:
-        # --- BLOC DE RENDERITZACIÓ NATIVA (NOU I DEFINITIU) ---
-        with st.container(border=True, height=98): # Contenidor amb alçada fixa
+        with st.container(border=True, height=98):
             st.markdown('<p style="text-align:center; margin-bottom: 5px; font-size: 0.8em;">Tipus de Cel Previst</p>', unsafe_allow_html=True)
             
             analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
             
-            # Creem tantes columnes com diagnòstics tinguem
             if analisi_temps_list:
-                num_diagnostics = len(analisi_temps_list)
-                cols_diagnostics = st.columns(num_diagnostics)
+                cols_diagnostics = st.columns(len(analisi_temps_list))
                 
                 for i, diag in enumerate(analisi_temps_list):
                     with cols_diagnostics[i]:
                         descripcio = diag.get("descripcio", "Desconegut")
                         base64_image = NUVOL_ICON_BASE64.get(descripcio, NUVOL_ICON_BASE64["fallback"])
                         
-                        # Mostrem la imatge directament amb st.image
-                        st.image(base64_image, width=40, use_column_width='auto')
-                        # Mostrem el text a sota amb st.caption i centrat
-                        st.caption(f'<p style="text-align:center; margin-top:-10px;">{descripcio}</p>', unsafe_allow_html=True)
+                        # --- CANVI CLAU: Utilitzem use_container_width=True ---
+                        st.image(base64_image, use_container_width=True)
+                        st.caption(f'<p style="text-align:center; margin-top:-10px; line-height: 1.1;">{descripcio}</p>', unsafe_allow_html=True)
             else:
                 st.warning("Sense dades")
-        # --- FI DEL BLOC NOU ---
-
 
     cols = st.columns(3)
     with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
