@@ -8660,17 +8660,17 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     # --- 2. FILTRE PRINCIPAL: INHIBICIÓ O SENSE DISPARADOR (ara amb més detall de núvols) ---
     if mucin < -100 or conv < 25:
         # Avaluem la humitat de dalt a baix per a la classificació de núvols sense convecció
-        if rh_alta > 80:
+        if rh_alta >= 80:
             return {'emoji': "🌫️", 'descripcio': "Cirrostratus/Cirrus dens", 'veredicte': "Cel blanquinós amb núvols alts de gel, possiblement formació d'halo.", 'factor_clau': "Inhibició, humitat alta."}
-        if rh_alta > 60:
+        if rh_alta >= 60:
             return {'emoji': "🌤️", 'descripcio': "Cirrus/Cirrocúmulus", 'veredicte': "Cel poc ennuvolat amb núvols alts i prims.", 'factor_clau': "Inhibició, humitat alta."}
-        if rh_mitjana > 85:
+        if rh_mitjana >= 85:
             return {'emoji': "☁️", 'descripcio': "Altostratus", 'veredicte': "Cel cobert amb núvols grisos a nivells mitjans, pot preveure pluja lleugera.", 'factor_clau': "Inhibició, humitat mitjana."}
-        if rh_mitjana > 70:
+        if rh_mitjana > 60:
             return {'emoji': "🌥️", 'descripcio': "Altocúmulus", 'veredicte': "Cel variable amb núvols a nivells mitjans, aspecte de 'moutons'.", 'factor_clau': "Inhibició, humitat mitjana."}
         if rh_baixa > 85:
             return {'emoji': "☁️", 'descripcio': "Estratus/Boira", 'veredicte': "Cel cobert amb núvols molt baixos o boira, visibilitat reduïda.", 'factor_clau': "Inhibició, humitat baixa."}
-        if rh_baixa > 70:
+        if rh_baixa > 60:
             return {'emoji': "🌥️", 'descripcio': "Estratosúmulus", 'veredicte': "Cel amb bancs de núvols baixos dispersos.", 'factor_clau': "Inhibició, humitat baixa."}
         
         # Si no hi ha prou humitat a cap capa per formar núvols
