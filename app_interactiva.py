@@ -8620,9 +8620,10 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v31.0 - Llindars d'Humitat Dinàmics.
-    Els llindars de RH per a la formació de núvols s'ajusten a la temperatura
-    en alçada (T_500hPa), reconeixent que l'aire fred se satura amb menys humitat.
+    Sistema de Diagnòstic v32.0 - Detecció de Núvols per T-Td Spread.
+    Afegeix una comprovació de la diferència entre temperatura i punt de rosada.
+    Si aquesta és petita (<5°C) en una capa, es diagnostiquen núvols encara que
+    la humitat relativa mitjana no sigui molt alta, fent el sistema més precís.
     """
     # --- 1. EXTRACCIÓ COMPLETA DE PARÀMETRES ---
     mucape = params.get('MUCAPE', 0) or 0
@@ -8631,7 +8632,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     srh_3km = params.get('SRH_0-3km', 0) or 0
     pwat = params.get('PWAT', 0) or 0
-    t_500hpa = params.get('T_500hPa', -15) or -15 # Temperatura a 500hPa
+    t_500hpa = params.get('T_500hPa', -15) or -15
 
     rh_capes = params.get('RH_CAPES', {'baixa': 0, 'mitjana': 0, 'alta': 0})
     rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
@@ -8643,26 +8644,22 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
     wspd_700hpa = params.get('WSPD_700hPa', 0) or 0
     wspd_500hpa = params.get('WSPD_500hPa', 0) or 0
+    
+    # --- NOUS PARÀMETRES DE T-Td SPREAD ---
+    # S'assumeix que aquests paràmetres es calculen prèviament a `processar_dades_sondeig`
+    td_spread_mitjana = params.get('TD_SPREAD_MITJANA', 20) or 20
+    td_spread_baixa = params.get('TD_SPREAD_BAIXA', 20) or 20
+    LLINDAR_SPREAD = 5 # Llindar de 5°C per a la formació de núvols
 
     # --- 2. CÀLCUL DELS LLINDARS D'HUMITAT DINÀMICS ---
-    # Llindars base per a una atmosfera "normal" (T_500hPa ~ -15°C)
-    llindar_rh_alt = 70
-    llindar_rh_mitja = 75
-    llindar_rh_baixa = 80
-    
-    # Ajustem els llindars si l'atmosfera és més freda o més càlida
-    if t_500hpa < -25: # Aire molt fred
-        llindar_rh_alt -= 15   # 55%
-        llindar_rh_mitja -= 15 # 60%
-    elif t_500hpa < -18: # Aire fred
-        llindar_rh_alt -= 10   # 60%
-        llindar_rh_mitja -= 10 # 65%
+    llindar_rh_alt = 70; llindar_rh_mitja = 75; llindar_rh_baixa = 80
+    if t_500hpa < -25: llindar_rh_alt -= 15; llindar_rh_mitja -= 15
+    elif t_500hpa < -18: llindar_rh_alt -= 10; llindar_rh_mitja -= 10
     
     # --- 3. LÒGICA DE DIAGNÒSTIC JERÀRQUICA ---
 
     # FILTRE PRIORITARI: LENTICULARS
-    LLINDAR_VENT_FORT_KT = 40
-    if mucape < 150 and (wspd_700hpa > LLINDAR_VENT_FORT_KT or wspd_500hpa > LLINDAR_VENT_FORT_KT) and rh_mitjana > (llindar_rh_mitja - 5): # Llindar una mica més relaxat per a lenticulars
+    if mucape < 150 and (wspd_700hpa > 40 or wspd_500hpa > 40) and (rh_mitjana > (llindar_rh_mitja - 5) or td_spread_mitjana <= LLINDAR_SPREAD):
         return {
             'emoji': "🛸", 'descripcio': "Altocúmulus Lenticular",
             'veredicte': "Atmosfera estable amb potent flux de vent en alçada. Condicions ideals per a la formació de núvols lenticulars a sotavent de les muntanyes.",
@@ -8670,8 +8667,8 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
         }
 
     # FILTRE SECUNDARI: NIMBOSTRATUS (Pluja estratiforme)
-    if rh_baixa > llindar_rh_baixa and rh_mitjana > llindar_rh_mitja and pwat >= 15:
-        precip_desc = "Plujims"
+    if (rh_baixa > llindar_rh_baixa and rh_mitjana > llindar_rh_mitja) and pwat >= 15:
+        precip_desc = "Plugims"
         if pwat >= 30: precip_desc = "Pluges fortes / Xàfecs"
         elif pwat >= 15: precip_desc = "Pluges moderades"
         return {
@@ -8682,12 +8679,17 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
 
     # FILTRE PRINCIPAL: SENSE CONVECCIÓ (INHIBICIÓ O SENSE DISPARADOR)
     if mucin < -75 or conv < 20:
+        # Per als núvols alts, el T-Td Spread és menys fiable, usem només RH
         if rh_alta >= llindar_rh_alt:
             return {'emoji': "🌫️" if rh_alta >= (llindar_rh_alt + 10) else "🌤️", 'descripcio': "Cirrostratus / Cirrus", 'veredicte': "Cel amb núvols alts.", 'factor_clau': "Inhibició, humitat alta."}
-        if rh_mitjana >= llindar_rh_mitja:
-            return {'emoji': "☁️" if rh_mitjana >= (llindar_rh_mitja + 10) else "🌥️", 'descripcio': "Altostratus / Altocúmulus", 'veredicte': "Cel variable amb núvols mitjans.", 'factor_clau': "Inhibició, humitat mitjana."}
-        if rh_baixa >= llindar_rh_baixa:
-            return {'emoji': "☁️" if rh_baixa >= (llindar_rh_baixa + 10) else "🌥️", 'descripcio': "Estratus / Estratocúmulus", 'veredicte': "Cel cobert amb núvols baixos.", 'factor_clau': "Inhibició, humitat baixa."}
+        
+        # --- LÒGICA MILLORADA: RH O T-Td Spread per a capes mitjanes ---
+        if rh_mitjana >= llindar_rh_mitja or td_spread_mitjana <= LLINDAR_SPREAD:
+            return {'emoji': "☁️" if rh_mitjana >= (llindar_rh_mitja + 10) or td_spread_mitjana <= 2 else "🌥️", 'descripcio': "Altostratus / Altocúmulus", 'veredicte': "Cel variable amb núvols mitjans.", 'factor_clau': "Inhibició, humitat mitjana."}
+        
+        # --- LÒGICA MILLORADA: RH O T-Td Spread per a capes baixes ---
+        if rh_baixa >= llindar_rh_baixa or td_spread_baixa <= LLINDAR_SPREAD:
+            return {'emoji': "☁️" if rh_baixa >= (llindar_rh_baixa + 10) or td_spread_baixa <= 2 else "🌥️", 'descripcio': "Estratus / Estratocúmulus", 'veredicte': "Cel cobert amb núvols baixos.", 'factor_clau': "Inhibició, humitat baixa."}
         
         return {'emoji': "☀️", 'descripcio': "Cel Serè", 'veredicte': "Temps estable. Condicions no favorables per a la formació de núvols.", 'factor_clau': "Inhibició i/o baixa humitat."}
 
