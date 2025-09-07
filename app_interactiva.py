@@ -2104,6 +2104,12 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
     
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
+    """
+    Versió Definitiva i Corregida (v35.1).
+    Aquesta versió està dissenyada per gestionar correctament la llista de diagnòstics
+    que rep de `analitzar_potencial_meteorologic`, unint els resultats múltiples
+    en una sola cadena de text per a la seva visualització.
+    """
     TOOLTIPS = {
         'SBCAPE': "Energia Potencial Convectiva Disponible (CAPE) des de la Superfície. Mesura el 'combustible' per a les tempestes a partir d'una bombolla d'aire a la superfície.",
         'MUCAPE': "El CAPE més alt possible a l'atmosfera (Most Unstable). Útil per detectar inestabilitat elevada, fins i tot si la superfície és estable.",
@@ -2163,17 +2169,17 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
     with cols[2]:
-        # --- BLOC CORREGIT ---
-        # 1. Cridem a la funció, que ara retorna una LLISTA de diccionaris
+        # --- BLOC CORREGIT I DEFINITIU ---
+        # 1. Cridem a la funció, que retorna una LLISTA de diccionaris
         analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
         
-        # 2. Comprovem si la llista té contingut (sempre ho hauria de fer)
+        # 2. Comprovem si la llista té contingut
         if analisi_temps_list:
             # 3. Unim els emojis i les descripcions de TOTS els diagnòstics trobats
             emojis = " ".join([d['emoji'] for d in analisi_temps_list])
             descripcions = " / ".join([d['descripcio'] for d in analisi_temps_list])
         else:
-            # 4. Codi de seguretat en cas que la llista estigui buida
+            # 4. Codi de seguretat per si, per alguna raó, la llista està buida
             emojis = "❓"
             descripcions = "Anàlisi no disponible"
         # --- FI DE LA CORRECCIÓ ---
@@ -2203,6 +2209,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols[0]: styled_qualitative("Calamarsa Gran (>2cm)", amenaces['calamarsa']['text'], amenaces['calamarsa']['color'], tooltip_text=TOOLTIPS.get('AMENACA_CALAMARSA'))
     with cols[1]: styled_qualitative("Índex de Potencial", f"{puntuacio_resultat['score']} / 10", puntuacio_resultat['color'], tooltip_text=TOOLTIPS.get('PUNTUACIO_TEMPESTA'))
     with cols[2]: styled_qualitative("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], tooltip_text=TOOLTIPS.get('AMENACA_LLAMPS'))
+        
 
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
     """
