@@ -64,12 +64,17 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
 
-# --- BLOC D'ICONES PERSONALITZADES (v42.3 - Icona de Sol Millorada) ---
+# --- BLOC D'ICONES PERSONALITZADES (v42.4 - Afegint Núvols Detallats) ---
 NUVOL_ICON_BASE64 = {
-    # >>> AQUESTA ÉS L'ÚNICA LÍNIA MODIFICADA <<<
-    "Cel Serè": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGNpcmNsZSBjeD0iMzIiIGN5PSIzMiIgcj0iMTMiIGZpbGw9IiNGRkQ3MDAiLz48bGluZSB4MT0iMzIiIHkxPSI1IiB4Mj0iMzIiIHkyPSIxNSIgc3Ryb2tlPSIjRkZENzAwIiBzdHJva2Utd2lkdGg9IjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxsaW5lIHgxPSIzMiIgeTE9IjQ5IiB4Mj0iMzIiIHkyPSI1OSIgc3Ryb2tlPSIjRkZENzAwIiBzdHJva2Utd2lkdGg9IjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxsaW5lIHgxPSI1IiB5MT0iMzIiIHgyPSIxNSIgeTI9IjMyIiBzdHJva2U9IiNGRkQ3MDAiIHN0cm9rZS13aWR0aD0iNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PGxpbmUgeDE9IjQ5IiB5MT0iMzIiIHgyPSI1OSIgeTI9IjMyIiBzdHJva2U9IiNGRkQ3MDAiIHN0cm9rZS13aWR0aD0iNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PGxpbmUgeDE9IjEyLjIiIHkxPSIxMi4yIiB4Mj0iMTkuMiIgeTI9IjE5LjIiIHN0cm9rZT0iI0ZGRDcwMCIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48bGluZSB4MT0iNDQuOCIgeTE9IjQ0LjgiIHgyPSI1MS44IiB5Mj0iNTEuOCIgc3Ryb2tlPSIjRkZENzAwIiBzdHJva2Utd2lkdGg9IjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxsaW5lIHgxPSIxMi4yIiB5MT0iNTEuOCIgeDI9IjE5LjIiIHkyPSI0NC44IiBzdHJva2U9IiNGRkQ3MDAiIHN0cm9rZS13aWR0aD0iNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PGxpbmUgeDE9IjQ0LjgiIHkxPSIxOS4yIiB4Mj0iNTEuOCIgeTI9IjEyLjIiIHN0cm9rZT0iI0ZGRDcwMCIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48L3N2Zz4=",
-    
+    "Cel Serè": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGNpcmNsZSBjeD0iMzIiIGN5PSIzMiIgcj0iMTMiIGZpbGw9IiNGRkQ3MDAiLz48bGluZSB4MT0iMzIiIHkxPSI1IiB4Mj0iMzIiIHkyPSIxNSIgc3Ryb2tlPSIjRkZENzAwIiBzdHJva2Utd2lkdGg9IjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxsaW5lIHgxPSIzMiIgeTE9IjQ5IiB4Mj0iMzIiIHkyPSI1OSIgc3Ryb2tlPSIjRkZENzAwIiBzdHJva2Utd2lkdGg9IjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxsaW5lIHgxPSI1IiB5MT0iMzIiIHgyPSIxNSIgeTI9IjMyIiBzdHJva2U9IiNGRkQ3MDAiIHN0cm9rZS13aWR0aD0iNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PGxpbmUgeDE9IjQ5IiB5MT0iMzIiIHgyPSI1OSIgeTI9IjMyIiBzdHJva2U9IiNGRkQ3MDAiIHN0cm9rZS1-aWR0aD0iNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PGxpbmUgeDE9IjEyLjIiIHkxPSIxMi4yIiB4Mj0iMTkuMiIgeTI9IjE5LjIiIHN0cm9rZT0iI0ZGRDcwMCIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48bGluZSB4MT0iNDQuOCIgeTE9IjQ0LjgiIHgyPSI1MS44IiB5Mj0iNTEuOCIgc3Ryb2tlPSIjRkZENzAwIiBzdHJva2Utd2lkdGg9IjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxsaW5lIHgxPSIxMi4yIiB5MT0iNTEuOCIgeDI9IjE5LjIiIHkyPSI0NC44IiBzdHJva2U9IiNGRkQ3MDAiIHN0cm9rZS1-aWR0aD0iNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PGxpbmUgeDE9IjQ0LjgiIHkxPSIxOS4yIiB4Mj0iNTEuOCIgeTI9IjEyLjIiIHN0cm9rZT0iI0ZGRDcwMCIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48L3N2Zz4=",
     "Cúmuls de bon temps": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI0YwRjBGMyI+PHBhdGggZD0iTSAyMCA0NCBDIDEyIDQ0IDEyIDM0IDIwIDM0IEMgMjIgMjYgMzAgMjYgMzIgMzAgQyAzNiAyNCA0NiAyNCA1MCAzMiBDIDU4IDMyIDU4IDQyIDUwIDQyIEggMjAgWiIvPjwvc3ZnPg==",
+    
+    # --- NOVES ICONES (Enganxa aquí el teu codi Base64) ---
+    "Fractocúmuls": "data:image/svg+xml;base64,...", 
+    "Cúmuls mediocris": "data:image/svg+xml;base64,...",
+    "Cirrus Castellanus": "data:image/svg+xml;base64,...",
+    # --- FI DE LES NOVES ICONES ---
+    
     "Estratus (Boira alta / Cel tancat)": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI0QzRDNEMyI+PHJlY3QgeD0iNCIgeT0iMjYiIHdpZHRoPSI1NiIgaGVpZHRoPSI4IiByeD0iNCIvPjxyZWN0IHg9IjEwIiB5PSIzNiIgd2lkdGg9IjQ0IiBoZWlnaHQ9IjgiIHJ4PSI0Ii8+PC9zdmc+",
     "Altostratus / Altocúmulus": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI0UwRTBFMyI+PHBhdGggZD0iTSA1MCAzMCBDIDU4IDMwIDU4IDQwIDUwIDQwIEggMjAgQyAxMiA0MCAxMiAzMCAyMCAzMCBDIDIyIDI0IDMwIDI0IDMyIDI4IEMgMzYgMjIgNDYgMjIgNTAgMzAgWiIvPjxwYXRoIGQ9Ik0gNDQgNDggQyA1MiA0OCA1MiA1NiA0NCA1NiBIIDI0IEMgMTYgNTYgMTYgNDggMjQgNDggQyAyNiA0MiAzNCA0MiAzNiA0NiBDIDM4IDQyIDQyIDQyIDQ0IDQ4IFoiIGZpbGw9IiNDQ0NDQ0YiLz48L3N2Zz4=",
     "Cirrostratus (Cel blanquinós)": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGxpbmUgeDE9IjQiIHkxPSIzMiIgeDI9IjYwIiB5Mj0iMzIiIHN0cm9rZT0iI0UwRTBFMyIgc3Ryb2tlLXdpZHRoPSIxIiBzdHJva2UtZGFzaGFycmF5PSIyIDIiLz48bGluZSB4MT0iNCIgeTE9IjQwIiB4Mj0iNjAiIHkyPSI0MCIgc3Ryb2tlPSIjRTBFMEUzIiBzdHJva2Utd2lkdGg9IjEiIHN0cm9rZS1kYXNoYXJyYXk9IjIgMiIvPjwvc3ZnPg==",
@@ -83,7 +88,6 @@ NUVOL_ICON_BASE64 = {
     "Altocúmulus Lenticular": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0iI0YwRjBGMyI+PGVsbGlwc2UgY3g9IjMyIiBjeT0iMjgiIHJ4PSIyNCIgcnk9IjciLz48ZWxsaXBzZSBjeD0iMzIiIGN5PSIzOCIgcng9IjI4IiByeT0iOCIvPjwvc3ZnPg==",
     "fallback": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAIjSURBVHhe7dtBaxNBFAbgRzQx3QRDFLsJ2lBqaW+9iAe9eBNLBTuUgh4UFDwIHgT/gB68CILoJwgCFtSjV1NLUbSoUhTEy1OQlCBoQ7eZeX+Yk501Z3Y2956HBEk2kZ2dZ9+Zve0W/P8PISAEhIAQEAJCQAgIASHQzwDdX30yPfr0Vfo2N/c/0vP5T/T69euf/16/uTmdzs7O4lYISAHj7xJQgAJ+CSgYgV3b0QAAAABJRU5ErkJggg=="
 }
-
 
     
 
@@ -8682,7 +8686,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     diagnostics = []
     major_pattern_found = False
 
-    # Extracció de paràmetres (sense canvis)
+    # Extracció de paràmetres, incloent el vent en superfície
     mucape = params.get('MUCAPE', 0) or 0
     mucin = params.get('MUCIN', 0) or 0
     bwd_6km = params.get('BWD_0-6km', 0) or 0
@@ -8695,6 +8699,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
     wspd_500hpa = params.get('WSPD_500hPa', 0) or 0
+    wspd_10m = params.get('WSPD_10m', 0) or 0 # Vent a 10m per als Fractocúmuls
 
     # --- PAS 1: DETECCIÓ DE PATRONS METEOROLÒGICS DOMINANTS I EXCLOENTS ---
 
@@ -8727,7 +8732,9 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
     if not major_pattern_found:
         # Capes Altes (> 5500m)
-        if rh_molt_alta > 65:
+        if rh_alta > 60 and mucape > 50 and mucin < -75:
+             diagnostics.append({'descripcio': "Cirrus Castellanus", 'veredicte': "Inestabilitat a nivells alts, possible precursor de tempestes."})
+        elif rh_molt_alta > 65:
             diagnostics.append({'descripcio': "Vels de Cirrus (Molt Alts)", 'veredicte': "Humitat a les capes més altes formant vels de gel."})
         elif rh_alta > 70:
             diagnostics.append({'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Humitat a nivells alts, cel d'aspecte lletós."})
@@ -8738,17 +8745,16 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
 
         # Capes Baixes (< 2000m)
         if rh_baixa > 80:
-            # Si hi ha molta humitat baixa, pot ser Estratus o Cúmuls en desenvolupament
-            if mucape > 100:
-                diagnostics.append({'descripcio': "Cúmuls de creixement", 'veredicte': "Núvols amb desenvolupament vertical, possibles xàfecs."})
+            if 150 <= mucape < 500:
+                diagnostics.append({'descripcio': "Cúmuls mediocris", 'veredicte': "Cúmuls amb creixement limitat per una capa estable."})
             else:
                 diagnostics.append({'descripcio': "Estratus (Boira alta / Cel tancat)", 'veredicte': "Núvols baixos persistents, cel cobert."})
-        elif rh_baixa > 60 and mucape > 50:
-            # Si hi ha menys humitat però una mica d'energia, són cúmuls de bon temps
+        elif rh_baixa > 65 and mucape < 100 and wspd_10m > 20:
+             diagnostics.append({'descripcio': "Fractocúmuls", 'veredicte': "Fragments de núvols baixos per vent i humitat."})
+        elif rh_baixa > 60 and 50 <= mucape < 150:
             diagnostics.append({'descripcio': "Cúmuls de bon temps", 'veredicte': "Cel amb petits cúmuls decoratius."})
 
     # --- PAS 3: GESTIÓ FINAL ---
-    # Si, després de totes les comprovacions, la llista continua buida, el cel està serè.
     if not diagnostics:
         diagnostics.append({
             'descripcio': "Cel Serè", 
@@ -8757,6 +8763,5 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
         })
             
     return diagnostics
-
 if __name__ == "__main__":
     main()
