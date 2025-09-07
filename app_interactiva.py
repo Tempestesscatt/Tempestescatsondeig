@@ -7254,7 +7254,8 @@ def run_catalunya_app():
     else: 
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
         st.session_state.setdefault('show_comarca_labels', False)
-        st.session_state.setdefault('alert_filter_level', 'Tots')
+        # --- MODIFICACIÓ CLAU: Canviem el valor per defecte a "Alt i superior" ---
+        st.session_state.setdefault('alert_filter_level', 'Alt i superior')
 
         with st.container(border=True):
             st.markdown("##### Opcions de Visualització del Mapa")
@@ -7263,7 +7264,7 @@ def run_catalunya_app():
                 st.selectbox(
                     "Filtrar avisos per nivell:",
                     options=["Tots", "Moderat i superior", "Alt i superior", "Molt Alt i superior", "Només Extrems"],
-                    key="alert_filter_level"
+                    key="alert_filter_level" # Aquesta clau ja es correspon amb el session_state
                 )
             with col_labels:
                 st.toggle("Mostrar noms de les comarques amb avís", key="show_comarca_labels")
