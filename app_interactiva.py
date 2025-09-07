@@ -2143,13 +2143,13 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Final i Definitiva (v42.5).
-    - Torna a utilitzar st.markdown per a la màxima compatibilitat amb imatges SVG Base64.
-    - Utilitza un HTML molt més simple i robust (taula) per a evitar problemes de renderització.
-    - Aquesta versió hauria de ser la solució definitiva als problemes de visualització.
+    Versió Final i Definitiva (v42.6).
+    - Fa que la caixa "Tipus de Cel Previst" sigui més gran i ocupi tot l'ample.
+    - Resol definitivament l'error de la imatge trencada amb una estructura HTML més robusta.
+    - Reorganitza la resta de paràmetres per mantenir un disseny net.
     """
-    # ... (El codi de TOOLTIPS i les funcions styled_metric/qualitative es manté igual) ...
-    TOOLTIPS = { 'SBCAPE': "...", 'MUCAPE': "...", 'CONV_PUNTUAL': "...", 'SBCIN': "...", 'MUCIN': "...", 'LI': "...", 'PWAT': "...", 'LCL_Hgt': "...", 'LFC_Hgt': "...", 'EL_Hgt': "...", 'BWD_0-6km': "...", 'BWD_0-1km': "...", 'T_500hPa': "...", 'PUNTUACIO_TEMPESTA': "...", 'AMENACA_CALAMARSA': "...", 'AMENACA_LLAMPS': "..." }
+    TOOLTIPS = { 'SBCAPE': "Energia Potencial Convectiva Disponible (CAPE) des de la superfície. Mesura el potencial de corrents ascendents forts.", 'MUCAPE': "El valor màxim de CAPE a l'atmosfera, calculat des del nivell més inestable. Indica el potencial màxim de la tempesta.", 'CONV_PUNTUAL': "Mesura com l'aire s'ajunta en un punt. Valors positius i alts (>15) són un disparador clau per a iniciar tempestes.", 'SBCIN': "Energia d'Inhibició Convectiva (CIN) des de la superfície. És la 'tapa' que l'aire ha de trencar per iniciar la convecció. Valors molt negatius (<-100) la fan molt difícil de trencar.", 'MUCIN': "La 'tapa' més feble de l'atmosfera. Si aquest valor és proper a 0, les tempestes es poden formar amb més facilitat.", 'LI': "Índex d'Elevació. Valors molt negatius (<-5) indiquen una forta inestabilitat.", 'PWAT': "Aigua Precipitable Total. És la quantitat total de vapor d'aigua a la columna d'aire. Valors alts (>30 mm) afavoreixen pluges intenses.", 'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació (LCL). És l'alçada de la base dels núvols. Valors baixos (<1000m) són més favorables per a temps sever.", 'LFC_Hgt': "Alçada del Nivell de Convecció Lliure (LFC). És el punt on una bombolla d'aire comença a accelerar cap amunt per si mateixa. Com més baix, més fàcil és iniciar la tempesta.", 'EL_Hgt': "Alçada del Nivell d'Equilibri (EL). És el cim teòric de la tempesta. Com més alt, més potent serà.", 'BWD_0-6km': "Cisallament del vent entre la superfície i 6 km. Valors alts (>35 nusos) són crucials per a l'organització de tempestes (multicèl·lules, supercèl·lules).", 'BWD_0-1km': "Cisallament del vent a nivells baixos. Important per a la rotació a la base de la tempesta.", 'T_500hPa': "Temperatura a 500 hPa (uns 5500m). Temperatures molt fredes (<-15°C) afavoreixen la inestabilitat i la formació de calamarsa.", 'PUNTUACIO_TEMPESTA': "Índex global que combina CAPE, cisallament i disparador per donar una idea del potencial de tempesta en una escala de 0 a 10.", 'AMENACA_CALAMARSA': "Potencial de calamarsa gran (>2cm), basat en la força dels corrents ascendents (Updraft) i l'alçada de la isoterma 0°C.", 'AMENACA_LLAMPS': "Potencial d'activitat elèctrica, basat en la inestabilitat (LI) i el desenvolupament vertical de la tempesta (EL)." }
+    
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
         color = "#FFFFFF"; val_str = "---"
         is_numeric = isinstance(value, (int, float, np.number))
@@ -2163,60 +2163,65 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
             val_str = f"{value:.{precision}f}"
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit}){tooltip_html}</span><strong style="font-size: 1.6em; color: {color}; line-height: 1.1;">{val_str}</strong></div>""", unsafe_allow_html=True)
+
     def styled_qualitative(label, text, color, tooltip_text=""):
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br><strong style="font-size: 1.6em; color: {color};">{text}</strong></div>""", unsafe_allow_html=True)
 
     st.markdown("##### Paràmetres del Sondeig")
-    
-    cols = st.columns(3)
-    with cols[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE', tooltip_text=TOOLTIPS.get('SBCAPE'))
-    with cols[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
-    with cols[2]: 
+
+    # --- NOU DISSENY DE COLUMNES ---
+
+    # Fila 1: Els 3 paràmetres més importants es mantenen.
+    cols_fila1 = st.columns(3)
+    with cols_fila1[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE', tooltip_text=TOOLTIPS.get('SBCAPE'))
+    with cols_fila1[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
+    with cols_fila1[2]: 
         conv_key = f'CONV_{nivell_conv}hPa'
         styled_metric("Convergència Puntual", params.get(conv_key, np.nan), "10⁻⁵ s⁻¹", 'CONV_PUNTUAL', precision=1, tooltip_text=TOOLTIPS.get('CONV_PUNTUAL'))
-    
-    cols = st.columns(3)
-    with cols[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
-    with cols[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
-    with cols[2]:
-        # --- BLOC DE RENDERITZACIÓ FINAL ---
-        with st.container(border=True, height=98):
-            st.markdown('<p style="text-align:center; margin-bottom: 5px; font-size: 0.8em;">Tipus de Cel Previst</p>', unsafe_allow_html=True)
-            
-            analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
-            
-            # Construïm una taula HTML per assegurar l'alineació
-            html_table_rows = ""
-            if analisi_temps_list:
-                # Fila per a les icones
-                icon_cells = ""
-                for diag in analisi_temps_list:
-                    desc = diag.get("descripcio", "Desconegut")
-                    b64_img = NUVOL_ICON_BASE64.get(desc, NUVOL_ICON_BASE64["fallback"])
-                    icon_cells += f'<td style="text-align: center; padding: 0 5px;"><img src="{b64_img}" style="height: 2.5em;" title="{diag.get("veredicte", "")}"></td>'
-                html_table_rows += f"<tr>{icon_cells}</tr>"
 
-                # Fila per als textos
-                text_cells = ""
-                for diag in analisi_temps_list:
-                    desc = diag.get("descripcio", "Desconegut")
-                    text_cells += f'<td style="text-align: center; font-size: 0.8em; color: #E0E0E0; vertical-align: top; line-height: 1.1;">{desc}</td>'
-                html_table_rows += f"<tr>{text_cells}</tr>"
-
-            html_final = f'<table style="width: 100%; border-collapse: collapse;"><tbody>{html_table_rows}</tbody></table>'
-            st.markdown(html_final, unsafe_allow_html=True)
-            
-    # ... (Resta de la funció, sense canvis) ...
-    cols = st.columns(3)
-    with cols[0]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
-    with cols[1]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
-    with cols[2]: styled_metric("CIM (EL)", params.get('EL_Hgt', np.nan), "m", 'EL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('EL_Hgt'))
+    # --- BLOC DEDICAT I AMPLIAT PER AL "TIPUS DE CEL PREVIST" ---
+    with st.container(border=True):
+        st.markdown('<p style="text-align:center; font-size: 0.9em; color: #FAFAFA; margin-bottom: 8px;">Tipus de Cel Previst</p>', unsafe_allow_html=True)
         
-    cols = st.columns(3)
-    with cols[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km', tooltip_text=TOOLTIPS.get('BWD_0-6km'))
-    with cols[1]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km', tooltip_text=TOOLTIPS.get('BWD_0-1km'))
-    with cols[2]: styled_metric("T 500hPa", params.get('T_500hPa', np.nan), "°C", 'T_500hPa', precision=1, tooltip_text=TOOLTIPS.get('T_500hPa'))
+        analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
+        
+        cols_cel = st.columns(len(analisi_temps_list) if analisi_temps_list else 1)
+        
+        if not analisi_temps_list:
+            with cols_cel[0]:
+                st.warning("No s'ha pogut determinar el tipus de cel.")
+        else:
+            for i, diag in enumerate(analisi_temps_list):
+                with cols_cel[i]:
+                    desc = diag.get("descripcio", "Desconegut")
+                    veredicte = diag.get("veredicte", "")
+                    b64_img = NUVOL_ICON_BASE64.get(desc, NUVOL_ICON_BASE64["fallback"])
+
+                    # NOU HTML més robust amb Flexbox per alinear icona i text
+                    html_content = f"""
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; height: 90px; padding: 5px;">
+                        <div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 5px;">
+                            <img src="{b64_img}" alt="{desc}" title="{veredicte}" style="height: 3.2em; flex-shrink: 0;">
+                            <span style="font-size: 1.2em; color: #FFFFFF; font-weight: bold; line-height: 1.2;">{veredicte}</span>
+                        </div>
+                        <span style="font-size: 0.8em; color: #A0A0A0; font-style: italic;">({desc})</span>
+                    </div>
+                    """
+                    st.markdown(html_content, unsafe_allow_html=True)
+
+    # --- Files 2 i 3: Reagrupem la resta de paràmetres en un layout de 4 columnes ---
+    cols_fila2 = st.columns(4)
+    with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
+    with cols_fila2[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
+    with cols_fila2[2]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
+    with cols_fila2[3]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
+        
+    cols_fila3 = st.columns(4)
+    with cols_fila3[0]: styled_metric("CIM (EL)", params.get('EL_Hgt', np.nan), "m", 'EL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('EL_Hgt'))
+    with cols_fila3[1]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km', tooltip_text=TOOLTIPS.get('BWD_0-6km'))
+    with cols_fila3[2]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km', tooltip_text=TOOLTIPS.get('BWD_0-1km'))
+    with cols_fila3[3]: styled_metric("T 500hPa", params.get('T_500hPa', np.nan), "°C", 'T_500hPa', precision=1, tooltip_text=TOOLTIPS.get('T_500hPa'))
 
     st.markdown("##### Potencial d'Amenaces Severes")
     amenaces = analitzar_amenaces_especifiques(params)
@@ -2226,7 +2231,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols[0]: styled_qualitative("Calamarsa Gran (>2cm)", amenaces['calamarsa']['text'], amenaces['calamarsa']['color'], tooltip_text=TOOLTIPS.get('AMENACA_CALAMARSA'))
     with cols[1]: styled_qualitative("Índex de Potencial", f"{puntuacio_resultat['score']} / 10", puntuacio_resultat['color'], tooltip_text=TOOLTIPS.get('PUNTUACIO_TEMPESTA'))
     with cols[2]: styled_qualitative("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], tooltip_text=TOOLTIPS.get('AMENACA_LLAMPS'))
-        
+    
     
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
     """
