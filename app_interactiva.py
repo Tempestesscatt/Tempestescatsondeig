@@ -8696,4 +8696,6 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
             
     # Retornem la llista completa de diagnòstics trobats.
     return diagnostics
+
+if __name__ == "__main__":
     main()
