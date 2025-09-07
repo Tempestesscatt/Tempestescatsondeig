@@ -8620,20 +8620,16 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic v32.0 - Detecció de Núvols per T-Td Spread.
-    Afegeix una comprovació de la diferència entre temperatura i punt de rosada.
-    Si aquesta és petita (<5°C) en una capa, es diagnostiquen núvols encara que
-    la humitat relativa mitjana no sigui molt alta, fent el sistema més precís.
+    Sistema de Diagnòstic v33.0 - Lògica Bàsica i Variada.
+    Aquesta versió prioritza la simplicitat i la varietat en els resultats,
+    seguint un arbre de decisions més intuïtiu i menys rígid.
     """
-    # --- 1. EXTRACCIÓ COMPLETA DE PARÀMETRES ---
+    # --- 1. EXTRACCIÓ DELS PARÀMETRES CLAU ---
     mucape = params.get('MUCAPE', 0) or 0
     mucin = params.get('MUCIN', 0) or 0
-    lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
     bwd_6km = params.get('BWD_0-6km', 0) or 0
-    srh_3km = params.get('SRH_0-3km', 0) or 0
     pwat = params.get('PWAT', 0) or 0
-    t_500hpa = params.get('T_500hPa', -15) or -15
-
+    
     rh_capes = params.get('RH_CAPES', {'baixa': 0, 'mitjana': 0, 'alta': 0})
     rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
     rh_mitjana = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0
@@ -8642,77 +8638,65 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
     
-    wspd_700hpa = params.get('WSPD_700hPa', 0) or 0
     wspd_500hpa = params.get('WSPD_500hPa', 0) or 0
-    
-    # --- NOUS PARÀMETRES DE T-Td SPREAD ---
-    # S'assumeix que aquests paràmetres es calculen prèviament a `processar_dades_sondeig`
-    td_spread_mitjana = params.get('TD_SPREAD_MITJANA', 20) or 20
-    td_spread_baixa = params.get('TD_SPREAD_BAIXA', 20) or 20
-    LLINDAR_SPREAD = 5 # Llindar de 5°C per a la formació de núvols
 
-    # --- 2. CÀLCUL DELS LLINDARS D'HUMITAT DINÀMICS ---
-    llindar_rh_alt = 70; llindar_rh_mitja = 75; llindar_rh_baixa = 80
-    if t_500hpa < -25: llindar_rh_alt -= 15; llindar_rh_mitja -= 15
-    elif t_500hpa < -18: llindar_rh_alt -= 10; llindar_rh_mitja -= 10
-    
-    # --- 3. LÒGICA DE DIAGNÒSTIC JERÀRQUICA ---
+    # --- 2. LÒGICA DE DIAGNÒSTIC JERÀRQUICA I SIMPLIFICADA ---
 
-    # FILTRE PRIORITARI: LENTICULARS
-    if mucape < 150 and (wspd_700hpa > 40 or wspd_500hpa > 40) and (rh_mitjana > (llindar_rh_mitja - 5) or td_spread_mitjana <= LLINDAR_SPREAD):
+    # ESCENARI 1: CONDICIONS PER A FENÒMENS ESPECIALS (NO CONVECTIUS)
+    # Comprovació de lenticulars: requereix estabilitat (poc CAPE) i vent molt fort en alçada.
+    if mucape < 150 and wspd_500hpa > 45 and rh_mitjana > 60:
         return {
             'emoji': "🛸", 'descripcio': "Altocúmulus Lenticular",
-            'veredicte': "Atmosfera estable amb potent flux de vent en alçada. Condicions ideals per a la formació de núvols lenticulars a sotavent de les muntanyes.",
-            'factor_clau': "Fort vent a nivells mitjans/alts i estabilitat."
+            'veredicte': "Atmosfera estable amb un potent flux de vent en alçada. Ideal per a núvols lenticulars a sotavent de les muntanyes.",
+            'factor_clau': "Fort vent a nivells alts i estabilitat."
         }
-
-    # FILTRE SECUNDARI: NIMBOSTRATUS (Pluja estratiforme)
-    if (rh_baixa > llindar_rh_baixa and rh_mitjana > llindar_rh_mitja) and pwat >= 15:
-        precip_desc = "Plugims"
-        if pwat >= 30: precip_desc = "Pluges fortes / Xàfecs"
-        elif pwat >= 15: precip_desc = "Pluges moderades"
-        return {
-            'emoji': "🌧️", 'descripcio': f"Nimbostratus ({precip_desc})",
-            'veredicte': "Cel cobert amb precipitació estratiforme. Poca activitat elèctrica.",
-            'factor_clau': "Saturació a capes baixes i mitjanes."
-        }
-
-    # FILTRE PRINCIPAL: SENSE CONVECCIÓ (INHIBICIÓ O SENSE DISPARADOR)
-    if mucin < -75 or conv < 20:
-        # Per als núvols alts, el T-Td Spread és menys fiable, usem només RH
-        if rh_alta >= llindar_rh_alt:
-            return {'emoji': "🌫️" if rh_alta >= (llindar_rh_alt + 10) else "🌤️", 'descripcio': "Cirrostratus / Cirrus", 'veredicte': "Cel amb núvols alts.", 'factor_clau': "Inhibició, humitat alta."}
-        
-        # --- LÒGICA MILLORADA: RH O T-Td Spread per a capes mitjanes ---
-        if rh_mitjana >= llindar_rh_mitja or td_spread_mitjana <= LLINDAR_SPREAD:
-            return {'emoji': "☁️" if rh_mitjana >= (llindar_rh_mitja + 10) or td_spread_mitjana <= 2 else "🌥️", 'descripcio': "Altostratus / Altocúmulus", 'veredicte': "Cel variable amb núvols mitjans.", 'factor_clau': "Inhibició, humitat mitjana."}
-        
-        # --- LÒGICA MILLORADA: RH O T-Td Spread per a capes baixes ---
-        if rh_baixa >= llindar_rh_baixa or td_spread_baixa <= LLINDAR_SPREAD:
-            return {'emoji': "☁️" if rh_baixa >= (llindar_rh_baixa + 10) or td_spread_baixa <= 2 else "🌥️", 'descripcio': "Estratus / Estratocúmulus", 'veredicte': "Cel cobert amb núvols baixos.", 'factor_clau': "Inhibició, humitat baixa."}
-        
-        return {'emoji': "☀️", 'descripcio': "Cel Serè", 'veredicte': "Temps estable. Condicions no favorables per a la formació de núvols.", 'factor_clau': "Inhibició i/o baixa humitat."}
-
-    # FILTRE CONVECCIÓ DE BASE ALTA
-    if lfc_hgt > 3000:
-        desc = "Altocúmulus Castellanus" if rh_baixa < (llindar_rh_baixa - 10) else "Stratocumulus Castellanus"
-        return {'emoji': "🌥️", 'descripcio': desc, 'veredicte': "Potencial per a convecció de base elevada. Baix risc a superfície.", 'factor_clau': f"LFC elevat ({lfc_hgt:.0f} m)."}
-
-    # CLASSIFICACIÓ FINAL DE LA TEMPESTA CONVECTIVA
-    if mucape > 1500 and bwd_6km > 35 and srh_3km > 200:
-        return {'emoji': "🌪️", 'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Condicions molt favorables per a tempestes rotatòries i severes.", 'factor_clau': "Alt CAPE, fort cisallament i helicitat."}
     
-    elif mucape > 1000 and bwd_6km > 25:
-        return {'emoji': "⛈️", 'descripcio': "Tempestes Organitzades (Multicèl·lula)", 'veredicte': "Potencial per a grups de tempestes o línies organitzades.", 'factor_clau': "CAPE moderat-alt i cisallament."}
+    # Comprovació de pluja estratiforme: requereix molta humitat a tots els nivells, però sense energia per a tempestes.
+    if mucape < 200 and rh_baixa > 85 and rh_mitjana > 80 and pwat > 25:
+        return {
+            'emoji': "🌧️", 'descripcio': "Nimbostratus (Pluja Contínua)",
+            'veredicte': "Cel completament cobert amb pluja generalitzada i persistent. Poca o nul·la activitat elèctrica.",
+            'factor_clau': "Saturació profunda de l'atmosfera."
+        }
+
+    # ESCENARI 2: CONDICIONS QUE IMPEDEIXEN LES TEMPESTES
+    # Si hi ha una "tapa" molt forta (CIN alt) o no hi ha cap "disparador" (convergència), la convecció no començarà.
+    if mucin < -100 or conv < 10:
+        if rh_alta > 70:
+            return {'emoji': "🌫️", 'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Hi ha humitat a nivells alts, però una forta estabilitat impedeix qualsevol desenvolupament.", 'factor_clau': "Inhibició forta."}
+        if rh_mitjana > 75:
+            return {'emoji': "☁️", 'descripcio': "Altostratus / Altocúmulus", 'veredicte': "Cel cobert per núvols mitjans. No s'espera pluja significativa.", 'factor_clau': "Inhibició forta."}
+        if rh_baixa > 80:
+            return {'emoji': "☁️", 'descripcio': "Estratus (Boira alta / Cel tancat)", 'veredicte': "Núvols baixos i persistents sense desenvolupament vertical.", 'factor_clau': "Inhibició forta."}
         
-    elif mucape > 800:
-        return {'emoji': "🌩️", 'descripcio': "Tempesta Aïllada (Cumulonimbus)", 'veredicte': "Condicions per a tempestes aïllades, possiblement fortes.", 'factor_clau': "CAPE suficient per a un desenvolupament complet."}
+        # Si no hi ha humitat i hi ha inhibició, el cel estarà serè.
+        return {'emoji': "☀️", 'descripcio': "Cel Serè (Ambient estable)", 'veredicte': "Temps estable. L'atmosfera està 'tapada' i no permet la formació de núvols.", 'factor_clau': "Forta inhibició i/o falta de disparador."}
 
-    elif mucape > 400:
-        return {'emoji': "☁️", 'descripcio': "Cúmuls Moderats (Congestus)", 'veredicte': "Potencial per a núvols de creixement moderat i xàfecs aïllats.", 'factor_clau': "CAPE moderat."}
+    # ESCENARI 3: POTENCIAL CONVECTIU (HI HA "COMBUSTIBLE" I NO HI HA "TAPA")
+    # Si arribem aquí, vol dir que les tempestes SÓN possibles. Ara classifiquem la seva intensitat i organització.
+    
+    # Cas 3.1: Energia molt alta i organització (Supercèl·lules)
+    if mucape > 2000 and bwd_6km > 35:
+        return {'emoji': "🌪️", 'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Condicions explosives. Combinació perfecta d'energia i organització per a tempestes severes amb rotació.", 'factor_clau': "CAPE extrem i cisallament molt alt."}
+    
+    # Cas 3.2: Energia moderada i organització (Multicèl·lules)
+    elif mucape > 800 and bwd_6km > 25:
+        return {'emoji': "⛈️", 'descripcio': "Tempestes Organitzades (Multicèl·lula)", 'veredicte': "Potencial per a la formació de sistemes de tempestes organitzats que poden ser forts i duradors.", 'factor_clau': "Bon equilibri entre CAPE i cisallament."}
+        
+    # Cas 3.3: Molta energia però poca organització (Tempestes de pols)
+    elif mucape > 1500 and bwd_6km < 20:
+        return {'emoji': "🌩️", 'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Es formaran tempestes aïllades però molt potents, amb forts corrents verticals. Risc de calamarsa gran.", 'factor_clau': "CAPE molt alt, però sense organització."}
 
+    # Cas 3.4: Energia suficient per a tempestes normals
+    elif mucape > 500:
+        return {'emoji': "⚡", 'descripcio': "Tempesta Comuna (Cumulonimbus)", 'veredicte': "Condicions típiques per a la formació de tempestes d'estiu, amb xàfecs i activitat elèctrica.", 'factor_clau': "CAPE suficient per al desenvolupament."}
+
+    # Cas 3.5: Poca energia, només per a núvols de creixement
+    elif mucape > 100:
+        return {'emoji': "☁️", 'descripcio': "Cúmuls de creixement (Congestus)", 'veredicte': "Es formaran núvols amb cert desenvolupament vertical, que podrien deixar algun xàfec molt aïllat i dèbil.", 'factor_clau': "CAPE marginal."}
+
+    # Cas 3.6: Sense energia suficient per a res més que núvols de bon temps
     else:
-        return {'emoji': "🌤️", 'descripcio': "Cúmuls Dispersos (Humilis)", 'veredicte': "Petits cúmuls de bon temps amb poc desenvolupament.", 'factor_clau': "CAPE molt baix."}
-        
+        return {'emoji': "🌤️", 'descripcio': "Cúmuls de bon temps (Humilis)", 'veredicte': "Cel amb petits cúmuls decoratius que indiquen bon temps i estabilitat.", 'factor_clau': "CAPE gairebé inexistent."}
 if __name__ == "__main__":
     main()
