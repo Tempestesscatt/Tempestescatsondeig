@@ -7151,6 +7151,9 @@ def run_catalunya_app():
         with col_nivell:
             nivell_sel = st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
     
+    # --- LÍNIA AFEGIDA ---
+    st.caption("ℹ️ Les dades del model AROME s'actualitzen aproximadament cada hora.")
+    
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     hora_num = int(hora_sel_str.split(':')[0])
     local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_num))
@@ -7254,7 +7257,6 @@ def run_catalunya_app():
     else: 
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
         st.session_state.setdefault('show_comarca_labels', False)
-        # --- MODIFICACIÓ CLAU: Canviem el valor per defecte a "Alt i superior" ---
         st.session_state.setdefault('alert_filter_level', 'Alt i superior')
 
         with st.container(border=True):
@@ -7264,7 +7266,7 @@ def run_catalunya_app():
                 st.selectbox(
                     "Filtrar avisos per nivell:",
                     options=["Tots", "Moderat i superior", "Alt i superior", "Molt Alt i superior", "Només Extrems"],
-                    key="alert_filter_level" # Aquesta clau ja es correspon amb el session_state
+                    key="alert_filter_level"
                 )
             with col_labels:
                 st.toggle("Mostrar noms de les comarques amb avís", key="show_comarca_labels")
