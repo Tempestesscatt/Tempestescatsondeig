@@ -7151,8 +7151,8 @@ def run_catalunya_app():
         with col_nivell:
             nivell_sel = st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
     
-    # --- LÍNIA AFEGIDA ---
-    st.caption("ℹ️ Les dades del model AROME s'actualitzen aproximadament cada hora.")
+    # --- LÍNIA MODIFICADA ---
+    st.caption("ℹ️ El proveïdor de dades (basat en el model AROME) actualitza el pronòstic cada hora.")
     
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     hora_num = int(hora_sel_str.split(':')[0])
