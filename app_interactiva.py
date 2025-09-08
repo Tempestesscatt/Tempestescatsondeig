@@ -7151,8 +7151,8 @@ def run_catalunya_app():
         with col_nivell:
             nivell_sel = st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
     
-    # --- LÍNIA MODIFICADA I DEFINITIVA ---
-    st.caption("ℹ️ El pronòstic s'actualitza horàriament. Les dades a l'aplicació es refresquen automàticament cada 30-60 minuts per optimitzar el rendiment.")
+    # --- LÍNIA MODIFICADA AMB LA INFORMACIÓ CORRECTA ---
+    st.caption("ℹ️ El model base (AROME 2.5km) s'actualitza cada 3 hores. Les dades a l'aplicació es refresquen cada 10 minuts.")
     
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     hora_num = int(hora_sel_str.split(':')[0])
