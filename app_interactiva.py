@@ -7130,6 +7130,56 @@ def carregar_dades_mapa_adveccio_cat(hourly_index):
     except Exception as e:
         return None, f"Error en processar dades del mapa d'advecció: {e}"
 
+
+
+def calcular_adveccion_termica(presion, temperatura):
+    """
+    Calcula la advección térmica a partir de un campo de presión y temperatura.
+    Se asegura de que las dimensiones cuadren para evitar errores de broadcasting.
+    """
+    # --- Malla base ---
+    nx, ny = 200, 200
+    x = np.linspace(-5, 5, nx)
+    y = np.linspace(-5, 5, ny)
+    X, Y = np.meshgrid(x, y, indexing="ij")
+
+    # --- Convertir temperatura en °C a Kelvin ---
+    T = np.array(temperatura) + 273.15  
+
+    # Para este ejemplo, creamos un campo sintético dependiente de X e Y
+    Z = np.sin(X) * np.cos(Y) * T.mean()
+
+    # --- Gradiente térmico ---
+    dZdx, dZdy = np.gradient(Z, x, y, edge_order=2)
+
+    # --- Advección térmica (campo vectorial ficticio) ---
+    # Ejemplo: viento simple para multiplicar
+    u = np.ones_like(X) * 5.0  # componente zonal
+    v = np.ones_like(Y) * -2.0 # componente meridional
+
+    adveccion = -(u * dZdx + v * dZdy)
+
+    # --- Gráfico ---
+    step = 10
+    plt.figure(figsize=(7, 6))
+    plt.contourf(X, Y, Z, cmap="coolwarm")
+    plt.colorbar(label="Temperatura (K)")
+
+    plt.quiver(
+        X[::step, ::step],
+        Y[::step, ::step],
+        dZdx[::step, ::step],
+        dZdy[::step, ::step],
+        color="black"
+    )
+
+    plt.title("Advección térmica")
+    plt.xlabel("X")
+    plt.ylabel("Y")
+    plt.show()
+
+    return adveccion
+
 def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, timestamp_str, map_extent,
                             escala_automatica=False):
     """
