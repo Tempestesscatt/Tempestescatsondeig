@@ -7181,67 +7181,90 @@ def ui_explicacio_adveccio():
 
 def dibuixar_fronts_aproximats(ax, grid_lon, grid_lat, grid_u, grid_v, advection_data):
     """
-    Detecta els eixos de màxima advecció i dibuixa una representació simplificada
-    de fronts freds (blau amb triangles) i càlids (vermell amb semicercles).
+    Detecta el PUNT de màxima advecció i dibuixa una línia de front curta i recta
+    projectada en la direcció del vent en aquell punt.
     """
     try:
         # --- LLINDARS PER DETECTAR UN FRONT SIGNIFICATIU ---
-        # Aquests valors es poden ajustar per a més o menys sensibilitat
-        LLINDAR_FRONT_FRED = -1.5  # Advecció freda més forta que -1.5 °C/hora
-        LLINDAR_FRONT_CALID = 1.5   # Advecció càlida més forta que 1.5 °C/hora
-
-        # --- DIBUIX DEL FRONT FRED ---
-        # Trobem el contorn que defineix l'eix de l'advecció freda
-        cs_fred = ax.contour(grid_lon, grid_lat, advection_data, levels=[LLINDAR_FRONT_FRED], 
-                             colors='none', transform=ccrs.PlateCarree())
+        LLINDAR_FRONT_FRED = -1.5
+        LLINDAR_FRONT_CALID = 1.5
+        LONGITUD_FRONT_GRAUS = 1.5  # Longitud de la línia del front en graus geogràfics
         
-        # Si s'ha trobat un contorn...
-        if len(cs_fred.allsegs[0]) > 0:
-            # Agafem el segment de línia més llarg, que normalment és el front principal
-            path_fred = max(cs_fred.allsegs[0], key=len)
+        # --- ANÀLISI DEL FRONT FRED ---
+        if np.nanmin(advection_data) < LLINDAR_FRONT_FRED:
+            # 1. Trobar el punt de MÀXIMA advecció freda (el valor més negatiu)
+            idx_fred = np.unravel_index(np.nanargmin(advection_data), advection_data.shape)
+            center_lon_fred, center_lat_fred = grid_lon[idx_fred], grid_lat[idx_fred]
             
-            # Dibuixem la línia base del front
-            ax.plot(path_fred[:, 0], path_fred[:, 1], color='#0000FF', linewidth=2.5, 
-                    transform=ccrs.PlateCarree(), zorder=5)
+            # 2. Obtenir el vector de vent en aquest punt precís
+            u_fred, v_fred = grid_u[idx_fred], grid_v[idx_fred]
+            
+            # 3. Calcular la direcció del moviment del front (perpendicular al vent)
+            # Un front fred es mou aproximadament amb el vent, però la seva línia és perpendicular
+            angle_vent_rad = np.arctan2(v_fred, u_fred)
+            angle_front_rad = angle_vent_rad + np.pi / 2 # Línia perpendicular al vent
+            
+            # 4. Calcular els punts inicial i final de la línia del front
+            dx_front = (LONGITUD_FRONT_GRAUS / 2) * np.cos(angle_front_rad)
+            dy_front = (LONGITUD_FRONT_GRAUS / 2) * np.sin(angle_front_rad)
+            start_lon, end_lon = center_lon_fred - dx_front, center_lon_fred + dx_front
+            start_lat, end_lat = center_lat_fred - dy_front, center_lat_fred + dy_front
+            
+            # Dibuixem la línia del front
+            line_fred, = ax.plot([start_lon, end_lon], [start_lat, end_lat], color='#0000FF', linewidth=2.5,
+                                 transform=ccrs.PlateCarree(), zorder=5)
 
-            # Dibuixem els triangles al llarg de la línia
-            for i in range(0, len(path_fred) - 1, 8): # Dibuixem un triangle cada 8 punts
-                p1, p2 = path_fred[i], path_fred[i+1]
-                mid_point = (p1 + p2) / 2
-                angle = np.arctan2(p2[1] - p1[1], p2[0] - p1[0]) # Angle del segment de línia
+            # 5. Dibuixem els triangles al llarg de la línia
+            num_triangles = 5
+            line_points = np.linspace(0, 1, num_triangles + 2)[1:-1] # Punts intermedis
+            
+            for t in line_points:
+                point_lon = start_lon + t * (end_lon - start_lon)
+                point_lat = start_lat + t * (end_lat - start_lat)
                 
-                # Calculem l'angle perpendicular per orientar el triangle
-                perp_angle = angle - np.pi / 2
-                
-                # Creem els vèrtexs del triangle
-                triangle_size = 0.08 # Mida del triangle
-                p_base1 = mid_point + triangle_size * np.array([np.cos(angle + np.pi/2), np.sin(angle + np.pi/2)])
-                p_base2 = mid_point - triangle_size * np.array([np.cos(angle + np.pi/2), np.sin(angle + np.pi/2)])
-                p_tip = mid_point + triangle_size * np.array([np.cos(angle), np.sin(angle)])
-                
-                # Creem el polígon i l'afegim al mapa
-                triangle = Polygon([p_base1, p_base2, p_tip], facecolor='#0000FF', edgecolor='black', 
+                # Orientem els triangles en la direcció del vent
+                triangle_size = 0.08
+                p_base1 = np.array([point_lon - triangle_size * np.sin(angle_vent_rad), 
+                                    point_lat + triangle_size * np.cos(angle_vent_rad)])
+                p_base2 = np.array([point_lon + triangle_size * np.sin(angle_vent_rad), 
+                                    point_lat - triangle_size * np.cos(angle_vent_rad)])
+                p_tip = np.array([point_lon + triangle_size * np.cos(angle_vent_rad), 
+                                  point_lat + triangle_size * np.sin(angle_vent_rad)])
+
+                triangle = Polygon([p_base1, p_base2, p_tip], facecolor='#0000FF', edgecolor='black',
                                    transform=ccrs.PlateCarree(), zorder=6)
                 ax.add_patch(triangle)
 
-        # --- DIBUIX DEL FRONT CÀLID (mateixa lògica) ---
-        cs_calid = ax.contour(grid_lon, grid_lat, advection_data, levels=[LLINDAR_FRONT_CALID], 
-                              colors='none', transform=ccrs.PlateCarree())
-        
-        if len(cs_calid.allsegs[0]) > 0:
-            path_calid = max(cs_calid.allsegs[0], key=len)
-            ax.plot(path_calid[:, 0], path_calid[:, 1], color='#FF0000', linewidth=2.5, 
-                    transform=ccrs.PlateCarree(), zorder=5)
+        # --- ANÀLISI DEL FRONT CÀLID (mateixa lògica però amb semicercles) ---
+        if np.nanmax(advection_data) > LLINDAR_FRONT_CALID:
+            idx_calid = np.unravel_index(np.nanargmax(advection_data), advection_data.shape)
+            center_lon_calid, center_lat_calid = grid_lon[idx_calid], grid_lat[idx_calid]
+            u_calid, v_calid = grid_u[idx_calid], grid_v[idx_calid]
+            
+            angle_vent_rad = np.arctan2(v_calid, u_calid)
+            angle_front_rad = angle_vent_rad + np.pi / 2
+            
+            dx_front = (LONGITUD_FRONT_GRAUS / 2) * np.cos(angle_front_rad)
+            dy_front = (LONGITUD_FRONT_GRAUS / 2) * np.sin(angle_front_rad)
+            start_lon, end_lon = center_lon_calid - dx_front, center_lon_calid + dx_front
+            start_lat, end_lat = center_lat_calid - dy_front, center_lat_calid + dy_front
+            
+            line_calid, = ax.plot([start_lon, end_lon], [start_lat, end_lat], color='#FF0000', linewidth=2.5,
+                                  transform=ccrs.PlateCarree(), zorder=5)
 
-            # Dibuixem els semicercles
-            for i in range(0, len(path_calid) - 1, 10): # Un semicercle cada 10 punts
-                p1, p2 = path_calid[i], path_calid[i+1]
-                mid_point = (p1 + p2) / 2
-                angle_deg = np.rad2deg(np.arctan2(p2[1] - p1[1], p2[0] - p1[0]))
+            num_semicircles = 4
+            line_points = np.linspace(0, 1, num_semicircles + 2)[1:-1]
+            
+            for t in line_points:
+                point_lon = start_lon + t * (end_lon - start_lon)
+                point_lat = start_lat + t * (end_lat - start_lat)
                 
-                # Creem un semicercle (Wedge)
-                semicircle = Wedge(center=mid_point, r=0.06, theta1=angle_deg - 90, theta2=angle_deg + 90, 
-                                   facecolor='#FF0000', edgecolor='black', 
+                # Orientem els semicercles en la direcció del vent
+                angle_deg = np.rad2deg(angle_vent_rad)
+                
+                semicircle = Wedge(center=(point_lon, point_lat), r=0.08, 
+                                   theta1=angle_deg - 90, theta2=angle_deg + 90,
+                                   facecolor='#FF0000', edgecolor='black',
                                    transform=ccrs.PlateCarree(), zorder=6)
                 ax.add_patch(semicircle)
 
