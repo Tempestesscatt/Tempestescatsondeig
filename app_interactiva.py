@@ -7108,20 +7108,20 @@ def run_canada_app():
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def carregar_dades_mapa_adveccio_cat(hourly_index):
+def carregar_dades_mapa_adveccio_cat(nivell, hourly_index):
     """
-    Funció dedicada a carregar les dades necessàries per al mapa d'advecció.
-    Sempre utilitza el nivell de 850hPa, que és l'estàndard per a aquesta anàlisi.
+    Funció dedicada a carregar les dades necessàries per al mapa d'advecció
+    al nivell de pressió especificat (p. ex., 850, 700, 500 hPa).
     """
     try:
-        nivell = 850
+        # El nivell ja no està fixat, sinó que ve del paràmetre de la funció
         variables = [f"temperature_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
         map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
 
         if error:
             return None, error
 
-        # Reanomenem les claus per a més claredat en la funció de dibuix
+        # Reanomenem les claus de forma dinàmica segons el nivell
         map_data_raw['temp_data'] = map_data_raw.pop(f'temperature_{nivell}hPa')
         map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
         map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
@@ -7132,80 +7132,6 @@ def carregar_dades_mapa_adveccio_cat(hourly_index):
 
 
 
-def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, timestamp_str, map_extent):
-    """
-    Crea un mapa d'advecció tèrmica a 850hPa. (VERSIÓ 5 - CÀLCUL 100% MANUAL I ROBUST)
-    Aquesta versió calcula dx, dy i el gradient manualment per evitar qualsevol error de formes.
-    """
-    plt.style.use('default')
-    fig, ax = crear_mapa_base(map_extent)
-
-    # 1. Interpolació de dades a una graella regular (sense canvis)
-    grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 200), np.linspace(map_extent[2], map_extent[3], 200))
-    grid_temp = griddata((lons, lats), temp_data, (grid_lon, grid_lat), 'linear')
-    u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
-    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-
-    # 2. Càlcul de l'advecció (MÈTODE FINAL I A PROVA D'ERRORS DE FORMA)
-    with np.errstate(invalid='ignore'):
-        # <<<--- INICI DE LA SOLUCIÓ DEFINITIVA I ROBUSTA ---
-
-        # Pas 1: Calculem l'espaiat (dx, dy) de la graella en metres de forma manual i segura.
-        # Això ens dóna un valor escalar únic per a dx i dy, evitant problemes de forma.
-        num_lats, num_lons = grid_lat.shape
-        
-        # Distància horitzontal (dx) al centre de la graella
-        lon1_dx = grid_lon[num_lats // 2, 0]
-        lon2_dx = grid_lon[num_lats // 2, -1]
-        lat_mid_dx = grid_lat[num_lats // 2, 0]
-        dist_x_km = haversine_distance(lat_mid_dx, lon1_dx, lat_mid_dx, lon2_dx)
-        dx = (dist_x_km * 1000) / (num_lons - 1)
-
-        # Distància vertical (dy) al centre de la graella
-        lat1_dy = grid_lat[0, num_lons // 2]
-        lat2_dy = grid_lat[-1, num_lons // 2]
-        lon_mid_dy = grid_lon[0, num_lons // 2]
-        dist_y_km = haversine_distance(lat1_dy, lon_mid_dy, lat2_dy, lon_mid_dy)
-        dy = (dist_y_km * 1000) / (num_lats - 1)
-
-        # Pas 2: Calculem el gradient utilitzant la funció robusta de NumPy.
-        # Com que dx i dy són escalars, np.gradient sempre retorna una matriu
-        # de la mateixa forma que la matriu d'entrada (grid_temp).
-        # L'ordre de retorn és (gradient_eix_0, gradient_eix_1), que correspon a (gradient_Y, gradient_X).
-        grad_temp_y, grad_temp_x = np.gradient(grid_temp, dy, dx)
-
-        # Pas 3: Calculem l'advecció. Aquesta operació ara és segura perquè
-        # totes les matrius (grid_u, grid_v, grad_temp_x, grad_temp_y) tenen la mateixa forma.
-        advection_calc = - ((grid_u * grad_temp_x) + (grid_v * grad_temp_y))
-        
-        # Pas 4: Convertim a les unitats desitjades (°C/hora) i gestionem possibles NaNs.
-        # La conversió de s^-1 a h^-1 és multiplicar per 3600.
-        advection_c_per_hour = advection_calc * 3600
-        advection_c_per_hour[np.isnan(advection_c_per_hour)] = 0
-        
-        # <<<--- FI DE LA SOLUCIÓ DEFINITIVA I ROBUSTA ---
-
-    # 3. Dibuix del mapa d'advecció (la resta de la funció és idèntica)
-    adv_levels = np.linspace(-3, 3, 13)
-    cmap_adv = plt.get_cmap('bwr')
-    norm_adv = BoundaryNorm(adv_levels, ncolors=cmap_adv.N, clip=True)
-    
-    im = ax.contourf(grid_lon, grid_lat, advection_c_per_hour, levels=adv_levels, cmap=cmap_adv, norm=norm_adv,
-                     alpha=0.6, zorder=2, transform=ccrs.PlateCarree(), extend='both')
-    
-    iso_levels = np.arange(int(np.nanmin(grid_temp)) - 2, int(np.nanmax(grid_temp)) + 2, 2)
-    contours_temp = ax.contour(grid_lon, grid_lat, grid_temp, levels=iso_levels, colors='black',
-                               linestyles='--', linewidths=0.8, zorder=4, transform=ccrs.PlateCarree())
-    ax.clabel(contours_temp, inline=True, fontsize=8, fmt='%1.0f°')
-
-    cbar = fig.colorbar(im, ax=ax, orientation='vertical', shrink=0.8, pad=0.02)
-    cbar.set_label("Advecció Tèrmica a 850hPa (°C / hora)")
-
-    ax.set_title(f"Advecció Tèrmica a 850hPa\n{timestamp_str}", weight='bold', fontsize=16)
-    afegir_etiquetes_ciutats(ax, map_extent)
-
-    return fig
 
     
 def ui_explicacio_adveccio():
@@ -7253,34 +7179,10 @@ def ui_explicacio_adveccio():
 # --- PAS 1: AFEGEIX AQUESTES NOVES FUNCIONS AL TEU CODI ---
 # Pots posar-les junt amb les altres funcions de càrrega i creació de mapes.
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def carregar_dades_mapa_adveccio_cat(hourly_index):
+
+def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, nivell, timestamp_str, map_extent):
     """
-    Funció dedicada a carregar les dades necessàries per al mapa d'advecció.
-    Sempre utilitza el nivell de 850hPa, que és l'estàndard per a aquesta anàlisi.
-    """
-    try:
-        nivell = 850
-        variables = [f"temperature_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-        map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
-
-        if error:
-            return None, error
-
-        # Reanomenem les claus per a més claredat en la funció de dibuix
-        map_data_raw['temp_data'] = map_data_raw.pop(f'temperature_{nivell}hPa')
-        map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
-        map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
-        return map_data_raw, None
-
-    except Exception as e:
-        return None, f"Error en processar dades del mapa d'advecció: {e}"
-
-def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, timestamp_str, map_extent):
-    """
-    Crea un mapa d'advecció tèrmica a 850hPa. (VERSIÓ FINAL AMB CÀLCUL MANUAL ROBUST)
-    - Fons de color: Advecció (vermell = càlida, blau = freda).
-    - Línies de contorn: Isotermes (línies de temperatura constant).
+    Crea un mapa d'advecció tèrmica al nivell de pressió especificat (p. ex., 850, 700 hPa).
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -7292,29 +7194,24 @@ def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, timesta
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
 
-    # 2. Càlcul de l'advecció (MÈTODE MANUAL I DEFINITIU)
+    # 2. Càlcul de l'advecció (mètode robust, sense canvis)
     with np.errstate(invalid='ignore'):
-        dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-        
-        # <<<--- INICI DE LA SOLUCIÓ ---
-        
-        # Pas 1: Calculem el gradient del camp de temperatura (la variació de T en l'espai).
-        # Això ens retorna dos components: dT/dx i dT/dy.
-        grad_temp = mpcalc.gradient(grid_temp * units.degC, deltas=[dx, dy])
-        grad_temp_x = grad_temp[0]
-        grad_temp_y = grad_temp[1]
+        num_lats, num_lons = grid_lat.shape
+        lon1_dx, lon2_dx = grid_lon[num_lats // 2, 0], grid_lon[num_lats // 2, -1]
+        lat_mid_dx = grid_lat[num_lats // 2, 0]
+        dist_x_km = haversine_distance(lat_mid_dx, lon1_dx, lat_mid_dx, lon2_dx)
+        dx = (dist_x_km * 1000) / (num_lons - 1)
 
-        # Pas 2: Calculem l'advecció aplicant la seva definició física.
-        # Advecció = - (u * dT/dx + v * dT/dy)
-        # Multipliquem cada component del vent (u, v) pel seu component del gradient corresponent.
-        advection_calc = - ( (grid_u * units('m/s') * grad_temp_x) + (grid_v * units('m/s') * grad_temp_y) )
+        lat1_dy, lat2_dy = grid_lat[0, num_lons // 2], grid_lat[-1, num_lons // 2]
+        lon_mid_dy = grid_lon[0, num_lons // 2]
+        dist_y_km = haversine_distance(lat1_dy, lon_mid_dy, lat2_dy, lon_mid_dy)
+        dy = (dist_y_km * 1000) / (num_lats - 1)
 
-        # Pas 3: Convertim el resultat a unitats més intuïtives (°C/hora) i gestionem possibles NaNs.
-        advection_c_per_hour = advection_calc.to('degC/hour').m
+        grad_temp_y, grad_temp_x = np.gradient(grid_temp, dy, dx)
+        advection_calc = - ((grid_u * grad_temp_x) + (grid_v * grad_temp_y))
+        advection_c_per_hour = advection_calc * 3600
         advection_c_per_hour[np.isnan(advection_c_per_hour)] = 0
         
-        # <<<--- FI DE LA SOLUCIÓ ---
-
     # 3. Dibuix del mapa d'advecció (sense canvis)
     adv_levels = np.linspace(-3, 3, 13)
     cmap_adv = plt.get_cmap('bwr')
@@ -7323,17 +7220,18 @@ def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, timesta
     im = ax.contourf(grid_lon, grid_lat, advection_c_per_hour, levels=adv_levels, cmap=cmap_adv, norm=norm_adv,
                      alpha=0.6, zorder=2, transform=ccrs.PlateCarree(), extend='both')
     
-    # 4. Afegir línies de temperatura (isotermes) (sense canvis)
     iso_levels = np.arange(int(np.nanmin(grid_temp)) - 2, int(np.nanmax(grid_temp)) + 2, 2)
     contours_temp = ax.contour(grid_lon, grid_lat, grid_temp, levels=iso_levels, colors='black',
                                linestyles='--', linewidths=0.8, zorder=4, transform=ccrs.PlateCarree())
     ax.clabel(contours_temp, inline=True, fontsize=8, fmt='%1.0f°')
 
-    # 5. Afegir barra de color per a l'advecció (sense canvis)
+    # --- CANVIS EN LES ETIQUETES ---
     cbar = fig.colorbar(im, ax=ax, orientation='vertical', shrink=0.8, pad=0.02)
-    cbar.set_label("Advecció Tèrmica a 850hPa (°C / hora)")
+    cbar.set_label(f"Advecció Tèrmica a {nivell}hPa (°C / hora)")
 
-    ax.set_title(f"Advecció Tèrmica a 850hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    ax.set_title(f"Advecció Tèrmica a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
+    # ----------------------------
+    
     afegir_etiquetes_ciutats(ax, map_extent)
 
     return fig
@@ -7384,7 +7282,7 @@ def run_catalunya_app():
     """
     Funció principal que gestiona tota la lògica i la interfície per a la zona de Catalunya,
     incloent el mapa interactiu de comarques i l'anàlisi detallada per localitat.
-    ARA INCLOU EL SELECTOR PER AL MAPA D'ADVECCIÓ.
+    ARA INCLOU EL SELECTOR DE NIVELL PER AL MAPA D'ADVECCIÓ.
     """
     # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
@@ -7437,7 +7335,7 @@ def run_catalunya_app():
 
     # --- PAS 3: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # --- VISTA D'ANÀLISI DETALLADA (AQUEST BLOC NO HA CANVIAT) ---
+        # --- VISTA D'ANÀLISI DETALLADA ---
         poble_sel = st.session_state.poble_sel
         with st.spinner(f"Carregant anàlisi completa per a {poble_sel}..."):
             lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
@@ -7531,7 +7429,6 @@ def run_catalunya_app():
 
     else: 
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
-        # <<<--- INICI DE LA MODIFICACIÓ AMB EL SELECTOR DE MAPA ---
         
         vista_mapa = st.radio(
             "Selecciona el tipus d'anàlisi de mapa:",
@@ -7541,7 +7438,6 @@ def run_catalunya_app():
         )
         
         if vista_mapa == "Focus de Convergència":
-            # Aquest bloc és el teu codi anterior per al mapa de convergència
             st.session_state.setdefault('show_comarca_labels', False)
             st.session_state.setdefault('alert_filter_level', 'Alt i superior')
 
@@ -7577,7 +7473,6 @@ def run_catalunya_app():
                 arrow_position_percent = calcular_posicio_llegenda(conv_value_selected)
 
                 if arrow_position_percent is not None:
-                    # Aquí aniria el teu codi CSS i HTML per a l'indicador de la llegenda
                     indicator_html_string = f"<!-- El teu HTML per a l'indicador aquí -->"
             
             ui_llegenda_mapa_principal(indicator_html=indicator_html_string)
@@ -7612,9 +7507,18 @@ def run_catalunya_app():
                  st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
         
         elif vista_mapa == "Anàlisi d'Advecció (Fronts)":
-            st.markdown("#### Mapa d'Advecció Tèrmica a 850 hPa")
-            with st.spinner("Carregant i generant mapa d'advecció..."):
-                map_data_adv, error_adv = carregar_dades_mapa_adveccio_cat(hourly_index_sel)
+            # NOU: Afegim el selector de nivell per a l'advecció
+            nivell_adveccio = st.selectbox(
+                "Nivell per a l'anàlisi d'advecció:",
+                options=[850, 700, 500],
+                format_func=lambda x: f"{x} hPa",
+                key="advection_level_selector"
+            )
+
+            st.markdown(f"#### Mapa d'Advecció Tèrmica a {nivell_adveccio} hPa")
+            with st.spinner(f"Carregant i generant mapa d'advecció a {nivell_adveccio}hPa..."):
+                # Cridem les funcions modificades amb el nivell seleccionat
+                map_data_adv, error_adv = carregar_dades_mapa_adveccio_cat(nivell_adveccio, hourly_index_sel)
                 if error_adv or not map_data_adv:
                     st.error(f"Error en carregar les dades d'advecció: {error_adv}")
                 else:
@@ -7622,12 +7526,14 @@ def run_catalunya_app():
                     fig_adv = crear_mapa_adveccio_cat(
                         map_data_adv['lons'], map_data_adv['lats'],
                         map_data_adv['temp_data'], map_data_adv['speed_data'],
-                        map_data_adv['dir_data'], timestamp_str_mapa, MAP_EXTENT_CAT
+                        map_data_adv['dir_data'], 
+                        nivell_adveccio, # <-- Passem el nivell a la funció de dibuix
+                        timestamp_str_mapa, 
+                        MAP_EXTENT_CAT
                     )
                     st.pyplot(fig_adv, use_container_width=True)
                     plt.close(fig_adv)
                     ui_explicacio_adveccio()
-        # <<<--- FI DE LA MODIFICACIÓ ---
 
 
 
