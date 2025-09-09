@@ -7178,20 +7178,20 @@ def ui_explicacio_adveccio():
 
 def dibuixar_fronts_aproximats(ax, grid_lon, grid_lat, grid_u, grid_v, advection_data):
     """
-    Versió 5.0 (QUALITAT PROFESSIONAL): Dibuixa els fronts més importants amb
-    un acabat visual d'alta qualitat, similar als mapes de TV, utilitzant
-    ombres, vores definides i símbols refinats.
+    Versió 6.0 (ALINEACIÓ PERFECTA): Garanteix que els símbols dels fronts
+    estiguin perfectament alineats amb la línia base, creant un acabat
+    visual professional i sense defectes.
     """
     try:
-        # --- PARÀMETRES DE CONFIGURació VISUAL ---
+        # --- PARÀMETRES DE CONFIGURACIÓ ---
         LLINDAR_FRONT_FRED = -1.5
         LLINDAR_FRONT_CALID = 1.5
         MIN_FRONT_LENGTH = 20
         MAX_FRONTS_TO_DRAW = 2
-        OFFSET_FACTOR = 0.1
+        OFFSET_FACTOR = 0.12 # Un pèl més de separació
         
-        # Efecte visual per donar profunditat i un acabat net
-        path_effect_front = [path_effects.withStroke(linewidth=3.5, foreground='black')]
+        # Efecte visual per donar profunditat
+        path_effect_front = [path_effects.withStroke(linewidth=4.0, foreground='black')]
 
         # --- ANÀLISI DEL FRONT FRED ---
         cs_fred = ax.contour(grid_lon, grid_lat, advection_data, levels=[LLINDAR_FRONT_FRED],
@@ -7214,26 +7214,46 @@ def dibuixar_fronts_aproximats(ax, grid_lon, grid_lat, grid_u, grid_v, advection
             
             path_desplacada = seg + np.array([offset_lon, offset_lat])
             
-            # Línia base amb efecte d'ombra
-            ax.plot(path_desplacada[:, 0], path_desplacada[:, 1], color='#007BFF', linewidth=2.2,
+            # Dibuixem la línia base
+            ax.plot(path_desplacada[:, 0], path_desplacada[:, 1], color='#0077BE', linewidth=2.5,
                     transform=ccrs.PlateCarree(), zorder=5, path_effects=path_effect_front)
 
-            # Símbols (triangles) amb estil professional
-            for i in range(0, len(path_desplacada) - 1, 12): # Més espaiat
+            # Dibuixem els triangles amb alineació precisa
+            for i in range(5, len(path_desplacada) - 5, 12): # Comencem i acabem una mica endins
                 p1, p2 = path_desplacada[i], path_desplacada[i+1]
-                mid_point = (p1 + p2) / 2
-                angle_vent = np.arctan2(wind_v, wind_u)
                 
-                triangle_size = 0.055 # Més petits
-                p_base1 = mid_point - triangle_size * np.array([np.sin(angle_vent), -np.cos(angle_vent)])
-                p_base2 = mid_point + triangle_size * np.array([np.sin(angle_vent), -np.cos(angle_vent)])
-                p_tip = mid_point + triangle_size * np.array([np.cos(angle_vent), np.sin(angle_vent)])
+                # Vector director de la línia i el seu angle
+                direction_vector = p2 - p1
+                angle_linea_rad = np.arctan2(direction_vector[1], direction_vector[0])
+                
+                # Vector normal (perpendicular) a la línia
+                normal_vector = np.array([-direction_vector[1], direction_vector[0]])
+                normal_vector /= np.linalg.norm(normal_vector) # Normalitzem a longitud 1
+                
+                # El punt central on es dibuixarà el triangle
+                mid_point = (p1 + p2) / 2
+                
+                # Mida del triangle
+                triangle_size = 0.08
+                
+                # La punta del triangle apunta en la direcció del vent
+                angle_vent_rad = np.arctan2(wind_v, wind_u)
+                
+                # El vèrtex de la punta es calcula desplaçant el punt mig en la direcció del vent
+                p_tip = mid_point + triangle_size * np.array([np.cos(angle_vent_rad), np.sin(angle_vent_rad)])
+                
+                # La base del triangle es construeix sobre la línia del front
+                # Calculem els dos vèrtex de la base movent-nos al llarg de la línia des del punt mig
+                base_half_width = triangle_size * 0.8
+                p_base1 = mid_point - base_half_width * np.array([np.cos(angle_linea_rad), np.sin(angle_linea_rad)])
+                p_base2 = mid_point + base_half_width * np.array([np.cos(angle_linea_rad), np.sin(angle_linea_rad)])
 
-                triangle = Polygon([p_base1, p_base2, p_tip], facecolor='#007BFF', edgecolor='black', linewidth=1.0,
+                triangle = Polygon([p_base1, p_tip, p_base2], facecolor='#0077BE', edgecolor='black', linewidth=1.0,
                                    transform=ccrs.PlateCarree(), zorder=6)
                 ax.add_patch(triangle)
 
-        # --- ANÀLISI DEL FRONT CÀLID ---
+
+        # --- ANÀLISI DEL FRONT CÀLID (amb alineació precisa) ---
         cs_calid = ax.contour(grid_lon, grid_lat, advection_data, levels=[LLINDAR_FRONT_CALID],
                               colors='none', transform=ccrs.PlateCarree())
         
@@ -7254,25 +7274,25 @@ def dibuixar_fronts_aproximats(ax, grid_lon, grid_lat, grid_u, grid_v, advection
 
             path_desplacada = seg + np.array([offset_lon, offset_lat])
             
-            # Línia base amb efecte d'ombra
-            ax.plot(path_desplacada[:, 0], path_desplacada[:, 1], color='#D90429', linewidth=2.2,
+            ax.plot(path_desplacada[:, 0], path_desplacada[:, 1], color='#D81E05', linewidth=2.5,
                     transform=ccrs.PlateCarree(), zorder=5, path_effects=path_effect_front)
 
-            # Símbols (semicercles) amb estil professional
-            for i in range(0, len(path_desplacada) - 1, 15): # Més espaiat
+            for i in range(5, len(path_desplacada) - 5, 15):
                 p1, p2 = path_desplacada[i], path_desplacada[i+1]
                 mid_point = (p1 + p2) / 2
-                angle_deg = np.rad2deg(np.arctan2(wind_v, wind_u))
                 
-                semicircle = Wedge(center=mid_point, r=0.045, # Més petits
-                                   theta1=angle_deg - 90, theta2=angle_deg + 90,
-                                   facecolor='#D90429', edgecolor='black', linewidth=1.0,
+                # El semicercle es dibuixa des del punt mig, orientat amb el vent
+                angle_vent_deg = np.rad2deg(np.arctan2(wind_v, wind_u))
+                
+                semicircle = Wedge(center=mid_point, r=0.055, # Mida ajustada
+                                   theta1=angle_vent_deg - 90, 
+                                   theta2=angle_vent_deg + 90,
+                                   facecolor='#D81E05', edgecolor='black', linewidth=1.0,
                                    transform=ccrs.PlateCarree(), zorder=6)
                 ax.add_patch(semicircle)
 
     except Exception as e:
-        print(f"No s'han pogut dibuixar els fronts (versió professional): {e}")
-        
+        print(f"No s'han pogut dibuixar els fronts (versió d'alta precisió): {e}")
 
 def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, nivell, timestamp_str, map_extent):
     """
