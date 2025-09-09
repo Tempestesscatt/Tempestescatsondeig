@@ -7181,92 +7181,93 @@ def ui_explicacio_adveccio():
 
 def dibuixar_fronts_aproximats(ax, grid_lon, grid_lat, grid_u, grid_v, advection_data):
     """
-    Detecta el PUNT de màxima advecció i dibuixa una línia de front curta i recta
-    projectada en la direcció del vent en aquell punt.
+    Versió 3.0: Detecta MÚLTIPLES eixos d'advecció, els desplaça en la direcció
+    del vent per situar-los a la part davantera, i dibuixa fronts corbats
+    amb símbols més petits i refinats.
     """
     try:
         # --- LLINDARS PER DETECTAR UN FRONT SIGNIFICATIU ---
         LLINDAR_FRONT_FRED = -1.5
         LLINDAR_FRONT_CALID = 1.5
-        LONGITUD_FRONT_GRAUS = 1.5  # Longitud de la línia del front en graus geogràfics
-        
+        MIN_FRONT_LENGTH = 15  # Ignorem segments de front molt curts
+
         # --- ANÀLISI DEL FRONT FRED ---
-        if np.nanmin(advection_data) < LLINDAR_FRONT_FRED:
-            # 1. Trobar el punt de MÀXIMA advecció freda (el valor més negatiu)
-            idx_fred = np.unravel_index(np.nanargmin(advection_data), advection_data.shape)
-            center_lon_fred, center_lat_fred = grid_lon[idx_fred], grid_lat[idx_fred]
-            
-            # 2. Obtenir el vector de vent en aquest punt precís
-            u_fred, v_fred = grid_u[idx_fred], grid_v[idx_fred]
-            
-            # 3. Calcular la direcció del moviment del front (perpendicular al vent)
-            # Un front fred es mou aproximadament amb el vent, però la seva línia és perpendicular
-            angle_vent_rad = np.arctan2(v_fred, u_fred)
-            angle_front_rad = angle_vent_rad + np.pi / 2 # Línia perpendicular al vent
-            
-            # 4. Calcular els punts inicial i final de la línia del front
-            dx_front = (LONGITUD_FRONT_GRAUS / 2) * np.cos(angle_front_rad)
-            dy_front = (LONGITUD_FRONT_GRAUS / 2) * np.sin(angle_front_rad)
-            start_lon, end_lon = center_lon_fred - dx_front, center_lon_fred + dx_front
-            start_lat, end_lat = center_lat_fred - dy_front, center_lat_fred + dy_front
-            
-            # Dibuixem la línia del front
-            line_fred, = ax.plot([start_lon, end_lon], [start_lat, end_lat], color='#0000FF', linewidth=2.5,
-                                 transform=ccrs.PlateCarree(), zorder=5)
+        cs_fred = ax.contour(grid_lon, grid_lat, advection_data, levels=[LLINDAR_FRONT_FRED],
+                             colors='none', transform=ccrs.PlateCarree())
+        
+        # Iterem sobre TOTS els segments de contorn que superin la longitud mínima
+        for seg in cs_fred.allsegs[0]:
+            if len(seg) > MIN_FRONT_LENGTH:
+                # 1. Obtenim el vent mitjà al llarg del segment de contorn
+                seg_lons, seg_lats = seg[:, 0], seg[:, 1]
+                u_interp = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_u.flatten(), (seg_lons, seg_lats), method='linear')
+                v_interp = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_v.flatten(), (seg_lons, seg_lats), method='linear')
+                mean_u, mean_v = np.nanmean(u_interp), np.nanmean(v_interp)
 
-            # 5. Dibuixem els triangles al llarg de la línia
-            num_triangles = 5
-            line_points = np.linspace(0, 1, num_triangles + 2)[1:-1] # Punts intermedis
-            
-            for t in line_points:
-                point_lon = start_lon + t * (end_lon - start_lon)
-                point_lat = start_lat + t * (end_lat - start_lat)
+                # 2. Calculem un vector de desplaçament petit en la direcció del vent
+                wind_magnitude = np.sqrt(mean_u**2 + mean_v**2)
+                if wind_magnitude > 0:
+                    offset_lon = (mean_u / wind_magnitude) * 0.1  # Desplaçament de 0.1 graus
+                    offset_lat = (mean_v / wind_magnitude) * 0.1
+                else:
+                    offset_lon, offset_lat = 0, 0
                 
-                # Orientem els triangles en la direcció del vent
-                triangle_size = 0.08
-                p_base1 = np.array([point_lon - triangle_size * np.sin(angle_vent_rad), 
-                                    point_lat + triangle_size * np.cos(angle_vent_rad)])
-                p_base2 = np.array([point_lon + triangle_size * np.sin(angle_vent_rad), 
-                                    point_lat - triangle_size * np.cos(angle_vent_rad)])
-                p_tip = np.array([point_lon + triangle_size * np.cos(angle_vent_rad), 
-                                  point_lat + triangle_size * np.sin(angle_vent_rad)])
-
-                triangle = Polygon([p_base1, p_base2, p_tip], facecolor='#0000FF', edgecolor='black',
-                                   transform=ccrs.PlateCarree(), zorder=6)
-                ax.add_patch(triangle)
-
-        # --- ANÀLISI DEL FRONT CÀLID (mateixa lògica però amb semicercles) ---
-        if np.nanmax(advection_data) > LLINDAR_FRONT_CALID:
-            idx_calid = np.unravel_index(np.nanargmax(advection_data), advection_data.shape)
-            center_lon_calid, center_lat_calid = grid_lon[idx_calid], grid_lat[idx_calid]
-            u_calid, v_calid = grid_u[idx_calid], grid_v[idx_calid]
-            
-            angle_vent_rad = np.arctan2(v_calid, u_calid)
-            angle_front_rad = angle_vent_rad + np.pi / 2
-            
-            dx_front = (LONGITUD_FRONT_GRAUS / 2) * np.cos(angle_front_rad)
-            dy_front = (LONGITUD_FRONT_GRAUS / 2) * np.sin(angle_front_rad)
-            start_lon, end_lon = center_lon_calid - dx_front, center_lon_calid + dx_front
-            start_lat, end_lat = center_lat_calid - dy_front, center_lat_calid + dy_front
-            
-            line_calid, = ax.plot([start_lon, end_lon], [start_lat, end_lat], color='#FF0000', linewidth=2.5,
-                                  transform=ccrs.PlateCarree(), zorder=5)
-
-            num_semicircles = 4
-            line_points = np.linspace(0, 1, num_semicircles + 2)[1:-1]
-            
-            for t in line_points:
-                point_lon = start_lon + t * (end_lon - start_lon)
-                point_lat = start_lat + t * (end_lat - start_lat)
+                # 3. Creem el nou camí del front, desplaçat cap endavant
+                path_fred_desplacada = seg + np.array([offset_lon, offset_lat])
                 
-                # Orientem els semicercles en la direcció del vent
-                angle_deg = np.rad2deg(angle_vent_rad)
+                # Dibuixem la línia base del front
+                ax.plot(path_fred_desplacada[:, 0], path_fred_desplacada[:, 1], color='#0000FF', linewidth=2.0,
+                        transform=ccrs.PlateCarree(), zorder=5)
+
+                # 4. Dibuixem els triangles (ara més petits) al llarg de la línia desplaçada
+                for i in range(0, len(path_fred_desplacada) - 1, 10): # Un triangle cada 10 punts
+                    p1, p2 = path_fred_desplacada[i], path_fred_desplacada[i+1]
+                    mid_point = (p1 + p2) / 2
+                    angle_vent = np.arctan2(mean_v, mean_u)
+                    
+                    # Símbols més petits i refinats
+                    triangle_size = 0.06 
+                    p_base1 = mid_point - triangle_size * np.array([np.sin(angle_vent), -np.cos(angle_vent)])
+                    p_base2 = mid_point + triangle_size * np.array([np.sin(angle_vent), -np.cos(angle_vent)])
+                    p_tip = mid_point + triangle_size * np.array([np.cos(angle_vent), np.sin(angle_vent)])
+
+                    triangle = Polygon([p_base1, p_base2, p_tip], facecolor='#0000FF', edgecolor='black', linewidth=0.5,
+                                       transform=ccrs.PlateCarree(), zorder=6)
+                    ax.add_patch(triangle)
+
+        # --- ANÀLISI DEL FRONT CÀLID (mateixa lògica millorada) ---
+        cs_calid = ax.contour(grid_lon, grid_lat, advection_data, levels=[LLINDAR_FRONT_CALID],
+                              colors='none', transform=ccrs.PlateCarree())
+        
+        for seg in cs_calid.allsegs[0]:
+            if len(seg) > MIN_FRONT_LENGTH:
+                seg_lons, seg_lats = seg[:, 0], seg[:, 1]
+                u_interp = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_u.flatten(), (seg_lons, seg_lats), method='linear')
+                v_interp = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_v.flatten(), (seg_lons, seg_lats), method='linear')
+                mean_u, mean_v = np.nanmean(u_interp), np.nanmean(v_interp)
+
+                wind_magnitude = np.sqrt(mean_u**2 + mean_v**2)
+                if wind_magnitude > 0:
+                    offset_lon = (mean_u / wind_magnitude) * 0.1
+                    offset_lat = (mean_v / wind_magnitude) * 0.1
+                else:
+                    offset_lon, offset_lat = 0, 0
+
+                path_calid_desplacada = seg + np.array([offset_lon, offset_lat])
                 
-                semicircle = Wedge(center=(point_lon, point_lat), r=0.08, 
-                                   theta1=angle_deg - 90, theta2=angle_deg + 90,
-                                   facecolor='#FF0000', edgecolor='black',
-                                   transform=ccrs.PlateCarree(), zorder=6)
-                ax.add_patch(semicircle)
+                ax.plot(path_calid_desplacada[:, 0], path_calid_desplacada[:, 1], color='#FF0000', linewidth=2.0,
+                        transform=ccrs.PlateCarree(), zorder=5)
+
+                for i in range(0, len(path_calid_desplacada) - 1, 12): # Un semicercle cada 12 punts
+                    p1, p2 = path_calid_desplacada[i], path_calid_desplacada[i+1]
+                    mid_point = (p1 + p2) / 2
+                    angle_deg = np.rad2deg(np.arctan2(mean_v, mean_u))
+                    
+                    semicircle = Wedge(center=mid_point, r=0.05,  # Més petit
+                                       theta1=angle_deg - 90, theta2=angle_deg + 90,
+                                       facecolor='#FF0000', edgecolor='black', linewidth=0.5,
+                                       transform=ccrs.PlateCarree(), zorder=6)
+                    ax.add_patch(semicircle)
 
     except Exception as e:
         print(f"No s'han pogut dibuixar els fronts aproximats: {e}")
