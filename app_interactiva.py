@@ -7182,13 +7182,16 @@ def ui_explicacio_adveccio():
 
 def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, nivell, timestamp_str, map_extent):
     """
-    Crea un mapa d'advecció tèrmica al nivell de pressió especificat (p. ex., 850, 700 hPa).
+    Crea un mapa d'advecció tèrmica amb RENDERITZAT D'ALTA QUALITAT.
+    - Utilitza una graella d'alta resolució (300x300).
+    - Aplica un suavitzat gaussià per a formes més orgàniques.
+    - Utilitza molts nivells de color per a un gradient suau i fluid.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
 
-    # 1. Interpolació de dades (sense canvis)
-    grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 200), np.linspace(map_extent[2], map_extent[3], 200))
+    # 1. Interpolació a graella d'alta resolució (300x300)
+    grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 300), np.linspace(map_extent[2], map_extent[3], 300))
     grid_temp = griddata((lons, lats), temp_data, (grid_lon, grid_lat), 'linear')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
@@ -7212,25 +7215,31 @@ def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, nivell,
         advection_c_per_hour = advection_calc * 3600
         advection_c_per_hour[np.isnan(advection_c_per_hour)] = 0
         
-    # 3. Dibuix del mapa d'advecció (sense canvis)
-    adv_levels = np.linspace(-3, 3, 13)
-    cmap_adv = plt.get_cmap('bwr')
-    norm_adv = BoundaryNorm(adv_levels, ncolors=cmap_adv.N, clip=True)
+    # NOU: Suavitzat Gaussià per a formes més fluides i menys "soroll"
+    smoothed_advection = gaussian_filter(advection_c_per_hour, sigma=2.5)
+
+    # 3. Dibuix del mapa d'advecció amb RENDERITZAT FLUID
     
-    im = ax.contourf(grid_lon, grid_lat, advection_c_per_hour, levels=adv_levels, cmap=cmap_adv, norm=norm_adv,
-                     alpha=0.6, zorder=2, transform=ccrs.PlateCarree(), extend='both')
+    # NOU: Molts més nivells per a un gradient suau
+    fill_levels_adv = np.arange(-3.0, 3.1, 0.25)
     
+    cmap_adv = plt.get_cmap('bwr') # Blau (freda) -> Blanc (neutre) -> Vermell (càlida)
+    norm_adv = BoundaryNorm(fill_levels_adv, ncolors=cmap_adv.N, clip=True)
+    
+    im = ax.contourf(grid_lon, grid_lat, smoothed_advection, 
+                     levels=fill_levels_adv, cmap=cmap_adv, norm=norm_adv,
+                     alpha=0.7, zorder=2, transform=ccrs.PlateCarree(), extend='both')
+    
+    # Afegim isotermes (línies de temperatura) per a context
     iso_levels = np.arange(int(np.nanmin(grid_temp)) - 2, int(np.nanmax(grid_temp)) + 2, 2)
     contours_temp = ax.contour(grid_lon, grid_lat, grid_temp, levels=iso_levels, colors='black',
                                linestyles='--', linewidths=0.8, zorder=4, transform=ccrs.PlateCarree())
     ax.clabel(contours_temp, inline=True, fontsize=8, fmt='%1.0f°')
 
-    # --- CANVIS EN LES ETIQUETES ---
+    # Barra de color i títols
     cbar = fig.colorbar(im, ax=ax, orientation='vertical', shrink=0.8, pad=0.02)
     cbar.set_label(f"Advecció Tèrmica a {nivell}hPa (°C / hora)")
-
     ax.set_title(f"Advecció Tèrmica a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
-    # ----------------------------
     
     afegir_etiquetes_ciutats(ax, map_extent)
 
