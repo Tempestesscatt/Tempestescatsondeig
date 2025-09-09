@@ -7179,68 +7179,130 @@ def ui_explicacio_adveccio():
 # --- PAS 1: AFEGEIX AQUESTES NOVES FUNCIONS AL TEU CODI ---
 # Pots posar-les junt amb les altres funcions de càrrega i creació de mapes.
 
+def dibuixar_fronts_aproximats(ax, grid_lon, grid_lat, grid_u, grid_v, advection_data):
+    """
+    Detecta els eixos de màxima advecció i dibuixa una representació simplificada
+    de fronts freds (blau amb triangles) i càlids (vermell amb semicercles).
+    """
+    try:
+        # --- LLINDARS PER DETECTAR UN FRONT SIGNIFICATIU ---
+        # Aquests valors es poden ajustar per a més o menys sensibilitat
+        LLINDAR_FRONT_FRED = -1.5  # Advecció freda més forta que -1.5 °C/hora
+        LLINDAR_FRONT_CALID = 1.5   # Advecció càlida més forta que 1.5 °C/hora
+
+        # --- DIBUIX DEL FRONT FRED ---
+        # Trobem el contorn que defineix l'eix de l'advecció freda
+        cs_fred = ax.contour(grid_lon, grid_lat, advection_data, levels=[LLINDAR_FRONT_FRED], 
+                             colors='none', transform=ccrs.PlateCarree())
+        
+        # Si s'ha trobat un contorn...
+        if len(cs_fred.allsegs[0]) > 0:
+            # Agafem el segment de línia més llarg, que normalment és el front principal
+            path_fred = max(cs_fred.allsegs[0], key=len)
+            
+            # Dibuixem la línia base del front
+            ax.plot(path_fred[:, 0], path_fred[:, 1], color='#0000FF', linewidth=2.5, 
+                    transform=ccrs.PlateCarree(), zorder=5)
+
+            # Dibuixem els triangles al llarg de la línia
+            for i in range(0, len(path_fred) - 1, 8): # Dibuixem un triangle cada 8 punts
+                p1, p2 = path_fred[i], path_fred[i+1]
+                mid_point = (p1 + p2) / 2
+                angle = np.arctan2(p2[1] - p1[1], p2[0] - p1[0]) # Angle del segment de línia
+                
+                # Calculem l'angle perpendicular per orientar el triangle
+                perp_angle = angle - np.pi / 2
+                
+                # Creem els vèrtexs del triangle
+                triangle_size = 0.08 # Mida del triangle
+                p_base1 = mid_point + triangle_size * np.array([np.cos(angle + np.pi/2), np.sin(angle + np.pi/2)])
+                p_base2 = mid_point - triangle_size * np.array([np.cos(angle + np.pi/2), np.sin(angle + np.pi/2)])
+                p_tip = mid_point + triangle_size * np.array([np.cos(angle), np.sin(angle)])
+                
+                # Creem el polígon i l'afegim al mapa
+                triangle = Polygon([p_base1, p_base2, p_tip], facecolor='#0000FF', edgecolor='black', 
+                                   transform=ccrs.PlateCarree(), zorder=6)
+                ax.add_patch(triangle)
+
+        # --- DIBUIX DEL FRONT CÀLID (mateixa lògica) ---
+        cs_calid = ax.contour(grid_lon, grid_lat, advection_data, levels=[LLINDAR_FRONT_CALID], 
+                              colors='none', transform=ccrs.PlateCarree())
+        
+        if len(cs_calid.allsegs[0]) > 0:
+            path_calid = max(cs_calid.allsegs[0], key=len)
+            ax.plot(path_calid[:, 0], path_calid[:, 1], color='#FF0000', linewidth=2.5, 
+                    transform=ccrs.PlateCarree(), zorder=5)
+
+            # Dibuixem els semicercles
+            for i in range(0, len(path_calid) - 1, 10): # Un semicercle cada 10 punts
+                p1, p2 = path_calid[i], path_calid[i+1]
+                mid_point = (p1 + p2) / 2
+                angle_deg = np.rad2deg(np.arctan2(p2[1] - p1[1], p2[0] - p1[0]))
+                
+                # Creem un semicercle (Wedge)
+                semicircle = Wedge(center=mid_point, r=0.06, theta1=angle_deg - 90, theta2=angle_deg + 90, 
+                                   facecolor='#FF0000', edgecolor='black', 
+                                   transform=ccrs.PlateCarree(), zorder=6)
+                ax.add_patch(semicircle)
+
+    except Exception as e:
+        print(f"No s'han pogut dibuixar els fronts aproximats: {e}")
+        
 
 def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, nivell, timestamp_str, map_extent):
     """
-    Crea un mapa d'advecció tèrmica amb RENDERITZAT D'ALTA QUALITAT.
-    - Utilitza una graella d'alta resolució (300x300).
-    - Aplica un suavitzat gaussià per a formes més orgàniques.
-    - Utilitza molts nivells de color per a un gradient suau i fluid.
+    Crea un mapa d'advecció tèrmica amb renderitzat d'alta qualitat i
+    ARA AFEGEIX UNA REPRESENTACIÓ VISUAL DELS FRONTS.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
 
-    # 1. Interpolació a graella d'alta resolució (300x300)
+    # ... (tot el codi d'interpolació i càlcul de l'advecció es manté exactament igual) ...
     grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 300), np.linspace(map_extent[2], map_extent[3], 300))
     grid_temp = griddata((lons, lats), temp_data, (grid_lon, grid_lat), 'linear')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
 
-    # 2. Càlcul de l'advecció (mètode robust, sense canvis)
     with np.errstate(invalid='ignore'):
         num_lats, num_lons = grid_lat.shape
         lon1_dx, lon2_dx = grid_lon[num_lats // 2, 0], grid_lon[num_lats // 2, -1]
         lat_mid_dx = grid_lat[num_lats // 2, 0]
         dist_x_km = haversine_distance(lat_mid_dx, lon1_dx, lat_mid_dx, lon2_dx)
         dx = (dist_x_km * 1000) / (num_lons - 1)
-
         lat1_dy, lat2_dy = grid_lat[0, num_lons // 2], grid_lat[-1, num_lons // 2]
         lon_mid_dy = grid_lon[0, num_lons // 2]
         dist_y_km = haversine_distance(lat1_dy, lon_mid_dy, lat2_dy, lon_mid_dy)
         dy = (dist_y_km * 1000) / (num_lats - 1)
-
         grad_temp_y, grad_temp_x = np.gradient(grid_temp, dy, dx)
         advection_calc = - ((grid_u * grad_temp_x) + (grid_v * grad_temp_y))
         advection_c_per_hour = advection_calc * 3600
         advection_c_per_hour[np.isnan(advection_c_per_hour)] = 0
         
-    # NOU: Suavitzat Gaussià per a formes més fluides i menys "soroll"
     smoothed_advection = gaussian_filter(advection_c_per_hour, sigma=2.5)
 
-    # 3. Dibuix del mapa d'advecció amb RENDERITZAT FLUID
-    
-    # NOU: Molts més nivells per a un gradient suau
+    # ... (el codi per dibuixar el fons de color de l'advecció i les isotermes es manté igual) ...
     fill_levels_adv = np.arange(-3.0, 3.1, 0.25)
-    
-    cmap_adv = plt.get_cmap('bwr') # Blau (freda) -> Blanc (neutre) -> Vermell (càlida)
+    cmap_adv = plt.get_cmap('bwr')
     norm_adv = BoundaryNorm(fill_levels_adv, ncolors=cmap_adv.N, clip=True)
-    
     im = ax.contourf(grid_lon, grid_lat, smoothed_advection, 
                      levels=fill_levels_adv, cmap=cmap_adv, norm=norm_adv,
                      alpha=0.7, zorder=2, transform=ccrs.PlateCarree(), extend='both')
     
-    # Afegim isotermes (línies de temperatura) per a context
     iso_levels = np.arange(int(np.nanmin(grid_temp)) - 2, int(np.nanmax(grid_temp)) + 2, 2)
     contours_temp = ax.contour(grid_lon, grid_lat, grid_temp, levels=iso_levels, colors='black',
                                linestyles='--', linewidths=0.8, zorder=4, transform=ccrs.PlateCarree())
     ax.clabel(contours_temp, inline=True, fontsize=8, fmt='%1.0f°')
 
-    # Barra de color i títols
+    # <<<--- LÍNIA AFEGIDA AQUÍ ---
+    # Després de dibuixar l'advecció, cridem la nova funció per superposar els fronts
+    dibuixar_fronts_aproximats(ax, grid_lon, grid_lat, grid_u, grid_v, smoothed_advection)
+    # <<<--------------------------
+
+    # ... (la resta de la funció per a la barra de color, títols, etc., es manté igual) ...
     cbar = fig.colorbar(im, ax=ax, orientation='vertical', shrink=0.8, pad=0.02)
     cbar.set_label(f"Advecció Tèrmica a {nivell}hPa (°C / hora)")
-    ax.set_title(f"Advecció Tèrmica a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
-    
+    ax.set_title(f"Advecció Tèrmica i Fronts a {nivell}hPa\n{timestamp_str}", weight='bold', fontsize=16)
     afegir_etiquetes_ciutats(ax, map_extent)
 
     return fig
