@@ -7175,71 +7175,65 @@ def ui_explicacio_adveccio():
         """, unsafe_allow_html=True)
         
 
-# -*- coding: utf-8 -*-
-# --- PAS 1: AFEGEIX AQUESTES NOVES FUNCIONS AL TEU CODI ---
-# Pots posar-les junt amb les altres funcions de càrrega i creació de mapes.
 
 def dibuixar_fronts_aproximats(ax, grid_lon, grid_lat, grid_u, grid_v, advection_data):
     """
-    Versió 4.0 (OPTIMITZADA): Detecta i dibuixa només els 2 fronts més llargs
-    i significatius de cada tipus, amb un càlcul de desplaçament molt més ràpid.
+    Versió 5.0 (QUALITAT PROFESSIONAL): Dibuixa els fronts més importants amb
+    un acabat visual d'alta qualitat, similar als mapes de TV, utilitzant
+    ombres, vores definides i símbols refinats.
     """
     try:
-        # --- PARÀMETRES DE CONFIGURACIÓ ---
+        # --- PARÀMETRES DE CONFIGURació VISUAL ---
         LLINDAR_FRONT_FRED = -1.5
         LLINDAR_FRONT_CALID = 1.5
-        MIN_FRONT_LENGTH = 20      # Ignorem segments de front molt curts
-        MAX_FRONTS_TO_DRAW = 2     # Dibuixem només els 2 més importants
-        OFFSET_FACTOR = 0.1        # Distància a la qual es dibuixa el front per davant
+        MIN_FRONT_LENGTH = 20
+        MAX_FRONTS_TO_DRAW = 2
+        OFFSET_FACTOR = 0.1
+        
+        # Efecte visual per donar profunditat i un acabat net
+        path_effect_front = [path_effects.withStroke(linewidth=3.5, foreground='black')]
 
         # --- ANÀLISI DEL FRONT FRED ---
         cs_fred = ax.contour(grid_lon, grid_lat, advection_data, levels=[LLINDAR_FRONT_FRED],
                              colors='none', transform=ccrs.PlateCarree())
         
-        # Filtrem i ordenem els segments per longitud (de més llarg a més curt)
         segments_freds = [seg for seg in cs_fred.allsegs[0] if len(seg) > MIN_FRONT_LENGTH]
         segments_freds.sort(key=len, reverse=True)
 
-        # Processem només els segments més importants
         for seg in segments_freds[:MAX_FRONTS_TO_DRAW]:
-            # 1. Calculem el punt central del segment (molt més ràpid)
-            center_lon = np.mean(seg[:, 0])
-            center_lat = np.mean(seg[:, 1])
+            center_lon, center_lat = np.mean(seg[:, 0]), np.mean(seg[:, 1])
+            wind_u = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_u.flatten(), (center_lon, center_lat), method='nearest')
+            wind_v = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_v.flatten(), (center_lon, center_lat), method='nearest')
 
-            # 2. Obtenim el vent UNA SOLA VEGADA al punt central
-            wind_at_center_u = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_u.flatten(), (center_lon, center_lat), method='nearest')
-            wind_at_center_v = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_v.flatten(), (center_lon, center_lat), method='nearest')
-
-            # 3. Calculem el desplaçament basat en aquest vent representatiu
-            wind_magnitude = np.sqrt(wind_at_center_u**2 + wind_at_center_v**2)
+            wind_magnitude = np.sqrt(wind_u**2 + wind_v**2)
             if wind_magnitude > 0:
-                offset_lon = (wind_at_center_u / wind_magnitude) * OFFSET_FACTOR
-                offset_lat = (wind_at_center_v / wind_magnitude) * OFFSET_FACTOR
+                offset_lon = (wind_u / wind_magnitude) * OFFSET_FACTOR
+                offset_lat = (wind_v / wind_magnitude) * OFFSET_FACTOR
             else:
                 offset_lon, offset_lat = 0, 0
             
-            # 4. Apliquem el desplaçament a tot el segment
-            path_fred_desplacada = seg + np.array([offset_lon, offset_lat])
+            path_desplacada = seg + np.array([offset_lon, offset_lat])
             
-            # Dibuixem la línia i els símbols (com abans, però ara sobre menys línies)
-            ax.plot(path_fred_desplacada[:, 0], path_fred_desplacada[:, 1], color='#0000FF', linewidth=2.0,
-                    transform=ccrs.PlateCarree(), zorder=5)
+            # Línia base amb efecte d'ombra
+            ax.plot(path_desplacada[:, 0], path_desplacada[:, 1], color='#007BFF', linewidth=2.2,
+                    transform=ccrs.PlateCarree(), zorder=5, path_effects=path_effect_front)
 
-            for i in range(0, len(path_fred_desplacada) - 1, 10):
-                p1, p2 = path_fred_desplacada[i], path_fred_desplacada[i+1]
+            # Símbols (triangles) amb estil professional
+            for i in range(0, len(path_desplacada) - 1, 12): # Més espaiat
+                p1, p2 = path_desplacada[i], path_desplacada[i+1]
                 mid_point = (p1 + p2) / 2
-                angle_vent = np.arctan2(wind_at_center_v, wind_at_center_u)
+                angle_vent = np.arctan2(wind_v, wind_u)
                 
-                triangle_size = 0.06 
+                triangle_size = 0.055 # Més petits
                 p_base1 = mid_point - triangle_size * np.array([np.sin(angle_vent), -np.cos(angle_vent)])
                 p_base2 = mid_point + triangle_size * np.array([np.sin(angle_vent), -np.cos(angle_vent)])
                 p_tip = mid_point + triangle_size * np.array([np.cos(angle_vent), np.sin(angle_vent)])
 
-                triangle = Polygon([p_base1, p_base2, p_tip], facecolor='#0000FF', edgecolor='black', linewidth=0.5,
+                triangle = Polygon([p_base1, p_base2, p_tip], facecolor='#007BFF', edgecolor='black', linewidth=1.0,
                                    transform=ccrs.PlateCarree(), zorder=6)
                 ax.add_patch(triangle)
 
-        # --- ANÀLISI DEL FRONT CÀLID (mateixa lògica optimitzada) ---
+        # --- ANÀLISI DEL FRONT CÀLID ---
         cs_calid = ax.contour(grid_lon, grid_lat, advection_data, levels=[LLINDAR_FRONT_CALID],
                               colors='none', transform=ccrs.PlateCarree())
         
@@ -7247,37 +7241,37 @@ def dibuixar_fronts_aproximats(ax, grid_lon, grid_lat, grid_u, grid_v, advection
         segments_calids.sort(key=len, reverse=True)
 
         for seg in segments_calids[:MAX_FRONTS_TO_DRAW]:
-            center_lon = np.mean(seg[:, 0])
-            center_lat = np.mean(seg[:, 1])
+            center_lon, center_lat = np.mean(seg[:, 0]), np.mean(seg[:, 1])
+            wind_u = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_u.flatten(), (center_lon, center_lat), method='nearest')
+            wind_v = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_v.flatten(), (center_lon, center_lat), method='nearest')
 
-            wind_at_center_u = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_u.flatten(), (center_lon, center_lat), method='nearest')
-            wind_at_center_v = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_v.flatten(), (center_lon, center_lat), method='nearest')
-
-            wind_magnitude = np.sqrt(wind_at_center_u**2 + wind_at_center_v**2)
+            wind_magnitude = np.sqrt(wind_u**2 + wind_v**2)
             if wind_magnitude > 0:
-                offset_lon = (wind_at_center_u / wind_magnitude) * OFFSET_FACTOR
-                offset_lat = (wind_at_center_v / wind_magnitude) * OFFSET_FACTOR
+                offset_lon = (wind_u / wind_magnitude) * OFFSET_FACTOR
+                offset_lat = (wind_v / wind_magnitude) * OFFSET_FACTOR
             else:
                 offset_lon, offset_lat = 0, 0
 
-            path_calid_desplacada = seg + np.array([offset_lon, offset_lat])
+            path_desplacada = seg + np.array([offset_lon, offset_lat])
             
-            ax.plot(path_calid_desplacada[:, 0], path_calid_desplacada[:, 1], color='#FF0000', linewidth=2.0,
-                    transform=ccrs.PlateCarree(), zorder=5)
+            # Línia base amb efecte d'ombra
+            ax.plot(path_desplacada[:, 0], path_desplacada[:, 1], color='#D90429', linewidth=2.2,
+                    transform=ccrs.PlateCarree(), zorder=5, path_effects=path_effect_front)
 
-            for i in range(0, len(path_calid_desplacada) - 1, 12):
-                p1, p2 = path_calid_desplacada[i], path_calid_desplacada[i+1]
+            # Símbols (semicercles) amb estil professional
+            for i in range(0, len(path_desplacada) - 1, 15): # Més espaiat
+                p1, p2 = path_desplacada[i], path_desplacada[i+1]
                 mid_point = (p1 + p2) / 2
-                angle_deg = np.rad2deg(np.arctan2(wind_at_center_v, wind_at_center_u))
+                angle_deg = np.rad2deg(np.arctan2(wind_v, wind_u))
                 
-                semicircle = Wedge(center=mid_point, r=0.05,
+                semicircle = Wedge(center=mid_point, r=0.045, # Més petits
                                    theta1=angle_deg - 90, theta2=angle_deg + 90,
-                                   facecolor='#FF0000', edgecolor='black', linewidth=0.5,
+                                   facecolor='#D90429', edgecolor='black', linewidth=1.0,
                                    transform=ccrs.PlateCarree(), zorder=6)
                 ax.add_patch(semicircle)
 
     except Exception as e:
-        print(f"No s'han pogut dibuixar els fronts aproximats: {e}")
+        print(f"No s'han pogut dibuixar els fronts (versió professional): {e}")
         
 
 def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, nivell, timestamp_str, map_extent):
