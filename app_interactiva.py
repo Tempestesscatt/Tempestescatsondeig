@@ -7132,40 +7132,51 @@ def carregar_dades_mapa_adveccio_cat(hourly_index):
 
 def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, timestamp_str, map_extent):
     """
-    Crea un mapa d'advecció tèrmica a 850hPa. (VERSIÓ CORREGIDA AMB CÀLCUL MANUAL)
+    Crea un mapa d'advecció tèrmica a 850hPa. (VERSIÓ FINAL AMB CÀLCUL MANUAL I ESTABLE)
     - Fons de color: Advecció (vermell = càlida, blau = freda).
     - Línies de contorn: Isotermes (línies de temperatura constant).
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
 
-    # 1. Interpolació de dades
+    # 1. Interpolació de dades a una graella regular (sense canvis)
     grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 200), np.linspace(map_extent[2], map_extent[3], 200))
     grid_temp = griddata((lons, lats), temp_data, (grid_lon, grid_lat), 'linear')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
 
-    # 2. Càlcul de l'advecció (MÈTODE MANUAL I ROBUST)
+    # 2. Càlcul de l'advecció (MÈTODE MANUAL I A PROVA D'ERRORS DE FORMA)
     with np.errstate(invalid='ignore'):
+        # <<<--- INICI DE LA SOLUCIÓ DEFINITIVA ---
+
+        # Pas 1: Calculem l'espaiat mitjà en metres de la nostra graella.
+        # Aquesta és una aproximació vàlida per a un domini geogràficament petit
+        # com Catalunya i ens garanteix estabilitat en el càlcul del gradient.
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+        dx_mean = dx.mean().m
+        dy_mean = dy.mean().m
+
+        # Pas 2: Calculem el gradient utilitzant la funció robusta de NumPy,
+        # passant-li l'espaiat mitjà per a cada eix.
+        # L'ordre de retorn de np.gradient és (gradient_eix_0, gradient_eix_1),
+        # que correspon a (grad_y, grad_x).
+        grad_temp_y, grad_temp_x = np.gradient(grid_temp, dy_mean, dx_mean)
+
+        # Pas 3: Reassignem les unitats al resultat del gradient.
+        grad_temp_x = grad_temp_x * units('degC/m')
+        grad_temp_y = grad_temp_y * units('degC/m')
+
+        # Pas 4: Calculem l'advecció. Com que np.gradient sempre retorna una matriu
+        # de la mateixa forma que l'entrada, aquesta operació ja no pot fallar.
+        advection_calc = - ((grid_u * units('m/s') * grad_temp_x) + (grid_v * units('m/s') * grad_temp_y))
         
-        # <<<--- INICI DE LA CORRECCIÓ ---
-        # Pas 1: Calculem el gradient del camp de temperatura (dT/dx, dT/dy)
-        grad_temp = mpcalc.gradient(grid_temp * units.degC, dx=dx, dy=dy)
-        grad_temp_x = grad_temp[0]
-        grad_temp_y = grad_temp[1]
-
-        # Pas 2: Calculem l'advecció manualment com el producte escalar del vent i el gradient.
-        # Advecció = - (u * dT/dx + v * dT/dy)
-        advection_calc = - ( (grid_u * units('m/s') * grad_temp_x) + (grid_v * units('m/s') * grad_temp_y) )
-
-        # Pas 3: Convertim a les unitats desitjades (°C/hora) i extraiem el valor numèric.
         advection_c_per_hour = advection_calc.to('degC/hour').m
         advection_c_per_hour[np.isnan(advection_c_per_hour)] = 0
-        # <<<--- FI DE LA CORRECCIÓ ---
+        
+        # <<<--- FI DE LA SOLUCIÓ DEFINITIVA ---
 
-    # 3. Dibuix del mapa d'advecció
+    # 3. Dibuix del mapa d'advecció (sense canvis)
     adv_levels = np.linspace(-3, 3, 13)
     cmap_adv = plt.get_cmap('bwr')
     norm_adv = BoundaryNorm(adv_levels, ncolors=cmap_adv.N, clip=True)
@@ -7173,13 +7184,13 @@ def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, timesta
     im = ax.contourf(grid_lon, grid_lat, advection_c_per_hour, levels=adv_levels, cmap=cmap_adv, norm=norm_adv,
                      alpha=0.6, zorder=2, transform=ccrs.PlateCarree(), extend='both')
     
-    # 4. Afegir línies de temperatura (isotermes)
+    # 4. Afegir línies de temperatura (isotermes) (sense canvis)
     iso_levels = np.arange(int(np.nanmin(grid_temp)) - 2, int(np.nanmax(grid_temp)) + 2, 2)
     contours_temp = ax.contour(grid_lon, grid_lat, grid_temp, levels=iso_levels, colors='black',
                                linestyles='--', linewidths=0.8, zorder=4, transform=ccrs.PlateCarree())
     ax.clabel(contours_temp, inline=True, fontsize=8, fmt='%1.0f°')
 
-    # 5. Afegir barra de color per a l'advecció
+    # 5. Afegir barra de color per a l'advecció (sense canvis)
     cbar = fig.colorbar(im, ax=ax, orientation='vertical', shrink=0.8, pad=0.02)
     cbar.set_label("Advecció Tèrmica a 850hPa (°C / hora)")
 
