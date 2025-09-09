@@ -7132,10 +7132,9 @@ def carregar_dades_mapa_adveccio_cat(hourly_index):
 
 def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, timestamp_str, map_extent):
     """
-    Crea un mapa d'advecció tèrmica a 850hPa.
+    Crea un mapa d'advecció tèrmica a 850hPa. (VERSIÓ CORREGIDA AMB CÀLCUL MANUAL)
     - Fons de color: Advecció (vermell = càlida, blau = freda).
     - Línies de contorn: Isotermes (línies de temperatura constant).
-    - Línies de corrent: Direcció del vent.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -7147,16 +7146,28 @@ def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, timesta
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
 
-    # 2. Càlcul de l'advecció
+    # 2. Càlcul de l'advecció (MÈTODE MANUAL I ROBUST)
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-        # Calculem l'advecció i la convertim a °C/hora per a una interpretació més fàcil
-        advection_c_per_hour = mpcalc.advection(grid_temp * units.degC, [grid_u * units('m/s'), grid_v * units('m/s')], deltas=[dx, dy]).to('degC/hour').m
+        
+        # <<<--- INICI DE LA CORRECCIÓ ---
+        # Pas 1: Calculem el gradient del camp de temperatura (dT/dx, dT/dy)
+        grad_temp = mpcalc.gradient(grid_temp * units.degC, dx=dx, dy=dy)
+        grad_temp_x = grad_temp[0]
+        grad_temp_y = grad_temp[1]
+
+        # Pas 2: Calculem l'advecció manualment com el producte escalar del vent i el gradient.
+        # Advecció = - (u * dT/dx + v * dT/dy)
+        advection_calc = - ( (grid_u * units('m/s') * grad_temp_x) + (grid_v * units('m/s') * grad_temp_y) )
+
+        # Pas 3: Convertim a les unitats desitjades (°C/hora) i extraiem el valor numèric.
+        advection_c_per_hour = advection_calc.to('degC/hour').m
         advection_c_per_hour[np.isnan(advection_c_per_hour)] = 0
+        # <<<--- FI DE LA CORRECCIÓ ---
 
     # 3. Dibuix del mapa d'advecció
-    adv_levels = np.linspace(-3, 3, 13) # De -3 a +3 °C/hora
-    cmap_adv = plt.get_cmap('bwr') # Blau (fred) - Blanc (neutre) - Vermell (càlid)
+    adv_levels = np.linspace(-3, 3, 13)
+    cmap_adv = plt.get_cmap('bwr')
     norm_adv = BoundaryNorm(adv_levels, ncolors=cmap_adv.N, clip=True)
     
     im = ax.contourf(grid_lon, grid_lat, advection_c_per_hour, levels=adv_levels, cmap=cmap_adv, norm=norm_adv,
