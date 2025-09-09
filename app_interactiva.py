@@ -7134,8 +7134,8 @@ def carregar_dades_mapa_adveccio_cat(hourly_index):
 
 def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, timestamp_str, map_extent):
     """
-    Crea un mapa d'advecció tèrmica a 850hPa. (VERSIÓ 4 - CÀLCUL 100% MANUAL I ROBUST)
-    Aquesta versió calcula dx i dy manualment per evitar qualsevol error de formes (broadcast error).
+    Crea un mapa d'advecció tèrmica a 850hPa. (VERSIÓ 5 - CÀLCUL 100% MANUAL I ROBUST)
+    Aquesta versió calcula dx, dy i el gradient manualment per evitar qualsevol error de formes.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -7149,44 +7149,42 @@ def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, timesta
 
     # 2. Càlcul de l'advecció (MÈTODE FINAL I A PROVA D'ERRORS DE FORMA)
     with np.errstate(invalid='ignore'):
-        # <<<--- INICI DE LA SOLUCIÓ DEFINITIVA ---
+        # <<<--- INICI DE LA SOLUCIÓ DEFINITIVA I ROBUSTA ---
 
         # Pas 1: Calculem l'espaiat (dx, dy) de la graella en metres de forma manual i segura.
         # Això ens dóna un valor escalar únic per a dx i dy, evitant problemes de forma.
         num_lats, num_lons = grid_lat.shape
+        
         # Distància horitzontal (dx) al centre de la graella
-        lon1 = grid_lon[num_lats // 2, 0]
-        lon2 = grid_lon[num_lats // 2, -1]
-        lat_mid = grid_lat[num_lats // 2, 0]
-        dist_x_km = haversine_distance(lat_mid, lon1, lat_mid, lon2)
+        lon1_dx = grid_lon[num_lats // 2, 0]
+        lon2_dx = grid_lon[num_lats // 2, -1]
+        lat_mid_dx = grid_lat[num_lats // 2, 0]
+        dist_x_km = haversine_distance(lat_mid_dx, lon1_dx, lat_mid_dx, lon2_dx)
         dx = (dist_x_km * 1000) / (num_lons - 1)
 
         # Distància vertical (dy) al centre de la graella
-        lat1 = grid_lat[0, num_lons // 2]
-        lat2 = grid_lat[-1, num_lons // 2]
-        lon_mid = grid_lon[0, num_lons // 2]
-        dist_y_km = haversine_distance(lat1, lon_mid, lat2, lon_mid)
+        lat1_dy = grid_lat[0, num_lons // 2]
+        lat2_dy = grid_lat[-1, num_lons // 2]
+        lon_mid_dy = grid_lon[0, num_lons // 2]
+        dist_y_km = haversine_distance(lat1_dy, lon_mid_dy, lat2_dy, lon_mid_dy)
         dy = (dist_y_km * 1000) / (num_lats - 1)
 
         # Pas 2: Calculem el gradient utilitzant la funció robusta de NumPy.
         # Com que dx i dy són escalars, np.gradient sempre retorna una matriu
         # de la mateixa forma que la matriu d'entrada (grid_temp).
-        # L'ordre de retorn de np.gradient és (gradient_eix_0, gradient_eix_1),
-        # que correspon a (gradient_Y, gradient_X).
+        # L'ordre de retorn és (gradient_eix_0, gradient_eix_1), que correspon a (gradient_Y, gradient_X).
         grad_temp_y, grad_temp_x = np.gradient(grid_temp, dy, dx)
 
-        # Pas 3: Assignem les unitats al resultat del gradient.
-        grad_temp_x_units = grad_temp_x * units('degC/m')
-        grad_temp_y_units = grad_temp_y * units('degC/m')
-
-        # Pas 4: Calculem l'advecció. Aquesta operació ara és segura perquè
+        # Pas 3: Calculem l'advecció. Aquesta operació ara és segura perquè
         # totes les matrius (grid_u, grid_v, grad_temp_x, grad_temp_y) tenen la mateixa forma.
-        advection_calc = - ((grid_u * units('m/s') * grad_temp_x_units) + (grid_v * units('m/s') * grad_temp_y_units))
+        advection_calc = - ((grid_u * grad_temp_x) + (grid_v * grad_temp_y))
         
-        advection_c_per_hour = advection_calc.to('degC/hour').m
+        # Pas 4: Convertim a les unitats desitjades (°C/hora) i gestionem possibles NaNs.
+        # La conversió de s^-1 a h^-1 és multiplicar per 3600.
+        advection_c_per_hour = advection_calc * 3600
         advection_c_per_hour[np.isnan(advection_c_per_hour)] = 0
         
-        # <<<--- FI DE LA SOLUCIÓ DEFINITIVA ---
+        # <<<--- FI DE LA SOLUCIÓ DEFINITIVA I ROBUSTA ---
 
     # 3. Dibuix del mapa d'advecció (la resta de la funció és idèntica)
     adv_levels = np.linspace(-3, 3, 13)
