@@ -7264,8 +7264,16 @@ def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, timesta
     # 2. Càlcul de l'advecció
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-        # Calculem l'advecció i la convertim a °C/hora per a una interpretació més fàcil
-        advection_c_per_hour = mpcalc.advection(grid_temp * units.degC, [grid_u * units('m/s'), grid_v * units('m/s')], deltas=[dx, dy]).to('degC/hour').m
+        
+        # <<<--- AQUÍ ESTÀ LA CORRECCIÓ ---
+        # Hem canviat deltas=[dx, dy] per dx=dx, dy=dy
+        advection_c_per_hour = mpcalc.advection(
+            grid_temp * units.degC,
+            [grid_u * units('m/s'), grid_v * units('m/s')],
+            dx=dx, 
+            dy=dy
+        ).to('degC/hour').m
+        
         advection_c_per_hour[np.isnan(advection_c_per_hour)] = 0
 
     # 3. Dibuix del mapa d'advecció
