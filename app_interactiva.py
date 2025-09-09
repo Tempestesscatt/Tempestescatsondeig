@@ -7132,9 +7132,8 @@ def carregar_dades_mapa_adveccio_cat(hourly_index):
 
 def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, timestamp_str, map_extent):
     """
-    Crea un mapa d'advecció tèrmica a 850hPa. (VERSIÓ FINAL AMB CÀLCUL MANUAL I ESTABLE)
-    - Fons de color: Advecció (vermell = càlida, blau = freda).
-    - Línies de contorn: Isotermes (línies de temperatura constant).
+    Crea un mapa d'advecció tèrmica a 850hPa. (VERSIÓ 4 - CÀLCUL 100% MANUAL I ROBUST)
+    Aquesta versió calcula dx i dy manualment per evitar qualsevol error de formes (broadcast error).
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -7146,37 +7145,48 @@ def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, timesta
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
 
-    # 2. Càlcul de l'advecció (MÈTODE MANUAL I A PROVA D'ERRORS DE FORMA)
+    # 2. Càlcul de l'advecció (MÈTODE FINAL I A PROVA D'ERRORS DE FORMA)
     with np.errstate(invalid='ignore'):
         # <<<--- INICI DE LA SOLUCIÓ DEFINITIVA ---
 
-        # Pas 1: Calculem l'espaiat mitjà en metres de la nostra graella.
-        # Aquesta és una aproximació vàlida per a un domini geogràficament petit
-        # com Catalunya i ens garanteix estabilitat en el càlcul del gradient.
-        dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-        dx_mean = dx.mean().m
-        dy_mean = dy.mean().m
+        # Pas 1: Calculem l'espaiat (dx, dy) de la graella en metres de forma manual i segura.
+        # Això ens dóna un valor escalar únic per a dx i dy, evitant problemes de forma.
+        num_lats, num_lons = grid_lat.shape
+        # Distància horitzontal (dx) al centre de la graella
+        lon1 = grid_lon[num_lats // 2, 0]
+        lon2 = grid_lon[num_lats // 2, -1]
+        lat_mid = grid_lat[num_lats // 2, 0]
+        dist_x_km = haversine_distance(lat_mid, lon1, lat_mid, lon2)
+        dx = (dist_x_km * 1000) / (num_lons - 1)
 
-        # Pas 2: Calculem el gradient utilitzant la funció robusta de NumPy,
-        # passant-li l'espaiat mitjà per a cada eix.
+        # Distància vertical (dy) al centre de la graella
+        lat1 = grid_lat[0, num_lons // 2]
+        lat2 = grid_lat[-1, num_lons // 2]
+        lon_mid = grid_lon[0, num_lons // 2]
+        dist_y_km = haversine_distance(lat1, lon_mid, lat2, lon_mid)
+        dy = (dist_y_km * 1000) / (num_lats - 1)
+
+        # Pas 2: Calculem el gradient utilitzant la funció robusta de NumPy.
+        # Com que dx i dy són escalars, np.gradient sempre retorna una matriu
+        # de la mateixa forma que la matriu d'entrada (grid_temp).
         # L'ordre de retorn de np.gradient és (gradient_eix_0, gradient_eix_1),
-        # que correspon a (grad_y, grad_x).
-        grad_temp_y, grad_temp_x = np.gradient(grid_temp, dy_mean, dx_mean)
+        # que correspon a (gradient_Y, gradient_X).
+        grad_temp_y, grad_temp_x = np.gradient(grid_temp, dy, dx)
 
-        # Pas 3: Reassignem les unitats al resultat del gradient.
-        grad_temp_x = grad_temp_x * units('degC/m')
-        grad_temp_y = grad_temp_y * units('degC/m')
+        # Pas 3: Assignem les unitats al resultat del gradient.
+        grad_temp_x_units = grad_temp_x * units('degC/m')
+        grad_temp_y_units = grad_temp_y * units('degC/m')
 
-        # Pas 4: Calculem l'advecció. Com que np.gradient sempre retorna una matriu
-        # de la mateixa forma que l'entrada, aquesta operació ja no pot fallar.
-        advection_calc = - ((grid_u * units('m/s') * grad_temp_x) + (grid_v * units('m/s') * grad_temp_y))
+        # Pas 4: Calculem l'advecció. Aquesta operació ara és segura perquè
+        # totes les matrius (grid_u, grid_v, grad_temp_x, grad_temp_y) tenen la mateixa forma.
+        advection_calc = - ((grid_u * units('m/s') * grad_temp_x_units) + (grid_v * units('m/s') * grad_temp_y_units))
         
         advection_c_per_hour = advection_calc.to('degC/hour').m
         advection_c_per_hour[np.isnan(advection_c_per_hour)] = 0
         
         # <<<--- FI DE LA SOLUCIÓ DEFINITIVA ---
 
-    # 3. Dibuix del mapa d'advecció (sense canvis)
+    # 3. Dibuix del mapa d'advecció (la resta de la funció és idèntica)
     adv_levels = np.linspace(-3, 3, 13)
     cmap_adv = plt.get_cmap('bwr')
     norm_adv = BoundaryNorm(adv_levels, ncolors=cmap_adv.N, clip=True)
@@ -7184,13 +7194,11 @@ def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, timesta
     im = ax.contourf(grid_lon, grid_lat, advection_c_per_hour, levels=adv_levels, cmap=cmap_adv, norm=norm_adv,
                      alpha=0.6, zorder=2, transform=ccrs.PlateCarree(), extend='both')
     
-    # 4. Afegir línies de temperatura (isotermes) (sense canvis)
     iso_levels = np.arange(int(np.nanmin(grid_temp)) - 2, int(np.nanmax(grid_temp)) + 2, 2)
     contours_temp = ax.contour(grid_lon, grid_lat, grid_temp, levels=iso_levels, colors='black',
                                linestyles='--', linewidths=0.8, zorder=4, transform=ccrs.PlateCarree())
     ax.clabel(contours_temp, inline=True, fontsize=8, fmt='%1.0f°')
 
-    # 5. Afegir barra de color per a l'advecció (sense canvis)
     cbar = fig.colorbar(im, ax=ax, orientation='vertical', shrink=0.8, pad=0.02)
     cbar.set_label("Advecció Tèrmica a 850hPa (°C / hora)")
 
@@ -7198,7 +7206,7 @@ def crear_mapa_adveccio_cat(lons, lats, temp_data, speed_data, dir_data, timesta
     afegir_etiquetes_ciutats(ax, map_extent)
 
     return fig
-
+    
 def ui_explicacio_adveccio():
     """
     Crea una secció explicativa sobre com interpretar el mapa d'advecció.
