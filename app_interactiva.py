@@ -1293,7 +1293,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except: ml_prof = None
         main_prof = ml_prof if ml_prof is not None else sfc_prof
 
-        # --- Càlculs Base ---
+        # --- Càlculs Base (Sempre s'intenten) ---
         try: sbcape, sbcin = mpcalc.cape_cin(p, T, Td, sfc_prof); params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m)
         except: params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan})
         try: mlcape, mlcin = mpcalc.cape_cin(p, T, Td, ml_prof); params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
@@ -1334,8 +1334,14 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         
         # --- Càlcul Condicional de la Capa Efectiva i Paràmetres Derivats ---
         try:
-            rm, lm, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
+            rm, _, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
             u_storm, v_storm = rm
+            # Calculem SRH estàndard aquí perquè es necessita per a la capa efectiva
+            srh_1km = mpcalc.storm_relative_helicity(heights, u, v, depth=1000 * units.meter, storm_u=u_storm, storm_v=v_storm)[0]
+            params_calc['SRH_0-1km'] = float(srh_1km.m)
+            srh_3km = mpcalc.storm_relative_helicity(heights, u, v, depth=3000 * units.meter, storm_u=u_storm, storm_v=v_storm)[0]
+            params_calc['SRH_0-3km'] = float(srh_3km.m)
+
             bottom_eff, top_eff = mpcalc.effective_inflow_layer(p, T, Td, cape_threshold=100 * units('J/kg'), cin_threshold=-250 * units('J/kg'))
             if bottom_eff and top_eff:
                 params_calc['EFF_INFLOW_BOTTOM'] = float(bottom_eff.m)
@@ -1346,6 +1352,8 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                 params_calc['ESRH'] = float(esrh.m)
             else: raise ValueError("Capa efectiva no trobada.")
         except:
+            if 'SRH_0-1km' not in params_calc: params_calc['SRH_0-1km'] = np.nan
+            if 'SRH_0-3km' not in params_calc: params_calc['SRH_0-3km'] = np.nan
             params_calc.update({'EFF_INFLOW_BOTTOM': np.nan, 'EFF_INFLOW_TOP': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
 
         # --- Càlcul Condicional dels Índexs Compostos ---
@@ -1359,7 +1367,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         else: params_calc['SCP'] = np.nan
 
         # Significant Tornado (STP)
-        stp_ingredients = [params_calc.get('MLCAPE'), params_calc.get('LCL_Hgt'), params_calc.get('ESRH'), params_calc.get('EBWD')]
+        stp_ingredients = [params_calc.get('MLCAPE'), params_calc.get('LCL_Hgt'), params_calc.get('ESRH'), params_calc.get('BWD_0-6km')] # Canviat a BWD 0-6km per a més robustesa
         if all(pd.notna(v) for v in stp_ingredients):
             try: params_calc['STP_CIN'] = float(mpcalc.significant_tornado(sbcape=stp_ingredients[0]*units('J/kg'), lcl_height=stp_ingredients[1]*units.meter, srh1=stp_ingredients[2]*units('m^2/s^2'), bwd6=(stp_ingredients[3]*units.kt).to('m/s')).m)
             except: params_calc['STP_CIN'] = np.nan
