@@ -3789,7 +3789,7 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ AMB RENDERITZAT SUAU I ETIQUETES DE PICS MÀXIMS.
+    VERSIÓ FINAL: RENDERITZAT SUAU AMB ETIQUETES DE PICS MÀXIMS.
     - Dibuixa el mapa suavitzat per a un aspecte orgànic.
     - Superposa etiquetes de text amb el valor màxim REAL (sense suavitzar) en els focus més intensos.
     """
@@ -3799,7 +3799,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
     
-    # --- INTERPOLACIÓ I CÀLCUL (Sense canvis) ---
+    # --- CÀLCUL I INTERPOLACIÓ (SENSE CANVIS) ---
     grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 300), np.linspace(map_extent[2], map_extent[3], 300))
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'linear')
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'linear')
@@ -3826,13 +3826,11 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
     smoothed_convergence[smoothed_convergence < 15] = 0
     
-    # --- DIBUIX DE LA CONVERGÈNCIA AMB LA NOVA PALETA DE COLORS ---
     if np.any(smoothed_convergence > 0):
         from matplotlib.colors import to_rgba
-        radar_colors_hex = ['#00F6FF', '#0000FF', '#00FF00', '#FFFF00', '#FFA500', '#FF0000', '#B40000', '#FF00FF', '#9100C8']
-        colors_with_alpha = [to_rgba(c, alpha=0.4) for c in radar_colors_hex[:3]] + \
-                            [to_rgba(c, alpha=0.9) for c in radar_colors_hex[3:]]
-        radar_levels = [15, 20, 25, 30, 45, 60, 75, 90, 110]
+        radar_colors_hex = ['#00F6FF', '#0000FF', '#00FF00', '#008000', '#FFFF00', '#FFA500', '#FF0000', '#B40000', '#FF00FF', '#9100C8']
+        colors_with_alpha = [to_rgba(c, alpha=0.4) for c in radar_colors_hex[:3]] + [to_rgba(c, alpha=0.9) for c in radar_colors_hex[3:]]
+        radar_levels = [15, 20, 25, 30, 40, 50, 60, 70, 80, 100, 120]
         cmap_radar = ListedColormap(colors_with_alpha)
         norm_radar = BoundaryNorm(radar_levels, ncolors=cmap_radar.N, clip=True)
 
@@ -3841,7 +3839,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
                     levels=radar_levels, cmap=cmap_radar, norm=norm_radar,
                     zorder=3, transform=ccrs.PlateCarree(), extend='max')
         
-        # <<<--- CANVI CLAU: IDENTIFICACIÓ I ETIQUETATGE DELS PICS REALS --->>>
+        # <<<--- NOU BLOC: IDENTIFICACIÓ I ETIQUETATGE DELS PICS REALS --->>>
         # 2. Identifiquem les zones (taques/blobs) de convergència forta (>30) al mapa suavitzat
         labels, num_features = ndi.label(smoothed_convergence > 30)
         if num_features > 0:
@@ -3853,7 +3851,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
                 max_val = effective_convergence[int(row), int(col)]
                 lon_peak, lat_peak = grid_lon[int(row), int(col)], grid_lat[int(row), int(col)]
                 
-                # Només etiquetem els pics realment significatius per no saturar
+                # Només etiquetem els pics realment significatius (>40) per no saturar el mapa
                 if max_val > 40:
                     txt = ax.text(lon_peak, lat_peak, f'{max_val:.0f}',
                                   color='white', fontsize=9, weight='bold', ha='center', va='center',
@@ -5987,7 +5985,7 @@ def crear_llegenda_direccionalitat():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL amb la llegenda de colors integrada sota el mapa (VERSIÓ CORREGIDA).
+    PESTANYA D'ANÀLISI COMARCAL amb renderitzat suau, etiquetes de pics màxims i llegenda integrada.
     """
     from scipy import ndimage as ndi
     
@@ -6045,9 +6043,13 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     cmap_radar = ListedColormap(colors_with_alpha)
                     norm_radar = BoundaryNorm(radar_levels, ncolors=cmap_radar.N, clip=True)
 
-                    ax.contourf(grid_lon, grid_lat, final_convergence_grid, 
+                    im = ax.contourf(grid_lon, grid_lat, final_convergence_grid, 
                                 levels=radar_levels, cmap=cmap_radar, norm=norm_radar,
                                 zorder=3, transform=ccrs.PlateCarree(), extend='max')
+                    
+                    cbar = fig.colorbar(im, ax=ax, orientation='horizontal', pad=0.08, shrink=0.8, aspect=30)
+                    cbar.set_label('Intensitat de Convergència (x10⁻⁵ s⁻¹)', fontsize=9)
+                    cbar.ax.tick_params(labelsize=8)
                     
                     labels, num_features = ndi.label(final_convergence_grid > 30)
                     if num_features > 0:
@@ -6061,6 +6063,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                                               transform=ccrs.PlateCarree(), zorder=15)
                                 txt.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')])
 
+                # La resta de la lògica per al punt màxim i la direccionalitat es manté igual
                 points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': final_convergence_grid.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
                 points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
@@ -6119,13 +6122,10 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             ax.set_title(f"Focus de Convergència a {comarca}", weight='bold', fontsize=12)
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
-            
-            llegenda_html = crear_llegenda_convergencia_radar()
-            st.markdown(llegenda_html, unsafe_allow_html=True)
 
-    # <<<--- AQUEST ÉS EL BLOC QUE S'HAVIA DESINDENTAT --->>>
-    # Ara està correctament dins de la funció principal
     with col_diagnostic:
+        # La resta de la funció (diagnòstic de text) es manté intacta
+        # ...
         st.markdown("##### Diagnòstic de la Zona")
         if valor_conv >= 100:
             nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9100C8", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
@@ -6137,7 +6137,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             nivell_alerta, color_alerta, emoji, descripcio = "Moderat-Alt", "#FFFF00", "🟡", f"S'observa una zona de convergència de moderada a forta a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes organitzades si l'atmosfera és inestable."
         elif valor_conv >= 30:
              nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#008000", "🟢", f"S'observa una zona de convergència moderada a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes si l'atmosfera és inestable."
-        else:
+        else: # Cobrirà de 15 a 29.9
             nivell_alerta, color_alerta, emoji, descripcio = "Feble", "#00F6FF", "🔵", f"Es detecta una convergència feble (Valor: {valor_conv:.0f}). El forçament dinàmic per iniciar tempestes és limitat però present."
 
         st.markdown(f"""
@@ -6174,7 +6174,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
         
         crear_llegenda_direccionalitat()
-
 
 
 def crear_llegenda_convergencia_radar():
