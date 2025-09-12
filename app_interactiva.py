@@ -3790,8 +3790,7 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
     VERSIÓ FINAL AMB CORRECCIÓ D'ERROR (AttributeError).
-    - Comprova si s'han dibuixat isolínies abans d'intentar aplicar-los efectes.
-    - Manté el renderitzat suau, les etiquetes de pics i les isolínies fines.
+    - Comprova si l'objecte 'contours' existeix abans d'accedir a les seves col·leccions.
     """
     from scipy import ndimage as ndi
 
@@ -3838,7 +3837,6 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
                     levels=radar_levels, cmap=cmap_radar, norm=norm_radar,
                     zorder=3, transform=ccrs.PlateCarree(), extend='max')
         
-        # <<<--- BLOC D'ISOLÍNIES CORREGIT --->>>
         isoline_levels = np.arange(15, 151, 20)
         
         contours = ax.contour(
@@ -3851,8 +3849,9 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
             zorder=5
         )
         
-        # AFEGIM LA COMPROVACIÓ DE SEGURETAT AQUÍ
-        if contours.collections:
+        # <<<--- COMPROVACIÓ DE SEGURETAT DEFINITIVA --->>>
+        # Comprovem que l'objecte 'contours' existeix I que té col·leccions per evitar l'error.
+        if contours and contours.collections:
             plt.setp(contours.collections, path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
             ax.clabel(contours, levels=[30, 60, 90, 120], inline=True, fontsize=6, fmt='%1.0f')
 
@@ -5995,7 +5994,7 @@ def crear_llegenda_direccionalitat():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL amb renderitzat suau, isolínies fines, etiquetes de pics i llegenda.
+    PESTANYA D'ANÀLISI COMARCAL amb la correcció de seguretat per a les isolínies.
     """
     from scipy import ndimage as ndi
     
@@ -6061,17 +6060,19 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     cbar.set_label('Intensitat de Convergència (x10⁻⁵ s⁻¹)', fontsize=9)
                     cbar.ax.tick_params(labelsize=8)
                     
-                    # <<<--- BLOC D'ISOLÍNIES FINES I PROFESSIONALS TAMBÉ AQUÍ --->>>
                     isoline_levels = np.arange(15, 151, 20)
                     contours = ax.contour(
                         grid_lon, grid_lat, final_convergence_grid,
                         levels=isoline_levels, colors='white', linewidths=0.7,
                         alpha=0.8, transform=ccrs.PlateCarree(), zorder=5
                     )
-                    plt.setp(contours.collections, path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
-                    ax.clabel(contours, levels=[30, 60, 90, 120], inline=True, fontsize=7, fmt='%1.0f')
+                    
+                    # <<<--- APLIQUEM LA MATEIXA COMPROVACIÓ DE SEGURETAT AQUÍ --->>>
+                    if contours and contours.collections:
+                        plt.setp(contours.collections, path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+                        ax.clabel(contours, levels=[30, 60, 90, 120], inline=True, fontsize=7, fmt='%1.0f')
 
-                    # El bloc per etiquetar els pics màxims es manté igual
+                    # La resta de la lògica de la fletxa i marcadors es manté igual
                     labels, num_features = ndi.label(final_convergence_grid > 30)
                     if num_features > 0:
                         max_locs = ndi.maximum_position(final_convergence_grid, labels=labels, index=np.arange(1, num_features + 1))
@@ -6084,7 +6085,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                                               transform=ccrs.PlateCarree(), zorder=15)
                                 txt.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')])
 
-                # La resta de la lògica de la fletxa i marcadors es manté igual
                 points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': final_convergence_grid.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
                 points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
@@ -6145,7 +6145,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             plt.close(fig)
 
     with col_diagnostic:
-        # La part de diagnòstic es manté intacta
+        # La resta de la funció (diagnòstic de text) es manté intacta
         # ...
         st.markdown("##### Diagnòstic de la Zona")
         if valor_conv >= 100:
