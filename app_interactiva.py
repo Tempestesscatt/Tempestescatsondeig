@@ -3789,11 +3789,8 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ FINAL: RENDERITZAT SUAU AMB ETIQUETES DE PICS MÀXIMS.
-    - Dibuixa el mapa suavitzat per a un aspecte orgànic.
-    - Superposa etiquetes de text amb el valor màxim REAL (sense suavitzar) en els focus més intensos.
+    VERSIÓ FINAL: RENDERITZAT SUAU + ISOLÍNIES FINES + ETIQUETES DE PICS MÀXIMS.
     """
-    # Importació necessària per a la detecció de "taques" o "blobs"
     from scipy import ndimage as ndi
 
     plt.style.use('default')
@@ -3823,10 +3820,11 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
         effective_convergence = np.where((convergence >= 15) & (humid_mask), convergence, 0)
 
-    smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
-    smoothed_convergence[smoothed_convergence < 15] = 0
+    smoothed_convergence = gaussian_filter(effective_convergence, sigma=1.5)
+    final_convergence_grid = np.maximum(effective_convergence, smoothed_convergence)
+    final_convergence_grid[final_convergence_grid < 15] = 0
     
-    if np.any(smoothed_convergence > 0):
+    if np.any(final_convergence_grid > 0):
         from matplotlib.colors import to_rgba
         radar_colors_hex = ['#00F6FF', '#0000FF', '#00FF00', '#008000', '#FFFF00', '#FFA500', '#FF0000', '#B40000', '#FF00FF', '#9100C8']
         colors_with_alpha = [to_rgba(c, alpha=0.4) for c in radar_colors_hex[:3]] + [to_rgba(c, alpha=0.9) for c in radar_colors_hex[3:]]
@@ -3834,29 +3832,42 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
         cmap_radar = ListedColormap(colors_with_alpha)
         norm_radar = BoundaryNorm(radar_levels, ncolors=cmap_radar.N, clip=True)
 
-        # 1. Dibuixem el farciment SUAVITZAT per a l'aspecte orgànic
-        ax.contourf(grid_lon, grid_lat, smoothed_convergence,
+        ax.contourf(grid_lon, grid_lat, final_convergence_grid,
                     levels=radar_levels, cmap=cmap_radar, norm=norm_radar,
                     zorder=3, transform=ccrs.PlateCarree(), extend='max')
         
-        # <<<--- NOU BLOC: IDENTIFICACIÓ I ETIQUETATGE DELS PICS REALS --->>>
-        # 2. Identifiquem les zones (taques/blobs) de convergència forta (>30) al mapa suavitzat
-        labels, num_features = ndi.label(smoothed_convergence > 30)
+        # <<<--- NOU BLOC D'ISOLÍNIES FINES I PROFESSIONALS --->>>
+        # 1. Definim nivells per a les isolínies, per exemple, cada 20 unitats.
+        isoline_levels = np.arange(15, 151, 20)
+        
+        # 2. Dibuixem les isolínies en color blanc, molt fines i una mica transparents.
+        contours = ax.contour(
+            grid_lon, grid_lat, final_convergence_grid,
+            levels=isoline_levels,
+            colors='white',
+            linewidths=0.7,
+            alpha=0.8,
+            transform=ccrs.PlateCarree(),
+            zorder=5 # Les posem per sobre del color de fons
+        )
+        
+        # 3. AFEGIM L'EFECTE DE VORA NEGRA per a una visibilitat perfecta.
+        plt.setp(contours.collections, path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+        
+        # 4. Etiquetem només les línies més importants (30, 60, 90...) per no saturar.
+        ax.clabel(contours, levels=[30, 60, 90, 120], inline=True, fontsize=6, fmt='%1.0f')
+
+        # El bloc per etiquetar els pics màxims es manté igual
+        labels, num_features = ndi.label(final_convergence_grid > 30)
         if num_features > 0:
-            # 3. Trobem la posició del valor MÀXIM dins de cada taca, però utilitzant les dades ORIGINALS (effective_convergence)
-            max_locs = ndi.maximum_position(effective_convergence, labels=labels, index=np.arange(1, num_features + 1))
-            
-            # 4. Per a cada pic trobat, dibuixem una etiqueta de text amb el seu valor real
+            max_locs = ndi.maximum_position(final_convergence_grid, labels=labels, index=np.arange(1, num_features + 1))
             for row, col in max_locs:
-                max_val = effective_convergence[int(row), int(col)]
+                max_val = final_convergence_grid[int(row), int(col)]
                 lon_peak, lat_peak = grid_lon[int(row), int(col)], grid_lat[int(row), int(col)]
-                
-                # Només etiquetem els pics realment significatius (>40) per no saturar el mapa
                 if max_val > 40:
                     txt = ax.text(lon_peak, lat_peak, f'{max_val:.0f}',
                                   color='white', fontsize=9, weight='bold', ha='center', va='center',
-                                  transform=ccrs.PlateCarree(), zorder=15) # zorder molt alt per estar per sobre de tot
-                    # Afegim una vora negra al text per a una llegibilitat perfecta
+                                  transform=ccrs.PlateCarree(), zorder=15)
                     txt.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')])
 
     ax.set_title(f"Vent i Nuclis de Convergència EFECTIVA a {nivell}hPa\n{timestamp_str}",
@@ -5985,7 +5996,7 @@ def crear_llegenda_direccionalitat():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL amb renderitzat suau, etiquetes de pics màxims i llegenda integrada.
+    PESTANYA D'ANÀLISI COMARCAL amb renderitzat suau, isolínies fines, etiquetes de pics i llegenda.
     """
     from scipy import ndimage as ndi
     
@@ -6051,6 +6062,17 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     cbar.set_label('Intensitat de Convergència (x10⁻⁵ s⁻¹)', fontsize=9)
                     cbar.ax.tick_params(labelsize=8)
                     
+                    # <<<--- BLOC D'ISOLÍNIES FINES I PROFESSIONALS TAMBÉ AQUÍ --->>>
+                    isoline_levels = np.arange(15, 151, 20)
+                    contours = ax.contour(
+                        grid_lon, grid_lat, final_convergence_grid,
+                        levels=isoline_levels, colors='white', linewidths=0.7,
+                        alpha=0.8, transform=ccrs.PlateCarree(), zorder=5
+                    )
+                    plt.setp(contours.collections, path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+                    ax.clabel(contours, levels=[30, 60, 90, 120], inline=True, fontsize=7, fmt='%1.0f')
+
+                    # El bloc per etiquetar els pics màxims es manté igual
                     labels, num_features = ndi.label(final_convergence_grid > 30)
                     if num_features > 0:
                         max_locs = ndi.maximum_position(final_convergence_grid, labels=labels, index=np.arange(1, num_features + 1))
@@ -6063,7 +6085,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                                               transform=ccrs.PlateCarree(), zorder=15)
                                 txt.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')])
 
-                # La resta de la lògica per al punt màxim i la direccionalitat es manté igual
+                # La resta de la lògica de la fletxa i marcadors es manté igual
                 points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': final_convergence_grid.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
                 points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
@@ -6124,7 +6146,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             plt.close(fig)
 
     with col_diagnostic:
-        # La resta de la funció (diagnòstic de text) es manté intacta
+        # La part de diagnòstic es manté intacta
         # ...
         st.markdown("##### Diagnòstic de la Zona")
         if valor_conv >= 100:
