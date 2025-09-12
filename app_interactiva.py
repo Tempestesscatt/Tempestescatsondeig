@@ -896,6 +896,7 @@ MAX_IA_REQUESTS = 5
 TIME_WINDOW_SECONDS = 3 * 60 * 60 
 RATE_LIMIT_FILE = 'rate_limits.json'
 
+
 THRESHOLDS_GLOBALS = {
     'SBCAPE': (500, 1500, 2500), 'MUCAPE': (500, 1500, 2500), 
     'MLCAPE': (250, 1000, 2000), 
@@ -909,7 +910,6 @@ THRESHOLDS_GLOBALS = {
     'LCL_Hgt': (1000, 1500), 
     'LFC_Hgt': (1500, 2500),
     'MAX_UPDRAFT': (25, 40, 55),
-    # --- PARÀMETRES REVISATS I NOUS ---
     'DCAPE': (500, 1000, 1500),
     'K_INDEX': (20, 30, 40),
     'TOTAL_TOTALS': (44, 48, 52),
@@ -1259,11 +1259,11 @@ def calcular_mlcape_robusta(p, T, Td):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva (v42.0) - Lògica de Càlcul Simplificada i 100% Robusta.
-    - Elimina tots els índexs compostos problemàtics (SCP, STP, SHIP, capa efectiva).
-    - Afegeix càlculs garantits i directes: humitat per capes, LI a 850hPa,
-      CAPE 0-3km i derivats.
-    - Cada paràmetre es calcula de forma aïllada per a una màxima fiabilitat.
+    Versió Definitiva (v43.0) - Lògica de Càlcul Completa i Garantida.
+    - Reintrodueix TOTS els paràmetres de cisallament i helicitat.
+    - Implementa un càlcul manual i robust per a CAPE 0-3km i LI a 850hPa per evitar errors.
+    - Utilitza el "Pla B" (vent mitjà) per al moviment de la tempesta, garantint que
+      els càlculs dependents com SRH sempre tinguin dades d'entrada.
     """
     if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
 
@@ -1272,7 +1272,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     Td = np.array(Td_profile) * units.degC; u = np.array(u_profile) * units('m/s')
     v = np.array(v_profile) * units('m/s'); heights = np.array(h_profile) * units.meter
 
-    valid_mask = np.isfinite(p.m) & np.isfinite(T.m) & np.isfinite(Td.m)
+    valid_mask = np.isfinite(p.m) & np.isfinite(T.m) & np.isfinite(Td.m) & np.isfinite(u.m) & np.isfinite(v.m)
     p, T, Td, u, v, heights = p[valid_mask], T[valid_mask], Td[valid_mask], u[valid_mask], v[valid_mask], heights[valid_mask]
     if len(p) < 3: return None, "No hi ha prou dades vàlides."
 
@@ -1301,33 +1301,36 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except: params_calc['SHOWALTER_INDEX'] = np.nan
         try: params_calc['T_500hPa'] = float(np.interp(500, p.m[::-1], T.m[::-1]))
         except: params_calc['T_500hPa'] = np.nan
-        try: params_calc['LCL_Hgt'] = float(mpcalc.lcl(p[0], T[0], Td[0])[0].m)
-        except: params_calc['LCL_Hgt'] = np.nan
 
         # LI a 500 hPa (Estàndard)
         try: li_500 = mpcalc.lifted_index(p, T, sfc_prof); params_calc['LI_500hPa'] = float(li_500.m)
         except: params_calc['LI_500hPa'] = np.nan
 
-        # LI a 850 hPa (Manual)
+        # LI a 850 hPa (Càlcul manual robust)
         try:
-            p_850 = 850 * units.hPa
-            t_env_850 = mpcalc.interp.interpolate_1d(p_850, p, T)[0]
-            t_parcel_850 = mpcalc.interp.interpolate_1d(p_850, p, sfc_prof)[0]
-            params_calc['LI_850hPa'] = float((t_env_850 - t_parcel_850).to('delta_degC').m)
+            if p[0].m > 850: # Assegurem que 850hPa no estigui sota terra
+                p_850 = 850 * units.hPa
+                t_env_850 = mpcalc.interp.interpolate_1d(p_850, p, T)[0]
+                t_parcel_850 = mpcalc.interp.interpolate_1d(p_850, p, sfc_prof)[0]
+                params_calc['LI_850hPa'] = float((t_env_850 - t_parcel_850).to('delta_degC').m)
+            else: params_calc['LI_850hPa'] = np.nan
         except: params_calc['LI_850hPa'] = np.nan
-
-        # CAPE de 0 a 3km i velocitat d'ascens
+        
+        # CAPE 0-3km i velocitat d'ascens (Càlcul manual robust)
         try:
-            cape_3km, _ = mpcalc.cape_cin(p, T, Td, sfc_prof, which_lfc='bottom', which_el='top', max_cape_depth=3000*units.meter)
-            cape_val = float(cape_3km.m)
-            params_calc['CAPE_0-3km'] = cape_val
-            if cape_val > 0: params_calc['UPDRAFT_0-3km'] = np.sqrt(2 * cape_val)
-            else: params_calc['UPDRAFT_0-3km'] = 0.0
+            mask_3km = heights_agl <= 3000 * units.meter
+            if np.count_nonzero(mask_3km) > 2:
+                p_3km, T_3km, Td_3km, prof_3km = p[mask_3km], T[mask_3km], Td[mask_3km], sfc_prof[mask_3km]
+                cape_3km, _ = mpcalc.cape_cin(p_3km, T_3km, Td_3km, prof_3km)
+                cape_val = float(cape_3km.m)
+                params_calc['CAPE_0-3km'] = cape_val
+                params_calc['UPDRAFT_0-3km'] = np.sqrt(2 * cape_val) if cape_val > 0 else 0.0
+            else: raise ValueError
         except: 
             params_calc['CAPE_0-3km'] = np.nan
             params_calc['UPDRAFT_0-3km'] = np.nan
         
-        # Potencial de corrents descendents (basat en DCAPE)
+        # Potencial de corrents descendents
         try:
             dcape_val = float(mpcalc.dcape(p, T, Td)[0].m)
             params_calc['DCAPE'] = dcape_val
@@ -1347,8 +1350,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                     mean_rh = np.mean(rh[mask]) * 100
                     params_calc[f'MEAN_RH_{h_bot//1000}-{h_top//1000}km'] = float(mean_rh)
                 else: params_calc[f'MEAN_RH_{h_bot//1000}-{h_top//1000}km'] = np.nan
-        except:
-            params_calc.update({'MEAN_RH_0-3km': np.nan, 'MEAN_RH_3-6km': np.nan, 'MEAN_RH_6-10km': np.nan})
+        except: params_calc.update({'MEAN_RH_0-3km': np.nan, 'MEAN_RH_3-6km': np.nan, 'MEAN_RH_6-10km': np.nan})
 
     # Retorna el perfil gràfic i el diccionari de paràmetres calculats
     return ((p, T, Td, u, v, heights, sfc_prof), params_calc), None
@@ -2165,7 +2167,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_amenaces[1]: styled_qualitative("Índex de Potencial", f"{puntuacio_resultat['score']} / 10", puntuacio_resultat['color'], tooltip_text=TOOLTIPS.get('PUNTUACIO_TEMPESTA'))
     with cols_amenaces[2]: styled_qualitative("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], tooltip_text=TOOLTIPS.get('AMENACA_LLAMPS'))
     
-    # --- NOVA SECCIÓ: DIAGNÒSTIC DETALLAT ---
+    # --- NOVA SECCIÓ: DIAGNÒSTIC DETALLAT (AMB PARÀMETRES ROBUSTS) ---
     st.divider()
     st.markdown("##### Diagnòstic Detallat")
 
