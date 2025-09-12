@@ -3789,7 +3789,9 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ FINAL: RENDERITZAT SUAU + ISOLÍNIES FINES + ETIQUETES DE PICS MÀXIMS.
+    VERSIÓ FINAL AMB CORRECCIÓ D'ERROR (AttributeError).
+    - Comprova si s'han dibuixat isolínies abans d'intentar aplicar-los efectes.
+    - Manté el renderitzat suau, les etiquetes de pics i les isolínies fines.
     """
     from scipy import ndimage as ndi
 
@@ -3836,11 +3838,9 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
                     levels=radar_levels, cmap=cmap_radar, norm=norm_radar,
                     zorder=3, transform=ccrs.PlateCarree(), extend='max')
         
-        # <<<--- NOU BLOC D'ISOLÍNIES FINES I PROFESSIONALS --->>>
-        # 1. Definim nivells per a les isolínies, per exemple, cada 20 unitats.
+        # <<<--- BLOC D'ISOLÍNIES CORREGIT --->>>
         isoline_levels = np.arange(15, 151, 20)
         
-        # 2. Dibuixem les isolínies en color blanc, molt fines i una mica transparents.
         contours = ax.contour(
             grid_lon, grid_lat, final_convergence_grid,
             levels=isoline_levels,
@@ -3848,14 +3848,13 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
             linewidths=0.7,
             alpha=0.8,
             transform=ccrs.PlateCarree(),
-            zorder=5 # Les posem per sobre del color de fons
+            zorder=5
         )
         
-        # 3. AFEGIM L'EFECTE DE VORA NEGRA per a una visibilitat perfecta.
-        plt.setp(contours.collections, path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
-        
-        # 4. Etiquetem només les línies més importants (30, 60, 90...) per no saturar.
-        ax.clabel(contours, levels=[30, 60, 90, 120], inline=True, fontsize=6, fmt='%1.0f')
+        # AFEGIM LA COMPROVACIÓ DE SEGURETAT AQUÍ
+        if contours.collections:
+            plt.setp(contours.collections, path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+            ax.clabel(contours, levels=[30, 60, 90, 120], inline=True, fontsize=6, fmt='%1.0f')
 
         # El bloc per etiquetar els pics màxims es manté igual
         labels, num_features = ndi.label(final_convergence_grid > 30)
