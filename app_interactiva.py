@@ -5987,7 +5987,7 @@ def crear_llegenda_direccionalitat():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL amb la llegenda de colors integrada sota el mapa.
+    PESTANYA D'ANÀLISI COMARCAL amb la llegenda de colors integrada sota el mapa (VERSIÓ CORREGIDA).
     """
     from scipy import ndimage as ndi
     
@@ -6120,12 +6120,60 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
             
-            # <<<--- LÍNIA AFEGIDA: CRIDA A LA NOVA FUNCIÓ DE LA LLEGENDA --->>>
             llegenda_html = crear_llegenda_convergencia_radar()
             st.markdown(llegenda_html, unsafe_allow_html=True)
 
-
+    # <<<--- AQUEST ÉS EL BLOC QUE S'HAVIA DESINDENTAT --->>>
+    # Ara està correctament dins de la funció principal
     with col_diagnostic:
+        st.markdown("##### Diagnòstic de la Zona")
+        if valor_conv >= 100:
+            nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9100C8", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
+        elif valor_conv >= 80:
+            nivell_alerta, color_alerta, emoji, descripcio = "Molt Alt", "#FF00FF", "🔴", f"S'ha detectat un focus de convergència extremadament fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal molt clara per a la formació imminent de tempestes, possiblement severes i organitzades."
+        elif valor_conv >= 60:
+            nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FF0000", "🟠", f"Hi ha un focus de convergència forta a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona."
+        elif valor_conv >= 40:
+            nivell_alerta, color_alerta, emoji, descripcio = "Moderat-Alt", "#FFFF00", "🟡", f"S'observa una zona de convergència de moderada a forta a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes organitzades si l'atmosfera és inestable."
+        elif valor_conv >= 30:
+             nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#008000", "🟢", f"S'observa una zona de convergència moderada a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes si l'atmosfera és inestable."
+        else:
+            nivell_alerta, color_alerta, emoji, descripcio = "Feble", "#00F6FF", "🔵", f"Es detecta una convergència feble (Valor: {valor_conv:.0f}). El forçament dinàmic per iniciar tempestes és limitat però present."
+
+        st.markdown(f"""
+        <div style="text-align: center; padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444;">
+             <span style="font-size: 1.2em; color: #FAFAFA;">{emoji} Potencial de Dispar: <strong style="color:{color_alerta}">{nivell_alerta}</strong></span>
+             <p style="font-size:0.95em; color:#a0a0b0; margin-top:10px; text-align: left;">{descripcio}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("##### Validació Atmosfèrica")
+        if not params_calc:
+            st.warning("No hi ha dades de sondeig disponibles per a la validació.")
+        else:
+            mucin = params_calc.get('MUCIN', 0) or 0
+            mucape = params_calc.get('MUCAPE', 0) or 0
+            
+            vered_titol, vered_color, vered_emoji, vered_desc = "", "", "", ""
+            if mucin < -75:
+                vered_titol, vered_color, vered_emoji = "Inhibida", "#DC3545", "👎"
+                vered_desc = f"Tot i la convergència, hi ha una inhibició (CIN) molt forta de **{mucin:.0f} J/kg** que actua com una 'tapa', dificultant o impedint el desenvolupament de tempestes."
+            elif mucape < 250:
+                vered_titol, vered_color, vered_emoji = "Sense Energia", "#FD7E14", "🤔"
+                vered_desc = f"El disparador existeix, però l'atmosfera té molt poc 'combustible' (CAPE), amb només **{mucape:.0f} J/kg**. Les tempestes, si es formen, seran febles."
+            else:
+                vered_titol, vered_color, vered_emoji = "Efectiva", "#28A745", "👍"
+                vered_desc = f"Les condicions són favorables! La convergència troba una atmosfera amb prou energia (**{mucape:.0f} J/kg**) i una inhibició baixa (**{mucin:.0f} J/kg**) per a desenvolupar tempestes."
+
+            st.markdown(f"""
+            <div style="text-align: center; padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444;">
+                 <span style="font-size: 1.1em; color: #FAFAFA;">{vered_emoji} Veredicte: Convergència <strong style="color:{vered_color}">{vered_titol}</strong></span>
+                 <p style="font-size:0.9em; color:#a0a0b0; margin-top:10px; text-align: left;">{vered_desc}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
+        
+        crear_llegenda_direccionalitat()
 
 
 
