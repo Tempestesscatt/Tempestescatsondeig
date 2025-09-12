@@ -1249,15 +1249,57 @@ def calcular_mlcape_robusta(p, T, Td):
         
 
 
+def diagnosticar_perfil_humitat(params):
+    """
+    Analitza els paràmetres d'humitat per determinar el tipus d'atmosfera.
+    Retorna un diccionari amb un títol, color, emoji i descripció.
+    """
+    pwat = params.get('PWAT', 0) or 0
+    rh_0_3 = params.get('RH_0-3km', 0) or 0
+    rh_3_6 = params.get('RH_3-6km', 0) or 0
 
+    # Cas 1: Capa seca a nivells mitjans (molt important per a esclafits)
+    if rh_0_3 > 70 and rh_3_6 < 35 and pwat > 25:
+        return {
+            "titol": "Capa Seca a Nivells Mitjans", "color": "#fd7e14", "emoji": "💥",
+            "descripcio": "L'aire és humit a prop de la superfície però molt sec just a sobre. Aquest perfil afavoreix la formació de forts corrents descendents (esclafits) i vents severs."
+        }
+    
+    # Cas 2: Atmosfera carregada (clàssic de tempesta severa)
+    if rh_0_3 > 75 and rh_3_6 > 60 and pwat > 30:
+        return {
+            "titol": "Atmosfera Carregada", "color": "#dc3545", "emoji": "💧",
+            "descripcio": "El perfil atmosfèric està saturat d'humitat a les capes clau per al desenvolupament de tempestes. Condicions molt favorables per a pluges intenses i temps sever."
+        }
+        
+    # Cas 3: Perfil tropical (molta humitat a totes les capes)
+    if rh_0_3 > 85 and rh_3_6 > 75 and pwat > 40:
+        return {
+            "titol": "Perfil Tropical", "color": "#17a2b8", "emoji": "🌊",
+            "descripcio": "Humitat molt abundant a tota la columna. Potencial per a pluges molt extenses i persistents, més típic de situacions de llevantada que de tempestes aïllades."
+        }
+        
+    # Cas 4: Humitat només a nivells baixos
+    if rh_0_3 > 70 and rh_3_6 < 50:
+        return {
+            "titol": "Humitat Confinada a la Base", "color": "#ffc107", "emoji": "☁️",
+            "descripcio": "La humitat es concentra a les capes més baixes. Si hi ha una 'tapa' (inversió tèrmica), es poden formar núvols baixos (estratus) o boires."
+        }
+
+    # Cas per defecte: Atmosfera seca
+    return {
+        "titol": "Atmosfera Seca", "color": "#6c757d", "emoji": "🏜️",
+        "descripcio": "El perfil atmosfèric té un contingut d'humitat baix, la qual cosa dificulta significativament la formació de núvols de precipitació."
+    }
+    
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Completa (v35.0).
+    Versió Definitiva i Completa (v36.0).
     - Neteja i ordena el perfil atmosfèric.
     - Calcula un ampli rang de paràmetres termodinàmics i de cisallament.
-    - Inclou l'anàlisi d'humitat en 4 capes (fins a 100 hPa).
-    - Calcula el T-Td Spread i la velocitat del vent en nivells clau per als diagnòstics.
+    - AFEGITS: Lifted Index, Totals Totals Index, Showalter Index.
+    - AFEGIT: Càlcul d'humitat per capes basades en altura (0-3km, 3-6km, 6-10km).
     - Està dissenyada per ser extremadament robusta davant de dades incompletes.
     """
     if len(p_profile) < 4:
@@ -1311,9 +1353,18 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                 'alta': np.mean(rh[(p.m <= 500) & (p.m > 250)]),
                 'molt_alta': np.mean(rh[(p.m <= 250) & (p.m >= 100)])
             }
+            # NOU: Càlcul d'Humitat per Capes d'Altura (km)
+            heights_agl_km = heights_agl.to('km').m
+            mask_0_3km = (heights_agl_km >= 0) & (heights_agl_km < 3)
+            mask_3_6km = (heights_agl_km >= 3) & (heights_agl_km < 6)
+            mask_6_10km = (heights_agl_km >= 6) & (heights_agl_km < 10)
+            params_calc['RH_0-3km'] = np.mean(rh[mask_0_3km]) if np.any(mask_0_3km) else np.nan
+            params_calc['RH_3-6km'] = np.mean(rh[mask_3_6km]) if np.any(mask_3_6km) else np.nan
+            params_calc['RH_6-10km'] = np.mean(rh[mask_6_10km]) if np.any(mask_6_10km) else np.nan
         except: 
             params_calc['RH_CAPES'] = {'baixa': np.nan, 'mitjana': np.nan, 'alta': np.nan, 'molt_alta': np.nan}
-        
+            params_calc.update({'RH_0-3km': np.nan, 'RH_3-6km': np.nan, 'RH_6-10km': np.nan})
+
         try:
             spread = (T - Td).m
             params_calc['TD_SPREAD_BAIXA'] = np.mean(spread[(p.m <= 1000) & (p.m > 850)])
@@ -1355,12 +1406,24 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         else:
             params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
 
+        # NOU: Càlcul dels índexs d'estabilitat
         if main_prof is not None:
             try: 
-                params_calc['LI'] = float(mpcalc.lifted_index(p, T, main_prof).m)
+                params_calc['LI'] = float(mpcalc.lifted_index(p, T, main_prof)[0].m)
             except: 
                 params_calc['LI'] = np.nan
         
+        try:
+            params_calc['SI'] = float(mpcalc.showalter_index(p, T, Td)[0].m)
+        except:
+            params_calc['SI'] = np.nan
+            
+        try:
+            params_calc['TT'] = float(mpcalc.totals_totals_index(p, T, Td).m)
+        except:
+            params_calc['TT'] = np.nan
+        # FI DELS NOUS ÍNDEXS
+
         try:
             mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td)
             params_calc['MUCAPE'] = float(mucape.m); params_calc['MUCIN'] = float(mucin.m)
@@ -2632,10 +2695,7 @@ def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp
 
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None):
     """
-    Versió Final amb Lògica de Context:
-    - Comprova si la zona d'amenaça ja és la zona que s'està analitzant.
-    - Si és així, mostra un botó desactivat amb un missatge informatiu.
-    - Si no, mostra el botó interactiu per "viatjar" a la nova zona.
+    Versió Final amb la nova secció d'Anàlisi d'Humitat.
     """
     if data_tuple:
         sounding_data, params_calculats = data_tuple
@@ -2647,44 +2707,59 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=zoom_capa_baixa)
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
-            with st.container(border=True):
-                ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual, poble_sel, avis_proximitat)
+            
+            # --- NOU: Afegeix els nous índexs a la caixa de paràmetres ---
+            ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual, poble_sel, avis_proximitat)
 
         with col2:
             fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat - {poble_sel}", timestamp_str)
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
 
-            # <<-- NOU BLOC DE LÒGICA AMB COMPROVACIÓ DE CONTEXT -->>
             if avis_proximitat and isinstance(avis_proximitat, dict):
-                # Sempre mostrem el missatge d'avís primer
                 st.warning(f"⚠️ **AVÍS DE PROXIMITAT:** {avis_proximitat['message']}")
-                
-                # Comprovem si el millor punt d'anàlisi és el que ja estem veient
                 if avis_proximitat['target_city'] == poble_sel:
-                    # Si és així, mostrem un botó desactivat i informatiu
-                    st.button("📍 Ja ets a la millor zona convergent d'anàlisi, mira si hi ha MU/SBCAPE! I poc MU/SBCIN!",
-                              help="El punt d'anàlisi més proper a l'amenaça és la localitat que ja estàs consultant.",
-                              use_container_width=True,
-                              disabled=True)
+                    st.button("📍 Ja ets a la millor zona convergent d'anàlisi!", help="El punt d'anàlisi més proper a l'amenaça és la localitat que ja estàs consultant.", use_container_width=True, disabled=True)
                 else:
-                    # Si no, mostrem el botó interactiu de sempre
                     tooltip_text = f"Viatjar a {avis_proximitat['target_city']}, el punt d'anàlisi més proper al nucli de convergència (Força: {avis_proximitat['conv_value']:.0f})."
-                    st.button("🛰️ Analitzar Zona d'Amenaça", 
-                              help=tooltip_text, 
-                              use_container_width=True, 
-                              type="primary",
-                              on_click=canviar_poble_analitzat,
-                              args=(avis_proximitat['target_city'],)
-                             )
-            # <<-- FI DEL NOU BLOC -->>
+                    st.button("🛰️ Analitzar Zona d'Amenaça", help=tooltip_text, use_container_width=True, type="primary", on_click=canviar_poble_analitzat, args=(avis_proximitat['target_city'],))
             
             st.markdown("##### Radar de Precipitació en Temps Real")
             radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
             html_code = f"""<div style="position: relative; width: 100%; height: 410px; border-radius: 10px; overflow: hidden;"><iframe src="{radar_url}" width="100%" height="410" frameborder="0" style="border:0;"></iframe><div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div></div>"""
             st.components.v1.html(html_code, height=410)
+
+            # --- NOU BLOC: ANÀLISI DEL PERFIL D'HUMITAT ---
+            st.markdown("##### Anàlisi del Perfil d'Humitat")
+            with st.container(border=True):
+                diagnosi_humitat = diagnosticar_perfil_humitat(params_calculats)
+                
+                # Columna esquerra pel diagnòstic qualitatiu
+                st.markdown(f"""
+                <div style="text-align: center; padding-bottom: 10px;">
+                    <span style="font-size: 2.5em;">{diagnosi_humitat['emoji']}</span>
+                    <h5 style="color:{diagnosi_humitat['color']}; margin-top: 5px; margin-bottom: 5px;">{diagnosi_humitat['titol']}</h5>
+                    <p style="font-size: 0.9em; color: #a0a0b0; text-align: left;">{diagnosi_humitat['descripcio']}</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+                st.divider()
+
+                # Columnes dretes per a les dades numèriques
+                col_hum1, col_hum2, col_hum3, col_hum4 = st.columns(4)
+                with col_hum1:
+                    st.metric("Aigua Precipitable", f"{params_calculats.get('PWAT', 0):.1f} mm")
+                with col_hum2:
+                    st.metric("RH 0-3 km", f"{params_calculats.get('RH_0-3km', 0):.0f}%")
+                with col_hum3:
+                    st.metric("RH 3-6 km", f"{params_calculats.get('RH_3-6km', 0):.0f}%")
+                with col_hum4:
+                    st.metric("RH 6-10 km", f"{params_calculats.get('RH_6-10km', 0):.0f}%")
+            # --- FI DEL NOU BLOC ---
+
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
+        
 
 def debug_convergence_calculation(map_data, llista_ciutats):
     """
