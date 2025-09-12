@@ -1334,7 +1334,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         
         # --- Càlcul Condicional de la Capa Efectiva i Paràmetres Derivats ---
         try:
-            rm, _, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
+            rm, lm, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
             u_storm, v_storm = rm
             # Calculem SRH estàndard aquí perquè es necessita per a la capa efectiva
             srh_1km = mpcalc.storm_relative_helicity(heights, u, v, depth=1000 * units.meter, storm_u=u_storm, storm_v=v_storm)[0]
@@ -1356,20 +1356,27 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             if 'SRH_0-3km' not in params_calc: params_calc['SRH_0-3km'] = np.nan
             params_calc.update({'EFF_INFLOW_BOTTOM': np.nan, 'EFF_INFLOW_TOP': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
 
-        # --- Càlcul Condicional dels Índexs Compostos ---
-        # Aquest és el canvi clau: només s'intenta el càlcul si tots els ingredients són vàlids.
+        # --- Càlcul Condicional dels Índexs Compostos amb LÒGICA DE FALLBACK ---
         
         # Supercell Composite (SCP)
-        scp_ingredients = [params_calc.get('MUCAPE'), params_calc.get('ESRH'), params_calc.get('EBWD')]
-        if all(pd.notna(v) for v in scp_ingredients):
-            try: params_calc['SCP'] = float(mpcalc.supercell_composite(mucape=scp_ingredients[0]*units('J/kg'), esrh=scp_ingredients[1]*units('m^2/s^2'), ebwd=(scp_ingredients[2]*units.kt).to('m/s')).m)
+        scp_ingredients_eff = [params_calc.get('MUCAPE'), params_calc.get('ESRH'), params_calc.get('EBWD')]
+        scp_ingredients_std = [params_calc.get('MUCAPE'), params_calc.get('SRH_0-3km'), params_calc.get('BWD_0-6km')]
+        if all(pd.notna(v) for v in scp_ingredients_eff):
+            try: params_calc['SCP'] = float(mpcalc.supercell_composite(mucape=scp_ingredients_eff[0]*units('J/kg'), esrh=scp_ingredients_eff[1]*units('m^2/s^2'), ebwd=(scp_ingredients_eff[2]*units.kt).to('m/s')).m)
+            except: params_calc['SCP'] = np.nan
+        elif all(pd.notna(v) for v in scp_ingredients_std):
+            try: params_calc['SCP'] = float(mpcalc.supercell_composite(mucape=scp_ingredients_std[0]*units('J/kg'), srh3=scp_ingredients_std[1]*units('m^2/s^2'), bwd6=(scp_ingredients_std[2]*units.kt).to('m/s')).m)
             except: params_calc['SCP'] = np.nan
         else: params_calc['SCP'] = np.nan
 
         # Significant Tornado (STP)
-        stp_ingredients = [params_calc.get('MLCAPE'), params_calc.get('LCL_Hgt'), params_calc.get('ESRH'), params_calc.get('BWD_0-6km')] # Canviat a BWD 0-6km per a més robustesa
-        if all(pd.notna(v) for v in stp_ingredients):
-            try: params_calc['STP_CIN'] = float(mpcalc.significant_tornado(sbcape=stp_ingredients[0]*units('J/kg'), lcl_height=stp_ingredients[1]*units.meter, srh1=stp_ingredients[2]*units('m^2/s^2'), bwd6=(stp_ingredients[3]*units.kt).to('m/s')).m)
+        stp_ingredients_eff = [params_calc.get('MLCAPE'), params_calc.get('LCL_Hgt'), params_calc.get('ESRH'), params_calc.get('BWD_0-6km')]
+        stp_ingredients_std = [params_calc.get('MLCAPE'), params_calc.get('LCL_Hgt'), params_calc.get('SRH_0-1km'), params_calc.get('BWD_0-6km')]
+        if all(pd.notna(v) for v in stp_ingredients_eff):
+            try: params_calc['STP_CIN'] = float(mpcalc.significant_tornado(sbcape=stp_ingredients_eff[0]*units('J/kg'), lcl_height=stp_ingredients_eff[1]*units.meter, srh1=stp_ingredients_eff[2]*units('m^2/s^2'), bwd6=(stp_ingredients_eff[3]*units.kt).to('m/s')).m)
+            except: params_calc['STP_CIN'] = np.nan
+        elif all(pd.notna(v) for v in stp_ingredients_std):
+            try: params_calc['STP_CIN'] = float(mpcalc.significant_tornado(sbcape=stp_ingredients_std[0]*units('J/kg'), lcl_height=stp_ingredients_std[1]*units.meter, srh1=stp_ingredients_std[2]*units('m^2/s^2'), bwd6=(stp_ingredients_std[3]*units.kt).to('m/s')).m)
             except: params_calc['STP_CIN'] = np.nan
         else: params_calc['STP_CIN'] = np.nan
 
