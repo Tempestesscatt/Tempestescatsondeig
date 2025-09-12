@@ -3789,9 +3789,10 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ AMB TRANSPARÈNCIA VARIABLE.
-    - Els colors per a convergència < 30 són més transparents (alpha=0.6).
-    - Els colors per a convergència >= 30 són més opacs (alpha=0.9).
+    VERSIÓ AMB RESTAURACIÓ DE PICS MÀXIMS.
+    - Suavitza el mapa per a una bona aparença.
+    - Restaura els valors màxims originals per no perdre intensitat.
+    - Manté la paleta de colors de radar i la transparència variable.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3820,36 +3821,36 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
         effective_convergence = np.where((convergence >= 15) & (humid_mask), convergence, 0)
 
-    smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
-    smoothed_convergence[smoothed_convergence < 15] = 0
+    # <<<--- CANVI CLAU: LÒGICA HÍBRIDA DE SUAVITZAT I RESTAURACIÓ DE PICS --->>>
+    # 1. Suavitzem el camp amb menys intensitat per preservar millor les formes.
+    smoothed_convergence = gaussian_filter(effective_convergence, sigma=1.5)
     
-    # --- DIBUIX DE LA CONVERGÈNCIA AMB LA NOVA PALETA DE COLORS ---
-    if np.any(smoothed_convergence > 0):
-        # <<<--- CANVI PRINCIPAL: AFEGIM ALPHA (TRANSPARÈNCIA) A CADA COLOR --->>>
+    # 2. Creem una graella final on, per a cada punt, escollim el valor més alt
+    #    entre el camp original i el suavitzat. Això manté els pics intactes.
+    final_convergence_grid = np.maximum(effective_convergence, smoothed_convergence)
+    final_convergence_grid[final_convergence_grid < 15] = 0
+    
+    if np.any(final_convergence_grid > 0):
         from matplotlib.colors import to_rgba
-
         radar_colors_hex = [
-            '#00F6FF', '#0000FF', '#00FF00',  # Colors per sota de 30
-            '#008000', '#FFFF00', '#FFA500', '#FF0000', '#B40000', '#FF00FF', '#9100C8' # Colors per sobre de 30
+            '#00F6FF', '#0000FF', '#00FF00', '#008000', '#FFFF00', '#FFA500',
+            '#FF0000', '#B40000', '#FF00FF', '#9100C8'
         ]
-        
-        # Creem la nova llista de colors amb transparència variable
-        colors_with_alpha = [to_rgba(c, alpha=0.3) for c in radar_colors_hex[:3]] + \
+        colors_with_alpha = [to_rgba(c, alpha=0.4) for c in radar_colors_hex[:3]] + \
                             [to_rgba(c, alpha=0.9) for c in radar_colors_hex[3:]]
-
         radar_levels = [15, 20, 25, 30, 40, 50, 60, 70, 80, 100, 120]
         cmap_radar = ListedColormap(colors_with_alpha)
         norm_radar = BoundaryNorm(radar_levels, ncolors=cmap_radar.N, clip=True)
 
-        # Ara contourf utilitzarà la transparència definida al colormap
-        ax.contourf(grid_lon, grid_lat, smoothed_convergence,
+        # 3. Dibuixem la graella final que conté els pics reals.
+        ax.contourf(grid_lon, grid_lat, final_convergence_grid,
                     levels=radar_levels, cmap=cmap_radar, norm=norm_radar,
                     zorder=3, transform=ccrs.PlateCarree(), extend='max')
         
         line_levels = [15, 30, 60, 100]
         line_styles = ['--', '-', '-', '-']
         
-        contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
+        contours = ax.contour(grid_lon, grid_lat, final_convergence_grid,
                               levels=line_levels, colors='black',
                               linestyles=line_styles, linewidths=0.8, zorder=4,
                               transform=ccrs.PlateCarree())
@@ -3863,6 +3864,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     afegir_etiquetes_ciutats(ax, map_extent)
     
     return fig
+    
 
 def forcar_regeneracio_animacio():
     """Incrementa la clau de regeneració per invalidar la memòria cau."""
@@ -5983,7 +5985,7 @@ def crear_llegenda_direccionalitat():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀlisi COMARCAL amb paleta de colors tipus radar i transparència variable.
+    PESTANYA D'ANÀLISI COMARCAL amb restauració de pics màxims per a una visualització precisa.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6023,30 +6025,31 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
                     effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0)
                 
-                smoothed_convergence = gaussian_filter(effective_convergence, sigma=3.5)
-                smoothed_convergence[smoothed_convergence < 15] = 0
+                # <<<--- CANVI CLAU: LÒGICA HÍBRIDA TAMBÉ AQUÍ --->>>
+                smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.0) # Un sigma una mica més petit per a la vista de detall
+                final_convergence_grid = np.maximum(effective_convergence, smoothed_convergence)
+                final_convergence_grid[final_convergence_grid < 15] = 0
 
-                if np.any(smoothed_convergence > 0):
-                    # <<<--- APLIQUEM LA MATEIXA PALETA AMB TRANSPARÈNCIA VARIABLE AQUÍ --->>>
+                if np.any(final_convergence_grid > 0):
                     from matplotlib.colors import to_rgba
                     radar_colors_hex = [
-                        '#00F6FF', '#0000FF', '#00FF00',
-                        '#008000', '#FFFF00', '#FFA500', '#FF0000', '#B40000', '#FF00FF', '#9100C8'
+                        '#00F6FF', '#0000FF', '#00FF00', '#008000', '#FFFF00', '#FFA500',
+                        '#FF0000', '#B40000', '#FF00FF', '#9100C8'
                     ]
-                    colors_with_alpha = [to_rgba(c, alpha=0.3) for c in radar_colors_hex[:3]] + \
+                    colors_with_alpha = [to_rgba(c, alpha=0.4) for c in radar_colors_hex[:3]] + \
                                         [to_rgba(c, alpha=0.85) for c in radar_colors_hex[3:]]
                     radar_levels = [15, 20, 25, 30, 40, 50, 60, 70, 80, 100, 120]
                     cmap_radar = ListedColormap(colors_with_alpha)
                     norm_radar = BoundaryNorm(radar_levels, ncolors=cmap_radar.N, clip=True)
 
-                    ax.contourf(grid_lon, grid_lat, smoothed_convergence, 
+                    ax.contourf(grid_lon, grid_lat, final_convergence_grid, 
                                 levels=radar_levels, cmap=cmap_radar, norm=norm_radar,
                                 zorder=3, transform=ccrs.PlateCarree(), extend='max')
                     
                     line_levels = [15, 30, 60, 100]
                     line_styles = ['--', '-', '-', '-']
                     
-                    contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, 
+                    contours = ax.contour(grid_lon, grid_lat, final_convergence_grid, 
                                           levels=line_levels, colors='black', 
                                           linestyles=line_styles, linewidths=0.8, alpha=0.7, 
                                           zorder=4, transform=ccrs.PlateCarree())
@@ -6055,8 +6058,9 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     for label in labels:
                         label.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
 
-                # La resta de la lògica per al punt màxim i la direccionalitat es manté igual
-                points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
+                # La resta de la lògica per al punt màxim i la direccionalitat es manté igual, però
+                # ara utilitzarà la graella final per trobar el punt màxim.
+                points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': final_convergence_grid.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
                 points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
                 
@@ -6116,7 +6120,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             plt.close(fig)
 
     with col_diagnostic:
-        # La part de diagnòstic es manté igual, és correcta
+        # La part de diagnòstic es manté intacta, ja que la lògica de text és correcta
         st.markdown("##### Diagnòstic de la Zona")
         # ... (la resta de la funció es manté intacta) ...
         if valor_conv >= 100:
@@ -6127,9 +6131,9 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FF0000", "🟠", f"Hi ha un focus de convergència forta a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona."
         elif valor_conv >= 40:
             nivell_alerta, color_alerta, emoji, descripcio = "Moderat-Alt", "#FFFF00", "🟡", f"S'observa una zona de convergència de moderada a forta a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes organitzades si l'atmosfera és inestable."
-        elif valor_conv >= 25:
-            nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#00FF00", "🟢", f"S'observa una zona de convergència moderada a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes si l'atmosfera és inestable."
-        else: # Cobrirà de 15 a 24.9
+        elif valor_conv >= 30:
+             nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#008000", "🟢", f"S'observa una zona de convergència moderada a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes si l'atmosfera és inestable."
+        else: # Cobrirà de 15 a 29.9
             nivell_alerta, color_alerta, emoji, descripcio = "Feble", "#00F6FF", "🔵", f"Es detecta una convergència feble (Valor: {valor_conv:.0f}). El forçament dinàmic per iniciar tempestes és limitat però present."
 
         st.markdown(f"""
@@ -6166,6 +6170,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
         
         crear_llegenda_direccionalitat()
+        
 def on_day_change_cat():
     """ Callback segur per al canvi de dia a Catalunya. """
     st.session_state.hora_selector = "12:00h"
