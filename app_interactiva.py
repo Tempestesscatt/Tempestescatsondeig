@@ -1367,6 +1367,21 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except: params_calc['STP_CIN'] = np.nan
         try:
             mucape_jkg = params_calc.get('MUCAPE', 0) * units('J/kg')
+            srh_3km_m2s2 = params_calc.get('SRH_0-3km', 0) * units('m^2/s^2')
+            bwd_6km_ms = (params_calc.get('BWD_0-6km', 0) * units.kt).to('m/s')
+            params_calc['SCP'] = float(mpcalc.supercell_composite(mucape=mucape_jkg, srh3=srh_3km_m2s2, bwd6=bwd_6km_ms).m)
+        except: params_calc['SCP'] = np.nan
+        try:
+            mucape_jkg = params_calc.get('MUCAPE', 0) * units('J/kg')
+            lr_700_500_dC_km = params_calc.get('LR_700-500hPa', 6) * units('delta_degC/km')
+            t_500_C = params_calc.get('T_500hPa', -10) * units.degC
+            fl_m = params_calc.get('FREEZING_LVL_HGT', 3000) * units.meter
+            bwd_6km_ms = (params_calc.get('BWD_0-6km', 0) * units.kt).to('m/s')
+            mixing_ratio_850_600 = mpcalc.mean_layer_mixing_ratio(p, Td, depth=250*units.hPa, bottom=850*units.hPa) if p.m.min() < 600 else 10 * units('g/kg')
+            params_calc['SHIP'] = float(mpcalc.significant_hail(mucape=mucape_jkg, mixing_ratio_850_600=mixing_ratio_850_600, temp_500=t_500_C, lapse_rate_700_500=lr_700_500_dC_km, freezing_level=fl_m, shear_6km=bwd_6km_ms).m)
+        except: params_calc['SHIP'] = np.nan
+
+    return ((p, T, Td, u, v, heights, sfc_prof), params_calc), None
            
 
 
