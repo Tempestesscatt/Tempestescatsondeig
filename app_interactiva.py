@@ -3789,10 +3789,10 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ AMB FARCIMENT BLAU PER A CONVERGÈNCIA FEBLE (15-25).
-    - Farciment de color blau per a valors entre 15 i 25.
-    - Línies de contorn discontinuades per a valors a partir de 15.
-    - Línies de contorn sòlides i fines per a valors superiors a 30.
+    VERSIÓ AMB PALETA DE COLORS TIPUS RADAR.
+    - Implementa una escala de colors inspirada en la reflectivitat del radar.
+    - El farciment de color comença a partir d'un llindar de 15.
+    - Manté les línies de contorn per a una millor definició.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3827,23 +3827,25 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     
     # --- DIBUIX DE LA CONVERGÈNCIA AMB LA NOVA PALETA DE COLORS ---
     if np.any(smoothed_convergence > 0):
-        # <<<--- CANVI PRINCIPAL AQUÍ: NOVA PALETA DE COLORS I NIVELLS --->>>
-        fill_levels = [15, 25, 40, 60, 80, 100, 120]
-        fill_colors = ['#6495ED', '#28A745', '#FD7E14', '#DC3545', '#9370DB', '#8A2BE2']
-        cmap_conv = ListedColormap(fill_colors)
-        norm_conv = BoundaryNorm(fill_levels, ncolors=cmap_conv.N, clip=True)
+        # <<<--- CANVI PRINCIPAL: NOVA PALETA DE COLORS I NIVELLS TIPUS RADAR --->>>
+        radar_colors = [
+            '#00F6FF', '#0000FF', '#00FF00', '#008000', '#FFFF00', '#FFA500',
+            '#FF0000', '#B40000', '#FF00FF', '#9100C8'
+        ]
+        radar_levels = [15, 20, 25, 30, 40, 50, 60, 70, 80, 100, 120]
+        cmap_radar = ListedColormap(radar_colors)
+        norm_radar = BoundaryNorm(radar_levels, ncolors=cmap_radar.N, clip=True)
 
         ax.contourf(grid_lon, grid_lat, smoothed_convergence,
-                    levels=fill_levels, cmap=cmap_conv, norm=norm_conv,
-                    alpha=0.8, zorder=3, transform=ccrs.PlateCarree(), extend='max')
+                    levels=radar_levels, cmap=cmap_radar, norm=norm_radar,
+                    alpha=0.85, zorder=3, transform=ccrs.PlateCarree(), extend='max')
         
-        # Les línies es mantenen com abans per diferenciar el llindar de 30
         line_levels = [15, 30, 60, 100]
         line_styles = ['--', '-', '-', '-']
         
         contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
                               levels=line_levels, colors='black',
-                              linestyles=line_styles, linewidths=1, zorder=4,
+                              linestyles=line_styles, linewidths=0.8, zorder=4,
                               transform=ccrs.PlateCarree())
         
         labels = ax.clabel(contours, inline=True, fontsize=5, fmt='%1.0f')
@@ -5976,7 +5978,7 @@ def crear_llegenda_direccionalitat():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL amb farciment blau per a convergència feble (15-25).
+    PESTANYA D'ANÀLISI COMARCAL amb paleta de colors tipus radar.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6002,6 +6004,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
 
             if map_data and valor_conv > 15:
+                # ... (tota la part de càlcul de convergència es manté igual) ...
                 lons, lats = map_data['lons'], map_data['lats']
                 grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 150), np.linspace(map_extent[2], map_extent[3], 150))
                 grid_dewpoint = griddata((lons, lats), map_data['dewpoint_data'], (grid_lon, grid_lat), 'linear')
@@ -6020,15 +6023,18 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                 smoothed_convergence[smoothed_convergence < 15] = 0
 
                 if np.any(smoothed_convergence > 0):
-                    # <<<--- CANVI PRINCIPAL AQUÍ: NOVA PALETA DE COLORS I NIVELLS --->>>
-                    fill_levels = [15, 25, 40, 60, 80, 100, 120]
-                    fill_colors = ['#6495ED', '#28A745', '#FD7E14', '#DC3545', '#9370DB', '#8A2BE2']
-                    cmap_conv = ListedColormap(fill_colors)
-                    norm_conv = BoundaryNorm(fill_levels, ncolors=cmap_conv.N, clip=True)
+                    # <<<--- APLIQUEM LA MATEIXA PALETA DE COLORS DE RADAR AQUÍ --->>>
+                    radar_colors = [
+                        '#00F6FF', '#0000FF', '#00FF00', '#008000', '#FFFF00', '#FFA500',
+                        '#FF0000', '#B40000', '#FF00FF', '#9100C8'
+                    ]
+                    radar_levels = [15, 20, 25, 30, 40, 50, 60, 70, 80, 100, 120]
+                    cmap_radar = ListedColormap(radar_colors)
+                    norm_radar = BoundaryNorm(radar_levels, ncolors=cmap_radar.N, clip=True)
 
                     ax.contourf(grid_lon, grid_lat, smoothed_convergence, 
-                                levels=fill_levels, cmap=cmap_conv, norm=norm_conv,
-                                alpha=0.75, zorder=3, transform=ccrs.PlateCarree(), extend='max')
+                                levels=radar_levels, cmap=cmap_radar, norm=norm_radar,
+                                alpha=0.8, zorder=3, transform=ccrs.PlateCarree(), extend='max')
                     
                     line_levels = [15, 30, 60, 100]
                     line_styles = ['--', '-', '-', '-']
@@ -6042,7 +6048,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     for label in labels:
                         label.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
 
-                # La lògica per trobar el punt màxim i la direccionalitat es manté igual
                 points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
                 points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
@@ -6052,17 +6057,24 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
                     
                     if data_tuple and valor_conv >= 15:
-                        if valor_conv >= 100: indicator_color = '#9370DB'
-                        elif valor_conv >= 60: indicator_color = '#DC3545'
-                        elif valor_conv >= 40: indicator_color = '#FD7E14'
-                        elif valor_conv >= 20: indicator_color = '#28A745'
-                        else: indicator_color = '#6495ED'
+                        # <<<--- CANVI: LÒGICA DE COLOR PER A LA FLETXA BASADA EN LA NOVA PALETA --->>>
+                        if valor_conv >= 100: indicator_color = '#9100C8'  # Lila
+                        elif valor_conv >= 80: indicator_color = '#FF00FF' # Magenta
+                        elif valor_conv >= 70: indicator_color = '#B40000' # Granat
+                        elif valor_conv >= 60: indicator_color = '#FF0000'  # Vermell
+                        elif valor_conv >= 50: indicator_color = '#FFA500'  # Taronja
+                        elif valor_conv >= 40: indicator_color = '#FFFF00'  # Groc
+                        elif valor_conv >= 30: indicator_color = '#008000'  # Verd fosc
+                        elif valor_conv >= 25: indicator_color = '#00FF00'  # Verd clar
+                        elif valor_conv >= 20: indicator_color = '#0000FF'  # Blau
+                        else: indicator_color = '#00F6FF'                   # Cian
                         
                         path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
                         circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
                         ax.add_patch(circle)
                         ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
 
+                        # ... (la resta de la lògica per dibuixar la fletxa es manté igual) ...
                         try:
                             sounding_data, _ = data_tuple
                             p, u, v = sounding_data[0], sounding_data[3], sounding_data[4]
@@ -6098,19 +6110,21 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             plt.close(fig)
 
     with col_diagnostic:
-        # La lògica de diagnòstic de text es manté igual, és correcta
+        # La resta de la funció (diagnòstic de text) no canvia
         st.markdown("##### Diagnòstic de la Zona")
         # ... (la resta de la funció es manté intacta) ...
         if valor_conv >= 100:
-            nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
+            nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9100C8", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
+        elif valor_conv >= 80:
+            nivell_alerta, color_alerta, emoji, descripcio = "Molt Alt", "#FF00FF", "🔴", f"S'ha detectat un focus de convergència extremadament fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal molt clara per a la formació imminent de tempestes, possiblement severes i organitzades."
         elif valor_conv >= 60:
-            nivell_alerta, color_alerta, emoji, descripcio = "Molt Alt", "#DC3545", "🔴", f"S'ha detectat un focus de convergència extremadament fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal molt clara per a la formació imminent de tempestes, possiblement severes i organitzades."
+            nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FF0000", "🟠", f"Hi ha un focus de convergència forta a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona."
         elif valor_conv >= 40:
-            nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FD7E14", "🟠", f"Hi ha un focus de convergència forta a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona."
-        elif valor_conv >= 20:
-            nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#28A745", "🟢", f"S'observa una zona de convergència moderada a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes si l'atmosfera és inestable."
-        else:
-            nivell_alerta, color_alerta, emoji, descripcio = "Feble / Baix", "#6c757d", "⚪", f"Es detecta una convergència feble (Valor: {valor_conv:.0f}) o no hi ha focus significatius. El forçament dinàmic per iniciar tempestes és limitat."
+            nivell_alerta, color_alerta, emoji, descripcio = "Moderat-Alt", "#FFFF00", "🟡", f"S'observa una zona de convergència de moderada a forta a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes organitzades si l'atmosfera és inestable."
+        elif valor_conv >= 25:
+            nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#00FF00", "🟢", f"S'observa una zona de convergència moderada a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes si l'atmosfera és inestable."
+        else: # Cobrirà de 15 a 24.9
+            nivell_alerta, color_alerta, emoji, descripcio = "Feble", "#00F6FF", "🔵", f"Es detecta una convergència feble (Valor: {valor_conv:.0f}). El forçament dinàmic per iniciar tempestes és limitat però present."
 
         st.markdown(f"""
         <div style="text-align: center; padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444;">
