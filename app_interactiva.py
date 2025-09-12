@@ -1249,57 +1249,15 @@ def calcular_mlcape_robusta(p, T, Td):
         
 
 
-def diagnosticar_perfil_humitat(params):
-    """
-    Analitza els paràmetres d'humitat per determinar el tipus d'atmosfera.
-    Retorna un diccionari amb un títol, color, emoji i descripció.
-    """
-    pwat = params.get('PWAT', 0) or 0
-    rh_0_3 = params.get('RH_0-3km', 0) or 0
-    rh_3_6 = params.get('RH_3-6km', 0) or 0
 
-    # Cas 1: Capa seca a nivells mitjans (molt important per a esclafits)
-    if rh_0_3 > 70 and rh_3_6 < 35 and pwat > 25:
-        return {
-            "titol": "Capa Seca a Nivells Mitjans", "color": "#fd7e14", "emoji": "💥",
-            "descripcio": "L'aire és humit a prop de la superfície però molt sec just a sobre. Aquest perfil afavoreix la formació de forts corrents descendents (esclafits) i vents severs."
-        }
-    
-    # Cas 2: Atmosfera carregada (clàssic de tempesta severa)
-    if rh_0_3 > 75 and rh_3_6 > 60 and pwat > 30:
-        return {
-            "titol": "Atmosfera Carregada", "color": "#dc3545", "emoji": "💧",
-            "descripcio": "El perfil atmosfèric està saturat d'humitat a les capes clau per al desenvolupament de tempestes. Condicions molt favorables per a pluges intenses i temps sever."
-        }
-        
-    # Cas 3: Perfil tropical (molta humitat a totes les capes)
-    if rh_0_3 > 85 and rh_3_6 > 75 and pwat > 40:
-        return {
-            "titol": "Perfil Tropical", "color": "#17a2b8", "emoji": "🌊",
-            "descripcio": "Humitat molt abundant a tota la columna. Potencial per a pluges molt extenses i persistents, més típic de situacions de llevantada que de tempestes aïllades."
-        }
-        
-    # Cas 4: Humitat només a nivells baixos
-    if rh_0_3 > 70 and rh_3_6 < 50:
-        return {
-            "titol": "Humitat Confinada a la Base", "color": "#ffc107", "emoji": "☁️",
-            "descripcio": "La humitat es concentra a les capes més baixes. Si hi ha una 'tapa' (inversió tèrmica), es poden formar núvols baixos (estratus) o boires."
-        }
-
-    # Cas per defecte: Atmosfera seca
-    return {
-        "titol": "Atmosfera Seca", "color": "#6c757d", "emoji": "🏜️",
-        "descripcio": "El perfil atmosfèric té un contingut d'humitat baix, la qual cosa dificulta significativament la formació de núvols de precipitació."
-    }
-    
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Completa (v36.0).
+    Versió Definitiva i Completa (v35.0).
     - Neteja i ordena el perfil atmosfèric.
     - Calcula un ampli rang de paràmetres termodinàmics i de cisallament.
-    - AFEGITS: Lifted Index, Totals Totals Index, Showalter Index.
-    - AFEGIT: Càlcul d'humitat per capes basades en altura (0-3km, 3-6km, 6-10km).
+    - Inclou l'anàlisi d'humitat en 4 capes (fins a 100 hPa).
+    - Calcula el T-Td Spread i la velocitat del vent en nivells clau per als diagnòstics.
     - Està dissenyada per ser extremadament robusta davant de dades incompletes.
     """
     if len(p_profile) < 4:
@@ -1353,18 +1311,9 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                 'alta': np.mean(rh[(p.m <= 500) & (p.m > 250)]),
                 'molt_alta': np.mean(rh[(p.m <= 250) & (p.m >= 100)])
             }
-            # NOU: Càlcul d'Humitat per Capes d'Altura (km)
-            heights_agl_km = heights_agl.to('km').m
-            mask_0_3km = (heights_agl_km >= 0) & (heights_agl_km < 3)
-            mask_3_6km = (heights_agl_km >= 3) & (heights_agl_km < 6)
-            mask_6_10km = (heights_agl_km >= 6) & (heights_agl_km < 10)
-            params_calc['RH_0-3km'] = np.mean(rh[mask_0_3km]) if np.any(mask_0_3km) else np.nan
-            params_calc['RH_3-6km'] = np.mean(rh[mask_3_6km]) if np.any(mask_3_6km) else np.nan
-            params_calc['RH_6-10km'] = np.mean(rh[mask_6_10km]) if np.any(mask_6_10km) else np.nan
         except: 
             params_calc['RH_CAPES'] = {'baixa': np.nan, 'mitjana': np.nan, 'alta': np.nan, 'molt_alta': np.nan}
-            params_calc.update({'RH_0-3km': np.nan, 'RH_3-6km': np.nan, 'RH_6-10km': np.nan})
-
+        
         try:
             spread = (T - Td).m
             params_calc['TD_SPREAD_BAIXA'] = np.mean(spread[(p.m <= 1000) & (p.m > 850)])
@@ -1406,24 +1355,12 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         else:
             params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
 
-        # NOU: Càlcul dels índexs d'estabilitat
         if main_prof is not None:
             try: 
-                params_calc['LI'] = float(mpcalc.lifted_index(p, T, main_prof)[0].m)
+                params_calc['LI'] = float(mpcalc.lifted_index(p, T, main_prof).m)
             except: 
                 params_calc['LI'] = np.nan
         
-        try:
-            params_calc['SI'] = float(mpcalc.showalter_index(p, T, Td)[0].m)
-        except:
-            params_calc['SI'] = np.nan
-            
-        try:
-            params_calc['TT'] = float(mpcalc.totals_totals_index(p, T, Td).m)
-        except:
-            params_calc['TT'] = np.nan
-        # FI DELS NOUS ÍNDEXS
-
         try:
             mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td)
             params_calc['MUCAPE'] = float(mucape.m); params_calc['MUCIN'] = float(mucin.m)
@@ -2695,8 +2632,10 @@ def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp
 
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None):
     """
-    Versió Final amb la nova secció d'Anàlisi d'Humitat.
-    CORRECCIÓ: S'ha eliminat la paraula 'dimensionless' de les mètriques de RH.
+    Versió Final amb Lògica de Context:
+    - Comprova si la zona d'amenaça ja és la zona que s'està analitzant.
+    - Si és així, mostra un botó desactivat amb un missatge informatiu.
+    - Si no, mostra el botó interactiu per "viatjar" a la nova zona.
     """
     if data_tuple:
         sounding_data, params_calculats = data_tuple
@@ -2708,56 +2647,92 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=zoom_capa_baixa)
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
-            
-            ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual, poble_sel, avis_proximitat)
+            with st.container(border=True):
+                ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual, poble_sel, avis_proximitat)
 
         with col2:
             fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat - {poble_sel}", timestamp_str)
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
 
+            # <<-- NOU BLOC DE LÒGICA AMB COMPROVACIÓ DE CONTEXT -->>
             if avis_proximitat and isinstance(avis_proximitat, dict):
+                # Sempre mostrem el missatge d'avís primer
                 st.warning(f"⚠️ **AVÍS DE PROXIMITAT:** {avis_proximitat['message']}")
+                
+                # Comprovem si el millor punt d'anàlisi és el que ja estem veient
                 if avis_proximitat['target_city'] == poble_sel:
-                    st.button("📍 Ja ets a la millor zona convergent d'anàlisi!", help="El punt d'anàlisi més proper a l'amenaça és la localitat que ja estàs consultant.", use_container_width=True, disabled=True)
+                    # Si és així, mostrem un botó desactivat i informatiu
+                    st.button("📍 Ja ets a la millor zona convergent d'anàlisi, mira si hi ha MU/SBCAPE! I poc MU/SBCIN!",
+                              help="El punt d'anàlisi més proper a l'amenaça és la localitat que ja estàs consultant.",
+                              use_container_width=True,
+                              disabled=True)
                 else:
+                    # Si no, mostrem el botó interactiu de sempre
                     tooltip_text = f"Viatjar a {avis_proximitat['target_city']}, el punt d'anàlisi més proper al nucli de convergència (Força: {avis_proximitat['conv_value']:.0f})."
-                    st.button("🛰️ Analitzar Zona d'Amenaça", help=tooltip_text, use_container_width=True, type="primary", on_click=canviar_poble_analitzat, args=(avis_proximitat['target_city'],))
+                    st.button("🛰️ Analitzar Zona d'Amenaça", 
+                              help=tooltip_text, 
+                              use_container_width=True, 
+                              type="primary",
+                              on_click=canviar_poble_analitzat,
+                              args=(avis_proximitat['target_city'],)
+                             )
+            # <<-- FI DEL NOU BLOC -->>
             
             st.markdown("##### Radar de Precipitació en Temps Real")
             radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
             html_code = f"""<div style="position: relative; width: 100%; height: 410px; border-radius: 10px; overflow: hidden;"><iframe src="{radar_url}" width="100%" height="410" frameborder="0" style="border:0;"></iframe><div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div></div>"""
             st.components.v1.html(html_code, height=410)
-
-            st.markdown("##### Anàlisi del Perfil d'Humitat")
-            with st.container(border=True):
-                diagnosi_humitat = diagnosticar_perfil_humitat(params_calculats)
-                
-                st.markdown(f"""
-                <div style="text-align: center; padding-bottom: 10px;">
-                    <span style="font-size: 2.5em;">{diagnosi_humitat['emoji']}</span>
-                    <h5 style="color:{diagnosi_humitat['color']}; margin-top: 5px; margin-bottom: 5px;">{diagnosi_humitat['titol']}</h5>
-                    <p style="font-size: 0.9em; color: #a0a0b0; text-align: left;">{diagnosi_humitat['descripcio']}</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-                st.divider()
-
-                col_hum1, col_hum2, col_hum3, col_hum4 = st.columns(4)
-                with col_hum1:
-                    st.metric("Aigua Precipitable", f"{params_calculats.get('PWAT', 0):.1f} mm")
-                with col_hum2:
-                    # --- CANVI AQUÍ ---
-                    st.metric("RH 0-3 km", f"{params_calculats.get('RH_0-3km', 0):.0f}%")
-                with col_hum3:
-                    # --- CANVI AQUÍ ---
-                    st.metric("RH 3-6 km", f"{params_calculats.get('RH_3-6km', 0):.0f}%")
-                with col_hum4:
-                    # --- CANVI AQUÍ ---
-                    st.metric("RH 6-10 km", f"{params_calculats.get('RH_6-10km', 0):.0f}%")
-
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
+
+def debug_convergence_calculation(map_data, llista_ciutats):
+    """
+    Funció de depuració per imprimir l'estat dels càlculs de convergència pas a pas.
+    Aquesta versió és sintàcticament correcta.
+    """
+    st.warning("⚠️ MODE DE DEPURACIÓ ACTIVAT. Revisa la terminal on has executat Streamlit.")
+    print("\n\n" + "="*50)
+    print("INICI DE LA DEPURACIÓ DE CONVERGÈNCIA")
+    print("="*50)
+
+    # --> INICI DEL BLOC TRY
+    try:
+        if not map_data or 'lons' not in map_data or len(map_data['lons']) < 4:
+            print("[ERROR] No hi ha prou dades al `map_data` inicial.")
+            print("="*50 + "\n\n")
+            return {}
+
+        print(f"[PAS 1] Dades d'entrada rebudes:")
+        print(f"  - Punts de dades (lons/lats): {len(map_data['lons'])}")
+        print(f"  - Claus disponibles: {list(map_data.keys())}")
+
+        print("\n[PAS 2] Crida a la funció de càlcul real...")
+        # Cridem la funció real per obtenir el resultat
+        resultats = calcular_convergencies_per_llista(map_data, llista_ciutats)
+        print("  - Càlcul completat sense errors.")
+        
+        print("\n[PAS 3] Verificant resultat per a Barcelona...")
+        if 'Barcelona' in resultats:
+            dades_bcn = resultats['Barcelona']
+            valor_conv_bcn = dades_bcn.get('conv')
+            es_humit_bcn = dades_bcn.get('es_humit')
+            print(f"  - VALOR DE CONVERGÈNCIA PER A BCN: {valor_conv_bcn}")
+            print(f"  - ÉS HUMIT A BCN?: {es_humit_bcn}")
+        else:
+            print("  - [ERROR] No s'han trobat resultats per a Barcelona.")
+        
+        print("="*50 + "\nFI DE LA DEPURACIÓ\n" + "="*50 + "\n\n")
+
+        return resultats
+
+    # --> BLOC EXCEPT CORRESPONENT I CORRECTAMENT INDENTAT
+    except Exception as e:
+        print(f"[ERROR CRÍTIC] Excepció durant la depuració: {e}")
+        import traceback
+        traceback.print_exc()
+        print("="*50 + "\n\n")
+        return {}
     
 
 
@@ -3814,14 +3789,15 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ FINAL AMB ESCALA AJUSTADA I CORRECCIÓ D'ERRORS.
+    VERSIÓ AMB LLINDAR A 15 I LÍNIES CONDICIONALS.
+    - Detecta convergència a partir de 15.
+    - Dibuixa línies de contorn discontinuades per a valors entre 15 i 30.
+    - Dibuixa línies de contorn sòlides i fines per a valors superiors a 30.
     """
-    # Tornem a l'estil per defecte (fons clar)
     plt.style.use('default')
-
     fig, ax = crear_mapa_base(map_extent)
     
-    # --- 1. INTERPOLACIÓ ---
+    # --- 1. INTERPOLACIÓ (Sense canvis) ---
     grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 300), np.linspace(map_extent[2], map_extent[3], 300))
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'linear')
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'linear')
@@ -3829,7 +3805,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     
-    # --- 2. MAPA DE VELOCITAT DEL VENT ---
+    # --- 2. MAPA DE VELOCITAT DEL VENT (Sense canvis) ---
     colors_wind = [
         '#d2d2f0', '#b4b4e6', '#78c8c8', '#50b48c', '#32cd32', '#64ff64',
         '#ffff00', '#f5d264', '#e6b478', '#d7788c', '#ff69b4', '#9f78dc',
@@ -3837,10 +3813,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     ]
     speed_levels = [0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104, 130, 166, 184, 200]
     custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
-    
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree(), alpha=0.7)
-    
-    # --- STREAMLINES DEL VENT ---
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.5, density=6.5, arrowsize=0.3, zorder=4, transform=ccrs.PlateCarree())
     
     # --- 3. CÀLCUL I FILTRATGE DE CONVERGÈNCIA ---
@@ -3851,13 +3824,12 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
         DEWPOINT_THRESHOLD = 14 if nivell >= 950 else 12
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
         
-        # Correcció d'un altre petit bug: s'han d'utilitzar parèntesis amb l'operador '&'
-        effective_convergence = np.where((convergence >= 20) & (humid_mask), convergence, 0)
+        # <<<--- CANVI 1: LLINDAR REBAIXAT A 15 --->>>
+        effective_convergence = np.where((convergence >= 15) & (humid_mask), convergence, 0)
 
-    # Aquesta és la línia que donava l'error 'NameError'
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
-    
-    smoothed_convergence[smoothed_convergence < 20] = 0
+    # <<<--- CANVI 2: FILTRATGE MÍNIM A 15 --->>>
+    smoothed_convergence[smoothed_convergence < 15] = 0
     
     # --- 4. DIBUIX DE LA CONVERGÈNCIA ---
     if np.any(smoothed_convergence > 0):
@@ -3867,23 +3839,29 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
         ]
         cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_personalitzada", colors_conv)
         
-        fill_levels = np.arange(30, 151, 5)
+        # El farciment de color comença una mica més amunt per no saturar
+        fill_levels = np.arange(20, 151, 5) 
         ax.contourf(grid_lon, grid_lat, smoothed_convergence,
                     levels=fill_levels, cmap=cmap_conv, alpha=0.99,
                     zorder=3, transform=ccrs.PlateCarree(), extend='max')
 
-        line_levels = [20, 30, 50, 70, 90, 120]
+        # <<<--- CANVI 3: LÍNIES DE CONTORN CONDICIONALS --->>>
+        # Definim els nivells on volem dibuixar línies
+        line_levels = [15, 30, 50, 70, 90, 120]
+        # Definim un estil per a cada nivell: discontinu ('--') per a 15, sòlid ('-') per a la resta
+        line_styles = ['--', '-', '-', '-', '-', '-']
+
         contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
                               levels=line_levels, 
                               colors='black',
-                              linestyles='--', linewidths=1, zorder=3,
+                              linestyles=line_styles, # Passem la llista d'estils
+                              linewidths=1, zorder=3,
                               transform=ccrs.PlateCarree())
         
         labels = ax.clabel(contours, inline=True, fontsize=5, fmt='%1.0f')
         for label in labels:
             label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.5))
 
-    # Ajustos finals del títol
     ax.set_title(f"Vent i Nuclis de Convergència EFECTIVA a {nivell}hPa\n{timestamp_str}",
                  weight='bold', fontsize=16)
     afegir_etiquetes_ciutats(ax, map_extent)
@@ -6010,7 +5988,7 @@ def crear_llegenda_direccionalitat():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL amb estil visual millorat.
+    PESTANYA D'ANÀLISI COMARCAL amb llindar de convergència a 15 i línies condicionals.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6060,15 +6038,23 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     ax.contourf(grid_lon, grid_lat, smoothed_convergence, 
                                 levels=fill_levels, cmap=cmap, norm=norm, 
                                 alpha=0.75, zorder=3, transform=ccrs.PlateCarree(), extend='max')
-                    line_levels = [30, 60, 100]
+                    
+                    # <<<--- CANVI AQUÍ: LÍNIES DE CONTORN CONDICIONALS TAMBÉ AL MAPA COMARCAL --->>>
+                    line_levels = [15, 30, 60, 100]
+                    line_styles = ['--', '-', '-', '-'] # Discontínua per a 15, sòlida per a la resta
+                    
                     contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, 
-                                          levels=line_levels, colors='black', 
-                                          linestyles='--', linewidths=0.8, alpha=0.7, 
+                                          levels=line_levels, 
+                                          colors='black', 
+                                          linestyles=line_styles, # Passem la llista d'estils
+                                          linewidths=0.8, alpha=0.7, 
                                           zorder=4, transform=ccrs.PlateCarree())
+                    
                     labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
                     for label in labels:
                         label.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
 
+                # La resta de la lògica per al punt màxim i la direccionalitat es manté igual
                 points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
                 points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
@@ -6077,11 +6063,12 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
                     px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
                     
-                    if data_tuple and valor_conv >= 20:
+                    if data_tuple and valor_conv >= 15: # Rebaixem el llindar per dibuixar la fletxa
                         if valor_conv >= 100: indicator_color = '#9370DB'
                         elif valor_conv >= 60: indicator_color = '#DC3545'
                         elif valor_conv >= 40: indicator_color = '#FD7E14'
-                        else: indicator_color = '#28A745'
+                        elif valor_conv >= 20: indicator_color = '#28A745'
+                        else: indicator_color = '#6495ED' # Color blau per al nou rang 15-19
                         
                         path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
                         
@@ -6126,6 +6113,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             plt.close(fig)
 
     with col_diagnostic:
+        # La part de diagnòstic es manté igual, ja que la lògica de text és correcta
         st.markdown("##### Diagnòstic de la Zona")
         if valor_conv >= 100:
             nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
@@ -6135,8 +6123,8 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FD7E14", "🟠", f"Hi ha un focus de convergència forta a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona."
         elif valor_conv >= 20:
             nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#28A745", "🟢", f"S'observa una zona de convergència moderada a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes si l'atmosfera és inestable."
-        else:
-            nivell_alerta, color_alerta, emoji, descripcio = "Baix", "#6c757d", "⚪", f"No es detecten focus de convergència significatius (Valor: {valor_conv:.0f}). El forçament dinàmic per iniciar tempestes és feble o inexistent."
+        else: # Aquest cas ara cobrirà de 0 a 19
+            nivell_alerta, color_alerta, emoji, descripcio = "Baix / Feble", "#6c757d", "⚪", f"Es detecta una convergència feble (Valor: {valor_conv:.0f}) o no hi ha focus significatius. El forçament dinàmic per iniciar tempestes és limitat."
 
         st.markdown(f"""
         <div style="text-align: center; padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444;">
@@ -6172,8 +6160,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
         
         crear_llegenda_direccionalitat()
-
-# --- BLOC 1: SUBSTITUEIX TOTES LES FUNCIONS on_... PER AQUESTES ---
 
 def on_day_change_cat():
     """ Callback segur per al canvi de dia a Catalunya. """
