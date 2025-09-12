@@ -3834,7 +3834,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
         ]
         
         # Creem la nova llista de colors amb transparència variable
-        colors_with_alpha = [to_rgba(c, alpha=0.6) for c in radar_colors_hex[:3]] + \
+        colors_with_alpha = [to_rgba(c, alpha=0.3) for c in radar_colors_hex[:3]] + \
                             [to_rgba(c, alpha=0.9) for c in radar_colors_hex[3:]]
 
         radar_levels = [15, 20, 25, 30, 40, 50, 60, 70, 80, 100, 120]
@@ -6033,7 +6033,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                         '#00F6FF', '#0000FF', '#00FF00',
                         '#008000', '#FFFF00', '#FFA500', '#FF0000', '#B40000', '#FF00FF', '#9100C8'
                     ]
-                    colors_with_alpha = [to_rgba(c, alpha=0.6) for c in radar_colors_hex[:3]] + \
+                    colors_with_alpha = [to_rgba(c, alpha=0.3) for c in radar_colors_hex[:3]] + \
                                         [to_rgba(c, alpha=0.85) for c in radar_colors_hex[3:]]
                     radar_levels = [15, 20, 25, 30, 40, 50, 60, 70, 80, 100, 120]
                     cmap_radar = ListedColormap(colors_with_alpha)
