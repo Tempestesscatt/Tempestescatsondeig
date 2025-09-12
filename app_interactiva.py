@@ -3789,10 +3789,9 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ AMB PALETA DE COLORS TIPUS RADAR.
-    - Implementa una escala de colors inspirada en la reflectivitat del radar.
-    - El farciment de color comença a partir d'un llindar de 15.
-    - Manté les línies de contorn per a una millor definició.
+    VERSIÓ AMB TRANSPARÈNCIA VARIABLE.
+    - Els colors per a convergència < 30 són més transparents (alpha=0.6).
+    - Els colors per a convergència >= 30 són més opacs (alpha=0.9).
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3808,8 +3807,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=ListedColormap([
         '#d2d2f0', '#b4b4e6', '#78c8c8', '#50b48c', '#32cd32', '#64ff64',
         '#ffff00', '#f5d264', '#e6b478', '#d7788c', '#ff69b4', '#9f78dc',
-        '#8c64c8', '#8296d7', '#96b4d7', '#d2b4e6', '#e6dcc8', '#f5e6b4'
-    ]), norm=BoundaryNorm([0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104, 130, 166, 184, 200], ncolors=18, clip=True), 
+    ]), norm=BoundaryNorm([0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76], ncolors=12, clip=True), 
     zorder=2, transform=ccrs.PlateCarree(), alpha=0.7)
     
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.5, density=6.5, arrowsize=0.3, zorder=4, transform=ccrs.PlateCarree())
@@ -3827,18 +3825,26 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     
     # --- DIBUIX DE LA CONVERGÈNCIA AMB LA NOVA PALETA DE COLORS ---
     if np.any(smoothed_convergence > 0):
-        # <<<--- CANVI PRINCIPAL: NOVA PALETA DE COLORS I NIVELLS TIPUS RADAR --->>>
-        radar_colors = [
-            '#00F6FF', '#0000FF', '#00FF00', '#008000', '#FFFF00', '#FFA500',
-            '#FF0000', '#B40000', '#FF00FF', '#9100C8'
+        # <<<--- CANVI PRINCIPAL: AFEGIM ALPHA (TRANSPARÈNCIA) A CADA COLOR --->>>
+        from matplotlib.colors import to_rgba
+
+        radar_colors_hex = [
+            '#00F6FF', '#0000FF', '#00FF00',  # Colors per sota de 30
+            '#008000', '#FFFF00', '#FFA500', '#FF0000', '#B40000', '#FF00FF', '#9100C8' # Colors per sobre de 30
         ]
+        
+        # Creem la nova llista de colors amb transparència variable
+        colors_with_alpha = [to_rgba(c, alpha=0.6) for c in radar_colors_hex[:3]] + \
+                            [to_rgba(c, alpha=0.9) for c in radar_colors_hex[3:]]
+
         radar_levels = [15, 20, 25, 30, 40, 50, 60, 70, 80, 100, 120]
-        cmap_radar = ListedColormap(radar_colors)
+        cmap_radar = ListedColormap(colors_with_alpha)
         norm_radar = BoundaryNorm(radar_levels, ncolors=cmap_radar.N, clip=True)
 
+        # Ara contourf utilitzarà la transparència definida al colormap
         ax.contourf(grid_lon, grid_lat, smoothed_convergence,
                     levels=radar_levels, cmap=cmap_radar, norm=norm_radar,
-                    alpha=0.85, zorder=3, transform=ccrs.PlateCarree(), extend='max')
+                    zorder=3, transform=ccrs.PlateCarree(), extend='max')
         
         line_levels = [15, 30, 60, 100]
         line_styles = ['--', '-', '-', '-']
@@ -3857,7 +3863,6 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     afegir_etiquetes_ciutats(ax, map_extent)
     
     return fig
-
 
 def forcar_regeneracio_animacio():
     """Incrementa la clau de regeneració per invalidar la memòria cau."""
@@ -5978,7 +5983,7 @@ def crear_llegenda_direccionalitat():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL amb paleta de colors tipus radar.
+    PESTANYA D'ANÀlisi COMARCAL amb paleta de colors tipus radar i transparència variable.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6004,7 +6009,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
 
             if map_data and valor_conv > 15:
-                # ... (tota la part de càlcul de convergència es manté igual) ...
                 lons, lats = map_data['lons'], map_data['lats']
                 grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 150), np.linspace(map_extent[2], map_extent[3], 150))
                 grid_dewpoint = griddata((lons, lats), map_data['dewpoint_data'], (grid_lon, grid_lat), 'linear')
@@ -6023,18 +6027,21 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                 smoothed_convergence[smoothed_convergence < 15] = 0
 
                 if np.any(smoothed_convergence > 0):
-                    # <<<--- APLIQUEM LA MATEIXA PALETA DE COLORS DE RADAR AQUÍ --->>>
-                    radar_colors = [
-                        '#00F6FF', '#0000FF', '#00FF00', '#008000', '#FFFF00', '#FFA500',
-                        '#FF0000', '#B40000', '#FF00FF', '#9100C8'
+                    # <<<--- APLIQUEM LA MATEIXA PALETA AMB TRANSPARÈNCIA VARIABLE AQUÍ --->>>
+                    from matplotlib.colors import to_rgba
+                    radar_colors_hex = [
+                        '#00F6FF', '#0000FF', '#00FF00',
+                        '#008000', '#FFFF00', '#FFA500', '#FF0000', '#B40000', '#FF00FF', '#9100C8'
                     ]
+                    colors_with_alpha = [to_rgba(c, alpha=0.6) for c in radar_colors_hex[:3]] + \
+                                        [to_rgba(c, alpha=0.85) for c in radar_colors_hex[3:]]
                     radar_levels = [15, 20, 25, 30, 40, 50, 60, 70, 80, 100, 120]
-                    cmap_radar = ListedColormap(radar_colors)
+                    cmap_radar = ListedColormap(colors_with_alpha)
                     norm_radar = BoundaryNorm(radar_levels, ncolors=cmap_radar.N, clip=True)
 
                     ax.contourf(grid_lon, grid_lat, smoothed_convergence, 
                                 levels=radar_levels, cmap=cmap_radar, norm=norm_radar,
-                                alpha=0.8, zorder=3, transform=ccrs.PlateCarree(), extend='max')
+                                zorder=3, transform=ccrs.PlateCarree(), extend='max')
                     
                     line_levels = [15, 30, 60, 100]
                     line_styles = ['--', '-', '-', '-']
@@ -6048,6 +6055,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     for label in labels:
                         label.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
 
+                # La resta de la lògica per al punt màxim i la direccionalitat es manté igual
                 points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
                 points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
@@ -6057,24 +6065,22 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
                     
                     if data_tuple and valor_conv >= 15:
-                        # <<<--- CANVI: LÒGICA DE COLOR PER A LA FLETXA BASADA EN LA NOVA PALETA --->>>
-                        if valor_conv >= 100: indicator_color = '#9100C8'  # Lila
-                        elif valor_conv >= 80: indicator_color = '#FF00FF' # Magenta
-                        elif valor_conv >= 70: indicator_color = '#B40000' # Granat
-                        elif valor_conv >= 60: indicator_color = '#FF0000'  # Vermell
-                        elif valor_conv >= 50: indicator_color = '#FFA500'  # Taronja
-                        elif valor_conv >= 40: indicator_color = '#FFFF00'  # Groc
-                        elif valor_conv >= 30: indicator_color = '#008000'  # Verd fosc
-                        elif valor_conv >= 25: indicator_color = '#00FF00'  # Verd clar
-                        elif valor_conv >= 20: indicator_color = '#0000FF'  # Blau
-                        else: indicator_color = '#00F6FF'                   # Cian
+                        if valor_conv >= 100: indicator_color = '#9100C8'
+                        elif valor_conv >= 80: indicator_color = '#FF00FF'
+                        elif valor_conv >= 70: indicator_color = '#B40000'
+                        elif valor_conv >= 60: indicator_color = '#FF0000'
+                        elif valor_conv >= 50: indicator_color = '#FFA500'
+                        elif valor_conv >= 40: indicator_color = '#FFFF00'
+                        elif valor_conv >= 30: indicator_color = '#008000'
+                        elif valor_conv >= 25: indicator_color = '#00FF00'
+                        elif valor_conv >= 20: indicator_color = '#0000FF'
+                        else: indicator_color = '#00F6FF'
                         
                         path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
                         circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
                         ax.add_patch(circle)
                         ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
 
-                        # ... (la resta de la lògica per dibuixar la fletxa es manté igual) ...
                         try:
                             sounding_data, _ = data_tuple
                             p, u, v = sounding_data[0], sounding_data[3], sounding_data[4]
@@ -6110,7 +6116,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             plt.close(fig)
 
     with col_diagnostic:
-        # La resta de la funció (diagnòstic de text) no canvia
+        # La part de diagnòstic es manté igual, és correcta
         st.markdown("##### Diagnòstic de la Zona")
         # ... (la resta de la funció es manté intacta) ...
         if valor_conv >= 100:
@@ -6160,7 +6166,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
         
         crear_llegenda_direccionalitat()
-
 def on_day_change_cat():
     """ Callback segur per al canvi de dia a Catalunya. """
     st.session_state.hora_selector = "12:00h"
