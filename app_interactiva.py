@@ -2696,6 +2696,7 @@ def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None):
     """
     Versió Final amb la nova secció d'Anàlisi d'Humitat.
+    CORRECCIÓ: S'ha eliminat la paraula 'dimensionless' de les mètriques de RH.
     """
     if data_tuple:
         sounding_data, params_calculats = data_tuple
@@ -2708,7 +2709,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             
-            # --- NOU: Afegeix els nous índexs a la caixa de paràmetres ---
             ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual, poble_sel, avis_proximitat)
 
         with col2:
@@ -2729,12 +2729,10 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             html_code = f"""<div style="position: relative; width: 100%; height: 410px; border-radius: 10px; overflow: hidden;"><iframe src="{radar_url}" width="100%" height="410" frameborder="0" style="border:0;"></iframe><div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div></div>"""
             st.components.v1.html(html_code, height=410)
 
-            # --- NOU BLOC: ANÀLISI DEL PERFIL D'HUMITAT ---
             st.markdown("##### Anàlisi del Perfil d'Humitat")
             with st.container(border=True):
                 diagnosi_humitat = diagnosticar_perfil_humitat(params_calculats)
                 
-                # Columna esquerra pel diagnòstic qualitatiu
                 st.markdown(f"""
                 <div style="text-align: center; padding-bottom: 10px;">
                     <span style="font-size: 2.5em;">{diagnosi_humitat['emoji']}</span>
@@ -2745,69 +2743,21 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
 
                 st.divider()
 
-                # Columnes dretes per a les dades numèriques
                 col_hum1, col_hum2, col_hum3, col_hum4 = st.columns(4)
                 with col_hum1:
                     st.metric("Aigua Precipitable", f"{params_calculats.get('PWAT', 0):.1f} mm")
                 with col_hum2:
+                    # --- CANVI AQUÍ ---
                     st.metric("RH 0-3 km", f"{params_calculats.get('RH_0-3km', 0):.0f}%")
                 with col_hum3:
+                    # --- CANVI AQUÍ ---
                     st.metric("RH 3-6 km", f"{params_calculats.get('RH_3-6km', 0):.0f}%")
                 with col_hum4:
+                    # --- CANVI AQUÍ ---
                     st.metric("RH 6-10 km", f"{params_calculats.get('RH_6-10km', 0):.0f}%")
-            # --- FI DEL NOU BLOC ---
 
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
-        
-
-def debug_convergence_calculation(map_data, llista_ciutats):
-    """
-    Funció de depuració per imprimir l'estat dels càlculs de convergència pas a pas.
-    Aquesta versió és sintàcticament correcta.
-    """
-    st.warning("⚠️ MODE DE DEPURACIÓ ACTIVAT. Revisa la terminal on has executat Streamlit.")
-    print("\n\n" + "="*50)
-    print("INICI DE LA DEPURACIÓ DE CONVERGÈNCIA")
-    print("="*50)
-
-    # --> INICI DEL BLOC TRY
-    try:
-        if not map_data or 'lons' not in map_data or len(map_data['lons']) < 4:
-            print("[ERROR] No hi ha prou dades al `map_data` inicial.")
-            print("="*50 + "\n\n")
-            return {}
-
-        print(f"[PAS 1] Dades d'entrada rebudes:")
-        print(f"  - Punts de dades (lons/lats): {len(map_data['lons'])}")
-        print(f"  - Claus disponibles: {list(map_data.keys())}")
-
-        print("\n[PAS 2] Crida a la funció de càlcul real...")
-        # Cridem la funció real per obtenir el resultat
-        resultats = calcular_convergencies_per_llista(map_data, llista_ciutats)
-        print("  - Càlcul completat sense errors.")
-        
-        print("\n[PAS 3] Verificant resultat per a Barcelona...")
-        if 'Barcelona' in resultats:
-            dades_bcn = resultats['Barcelona']
-            valor_conv_bcn = dades_bcn.get('conv')
-            es_humit_bcn = dades_bcn.get('es_humit')
-            print(f"  - VALOR DE CONVERGÈNCIA PER A BCN: {valor_conv_bcn}")
-            print(f"  - ÉS HUMIT A BCN?: {es_humit_bcn}")
-        else:
-            print("  - [ERROR] No s'han trobat resultats per a Barcelona.")
-        
-        print("="*50 + "\nFI DE LA DEPURACIÓ\n" + "="*50 + "\n\n")
-
-        return resultats
-
-    # --> BLOC EXCEPT CORRESPONENT I CORRECTAMENT INDENTAT
-    except Exception as e:
-        print(f"[ERROR CRÍTIC] Excepció durant la depuració: {e}")
-        import traceback
-        traceback.print_exc()
-        print("="*50 + "\n\n")
-        return {}
     
 
 
