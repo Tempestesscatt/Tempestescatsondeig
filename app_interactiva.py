@@ -2140,9 +2140,10 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva (v43.0).
-    - Integra els paràmetres avançats dins d'un menú desplegable directament a la caixa principal.
-    - Manté un disseny net i coherent amb la resta de la interfície.
+    Versió Definitiva (v43.1).
+    - Mostra TOTS els paràmetres de forma permanent a la columna esquerra.
+    - Elimina el menú desplegable ('expander') i organitza els paràmetres avançats
+      amb subtítols i columnes per a una màxima claredat.
     """
     TOOLTIPS = { 'SBCAPE': "Energia Potencial Convectiva Disponible (CAPE) des de la superfície...", 'MUCAPE': "El valor màxim de CAPE a l'atmosfera...", 'CONV_PUNTUAL': "Mesura com l'aire s'ajunta en un punt...", 'SBCIN': "Energia d'Inhibició Convectiva (CIN) des de la superfície...", 'MUCIN': "La 'tapa' més feble de l'atmosfera...", 'LI': "Índex d'Elevació...", 'PWAT': "Aigua Precipitable Total...", 'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació...", 'LFC_Hgt': "Alçada del Nivell de Convecció Lliure...", 'EL_Hgt': "Alçada del Nivell d'Equilibri...", 'BWD_0-6km': "Cisallament del vent entre la superfície i 6 km...", 'BWD_0-1km': "Cisallament del vent a nivells baixos...", 'T_500hPa': "Temperatura a 500 hPa...", 'PUNTUACIO_TEMPESTA': "Índex global que combina ingredients...", 'AMENACA_CALAMARSA': "Potencial de calamarsa gran...", 'AMENACA_LLAMPS': "Potencial d'activitat elèctrica..." }
     
@@ -2164,8 +2165,8 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br><strong style="font-size: 1.6em; color: {color};">{text}</strong></div>""", unsafe_allow_html=True)
 
+    # --- SECCIÓ DE PARÀMETRES PRINCIPALS ---
     st.markdown("##### Paràmetres del Sondeig")
-
     cols_fila1 = st.columns(3)
     with cols_fila1[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE', tooltip_text=TOOLTIPS.get('SBCAPE'))
     with cols_fila1[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
@@ -2176,20 +2177,14 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with st.container(border=True):
         st.markdown('<p style="text-align:center; font-size: 0.9em; color: #FAFAFA; margin-bottom: 8px;">Tipus de Cel Previst</p>', unsafe_allow_html=True)
         analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
-        
         if analisi_temps_list:
             for i, diag in enumerate(analisi_temps_list):
-                desc = diag.get("descripcio", "Desconegut")
-                veredicte = diag.get("veredicte", "")
+                desc, veredicte = diag.get("descripcio", "Desconegut"), diag.get("veredicte", "")
                 b64_img = NUVOL_ICON_BASE64.get(desc, NUVOL_ICON_BASE64["fallback"])
                 img_col, text_col = st.columns([0.2, 0.8], gap="medium", vertical_alignment="center")
                 with img_col: st.image(b64_img, width=50)
                 with text_col:
-                    st.markdown(f"""
-                    <div style="line-height: 1.3;">
-                        <strong style="font-size: 1.05em; color: #FFFFFF;">{veredicte}</strong><br>
-                        <span style="font-size: 0.85em; color: #A0A0A0; font-style: italic;">({desc})</span>
-                    </div>""", unsafe_allow_html=True)
+                    st.markdown(f'<div style="line-height: 1.3;"><strong style="font-size: 1.05em; color: #FFFFFF;">{veredicte}</strong><br><span style="font-size: 0.85em; color: #A0A0A0; font-style: italic;">({desc})</span></div>', unsafe_allow_html=True)
                 if i < len(analisi_temps_list) - 1: st.markdown("<hr style='margin: 8px 0; border-color: #444;'>", unsafe_allow_html=True)
         else: st.warning("No s'ha pogut determinar el tipus de cel.")
 
@@ -2214,35 +2209,36 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_amenaces[1]: styled_qualitative("Índex de Potencial", f"{puntuacio_resultat['score']} / 10", puntuacio_resultat['color'], tooltip_text=TOOLTIPS.get('PUNTUACIO_TEMPESTA'))
     with cols_amenaces[2]: styled_qualitative("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], tooltip_text=TOOLTIPS.get('AMENACA_LLAMPS'))
     
-    # --- NOU BLOC AFEGIT ---
-    # Menú desplegable amb els paràmetres avançats
-    with st.expander("🔬 Anàlisi de Paràmetres Avançats", expanded=False):
-        st.markdown("###### Índexs Compostos Severs")
-        c1, c2, c3 = st.columns(3)
-        with c1: styled_metric("SCP", params.get('SCP'), "", 'SCP', tooltip_text="Supercell Composite Parameter. Potencial per a supercèl·lules. >1 és significatiu.", precision=1)
-        with c2: styled_metric("STP (CIN)", params.get('STP_CIN'), "", 'STP_CIN', tooltip_text="Significant Tornado Parameter. Potencial per a tornados significatius (EF2+). >1 és significatiu.", precision=1)
-        with c3: styled_metric("SHIP", params.get('SHIP'), "", 'SHIP', tooltip_text="Significant Hail Parameter. Potencial per a calamarsa severa (>5cm). >1 és significatiu.", precision=1)
+    # --- BLOC DE PARÀMETRES AVANÇATS (SEMPRE VISIBLE) ---
+    st.divider()
+    st.markdown("##### Paràmetres Avançats")
 
-        st.markdown("###### Termodinàmica Detallada")
-        c4, c5, c6 = st.columns(3)
-        with c4: styled_metric("DCAPE", params.get('DCAPE'), "J/kg", 'DCAPE', tooltip_text="Downdraft CAPE. Potencial per a ràfegues de vent descendents severes.")
-        with c5: styled_metric("K Index", params.get('K_INDEX'), "", 'K_INDEX', tooltip_text="Potencial de tempestes per massa d'aire. >35 indica alt potencial.")
-        with c6: styled_metric("Total Totals", params.get('TOTAL_TOTALS'), "", 'TOTAL_TOTALS', tooltip_text="Índex de severitat. >50 indica potencial per a tempestes fortes.")
-        
-        c7, c8, c9 = st.columns(3)
-        with c7: styled_metric("LR 0-3km", params.get('LR_0-3km'), "°C/km", 'LR_0-3km', tooltip_text="Refredament amb l'altura a capes baixes. >7.5°C/km és molt inestable.", precision=1)
-        with c8: styled_metric("LR 700-500", params.get('LR_700-500hPa'), "°C/km", 'LR_700-500hPa', tooltip_text="Inestabilitat a nivells mitjans. >7°C/km afavoreix la calamarsa.", precision=1)
-        with c9: styled_metric("Showalter", params.get('SHOWALTER_INDEX'), "", 'SHOWALTER_INDEX', reverse_colors=True, tooltip_text="Mesura d'inestabilitat. Valors negatius indiquen potencial de tempesta.")
+    st.markdown("###### Índexs Compostos Severs")
+    c1, c2, c3 = st.columns(3)
+    with c1: styled_metric("SCP", params.get('SCP'), "", 'SCP', tooltip_text="Supercell Composite Parameter. Potencial per a supercèl·lules. >1 és significatiu.", precision=1)
+    with c2: styled_metric("STP (CIN)", params.get('STP_CIN'), "", 'STP_CIN', tooltip_text="Significant Tornado Parameter. Potencial per a tornados significatius (EF2+). >1 és significatiu.", precision=1)
+    with c3: styled_metric("SHIP", params.get('SHIP'), "", 'SHIP', tooltip_text="Significant Hail Parameter. Potencial per a calamarsa severa (>5cm). >1 és significatiu.", precision=1)
 
-        st.markdown("###### Cinemàtica Avançada (Capa Efectiva)")
-        c10, c11 = st.columns(2)
-        with c10: styled_metric("Effective SRH", params.get('ESRH'), "m²/s²", 'ESRH', tooltip_text="Helicitat relativa a la tempesta a la capa efectiva. >150 m²/s² afavoreix supercèl·lules.")
-        with c11: styled_metric("Effective Shear", params.get('EBWD'), "nusos", 'EBWD', tooltip_text="Cisallament del vent a la capa efectiva. >40 nusos afavoreix supercèl·lules.")
-        
-        c12, c13, c14 = st.columns(3)
-        with c12: styled_metric("Eff. Inflow Base", params.get('EFF_INFLOW_BOTTOM'), "hPa", 'EFF_INFLOW_BOTTOM', tooltip_text="Base de la capa d'aire que alimenta la tempesta.")
-        with c13: styled_metric("Eff. Inflow Top", params.get('EFF_INFLOW_TOP'), "hPa", 'EFF_INFLOW_TOP', tooltip_text="Sostre de la capa d'aire que alimenta la tempesta.")
-        with c14: st.empty()
+    st.markdown("###### Termodinàmica Detallada")
+    c4, c5, c6 = st.columns(3)
+    with c4: styled_metric("DCAPE", params.get('DCAPE'), "J/kg", 'DCAPE', tooltip_text="Downdraft CAPE. Potencial per a ràfegues de vent descendents severes.")
+    with c5: styled_metric("K Index", params.get('K_INDEX'), "", 'K_INDEX', tooltip_text="Potencial de tempestes per massa d'aire. >35 indica alt potencial.")
+    with c6: styled_metric("Total Totals", params.get('TOTAL_TOTALS'), "", 'TOTAL_TOTALS', tooltip_text="Índex de severitat. >50 indica potencial per a tempestes fortes.")
+    
+    c7, c8, c9 = st.columns(3)
+    with c7: styled_metric("LR 0-3km", params.get('LR_0-3km'), "°C/km", 'LR_0-3km', tooltip_text="Refredament amb l'altura a capes baixes. >7.5°C/km és molt inestable.", precision=1)
+    with c8: styled_metric("LR 700-500", params.get('LR_700-500hPa'), "°C/km", 'LR_700-500hPa', tooltip_text="Inestabilitat a nivells mitjans. >7°C/km afavoreix la calamarsa.", precision=1)
+    with c9: styled_metric("Showalter", params.get('SHOWALTER_INDEX'), "", 'SHOWALTER_INDEX', reverse_colors=True, tooltip_text="Mesura d'inestabilitat. Valors negatius indiquen potencial de tempesta.")
+
+    st.markdown("###### Cinemàtica Avançada (Capa Efectiva)")
+    c10, c11 = st.columns(2)
+    with c10: styled_metric("Effective SRH", params.get('ESRH'), "m²/s²", 'ESRH', tooltip_text="Helicitat relativa a la tempesta a la capa efectiva. >150 m²/s² afavoreix supercèl·lules.")
+    with c11: styled_metric("Effective Shear", params.get('EBWD'), "nusos", 'EBWD', tooltip_text="Cisallament del vent a la capa efectiva. >40 nusos afavoreix supercèl·lules.")
+    
+    c12, c13, c14 = st.columns(3)
+    with c12: styled_metric("Eff. Inflow Base", params.get('EFF_INFLOW_BOTTOM'), "hPa", 'EFF_INFLOW_BOTTOM', tooltip_text="Base de la capa d'aire que alimenta la tempesta.")
+    with c13: styled_metric("Eff. Inflow Top", params.get('EFF_INFLOW_TOP'), "hPa", 'EFF_INFLOW_TOP', tooltip_text="Sostre de la capa d'aire que alimenta la tempesta.")
+    with c14: st.empty() # Espai buit per a l'alineació
         
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
     """
