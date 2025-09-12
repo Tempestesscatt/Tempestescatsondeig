@@ -7604,17 +7604,18 @@ def run_catalunya_app():
                  st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
         
         elif vista_mapa == "Anàlisi d'Advecció (Fronts)":
-            # NOU: Afegim el selector de nivell per a l'advecció
+            # <<<--- BLOC MODIFICAT ---
+            # Canviem la llista d'opcions per incloure 1000 i 925 hPa
             nivell_adveccio = st.selectbox(
                 "Nivell per a l'anàlisi d'advecció:",
-                options=[850, 700, 500],
+                options=[1000, 925, 850, 700, 500], # <-- LLISTA ACTUALITZADA
                 format_func=lambda x: f"{x} hPa",
                 key="advection_level_selector"
             )
+            # <<<--- FI DEL BLOC MODIFICAT ---
 
             st.markdown(f"#### Mapa d'Advecció Tèrmica a {nivell_adveccio} hPa")
             with st.spinner(f"Carregant i generant mapa d'advecció a {nivell_adveccio}hPa..."):
-                # Cridem les funcions modificades amb el nivell seleccionat
                 map_data_adv, error_adv = carregar_dades_mapa_adveccio_cat(nivell_adveccio, hourly_index_sel)
                 if error_adv or not map_data_adv:
                     st.error(f"Error en carregar les dades d'advecció: {error_adv}")
@@ -7624,14 +7625,13 @@ def run_catalunya_app():
                         map_data_adv['lons'], map_data_adv['lats'],
                         map_data_adv['temp_data'], map_data_adv['speed_data'],
                         map_data_adv['dir_data'], 
-                        nivell_adveccio, # <-- Passem el nivell a la funció de dibuix
+                        nivell_adveccio,
                         timestamp_str_mapa, 
                         MAP_EXTENT_CAT
                     )
                     st.pyplot(fig_adv, use_container_width=True)
                     plt.close(fig_adv)
                     ui_explicacio_adveccio()
-
 
 
 def ui_mapa_display_peninsula(alertes_per_zona, hourly_index, show_labels):
