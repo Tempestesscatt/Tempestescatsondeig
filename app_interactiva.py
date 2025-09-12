@@ -1342,7 +1342,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         # --- 4. CÀLCUL DE LA CAPA EFECTIVA (LA PART MÉS PROPENS A ERRORS) ---
         try:
             if pd.isna(u_storm.m): raise ValueError("El moviment de la tempesta no s'ha pogut calcular.")
-            bottom_eff, top_eff = mpcalc.effective_inflow_layer(p, T, Td)
+            bottom_eff, top_eff = mpcalc.effective_inflow_layer(p, T, Td, cape_threshold=100 * units('J/kg'), cin_threshold=-250 * units('J/kg'))
             if not (bottom_eff and top_eff): raise ValueError("La capa efectiva no s'ha trobat.")
             
             params_calc['EFF_INFLOW_BOTTOM'] = float(bottom_eff.m)
@@ -1372,8 +1372,8 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         params_calc['STP_CIN'] = np.nan
         mlcape_val, lcl_val = params_calc.get('MLCAPE'), params_calc.get('LCL_Hgt')
         srh1_val = params_calc.get('SRH_0-1km')
-        if all(pd.notna(v) for v in [mlcape_val, lcl_val, esrh_val, ebwd_val]):
-            try: params_calc['STP_CIN'] = float(mpcalc.significant_tornado(sbcape=mlcape_val*units('J/kg'), lcl_height=lcl_val*units.meter, srh1=esrh_val*units('m^2/s^2'), bwd6=(ebwd_val*units.kt).to('m/s')).m)
+        if all(pd.notna(v) for v in [mlcape_val, lcl_val, esrh_val, bwd6_val]):
+            try: params_calc['STP_CIN'] = float(mpcalc.significant_tornado(sbcape=mlcape_val*units('J/kg'), lcl_height=lcl_val*units.meter, srh1=esrh_val*units('m^2/s^2'), bwd6=(bwd6_val*units.kt).to('m/s')).m)
             except: pass
         elif all(pd.notna(v) for v in [mlcape_val, lcl_val, srh1_val, bwd6_val]): # Fallback
             try: params_calc['STP_CIN'] = float(mpcalc.significant_tornado(sbcape=mlcape_val*units('J/kg'), lcl_height=lcl_val*units.meter, srh1=srh1_val*units('m^2/s^2'), bwd6=(bwd6_val*units.kt).to('m/s')).m)
