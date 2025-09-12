@@ -1260,11 +1260,11 @@ def calcular_mlcape_robusta(p, T, Td):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Corregida (v39.0) - Lògica de càlcul a prova d'errors.
-    - Cada paràmetre es calcula de forma aïllada per evitar errors en cadena.
-    - Implementa una lògica de "fallback" intel·ligent: si els paràmetres efectius
-      no es poden calcular, utilitza els paràmetres estàndard per als índexs compostos.
-    - Garanteix que es mostri el màxim nombre de paràmetres possible en qualsevol escenari.
+    Versió Definitiva (v40.0) - Lògica de Càlcul "A Prova de Tot".
+    - Implementa un "Pla B" per al càlcul del moviment de la tempesta: si Bunkers falla,
+      utilitza el vent mitjà 0-6km com a proxy, garantint que els càlculs dependents (SRH, etc.)
+      puguin continuar.
+    - Cada paràmetre es calcula de forma aïllada per a una màxima robustesa.
     """
     if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
 
@@ -1288,10 +1288,9 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         except: return None, "Error crític: No s'ha pogut calcular el perfil de superfície."
         try: _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
         except: ml_prof = None
-        main_prof = ml_prof if ml_prof is not None else sfc_prof
-
+        
         # --- 2. CÀLCUL AÏLLAT DE PARÀMETRES BÀSICS ---
-        # Cada paràmetre es calcula de forma independent per evitar errors en cadena.
+        # Cada paràmetre es calcula de forma independent.
         try: sbcape, sbcin = mpcalc.cape_cin(p, T, Td, sfc_prof); params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m)
         except: params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan})
         try: mlcape, mlcin = mpcalc.cape_cin(p, T, Td, ml_prof); params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
@@ -1321,72 +1320,69 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         try: params_calc['T_500hPa'] = float(np.interp(500, p.m[::-1], T.m[::-1]))
         except: params_calc['T_500hPa'] = np.nan
         try:
-            for name, depth_m in [('0-1km', 1000), ('0-3km', 3000), ('0-6km', 6000)]:
-                bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter)
-                params_calc[f'BWD_{name}'] = float(mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m)
-        except: params_calc.update({'BWD_0-1km': np.nan, 'BWD_0-3km': np.nan, 'BWD_0-6km': np.nan})
-        
-        # --- 3. CÀLCUL DE CINEMÀTICA (DEPENENT DEL MOVIMENT DE LA TEMPESTA) ---
-        try:
+            bwd_u_6km, bwd_v_6km = mpcalc.bulk_shear(p, u, v, height=heights, depth=6000 * units.meter)
+            params_calc['BWD_0-6km'] = float(mpcalc.wind_speed(bwd_u_6km, bwd_v_6km).to('kt').m)
+        except: params_calc['BWD_0-6km'] = np.nan
+
+        # --- 3. CÀLCUL DEL MOVIMENT DE LA TEMPESTA AMB "PLA B" ---
+        u_storm, v_storm = np.nan * units('m/s'), np.nan * units('m/s')
+        try: # Pla A: Mètode de Bunkers (ideal)
             rm, _, _ = mpcalc.bunkers_storm_motion(p, u, v, heights)
             u_storm, v_storm = rm
-            for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
-                try:
+        except: # Pla B: Vent mitjà 0-6km (fallback)
+            try:
+                mean_u, mean_v = mpcalc.mean_wind(p, u, v, depth=6000*units.meter)
+                u_storm, v_storm = mean_u, mean_v
+            except: pass # Si fins i tot això falla, u_storm i v_storm seguiran sent NaN
+
+        # --- 4. CÀLCUL DE CINEMÀTICA (ARA SEMPRE TÉ UN MOVIMENT DE TEMPesta PER INTENTAR-HO) ---
+        if pd.notna(u_storm.m):
+            try:
+                for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
                     srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.meter, storm_u=u_storm, storm_v=v_storm)[0]
                     params_calc[f'SRH_{name}'] = float(srh.m)
-                except: params_calc[f'SRH_{name}'] = np.nan
-        except:
-            params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-            u_storm, v_storm = np.nan * units('m/s'), np.nan * units('m/s')
-
-        # --- 4. CÀLCUL DE LA CAPA EFECTIVA (LA PART MÉS PROPENS A ERRORS) ---
+            except: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
+        else: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
+        
+        # --- 5. CÀLCUL DE LA CAPA EFECTIVA ---
         try:
-            if pd.isna(u_storm.m): raise ValueError("El moviment de la tempesta no s'ha pogut calcular.")
-            bottom_eff, top_eff = mpcalc.effective_inflow_layer(p, T, Td, cape_threshold=100 * units('J/kg'), cin_threshold=-250 * units('J/kg'))
-            if not (bottom_eff and top_eff): raise ValueError("La capa efectiva no s'ha trobat.")
-            
+            bottom_eff, top_eff = mpcalc.effective_inflow_layer(p, T, Td)
+            if not (bottom_eff and top_eff): raise ValueError
             params_calc['EFF_INFLOW_BOTTOM'] = float(bottom_eff.m)
             params_calc['EFF_INFLOW_TOP'] = float(top_eff.m)
             ebwd_u, ebwd_v = mpcalc.bulk_shear(p, u, v, height=heights, bottom=bottom_eff, depth=(top_eff - bottom_eff))
             params_calc['EBWD'] = float(mpcalc.wind_speed(ebwd_u, ebwd_v).to('kt').m)
-            esrh = mpcalc.storm_relative_helicity(heights, u, v, bottom=bottom_eff, depth=(top_eff - bottom_eff), storm_u=u_storm, storm_v=v_storm)[0]
-            params_calc['ESRH'] = float(esrh.m)
+            if pd.notna(u_storm.m):
+                esrh = mpcalc.storm_relative_helicity(heights, u, v, bottom=bottom_eff, depth=(top_eff - bottom_eff), storm_u=u_storm, storm_v=v_storm)[0]
+                params_calc['ESRH'] = float(esrh.m)
+            else: params_calc['ESRH'] = np.nan
         except:
             params_calc.update({'EFF_INFLOW_BOTTOM': np.nan, 'EFF_INFLOW_TOP': np.nan, 'EBWD': np.nan, 'ESRH': np.nan})
 
-        # --- 5. CÀLCUL D'ÍNDEXS COMPOSTOS AMB LÒGICA DE "FALLBACK" ---
-        # Si els paràmetres efectius fallen, s'utilitzen els estàndard.
-        
-        # Supercell Composite (SCP)
-        params_calc['SCP'] = np.nan
-        mucape_val, esrh_val, ebwd_val = params_calc.get('MUCAPE'), params_calc.get('ESRH'), params_calc.get('EBWD')
-        srh3_val, bwd6_val = params_calc.get('SRH_0-3km'), params_calc.get('BWD_0-6km')
-        if all(pd.notna(v) for v in [mucape_val, esrh_val, ebwd_val]):
-            try: params_calc['SCP'] = float(mpcalc.supercell_composite(mucape=mucape_val*units('J/kg'), esrh=esrh_val*units('m^2/s^2'), ebwd=(ebwd_val*units.kt).to('m/s')).m)
-            except: pass
-        elif all(pd.notna(v) for v in [mucape_val, srh3_val, bwd6_val]): # Fallback
-            try: params_calc['SCP'] = float(mpcalc.supercell_composite(mucape=mucape_val*units('J/kg'), srh3=srh3_val*units('m^2/s^2'), bwd6=(bwd6_val*units.kt).to('m/s')).m)
-            except: pass
+        # --- 6. CÀLCUL D'ÍNDEXS COMPOSTOS AMB LÒGICA DE FALLBACK MÚLTIPLE ---
+        scp_ingredients_eff = [params_calc.get('MUCAPE'), params_calc.get('ESRH'), params_calc.get('EBWD')]
+        scp_ingredients_std = [params_calc.get('MUCAPE'), params_calc.get('SRH_0-3km'), params_calc.get('BWD_0-6km')]
+        if all(pd.notna(v) for v in scp_ingredients_eff):
+            try: params_calc['SCP'] = float(mpcalc.supercell_composite(mucape=scp_ingredients_eff[0]*units('J/kg'), esrh=scp_ingredients_eff[1]*units('m^2/s^2'), ebwd=(scp_ingredients_eff[2]*units.kt).to('m/s')).m)
+            except: params_calc['SCP'] = np.nan
+        elif all(pd.notna(v) for v in scp_ingredients_std):
+            try: params_calc['SCP'] = float(mpcalc.supercell_composite(mucape=scp_ingredients_std[0]*units('J/kg'), srh3=scp_ingredients_std[1]*units('m^2/s^2'), bwd6=(scp_ingredients_std[2]*units.kt).to('m/s')).m)
+            except: params_calc['SCP'] = np.nan
+        else: params_calc['SCP'] = np.nan
 
-        # Significant Tornado (STP)
-        params_calc['STP_CIN'] = np.nan
-        mlcape_val, lcl_val = params_calc.get('MLCAPE'), params_calc.get('LCL_Hgt')
-        srh1_val = params_calc.get('SRH_0-1km')
-        if all(pd.notna(v) for v in [mlcape_val, lcl_val, esrh_val, bwd6_val]):
-            try: params_calc['STP_CIN'] = float(mpcalc.significant_tornado(sbcape=mlcape_val*units('J/kg'), lcl_height=lcl_val*units.meter, srh1=esrh_val*units('m^2/s^2'), bwd6=(bwd6_val*units.kt).to('m/s')).m)
-            except: pass
-        elif all(pd.notna(v) for v in [mlcape_val, lcl_val, srh1_val, bwd6_val]): # Fallback
-            try: params_calc['STP_CIN'] = float(mpcalc.significant_tornado(sbcape=mlcape_val*units('J/kg'), lcl_height=lcl_val*units.meter, srh1=srh1_val*units('m^2/s^2'), bwd6=(bwd6_val*units.kt).to('m/s')).m)
-            except: pass
+        stp_ingredients_std = [params_calc.get('MLCAPE'), params_calc.get('LCL_Hgt'), params_calc.get('SRH_0-1km'), params_calc.get('BWD_0-6km')]
+        if all(pd.notna(v) for v in stp_ingredients_std):
+            try: params_calc['STP_CIN'] = float(mpcalc.significant_tornado(sbcape=stp_ingredients_std[0]*units('J/kg'), lcl_height=stp_ingredients_std[1]*units.meter, srh1=stp_ingredients_std[2]*units('m^2/s^2'), bwd6=(stp_ingredients_std[3]*units.kt).to('m/s')).m)
+            except: params_calc['STP_CIN'] = np.nan
+        else: params_calc['STP_CIN'] = np.nan
 
-        # Significant Hail (SHIP)
-        params_calc['SHIP'] = np.nan
-        ship_ingredients = [params_calc.get('MUCAPE'), params_calc.get('LR_700-500hPa'), params_calc.get('T_500hPa'), params_calc.get('FREEZING_LVL_HGT'), bwd6_val]
+        ship_ingredients = [params_calc.get('MUCAPE'), params_calc.get('LR_700-500hPa'), params_calc.get('T_500hPa'), params_calc.get('FREEZING_LVL_HGT'), params_calc.get('BWD_0-6km')]
         if all(pd.notna(v) for v in ship_ingredients):
             try:
                 mixing_ratio_850_600 = mpcalc.mean_layer_mixing_ratio(p, Td, depth=250*units.hPa, bottom=850*units.hPa) if p.m.min() < 600 else 10 * units('g/kg')
                 params_calc['SHIP'] = float(mpcalc.significant_hail(mucape=ship_ingredients[0]*units('J/kg'), mixing_ratio_850_600=mixing_ratio_850_600, temp_500=ship_ingredients[2]*units.degC, lapse_rate_700_500=ship_ingredients[1]*units('delta_degC/km'), freezing_level=ship_ingredients[3]*units.meter, shear_6km=(ship_ingredients[4]*units.kt).to('m/s')).m)
-            except: pass
+            except: params_calc['SHIP'] = np.nan
+        else: params_calc['SHIP'] = np.nan
 
     return ((p, T, Td, u, v, heights, sfc_prof), params_calc), None
            
