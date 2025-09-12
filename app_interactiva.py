@@ -3789,11 +3789,13 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ AMB RESTAURACIÓ DE PICS MÀXIMS.
-    - Suavitza el mapa per a una bona aparença.
-    - Restaura els valors màxims originals per no perdre intensitat.
-    - Manté la paleta de colors de radar i la transparència variable.
+    VERSIÓ AMB RENDERITZAT SUAU I ETIQUETES DE PICS MÀXIMS.
+    - Dibuixa el mapa suavitzat per a un aspecte orgànic.
+    - Superposa etiquetes de text amb el valor màxim REAL (sense suavitzar) en els focus més intensos.
     """
+    # Importació necessària per a la detecció de "taques" o "blobs"
+    from scipy import ndimage as ndi
+
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
     
@@ -3821,43 +3823,43 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
         effective_convergence = np.where((convergence >= 15) & (humid_mask), convergence, 0)
 
-    # <<<--- CANVI CLAU: LÒGICA HÍBRIDA DE SUAVITZAT I RESTAURACIÓ DE PICS --->>>
-    # 1. Suavitzem el camp amb menys intensitat per preservar millor les formes.
-    smoothed_convergence = gaussian_filter(effective_convergence, sigma=1.5)
+    smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
+    smoothed_convergence[smoothed_convergence < 15] = 0
     
-    # 2. Creem una graella final on, per a cada punt, escollim el valor més alt
-    #    entre el camp original i el suavitzat. Això manté els pics intactes.
-    final_convergence_grid = np.maximum(effective_convergence, smoothed_convergence)
-    final_convergence_grid[final_convergence_grid < 15] = 0
-    
-    if np.any(final_convergence_grid > 0):
+    # --- DIBUIX DE LA CONVERGÈNCIA AMB LA NOVA PALETA DE COLORS ---
+    if np.any(smoothed_convergence > 0):
         from matplotlib.colors import to_rgba
-        radar_colors_hex = [
-            '#00F6FF', '#0000FF', '#00FF00', '#008000', '#FFFF00', '#FFA500',
-            '#FF0000', '#B40000', '#FF00FF', '#9100C8'
-        ]
+        radar_colors_hex = ['#00F6FF', '#0000FF', '#00FF00', '#FFFF00', '#FFA500', '#FF0000', '#B40000', '#FF00FF', '#9100C8']
         colors_with_alpha = [to_rgba(c, alpha=0.4) for c in radar_colors_hex[:3]] + \
                             [to_rgba(c, alpha=0.9) for c in radar_colors_hex[3:]]
-        radar_levels = [15, 20, 25, 30, 40, 50, 60, 70, 80, 100, 120]
+        radar_levels = [15, 20, 25, 30, 45, 60, 75, 90, 110]
         cmap_radar = ListedColormap(colors_with_alpha)
         norm_radar = BoundaryNorm(radar_levels, ncolors=cmap_radar.N, clip=True)
 
-        # 3. Dibuixem la graella final que conté els pics reals.
-        ax.contourf(grid_lon, grid_lat, final_convergence_grid,
+        # 1. Dibuixem el farciment SUAVITZAT per a l'aspecte orgànic
+        ax.contourf(grid_lon, grid_lat, smoothed_convergence,
                     levels=radar_levels, cmap=cmap_radar, norm=norm_radar,
                     zorder=3, transform=ccrs.PlateCarree(), extend='max')
         
-        line_levels = [15, 30, 60, 100]
-        line_styles = ['--', '-', '-', '-']
-        
-        contours = ax.contour(grid_lon, grid_lat, final_convergence_grid,
-                              levels=line_levels, colors='black',
-                              linestyles=line_styles, linewidths=0.8, zorder=4,
-                              transform=ccrs.PlateCarree())
-        
-        labels = ax.clabel(contours, inline=True, fontsize=5, fmt='%1.0f')
-        for label in labels:
-            label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.5))
+        # <<<--- CANVI CLAU: IDENTIFICACIÓ I ETIQUETATGE DELS PICS REALS --->>>
+        # 2. Identifiquem les zones (taques/blobs) de convergència forta (>30) al mapa suavitzat
+        labels, num_features = ndi.label(smoothed_convergence > 30)
+        if num_features > 0:
+            # 3. Trobem la posició del valor MÀXIM dins de cada taca, però utilitzant les dades ORIGINALS (effective_convergence)
+            max_locs = ndi.maximum_position(effective_convergence, labels=labels, index=np.arange(1, num_features + 1))
+            
+            # 4. Per a cada pic trobat, dibuixem una etiqueta de text amb el seu valor real
+            for row, col in max_locs:
+                max_val = effective_convergence[int(row), int(col)]
+                lon_peak, lat_peak = grid_lon[int(row), int(col)], grid_lat[int(row), int(col)]
+                
+                # Només etiquetem els pics realment significatius per no saturar
+                if max_val > 40:
+                    txt = ax.text(lon_peak, lat_peak, f'{max_val:.0f}',
+                                  color='white', fontsize=9, weight='bold', ha='center', va='center',
+                                  transform=ccrs.PlateCarree(), zorder=15) # zorder molt alt per estar per sobre de tot
+                    # Afegim una vora negra al text per a una llegibilitat perfecta
+                    txt.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')])
 
     ax.set_title(f"Vent i Nuclis de Convergència EFECTIVA a {nivell}hPa\n{timestamp_str}",
                  weight='bold', fontsize=16)
@@ -5985,8 +5987,10 @@ def crear_llegenda_direccionalitat():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL amb restauració de pics màxims per a una visualització precisa.
+    PESTANYA D'ANÀLISI COMARCAL amb renderitzat suau i etiquetes de pics màxims.
     """
+    from scipy import ndimage as ndi # Importació necessària
+    
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
 
@@ -6025,41 +6029,39 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
                     effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0)
                 
-                # <<<--- CANVI CLAU: LÒGICA HÍBRIDA TAMBÉ AQUÍ --->>>
-                smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.0) # Un sigma una mica més petit per a la vista de detall
+                # <<<--- LÒGICA HÍBRIDA APLICADA AQUÍ TAMBÉ --->>>
+                smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.0)
                 final_convergence_grid = np.maximum(effective_convergence, smoothed_convergence)
                 final_convergence_grid[final_convergence_grid < 15] = 0
 
                 if np.any(final_convergence_grid > 0):
                     from matplotlib.colors import to_rgba
-                    radar_colors_hex = [
-                        '#00F6FF', '#0000FF', '#00FF00', '#008000', '#FFFF00', '#FFA500',
-                        '#FF0000', '#B40000', '#FF00FF', '#9100C8'
-                    ]
+                    radar_colors_hex = ['#00F6FF', '#0000FF', '#00FF00', '#FFFF00', '#FFA500', '#FF0000', '#B40000', '#FF00FF', '#9100C8']
                     colors_with_alpha = [to_rgba(c, alpha=0.4) for c in radar_colors_hex[:3]] + \
                                         [to_rgba(c, alpha=0.85) for c in radar_colors_hex[3:]]
-                    radar_levels = [15, 20, 25, 30, 40, 50, 60, 70, 80, 100, 120]
+                    radar_levels = [15, 20, 25, 30, 45, 60, 75, 90, 110]
                     cmap_radar = ListedColormap(colors_with_alpha)
                     norm_radar = BoundaryNorm(radar_levels, ncolors=cmap_radar.N, clip=True)
 
+                    # Dibuixem el farciment suavitzat (el `final_convergence_grid` ja és una barreja)
                     ax.contourf(grid_lon, grid_lat, final_convergence_grid, 
                                 levels=radar_levels, cmap=cmap_radar, norm=norm_radar,
                                 zorder=3, transform=ccrs.PlateCarree(), extend='max')
                     
-                    line_levels = [15, 30, 60, 100]
-                    line_styles = ['--', '-', '-', '-']
-                    
-                    contours = ax.contour(grid_lon, grid_lat, final_convergence_grid, 
-                                          levels=line_levels, colors='black', 
-                                          linestyles=line_styles, linewidths=0.8, alpha=0.7, 
-                                          zorder=4, transform=ccrs.PlateCarree())
-                    
-                    labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
-                    for label in labels:
-                        label.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
+                    # Identifiquem els pics reals per etiquetar-los
+                    labels, num_features = ndi.label(final_convergence_grid > 30)
+                    if num_features > 0:
+                        max_locs = ndi.maximum_position(final_convergence_grid, labels=labels, index=np.arange(1, num_features + 1))
+                        for row, col in max_locs:
+                            max_val = final_convergence_grid[int(row), int(col)]
+                            lon_peak, lat_peak = grid_lon[int(row), int(col)], grid_lat[int(row), int(col)]
+                            if max_val > 40:
+                                txt = ax.text(lon_peak, lat_peak, f'{max_val:.0f}',
+                                              color='white', fontsize=10, weight='bold', ha='center', va='center',
+                                              transform=ccrs.PlateCarree(), zorder=15)
+                                txt.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')])
 
-                # La resta de la lògica per al punt màxim i la direccionalitat es manté igual, però
-                # ara utilitzarà la graella final per trobar el punt màxim.
+                # La lògica per a la fletxa de direcció es manté igual
                 points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': final_convergence_grid.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
                 points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
@@ -6069,16 +6071,15 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
                     
                     if data_tuple and valor_conv >= 15:
-                        if valor_conv >= 100: indicator_color = '#9100C8'
-                        elif valor_conv >= 80: indicator_color = '#FF00FF'
-                        elif valor_conv >= 70: indicator_color = '#B40000'
-                        elif valor_conv >= 60: indicator_color = '#FF0000'
-                        elif valor_conv >= 50: indicator_color = '#FFA500'
-                        elif valor_conv >= 40: indicator_color = '#FFFF00'
-                        elif valor_conv >= 30: indicator_color = '#008000'
+                        # ... (la lògica per al color i dibuix de la fletxa no necessita canvis) ...
+                        if valor_conv >= 90: indicator_color = '#9100C8'
+                        elif valor_conv >= 75: indicator_color = '#FF00FF'
+                        elif valor_conv >= 60: indicator_color = '#B40000'
+                        elif valor_conv >= 45: indicator_color = '#FF0000'
+                        elif valor_conv >= 30: indicator_color = '#FFFF00'
                         elif valor_conv >= 25: indicator_color = '#00FF00'
                         elif valor_conv >= 20: indicator_color = '#0000FF'
-                        else: indicator_color = '#00F6FF'
+                        else: indicator_color = '#00F6FF'                  
                         
                         path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
                         circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
@@ -6120,7 +6121,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             plt.close(fig)
 
     with col_diagnostic:
-        # La part de diagnòstic es manté intacta, ja que la lògica de text és correcta
+        # El diagnòstic de text es manté igual
         st.markdown("##### Diagnòstic de la Zona")
         # ... (la resta de la funció es manté intacta) ...
         if valor_conv >= 100:
