@@ -5987,9 +5987,9 @@ def crear_llegenda_direccionalitat():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL amb renderitzat suau i etiquetes de pics màxims.
+    PESTANYA D'ANÀLISI COMARCAL amb la llegenda de colors integrada sota el mapa.
     """
-    from scipy import ndimage as ndi # Importació necessària
+    from scipy import ndimage as ndi
     
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -6029,26 +6029,26 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
                     effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0)
                 
-                # <<<--- LÒGICA HÍBRIDA APLICADA AQUÍ TAMBÉ --->>>
                 smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.0)
                 final_convergence_grid = np.maximum(effective_convergence, smoothed_convergence)
                 final_convergence_grid[final_convergence_grid < 15] = 0
 
                 if np.any(final_convergence_grid > 0):
                     from matplotlib.colors import to_rgba
-                    radar_colors_hex = ['#00F6FF', '#0000FF', '#00FF00', '#FFFF00', '#FFA500', '#FF0000', '#B40000', '#FF00FF', '#9100C8']
+                    radar_colors_hex = [
+                        '#00F6FF', '#0000FF', '#00FF00', '#008000', '#FFFF00', '#FFA500',
+                        '#FF0000', '#B40000', '#FF00FF', '#9100C8'
+                    ]
                     colors_with_alpha = [to_rgba(c, alpha=0.4) for c in radar_colors_hex[:3]] + \
                                         [to_rgba(c, alpha=0.85) for c in radar_colors_hex[3:]]
-                    radar_levels = [15, 20, 25, 30, 45, 60, 75, 90, 110]
+                    radar_levels = [15, 20, 25, 30, 40, 50, 60, 70, 80, 100, 120]
                     cmap_radar = ListedColormap(colors_with_alpha)
                     norm_radar = BoundaryNorm(radar_levels, ncolors=cmap_radar.N, clip=True)
 
-                    # Dibuixem el farciment suavitzat (el `final_convergence_grid` ja és una barreja)
                     ax.contourf(grid_lon, grid_lat, final_convergence_grid, 
                                 levels=radar_levels, cmap=cmap_radar, norm=norm_radar,
                                 zorder=3, transform=ccrs.PlateCarree(), extend='max')
                     
-                    # Identifiquem els pics reals per etiquetar-los
                     labels, num_features = ndi.label(final_convergence_grid > 30)
                     if num_features > 0:
                         max_locs = ndi.maximum_position(final_convergence_grid, labels=labels, index=np.arange(1, num_features + 1))
@@ -6061,7 +6061,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                                               transform=ccrs.PlateCarree(), zorder=15)
                                 txt.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')])
 
-                # La lògica per a la fletxa de direcció es manté igual
                 points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': final_convergence_grid.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
                 points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
@@ -6071,15 +6070,16 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
                     
                     if data_tuple and valor_conv >= 15:
-                        # ... (la lògica per al color i dibuix de la fletxa no necessita canvis) ...
-                        if valor_conv >= 90: indicator_color = '#9100C8'
-                        elif valor_conv >= 75: indicator_color = '#FF00FF'
-                        elif valor_conv >= 60: indicator_color = '#B40000'
-                        elif valor_conv >= 45: indicator_color = '#FF0000'
-                        elif valor_conv >= 30: indicator_color = '#FFFF00'
+                        if valor_conv >= 100: indicator_color = '#9100C8'
+                        elif valor_conv >= 80: indicator_color = '#FF00FF'
+                        elif valor_conv >= 70: indicator_color = '#B40000'
+                        elif valor_conv >= 60: indicator_color = '#FF0000'
+                        elif valor_conv >= 50: indicator_color = '#FFA500'
+                        elif valor_conv >= 40: indicator_color = '#FFFF00'
+                        elif valor_conv >= 30: indicator_color = '#008000'
                         elif valor_conv >= 25: indicator_color = '#00FF00'
                         elif valor_conv >= 20: indicator_color = '#0000FF'
-                        else: indicator_color = '#00F6FF'                  
+                        else: indicator_color = '#00F6FF'
                         
                         path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
                         circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
@@ -6119,58 +6119,58 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             ax.set_title(f"Focus de Convergència a {comarca}", weight='bold', fontsize=12)
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
+            
+            # <<<--- LÍNIA AFEGIDA: CRIDA A LA NOVA FUNCIÓ DE LA LLEGENDA --->>>
+            llegenda_html = crear_llegenda_convergencia_radar()
+            st.markdown(llegenda_html, unsafe_allow_html=True)
+
 
     with col_diagnostic:
-        # El diagnòstic de text es manté igual
-        st.markdown("##### Diagnòstic de la Zona")
-        # ... (la resta de la funció es manté intacta) ...
-        if valor_conv >= 100:
-            nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9100C8", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
-        elif valor_conv >= 80:
-            nivell_alerta, color_alerta, emoji, descripcio = "Molt Alt", "#FF00FF", "🔴", f"S'ha detectat un focus de convergència extremadament fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal molt clara per a la formació imminent de tempestes, possiblement severes i organitzades."
-        elif valor_conv >= 60:
-            nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FF0000", "🟠", f"Hi ha un focus de convergència forta a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona."
-        elif valor_conv >= 40:
-            nivell_alerta, color_alerta, emoji, descripcio = "Moderat-Alt", "#FFFF00", "🟡", f"S'observa una zona de convergència de moderada a forta a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes organitzades si l'atmosfera és inestable."
-        elif valor_conv >= 30:
-             nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#008000", "🟢", f"S'observa una zona de convergència moderada a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes si l'atmosfera és inestable."
-        else: # Cobrirà de 15 a 29.9
-            nivell_alerta, color_alerta, emoji, descripcio = "Feble", "#00F6FF", "🔵", f"Es detecta una convergència feble (Valor: {valor_conv:.0f}). El forçament dinàmic per iniciar tempestes és limitat però present."
 
-        st.markdown(f"""
-        <div style="text-align: center; padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444;">
-             <span style="font-size: 1.2em; color: #FAFAFA;">{emoji} Potencial de Dispar: <strong style="color:{color_alerta}">{nivell_alerta}</strong></span>
-             <p style="font-size:0.95em; color:#a0a0b0; margin-top:10px; text-align: left;">{descripcio}</p>
-        </div>
-        """, unsafe_allow_html=True)
 
-        st.markdown("##### Validació Atmosfèrica")
-        if not params_calc:
-            st.warning("No hi ha dades de sondeig disponibles per a la validació.")
-        else:
-            mucin = params_calc.get('MUCIN', 0) or 0
-            mucape = params_calc.get('MUCAPE', 0) or 0
-            
-            vered_titol, vered_color, vered_emoji, vered_desc = "", "", "", ""
-            if mucin < -75:
-                vered_titol, vered_color, vered_emoji = "Inhibida", "#DC3545", "👎"
-                vered_desc = f"Tot i la convergència, hi ha una inhibició (CIN) molt forta de **{mucin:.0f} J/kg** que actua com una 'tapa', dificultant o impedint el desenvolupament de tempestes."
-            elif mucape < 250:
-                vered_titol, vered_color, vered_emoji = "Sense Energia", "#FD7E14", "🤔"
-                vered_desc = f"El disparador existeix, però l'atmosfera té molt poc 'combustible' (CAPE), amb només **{mucape:.0f} J/kg**. Les tempestes, si es formen, seran febles."
-            else:
-                vered_titol, vered_color, vered_emoji = "Efectiva", "#28A745", "👍"
-                vered_desc = f"Les condicions són favorables! La convergència troba una atmosfera amb prou energia (**{mucape:.0f} J/kg**) i una inhibició baixa (**{mucin:.0f} J/kg**) per a desenvolupar tempestes."
 
-            st.markdown(f"""
-            <div style="text-align: center; padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444;">
-                 <span style="font-size: 1.1em; color: #FAFAFA;">{vered_emoji} Veredicte: Convergència <strong style="color:{vered_color}">{vered_titol}</strong></span>
-                 <p style="font-size:0.9em; color:#a0a0b0; margin-top:10px; text-align: left;">{vered_desc}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
-        
-        crear_llegenda_direccionalitat()
+def crear_llegenda_convergencia_radar():
+    """
+    Crea una llegenda horitzontal amb la paleta de colors del radar per a la convergència.
+    Retorna l'HTML per a mostrar-la com una imatge directament a Streamlit.
+    """
+    # Defineix exactament els mateixos colors i nivells que al mapa
+    radar_colors_hex = [
+        '#00F6FF', '#0000FF', '#00FF00', '#008000', '#FFFF00', '#FFA500',
+        '#FF0000', '#B40000', '#FF00FF', '#9100C8'
+    ]
+    radar_levels = [15, 20, 25, 30, 40, 50, 60, 70, 80, 100, 120]
+    
+    cmap = ListedColormap(radar_colors_hex)
+    norm = BoundaryNorm(radar_levels, ncolors=cmap.N, clip=True)
+    
+    # Crea la figura i els eixos per a la barra de color
+    fig, ax = plt.subplots(figsize=(8, 1.2), dpi=150)
+    fig.subplots_adjust(bottom=0.5)
+    
+    # Crea la barra de color horitzontal
+    cbar = fig.colorbar(
+        plt.cm.ScalarMappable(cmap=cmap, norm=norm),
+        cax=ax,
+        orientation='horizontal',
+        ticks=[15, 30, 50, 70, 100], # Seleccionem els ticks més representatius
+        extend='max' # Afegeix una fletxa per indicar que els valors poden ser més alts
+    )
+    
+    cbar.set_label('Intensitat de Convergència (x10⁻⁵ s⁻¹)', color='black', fontsize=11, weight='bold')
+    cbar.ax.tick_params(labelsize=10, color='black')
+
+    # Guarda la figura a un buffer de memòria sense fons
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0.1, transparent=True)
+    plt.close(fig)
+    
+    # Converteix la imatge a format Base64 per incrustar-la a l'HTML
+    img_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+    
+    # Retorna l'HTML que mostra la imatge centrada
+    return f'<div style="text-align: center; margin-top: -20px; margin-bottom: 10px;"><img src="data:image/png;base64,{img_b64}" alt="Llegenda de convergència"></div>'
+    
         
 def on_day_change_cat():
     """ Callback segur per al canvi de dia a Catalunya. """
