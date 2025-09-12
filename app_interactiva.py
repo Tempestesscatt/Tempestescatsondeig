@@ -2140,10 +2140,9 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Final i Definitiva (v42.9).
-    - Reestructura la secció "Tipus de Cel Previst" per mostrar cada diagnòstic
-      en una fila vertical separada, solucionant permanentment els problemes
-      d'espaiat i superposició quan n'apareix més d'un.
+    Versió Definitiva (v43.0).
+    - Integra els paràmetres avançats dins d'un menú desplegable directament a la caixa principal.
+    - Manté un disseny net i coherent amb la resta de la interfície.
     """
     TOOLTIPS = { 'SBCAPE': "Energia Potencial Convectiva Disponible (CAPE) des de la superfície...", 'MUCAPE': "El valor màxim de CAPE a l'atmosfera...", 'CONV_PUNTUAL': "Mesura com l'aire s'ajunta en un punt...", 'SBCIN': "Energia d'Inhibició Convectiva (CIN) des de la superfície...", 'MUCIN': "La 'tapa' més feble de l'atmosfera...", 'LI': "Índex d'Elevació...", 'PWAT': "Aigua Precipitable Total...", 'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació...", 'LFC_Hgt': "Alçada del Nivell de Convecció Lliure...", 'EL_Hgt': "Alçada del Nivell d'Equilibri...", 'BWD_0-6km': "Cisallament del vent entre la superfície i 6 km...", 'BWD_0-1km': "Cisallament del vent a nivells baixos...", 'T_500hPa': "Temperatura a 500 hPa...", 'PUNTUACIO_TEMPESTA': "Índex global que combina ingredients...", 'AMENACA_CALAMARSA': "Potencial de calamarsa gran...", 'AMENACA_LLAMPS': "Potencial d'activitat elèctrica..." }
     
@@ -2179,31 +2178,20 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
         
         if analisi_temps_list:
-            # --- DISSENY NOU: BUCLE VERTICAL ---
             for i, diag in enumerate(analisi_temps_list):
                 desc = diag.get("descripcio", "Desconegut")
                 veredicte = diag.get("veredicte", "")
                 b64_img = NUVOL_ICON_BASE64.get(desc, NUVOL_ICON_BASE64["fallback"])
-
-                # Creem una fila per a cada diagnòstic
                 img_col, text_col = st.columns([0.2, 0.8], gap="medium", vertical_alignment="center")
-                
-                with img_col:
-                    st.image(b64_img, width=50)
-                
+                with img_col: st.image(b64_img, width=50)
                 with text_col:
                     st.markdown(f"""
                     <div style="line-height: 1.3;">
                         <strong style="font-size: 1.05em; color: #FFFFFF;">{veredicte}</strong><br>
                         <span style="font-size: 0.85em; color: #A0A0A0; font-style: italic;">({desc})</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                # Afegim un separador si no és l'últim element
-                if i < len(analisi_temps_list) - 1:
-                    st.markdown("<hr style='margin: 8px 0; border-color: #444;'>", unsafe_allow_html=True)
-        else:
-            st.warning("No s'ha pogut determinar el tipus de cel.")
+                    </div>""", unsafe_allow_html=True)
+                if i < len(analisi_temps_list) - 1: st.markdown("<hr style='margin: 8px 0; border-color: #444;'>", unsafe_allow_html=True)
+        else: st.warning("No s'ha pogut determinar el tipus de cel.")
 
     cols_fila2 = st.columns(4)
     with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
@@ -2226,6 +2214,36 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_amenaces[1]: styled_qualitative("Índex de Potencial", f"{puntuacio_resultat['score']} / 10", puntuacio_resultat['color'], tooltip_text=TOOLTIPS.get('PUNTUACIO_TEMPESTA'))
     with cols_amenaces[2]: styled_qualitative("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], tooltip_text=TOOLTIPS.get('AMENACA_LLAMPS'))
     
+    # --- NOU BLOC AFEGIT ---
+    # Menú desplegable amb els paràmetres avançats
+    with st.expander("🔬 Anàlisi de Paràmetres Avançats", expanded=False):
+        st.markdown("###### Índexs Compostos Severs")
+        c1, c2, c3 = st.columns(3)
+        with c1: styled_metric("SCP", params.get('SCP'), "", 'SCP', tooltip_text="Supercell Composite Parameter. Potencial per a supercèl·lules. >1 és significatiu.", precision=1)
+        with c2: styled_metric("STP (CIN)", params.get('STP_CIN'), "", 'STP_CIN', tooltip_text="Significant Tornado Parameter. Potencial per a tornados significatius (EF2+). >1 és significatiu.", precision=1)
+        with c3: styled_metric("SHIP", params.get('SHIP'), "", 'SHIP', tooltip_text="Significant Hail Parameter. Potencial per a calamarsa severa (>5cm). >1 és significatiu.", precision=1)
+
+        st.markdown("###### Termodinàmica Detallada")
+        c4, c5, c6 = st.columns(3)
+        with c4: styled_metric("DCAPE", params.get('DCAPE'), "J/kg", 'DCAPE', tooltip_text="Downdraft CAPE. Potencial per a ràfegues de vent descendents severes.")
+        with c5: styled_metric("K Index", params.get('K_INDEX'), "", 'K_INDEX', tooltip_text="Potencial de tempestes per massa d'aire. >35 indica alt potencial.")
+        with c6: styled_metric("Total Totals", params.get('TOTAL_TOTALS'), "", 'TOTAL_TOTALS', tooltip_text="Índex de severitat. >50 indica potencial per a tempestes fortes.")
+        
+        c7, c8, c9 = st.columns(3)
+        with c7: styled_metric("LR 0-3km", params.get('LR_0-3km'), "°C/km", 'LR_0-3km', tooltip_text="Refredament amb l'altura a capes baixes. >7.5°C/km és molt inestable.", precision=1)
+        with c8: styled_metric("LR 700-500", params.get('LR_700-500hPa'), "°C/km", 'LR_700-500hPa', tooltip_text="Inestabilitat a nivells mitjans. >7°C/km afavoreix la calamarsa.", precision=1)
+        with c9: styled_metric("Showalter", params.get('SHOWALTER_INDEX'), "", 'SHOWALTER_INDEX', reverse_colors=True, tooltip_text="Mesura d'inestabilitat. Valors negatius indiquen potencial de tempesta.")
+
+        st.markdown("###### Cinemàtica Avançada (Capa Efectiva)")
+        c10, c11 = st.columns(2)
+        with c10: styled_metric("Effective SRH", params.get('ESRH'), "m²/s²", 'ESRH', tooltip_text="Helicitat relativa a la tempesta a la capa efectiva. >150 m²/s² afavoreix supercèl·lules.")
+        with c11: styled_metric("Effective Shear", params.get('EBWD'), "nusos", 'EBWD', tooltip_text="Cisallament del vent a la capa efectiva. >40 nusos afavoreix supercèl·lules.")
+        
+        c12, c13, c14 = st.columns(3)
+        with c12: styled_metric("Eff. Inflow Base", params.get('EFF_INFLOW_BOTTOM'), "hPa", 'EFF_INFLOW_BOTTOM', tooltip_text="Base de la capa d'aire que alimenta la tempesta.")
+        with c13: styled_metric("Eff. Inflow Top", params.get('EFF_INFLOW_TOP'), "hPa", 'EFF_INFLOW_TOP', tooltip_text="Sostre de la capa d'aire que alimenta la tempesta.")
+        with c14: st.empty()
+        
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
     """
     Sistema de Diagnòstic v2.0: Analitza els fenòmens eòlics a diferents nivells
@@ -2629,9 +2647,11 @@ def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp
     with col2: st.markdown(crear_dial_vent_animat("925 hPa", dir_925, spd_925), unsafe_allow_html=True)
     with col3: st.markdown(crear_dial_vent_animat("700 hPa", dir_700, spd_700), unsafe_allow_html=True)
 
+
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None):
     """
-    Versió Final amb la nova secció de paràmetres addicionals.
+    Versió Final i Neta: Els paràmetres addicionals ja no es mostren aquí,
+    sinó que estan integrats a la caixa de paràmetres principal.
     """
     if data_tuple:
         sounding_data, params_calculats = data_tuple
@@ -2672,63 +2692,11 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
             html_code = f"""<div style="position: relative; width: 100%; height: 410px; border-radius: 10px; overflow: hidden;"><iframe src="{radar_url}" width="100%" height="410" frameborder="0" style="border:0;"></iframe><div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div></div>"""
             st.components.v1.html(html_code, height=410)
-
-            # --- LÍNIA AFEGIDA ---
-            # Mostrem els paràmetres addicionals just a sota del radar
-            ui_parametres_addicionals_sondeig(params_calculats)
+            
+            # La crida a la funció de paràmetres addicionals s'ha eliminat d'aquí.
 
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
-        
-
-def debug_convergence_calculation(map_data, llista_ciutats):
-    """
-    Funció de depuració per imprimir l'estat dels càlculs de convergència pas a pas.
-    Aquesta versió és sintàcticament correcta.
-    """
-    st.warning("⚠️ MODE DE DEPURACIÓ ACTIVAT. Revisa la terminal on has executat Streamlit.")
-    print("\n\n" + "="*50)
-    print("INICI DE LA DEPURACIÓ DE CONVERGÈNCIA")
-    print("="*50)
-
-    # --> INICI DEL BLOC TRY
-    try:
-        if not map_data or 'lons' not in map_data or len(map_data['lons']) < 4:
-            print("[ERROR] No hi ha prou dades al `map_data` inicial.")
-            print("="*50 + "\n\n")
-            return {}
-
-        print(f"[PAS 1] Dades d'entrada rebudes:")
-        print(f"  - Punts de dades (lons/lats): {len(map_data['lons'])}")
-        print(f"  - Claus disponibles: {list(map_data.keys())}")
-
-        print("\n[PAS 2] Crida a la funció de càlcul real...")
-        # Cridem la funció real per obtenir el resultat
-        resultats = calcular_convergencies_per_llista(map_data, llista_ciutats)
-        print("  - Càlcul completat sense errors.")
-        
-        print("\n[PAS 3] Verificant resultat per a Barcelona...")
-        if 'Barcelona' in resultats:
-            dades_bcn = resultats['Barcelona']
-            valor_conv_bcn = dades_bcn.get('conv')
-            es_humit_bcn = dades_bcn.get('es_humit')
-            print(f"  - VALOR DE CONVERGÈNCIA PER A BCN: {valor_conv_bcn}")
-            print(f"  - ÉS HUMIT A BCN?: {es_humit_bcn}")
-        else:
-            print("  - [ERROR] No s'han trobat resultats per a Barcelona.")
-        
-        print("="*50 + "\nFI DE LA DEPURACIÓ\n" + "="*50 + "\n\n")
-
-        return resultats
-
-    # --> BLOC EXCEPT CORRESPONENT I CORRECTAMENT INDENTAT
-    except Exception as e:
-        print(f"[ERROR CRÍTIC] Excepció durant la depuració: {e}")
-        import traceback
-        traceback.print_exc()
-        print("="*50 + "\n\n")
-        return {}
-    
 
 
 
