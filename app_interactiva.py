@@ -7311,24 +7311,19 @@ def crear_llegenda_direccionalitat():
 
 
 def ui_bulleti_inteligent(bulleti_data):
-    """
-    Mostra el butlletí generat per l'algoritme a la interfície d'usuari.
-    """
+    """Mostra el butlletí generat per l'algoritme."""
     st.markdown("##### Butlletí d'Alertes per a la Zona")
-    
     st.markdown(f"""
     <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444; margin-bottom: 10px;">
          <span style="font-size: 1.2em; color: #FAFAFA;">Nivell de Risc: <strong style="color:{bulleti_data['nivell_risc']['color']}">{bulleti_data['nivell_risc']['text']}</strong></span>
          <h6 style="color: white; margin-top: 10px; margin-bottom: 5px;">{bulleti_data['titol']}</h6>
          <p style="font-size:0.95em; color:#a0a0b0; text-align: left;">{bulleti_data['resum']}</p>
     """, unsafe_allow_html=True)
-    
     if bulleti_data['fenomens_previstos']:
         st.markdown("<b style='color: white;'>Fenòmens previstos:</b>", unsafe_allow_html=True)
         for fenomen in bulleti_data['fenomens_previstos']:
             st.markdown(f"- <span style='font-size:0.95em; color:#a0a0b0;'>{fenomen}</span>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
-
 
 
 
@@ -7403,81 +7398,55 @@ def viatjar_a_comarca(nom_comarca):
     Callback per canviar l'anàlisi a una nova comarca directament.
     """
     st.session_state.selected_area = nom_comarca
-    # Trobem el primer poble de la nova comarca per a carregar el seu sondeig
     pobles_en_comarca = CIUTATS_PER_COMARCA.get(nom_comarca, {})
     if pobles_en_comarca:
         primer_poble = list(pobles_en_comarca.keys())[0]
         st.session_state.poble_sel = primer_poble
+        
 
 def ui_portal_viatges_rapids(alertes_totals, comarca_actual):
-    """
-    Mostra un panell amb enllaços ràpids a altres comarques amb alertes actives.
-    Si la comarca actual és una zona d'interès, la mostra com un botó desactivat.
-    """
+    """Mostra un panell amb enllaços ràpids a altres comarques amb alertes actives."""
     LLINDAR_CAPE_INTERES = 500
     LLINDAR_CONV_INTERES = 15
-
-    # Filtrem per trobar TOTES les zones interessants (ara SENSE excloure l'actual)
     zones_interessants = {
         zona: data for zona, data in alertes_totals.items()
         if data.get('cape', 0) >= LLINDAR_CAPE_INTERES and \
            data.get('conv', 0) >= LLINDAR_CONV_INTERES
     }
-
-    # Ordenem les zones de més a menys CAPE
     zones_ordenades = sorted(zones_interessants.items(), key=lambda item: item[1]['cape'], reverse=True)
-
-    st.markdown("""
-    <style>
-        .portal-box { background-color: #2a2c34; border-radius: 10px; padding: 15px; border: 1px solid #444; margin-top: 15px; }
-        .portal-title { font-size: 1.1em; font-weight: bold; color: #FAFAFA; margin-bottom: 12px; }
-    </style>
-    """, unsafe_allow_html=True)
     
     with st.container(border=True):
         st.markdown("<h5 style='text-align: center;'>🚀 Portal de Viatges Ràpids</h5>", unsafe_allow_html=True)
-        
-        # Canviem el missatge si la única zona interessant és l'actual
         if not zones_ordenades or (len(zones_ordenades) == 1 and zones_ordenades[0][0] == comarca_actual):
             st.info("No hi ha altres focus de tempesta significatius actius en aquest moment.")
         else:
             st.caption("Viatja directament a altres comarques amb potencial de tempesta:")
-
-        # Dibuixem els botons (actius o inactius)
-        if zones_ordenades:
             cols = st.columns(2)
             for i, (zona, data) in enumerate(zones_ordenades[:4]):
                 with cols[i % 2]:
-                    # <<<--- NOVA LÒGICA AQUÍ ---
                     if zona == comarca_actual:
-                        # Si és la comarca actual, mostrem un botó desactivat
-                        st.button(f"{zona} (Estàs aquí)",
-                                  disabled=True,
-                                  use_container_width=True,
-                                  key=f"portal_btn_{zona}")
+                        st.button(f"{zona} (Estàs aquí)", disabled=True, use_container_width=True, key=f"portal_btn_{zona}")
                     else:
-                        # Si és una altra comarca, mostrem el botó normal per "viatjar"
-                        st.button(f"{zona} (CAPE: {data['cape']:.0f})", 
-                                  on_click=viatjar_a_comarca, 
-                                  args=(zona,),
-                                  use_container_width=True,
-                                  key=f"portal_btn_{zona}")
+                        st.button(f"C:{data['cape']:.0f} | V:{data['conv']:.0f} - {zona}", 
+                                  on_click=viatjar_a_comarca, args=(zona,),
+                                  use_container_width=True, key=f"portal_btn_{zona}")
+                                  
                   
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple, alertes_totals):
     """
-    PESTANYA D'ANÀLISI COMARCAL v11.0: Versió final amb la lògica de dibuix del mapa restaurada.
+    PESTANYA D'ANÀLISI COMARCAL, versió final amb totes les millores.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
 
-    # --- CÀLCULS PREVIS ---
     max_conv_point = None; storm_dir_to = None; distance_km = None; is_threat = False; bulleti_data = None
     convergence_at_user = 0
     
     with st.spinner("Analitzant focus de convergència i trajectòries..."):
         if params_calc:
-            bulleti_data = generar_bulleti_inteligent(params_calc, poble_sel)
+            cape_del_focus = alertes_totals.get(comarca, {}).get('cape', 0)
+            bulleti_data = generar_bulleti_inteligent(params_calc, poble_sel, valor_conv, cape_del_focus)
         
         gdf_comarques = carregar_dades_geografiques()
         if gdf_comarques is None:
@@ -7513,8 +7482,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             if poble_coords:
                 user_lon, user_lat = poble_coords['lon'], poble_coords['lat']
                 conv_at_user_val = griddata((grid_lon.flatten(), grid_lat.flatten()), smoothed_convergence.flatten(), (user_lon, user_lat), method='nearest')
-                if pd.notna(conv_at_user_val):
-                    convergence_at_user = conv_at_user_val
+                if pd.notna(conv_at_user_val): convergence_at_user = conv_at_user_val
 
             points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
             gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
@@ -7536,7 +7504,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                             bearing_to_user = get_bearing(py, px, user_lat, user_lon)
                             is_threat = angular_difference(storm_dir_to, bearing_to_user) <= 45
 
-    # --- DIBUIX DE LA INTERFÍCIE ---
     col_mapa, col_diagnostic = st.columns([0.6, 0.4], gap="large")
 
     with col_mapa:
@@ -7589,7 +7556,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             elif convergence_at_user >= 10:
                 amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "Sota Influència", "#ffc107", "👀", "Estàs dins d'una zona amb ascendències, però no al nucli principal. Podrien formar-se torres convectives a la teva àrea."
             else:
-                amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "Fora de Risc", "#28A745", "✅", f"El focus a {distance_km:.0f} km no és una amenaça directa i estàs fora de la seva àrea d'influència. Estàs fora del joc."
+                amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "Fora de Risc", "#28A745", "✅", f"El focus a {distance_km:.0f} km no és una amenaça directa i estàs fora de la seva àrea d'influència."
             
             st.markdown(f"""
             <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444; margin-top:10px;">
