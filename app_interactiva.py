@@ -7333,42 +7333,29 @@ def ui_bulleti_inteligent(bulleti_data):
 
 def generar_bulleti_inteligent(params_calc, poble_sel):
     """
-    Algoritme intel·ligent v2.0: Genera un butlletí de risc i detecta
-    situacions de "Intent de Cúmuls" en escenaris de baix CAPE.
+    Algoritme intel·ligent v3.0: Genera un butlletí de risc i incorpora
+    l'anàlisi de l'alçada del LFC per a determinar la facilitat d'iniciació.
     """
     # --- 1. Extracció segura de paràmetres ---
     mucape = params_calc.get('MUCAPE', 0) or 0
     mucin = params_calc.get('MUCIN', 0) or 0
     bwd_6km = params_calc.get('BWD_0-6km', 0) or 0
     srh_1km = params_calc.get('SRH_0-1km', 0) or 0
-    pwat = params_calc.get('PWAT', 0) or 0
     lcl_hgt = params_calc.get('LCL_Hgt', 9999) or 9999
+    lfc_hgt = params_calc.get('LFC_Hgt', 9999) or 9999 # <-- NOU PARÀMETRE
     dcape = params_calc.get('DCAPE', 0) or 0
     rh_baixa = (params_calc.get('RH_CAPES', {}).get('baixa', 0) or 0)
     nivell_conv = next((int(k.split('_')[1].replace('hPa','')) for k in params_calc if k.startswith('CONV_')), 925)
     conv = params_calc.get(f'CONV_{nivell_conv}hPa', 0) or 0
 
-    # --- 2. Condicions de Veto (Si no es compleixen, no hi ha tempesta) ---
+    # --- 2. Condicions de Veto ---
     if mucape < 300:
-        # <<<--- NOVA LÒGICA AQUÍ ---
         if conv >= 15 and rh_baixa > 70:
-            return {
-                "nivell_risc": {"text": "Nul", "color": "#6c757d"}, 
-                "titol": "Intent de Cúmuls", 
-                "resum": "Hi ha un mecanisme de dispar (convergència) i humitat, però l'atmosfera no té prou energia (CAPE baix). Es poden formar estrats densos o cúmuls que no arribaran a ser tempestes.", 
-                "fenomens_previstos": []
-            }
+            return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Intent de Cúmuls", "resum": "Hi ha un mecanisme de dispar i humitat, però l'atmosfera no té prou energia. Es poden formar estrats densos o cúmuls que no arribaran a ser tempestes.", "fenomens_previstos": []}
         else:
-            return {
-                "nivell_risc": {"text": "Nul", "color": "#6c757d"}, 
-                "titol": "Situació Estable", 
-                "resum": "L'atmosfera no té prou energia (CAPE baix) per a la formació de tempestes. S'espera temps tranquil.", 
-                "fenomens_previstos": []
-            }
-        # --- FI DE LA NOVA LÒGICA ---
-
+            return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Situació Estable", "resum": "L'atmosfera no té prou energia (CAPE baix) per a la formació de tempestes.", "fenomens_previstos": []}
     if mucin < -100 and conv < 25:
-        return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Atmosfera Tapada", "resum": f"Tot i que pot haver-hi energia, una forta inversió tèrmica (CIN de {mucin:.0f}) actua com una tapa, impedint el desenvolupament de núvols de tempesta.", "fenomens_previstos": []}
+        return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Atmosfera Tapada", "resum": f"Tot i que pot haver-hi energia, una forta inversió tèrmica (CIN de {mucin:.0f}) actua com una tapa, impedint el desenvolupament.", "fenomens_previstos": []}
 
     # --- 3. Classificació del Potencial de Tempesta ---
     fenomens = []
@@ -7376,7 +7363,7 @@ def generar_bulleti_inteligent(params_calc, poble_sel):
     
     if bwd_6km >= 35 and mucape >= 1500 and srh_1km >= 150:
         nivell_risc = {"text": "Extrem", "color": "#9370DB"}; titol = "Potencial de Supercèl·lules"
-        resum = f"La combinació d'energia explosiva ({mucape:.0f} J/kg) i una forta cizalladura del vent ({bwd_6km:.0f} nusos) és molt favorable per a la formació de supercèl·lules."
+        resum = f"La combinació d'energia explosiva ({mucape:.0f} J/kg) i una forta cizalladura ({bwd_6km:.0f} nusos) és molt favorable per a la formació de supercèl·lules."
         fenomens.extend(["Calamarsa gran (> 2cm)", "Fortes ratxes de vent (> 90 km/h)"])
         if lcl_hgt < 1200: fenomens.append("Possibilitat de tornados")
     elif bwd_6km >= 25 and mucape >= 800:
@@ -7397,6 +7384,12 @@ def generar_bulleti_inteligent(params_calc, poble_sel):
     if mucape > 800 and "Activitat elèctrica" not in "".join(fenomens):
         fenomens.insert(0, "Activitat elèctrica freqüent")
 
+    # --- 4. Modificador de Resum basat en el LFC ---
+    if lfc_hgt < 1500:
+        resum += " La iniciació de les tempestes serà fàcil a causa d'un nivell de convecció lliure baix."
+    elif lfc_hgt > 2500:
+        resum += " Tot i l'energia disponible, a les tempestes els hi costarà arrancar a causa d'un nivell de convecció lliure alt."
+        
     return {"nivell_risc": nivell_risc, "titol": titol, "resum": resum, "fenomens_previstos": fenomens}
     
 
