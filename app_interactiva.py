@@ -7322,6 +7322,7 @@ def tornar_al_mapa_general():
 def run_catalunya_app():
     """
     Funció principal que gestiona tota la lògica i la interfície per a la zona de Catalunya.
+    Versió final i completa.
     """
     # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
