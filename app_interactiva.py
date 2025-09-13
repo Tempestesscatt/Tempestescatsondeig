@@ -7370,6 +7370,8 @@ def run_catalunya_app():
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
 
+    alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
+
     # --- PAS 3: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
         poble_sel = st.session_state.poble_sel
@@ -7418,10 +7420,9 @@ def run_catalunya_app():
             if active_tab == "Anàlisi Comarcal":
                 comarca_actual = get_comarca_for_poble(poble_sel)
                 if comarca_actual:
-                    alertes_zona = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
-                    valor_conv_comarcal = alertes_zona.get(comarca_actual, {}).get('conv', 0)
+                    valor_conv_comarcal = alertes_totals.get(comarca_actual, {}).get('conv', 0)
                     map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
-                    ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calc, hora_sel_str, data_tuple)
+                    ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calc, hora_sel_str, data_tuple, alertes_totals)
             elif active_tab == "Anàlisi Vertical":
                 ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
             elif active_tab == "Anàlisi de Mapes":
@@ -7466,8 +7467,6 @@ def run_catalunya_app():
                 st.selectbox("Filtrar per nivell d'energia (CAPE):", options=["Tots", "Energia Baixa i superior", "Energia Moderada i superior", "Energia Alta i superior", "Només Extrems"], key="alert_filter_level_cape")
             with col_labels:
                 st.toggle("Mostrar detalls de les zones actives", key="show_comarca_labels")
-        
-        alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
         
         LLINDARS_CAPE = {"Tots": 0, "Energia Baixa i superior": 500, "Energia Moderada i superior": 1000, "Energia Alta i superior": 2000, "Només Extrems": 3500}
         llindar_cape_sel = LLINDARS_CAPE[st.session_state.alert_filter_level_cape]
