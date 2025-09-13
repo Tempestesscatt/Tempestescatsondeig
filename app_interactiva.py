@@ -7911,10 +7911,10 @@ def ui_portal_viatges_rapids(alertes_totals, comarca_actual):
                               use_container_width=True,
                               key=f"portal_btn_{zona}")
 
+
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple, alertes_totals):
     """
-    PESTANYA D'ANÀLISI COMARCAL v10.0: Inclou un portal de viatges ràpids a
-    altres zones amb alertes actives.
+    PESTANYA D'ANÀLISI COMARCAL v11.0: Versió final amb la lògica de dibuix del mapa restaurada.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -7989,12 +7989,45 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
     with col_mapa:
         st.markdown("##### Focus de Convergència a la Zona")
-        # ... (El codi per dibuixar el mapa es manté igual) ...
-        # (S'omet per brevetat)
-    
+        plt.style.use('default')
+        fig, ax = crear_mapa_base(map_extent if 'map_extent' in locals() else MAP_EXTENT_CAT)
+        ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
+        if max_conv_point is not None:
+            fill_levels = [10, 20, 30, 40, 60, 80, 100, 120]
+            cmap = plt.get_cmap('plasma'); norm = BoundaryNorm(fill_levels, ncolors=cmap.N, clip=True)
+            ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels, cmap=cmap, norm=norm, alpha=0.75, zorder=3, transform=ccrs.PlateCarree(), extend='max')
+            line_levels = [20, 40, 80]
+            contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors='black', linestyles='--', linewidths=0.8, alpha=0.7, zorder=4, transform=ccrs.PlateCarree())
+            labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
+            for label in labels: label.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
+            px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
+            path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
+            if bulleti_data and bulleti_data['nivell_risc']['text'] == "Nul":
+                circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor='grey', linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect, linestyle='--')
+                ax.add_patch(circle); ax.plot(px, py, 'x', color='grey', markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
+            else:
+                if valor_conv >= 100: indicator_color = '#9370DB'
+                elif valor_conv >= 60: indicator_color = '#DC3545'
+                elif valor_conv >= 40: indicator_color = '#FD7E14'
+                elif valor_conv >= 20: indicator_color = '#28A745'
+                else: indicator_color = '#6495ED'
+                circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+                ax.add_patch(circle)
+                ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
+                if storm_dir_to is not None:
+                    dir_rad = np.deg2rad(90 - storm_dir_to); length = 0.25
+                    end_x, end_y = px + length * np.cos(dir_rad), py + length * np.sin(dir_rad)
+                    ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+        if poble_coords:
+            ax.text(poble_coords['lon'], poble_coords['lat'], '( Tú )\n▼', transform=ccrs.PlateCarree(), fontsize=10, fontweight='bold', color='black', ha='center', va='bottom', zorder=14, path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')])
+        ax.set_title(f"Focus de Convergència a {comarca}", weight='bold', fontsize=12)
+        st.pyplot(fig, use_container_width=True); plt.close(fig)
+
     with col_diagnostic:
         if bulleti_data:
             ui_bulleti_inteligent(bulleti_data)
+        else:
+            st.warning("No hi ha prou dades per generar el butlletí d'alertes.")
 
         if distance_km is not None:
             if distance_km <= 5:
@@ -8015,8 +8048,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
         st.caption(f"Aquesta anàlisi es basa en el sondeig de {poble_sel}.")
         crear_llegenda_direccionalitat()
-        
-        # <<<--- NOU: Afegim el portal de viatges ràpids ---
         ui_portal_viatges_rapids(alertes_totals, comarca)
         
         
