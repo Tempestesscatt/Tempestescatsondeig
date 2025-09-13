@@ -1253,12 +1253,8 @@ def calcular_mlcape_robusta(p, T, Td):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Completa (v35.0).
-    - Neteja i ordena el perfil atmosfèric.
-    - Calcula un ampli rang de paràmetres termodinàmics i de cisallament.
-    - Inclou l'anàlisi d'humitat en 4 capes (fins a 100 hPa).
-    - Calcula el T-Td Spread i la velocitat del vent en nivells clau per als diagnòstics.
-    - Està dissenyada per ser extremadament robusta davant de dades incompletes.
+    Versió Definitiva i Completa (v35.1 - CORREGIDA).
+    - Assegura que el retorn inclogui 8 elements de dades (incloent ml_prof).
     """
     if len(p_profile) < 4:
         return None, "Perfil atmosfèric massa curt."
@@ -1271,29 +1267,26 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     v = np.array(v_profile) * units('m/s')
     heights = np.array(h_profile) * units.meter
 
-    # 2. Neteja de dades: Elimina qualsevol nivell on falti una dada essencial
+    # 2. Neteja de dades
     valid_mask = np.isfinite(p.m) & np.isfinite(T.m) & np.isfinite(Td.m) & np.isfinite(u.m) & np.isfinite(v.m)
     p, T, Td, u, v, heights = p[valid_mask], T[valid_mask], Td[valid_mask], u[valid_mask], v[valid_mask], heights[valid_mask]
 
     if len(p) < 3:
         return None, "No hi ha prou dades vàlides després de la neteja."
 
-    # 3. Ordena el perfil per pressió (de major a menor)
+    # 3. Ordena el perfil per pressió
     sort_idx = np.argsort(p.m)[::-1]
     p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
     
-    # Diccionari per emmagatzemar tots els paràmetres calculats
     params_calc = {}
-    heights_agl = heights - heights[0] # Altures sobre el nivell del terra
+    heights_agl = heights - heights[0]
 
-    # El pany (lock) és una bona pràctica per si s'executa en entorns amb múltiples fils
     with parcel_lock:
-        # --- Càlculs de la Trajectòria de la Parcel·la ---
         sfc_prof, ml_prof = None, None
         try: 
             sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
         except Exception: 
-            return None, "Error crític: No s'ha pogut calcular ni el perfil de superfície."
+            return None, "Error crític: No s'ha pogut calcular el perfil de superfície."
         
         try: 
             _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
@@ -1301,6 +1294,9 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             ml_prof = None
             
         main_prof = ml_prof if ml_prof is not None else sfc_prof
+
+        # ... (TOTA LA RESTA DE CÀLCULS DINS DE LA FUNCIÓ ES MANTENEN IGUALS) ...
+        # (No cal copiar-los tots aquí per brevetat, ja que no canvien)
 
         # --- Paràmetres d'Humitat i Temperatura per Capes ---
         try: 
@@ -1435,8 +1431,8 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                     params_calc[f'SRH_{name}'] = float(srh.m)
             except: 
                 params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-    
-    # <<<--- LÍNIA MODIFICADA: Ara retornem 8 valors a la primera tupla --->>>
+
+    # <<<--- CANVI CLAU: Assegurem que retornem 8 elements de dades --->>>
     return ((p, T, Td, u, v, heights, sfc_prof, ml_prof), params_calc), None
 
 
@@ -2632,22 +2628,21 @@ def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None):
     """
     Versió Final amb Lògica de Context i Desempaquetat de Dades Corregit.
-    - Aquesta versió desempaqueta correctament els 8 valors retornats per `processar_dades_sondeig`.
+    - Desempaqueta correctament els 8 valors.
     - Passa els paràmetres correctes a `crear_skewt`.
     """
     if data_tuple:
-        # Ara 'data_tuple' conté dos elements: una tupla amb les dades i un diccionari de paràmetres
         sounding_data, params_calculats = data_tuple
         
-        # <<<--- LÍNIA CORREGIDA: Ara desempaquetem 8 valors correctament ---
-        p, T, Td, u, v, heights, sfc_prof, mu_prof = sounding_data # mu_prof és el ml_prof
+        # <<<--- CANVI 1: Desempaquetem 8 valors correctament ---
+        p, T, Td, u, v, heights, sfc_prof, mu_prof = sounding_data
         
         col1, col2 = st.columns(2, gap="large")
         with col1:
             zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 800 hPa)")
             
-            # <<<--- LÍNIA CORREGIDA: La crida a crear_skewt ara és correcta ---
-            # Passem només un perfil (sfc_prof) i els paràmetres calculats.
+            # <<<--- CANVI 2: La crida a crear_skewt ara és correcta ---
+            # Passem només un perfil (sfc_prof) i el diccionari de paràmetres.
             fig_skewt = crear_skewt(p, T, Td, u, v, sfc_prof, params_calculats, 
                                     f"Sondeig Vertical - {poble_sel}", timestamp_str, 
                                     zoom_capa_baixa=zoom_capa_baixa)
@@ -2655,7 +2650,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             with st.container(border=True):
-                # Passar sounding_data (la tupla de 8 elements) és correcte aquí.
                 ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual, poble_sel, avis_proximitat)
 
         with col2:
