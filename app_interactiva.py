@@ -7839,13 +7839,15 @@ def ui_bulleti_inteligent(bulleti_data):
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL v8.0: Amb marcador gris i discontinu per a risc nul.
+    PESTANYA D'ANÀLISI COMARCAL v9.0: Amb anàlisi de posició de l'usuari
+    respecte a les zones de convergència.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
 
     # --- CÀLCULS PREVIS ---
     max_conv_point = None; storm_dir_to = None; distance_km = None; is_threat = False; bulleti_data = None
+    convergence_at_user = 0
     
     with st.spinner("Analitzant focus de convergència i trajectòries..."):
         if params_calc:
@@ -7857,6 +7859,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
         property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_comarques.columns), 'nom_comar')
         comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
+        poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
 
         if not comarca_shape.empty and map_data and valor_conv > 10:
             bounds = comarca_shape.total_bounds
@@ -7881,6 +7884,13 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             smoothed_convergence = gaussian_filter(effective_convergence, sigma=5.5)
             smoothed_convergence[smoothed_convergence < 10] = 0
 
+            # <<<--- NOU CÀLCUL: Comprovem el valor de convergència a la posició de l'usuari ---
+            if poble_coords:
+                user_lon, user_lat = poble_coords['lon'], poble_coords['lat']
+                conv_at_user_val = griddata((grid_lon.flatten(), grid_lat.flatten()), smoothed_convergence.flatten(), (user_lon, user_lat), method='nearest')
+                if pd.notna(conv_at_user_val):
+                    convergence_at_user = conv_at_user_val
+
             points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
             gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
             points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
@@ -7898,9 +7908,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                         mean_u, mean_v = (u_700 + u_500) / 2.0 * units('m/s'), (v_700 + v_500) / 2.0 * units('m/s')
                         storm_dir_to = (mpcalc.wind_direction(mean_u, mean_v).m + 180) % 360
                         
-                        poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
                         if poble_coords and storm_dir_to is not None:
-                            user_lat, user_lon = poble_coords['lat'], poble_coords['lon']
                             distance_km = haversine_distance(user_lat, user_lon, py, px)
                             bearing_to_user = get_bearing(py, px, user_lat, user_lon)
                             is_threat = angular_difference(storm_dir_to, bearing_to_user) <= 45
@@ -7910,6 +7918,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
     with col_mapa:
         st.markdown("##### Focus de Convergència a la Zona")
+        # ... (El codi per dibuixar el mapa es manté igual) ...
         plt.style.use('default')
         fig, ax = crear_mapa_base(map_extent if 'map_extent' in locals() else MAP_EXTENT_CAT)
         ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
@@ -7921,22 +7930,17 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors='black', linestyles='--', linewidths=0.8, alpha=0.7, zorder=4, transform=ccrs.PlateCarree())
             labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
             for label in labels: label.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
-            
             px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
             path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
-            
-            # <<<--- NOVA LÒGICA PER AL MARCADOR ---
             if bulleti_data and bulleti_data['nivell_risc']['text'] == "Nul":
                 circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor='grey', linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect, linestyle='--')
-                ax.add_patch(circle)
-                ax.plot(px, py, 'x', color='grey', markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
+                ax.add_patch(circle); ax.plot(px, py, 'x', color='grey', markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
             else:
                 if valor_conv >= 100: indicator_color = '#9370DB'
                 elif valor_conv >= 60: indicator_color = '#DC3545'
                 elif valor_conv >= 40: indicator_color = '#FD7E14'
                 elif valor_conv >= 20: indicator_color = '#28A745'
                 else: indicator_color = '#6495ED'
-                
                 circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
                 ax.add_patch(circle)
                 ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
@@ -7944,9 +7948,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     dir_rad = np.deg2rad(90 - storm_dir_to); length = 0.25
                     end_x, end_y = px + length * np.cos(dir_rad), py + length * np.sin(dir_rad)
                     ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
-            # --- FI DE LA NOVA LÒGICA ---
-
-        poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
         if poble_coords:
             ax.text(poble_coords['lon'], poble_coords['lat'], '( Tú )\n▼', transform=ccrs.PlateCarree(), fontsize=10, fontweight='bold', color='black', ha='center', va='bottom', zorder=14, path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')])
         ax.set_title(f"Focus de Convergència a {comarca}", weight='bold', fontsize=12)
@@ -7958,13 +7959,16 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         else:
             st.warning("No hi ha prou dades per generar el butlletí d'alertes.")
 
+        # --- NOU BLOC D'AMENAÇA DIRECTA AMB LÒGICA DE POSICIÓ ---
         if distance_km is not None:
             if distance_km <= 5:
                 amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "A sobre!", "#DC3545", "⚠️", f"El focus principal és a menys de 5 km. La tempesta es formarà pràcticament sobre la teva posició."
             elif is_threat:
                 amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "S'apropa!", "#FD7E14", "🎯", f"El focus principal a {distance_km:.0f} km es desplaça en la teva direcció. La tempesta podria arribar en les properes hores."
+            elif convergence_at_user >= 10:
+                amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "Sota Influència", "#ffc107", "👀", "Estàs dins d'una zona amb ascendències, però no al nucli principal. Podrien formar-se torres convectives a la teva àrea."
             else:
-                amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "No és una amenaça", "#28A745", "✅", f"El focus principal a {distance_km:.0f} km no és una amenaça directa, ja que la seva trajectòria no apunta cap a tu."
+                amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "Fora de Risc", "#28A745", "✅", f"El focus a {distance_km:.0f} km no és una amenaça directa i estàs fora de la seva àrea d'influència. Estàs fora del joc."
             
             st.markdown(f"""
             <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444; margin-top:10px;">
