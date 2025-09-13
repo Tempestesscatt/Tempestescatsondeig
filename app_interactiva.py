@@ -7732,13 +7732,13 @@ def crear_llegenda_direccionalitat():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL v2.0: Mostra convergència a partir de 10 i
-    analitza la distància i trajectòria del focus principal respecte a l'usuari.
+    PESTANYA D'ANÀLISI COMARCAL v3.0: Amb zones de convergència més suaus i
+    textos de diagnòstic nets (sense asteriscos).
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
 
-    # --- CÀLCULS PREVIS (ABANS DE DIBUIXAR) ---
+    # --- CÀLCULS PREVIS ---
     max_conv_point = None
     storm_dir_to = None
     distance_km = None
@@ -7774,7 +7774,8 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                 humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
                 effective_convergence = np.where((convergence >= 10) & humid_mask, convergence, 0)
             
-            smoothed_convergence = gaussian_filter(effective_convergence, sigma=3.5)
+            # <<<--- CANVI PRINCIPAL AQUÍ: Augmentem el suavitzat per a formes més orgàniques ---
+            smoothed_convergence = gaussian_filter(effective_convergence, sigma=5.5)
             smoothed_convergence[smoothed_convergence < 10] = 0
 
             points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
@@ -7811,7 +7812,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
 
         if max_conv_point is not None:
-            # Dibuixar farciment i línies de convergència
             fill_levels = [10, 20, 30, 40, 60, 80, 100, 120]
             cmap = plt.get_cmap('plasma')
             norm = BoundaryNorm(fill_levels, ncolors=cmap.N, clip=True)
@@ -7821,7 +7821,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
             for label in labels: label.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
 
-            # Dibuixar el marcador i la direcció
             px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
             if valor_conv >= 10:
                 if valor_conv >= 100: indicator_color = '#9370DB'
@@ -7854,7 +7853,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
     with col_diagnostic:
         st.markdown("##### Diagnòstic de la Zona")
         
-        # Lògica de descripció de l'alerta
         if valor_conv >= 100: nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"Focus de convergència excepcionalment fort ({valor_conv:.0f}). Senyal inequívoca per a temps sever organitzat."
         elif valor_conv >= 60: nivell_alerta, color_alerta, emoji, descripcio = "Molt Alt", "#DC3545", "🔴", f"Focus de convergència extremadament fort ({valor_conv:.0f}). Senyal molt clara per a la formació imminent de tempestes severes."
         elif valor_conv >= 40: nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FD7E14", "🟠", f"Focus de convergència forta ({valor_conv:.0f}). Disparador molt eficient; tempestes molt probables."
@@ -7862,9 +7860,9 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         elif valor_conv >= 10: nivell_alerta, color_alerta, emoji, descripcio = "Present", "#6495ED", "🔵", f"Focus de convergència feble però present ({valor_conv:.0f}). Pot ser un precursor d'activitat si les condicions milloren."
         else: nivell_alerta, color_alerta, emoji, descripcio = "Inexistent", "#6c757d", "⚪", "No es detecten focus de convergència significatius. El forçament dinàmic és nul."
 
-        # Afegir la informació de distància i amenaça
         if distance_km is not None:
-            descripcio += f" El focus principal es troba a **{distance_km:.0f} km** de la teva posició."
+            # <<<--- TEXTOS CORREGITS SENSE ASTERISCS ---
+            descripcio += f" El focus principal es troba a {distance_km:.0f} km de la teva posició."
             if is_threat:
                 descripcio += " <span style='color: #DC3545; font-weight: bold;'>S'està desplaçant en la teva direcció!</span>"
             else:
@@ -7884,9 +7882,9 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             mucin = params_calc.get('MUCIN', 0) or 0
             mucape = params_calc.get('MUCAPE', 0) or 0
             
-            if mucin < -75: vered_titol, vered_color, vered_emoji, vered_desc = "Inhibida", "#DC3545", "👎", f"Tot i la convergència, una inhibició (CIN) forta de **{mucin:.0f} J/kg** actua com una 'tapa', dificultant el desenvolupament de tempestes."
-            elif mucape < 250: vered_titol, vered_color, vered_emoji, vered_desc = "Sense Energia", "#FD7E14", "🤔", f"El disparador existeix, però l'atmosfera té molt poc 'combustible' (CAPE), amb només **{mucape:.0f} J/kg**. Les tempestes, si es formen, seran febles."
-            else: vered_titol, vered_color, vered_emoji, vered_desc = "Efectiva", "#28A745", "👍", f"Condicions favorables! La convergència troba una atmosfera amb energia (**{mucape:.0f} J/kg**) i inhibició baixa (**{mucin:.0f} J/kg**)."
+            if mucin < -75: vered_titol, vered_color, vered_emoji, vered_desc = "Inhibida", "#DC3545", "👎", f"Tot i la convergència, una inhibició (CIN) forta de {mucin:.0f} J/kg actua com una 'tapa', dificultant el desenvolupament de tempestes."
+            elif mucape < 250: vered_titol, vered_color, vered_emoji, vered_desc = "Sense Energia", "#FD7E14", "🤔", f"El disparador existeix, però l'atmosfera té molt poc 'combustible' (CAPE), amb només {mucape:.0f} J/kg. Les tempestes, si es formen, seran febles."
+            else: vered_titol, vered_color, vered_emoji, vered_desc = "Efectiva", "#28A745", "👍", f"Condicions favorables! La convergència troba una atmosfera amb energia ({mucape:.0f} J/kg) i inhibició baixa ({mucin:.0f} J/kg)."
 
             st.markdown(f"""
             <div style="text-align: center; padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444;">
