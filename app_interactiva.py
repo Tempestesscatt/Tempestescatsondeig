@@ -831,7 +831,8 @@ POBLES_IMPORTANTS = {
     "Palamós", "Pals", "Pineda de Mar", "Reus", "Ripoll", "Roses", "Rubí", "Sabadell", 
     "Sant Cugat del Vallès", "Sant Feliu de Guíxols", "Sant Feliu de Llobregat", 
     "Sant Joan de les Abadesses", "Sant Quirze del Vallès", "Santa Coloma de Farners", 
-    "Santa Coloma de Gramenet", "Sarroca de Bellera", "Soses", "Solsona", "Sort", 
+    "Santa Coloma de Gramenet",  # Hem tret "Sarroca de Bellera" d'aquí
+    "Soses", "Solsona", "Sort", 
     "Terrassa", "Tortosa", "Valls", "Vic", "Vielha", "Vilafranca del Penedès", 
     "Vilanova i la Geltrú", "Blanes", "Llançà", "Platja d’Aro", "Sitges", "Cadaqués", 
     "Cambrils", "Salou", "Vidreres", "Begur", "Castellfollit de la Roca", "Santa Pau", 
@@ -839,6 +840,13 @@ POBLES_IMPORTANTS = {
     "Arbúcies", "Viladecans", "Vilassar de Mar", "Vilassar de Dalt", "Sant Pere de Ribes", 
     "Santa Susanna", "Malgrat de Mar", "Calonge", "Lloret de Mar", "Santa Cristina d'Aro", 
     "Cassà de la Selva", "Vidrà", "Llagostera", "Riudellots de la Selva", "Hostalric"
+}
+
+POBLACIONS_TERRA = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' not in k}
+PUNTS_MAR = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' in k}
+CIUTATS_CONVIDAT = {
+    'Barcelona': CIUTATS_CATALUNYA['Barcelona'], 'Girona': CIUTATS_CATALUNYA['Girona'],
+    'Lleida': CIUTATS_CATALUNYA['Lleida'], 'Tarragona': CIUTATS_CATALUNYA['Tarragona']
 }
 
 POBLACIONS_TERRA = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' not in k}
