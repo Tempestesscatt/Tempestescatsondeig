@@ -7767,19 +7767,100 @@ def crear_llegenda_direccionalitat():
     
     st.markdown(html_llegenda, unsafe_allow_html=True)
 
+def generar_bulleti_inteligent(params_calc, poble_sel):
+    """
+    Algoritme intel·ligent que genera un butlletí de risc meteorològic
+    basant-se en la combinació de paràmetres clau del sondeig.
+    """
+    # --- 1. Extracció segura de paràmetres ---
+    mucape = params_calc.get('MUCAPE', 0) or 0
+    mucin = params_calc.get('MUCIN', 0) or 0
+    bwd_6km = params_calc.get('BWD_0-6km', 0) or 0
+    srh_1km = params_calc.get('SRH_0-1km', 0) or 0
+    pwat = params_calc.get('PWAT', 0) or 0
+    lcl_hgt = params_calc.get('LCL_Hgt', 9999) or 9999
+    dcape = params_calc.get('DCAPE', 0) or 0
+    nivell_conv = next((int(k.split('_')[1].replace('hPa','')) for k in params_calc if k.startswith('CONV_')), 925)
+    conv = params_calc.get(f'CONV_{nivell_conv}hPa', 0) or 0
+
+    # --- 2. Condicions de Veto (Si no es compleixen, no hi ha tempesta) ---
+    if mucape < 300:
+        return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Situació Estable", "resum": "L'atmosfera no té prou energia (CAPE baix) per a la formació de tempestes. S'espera temps tranquil.", "fenomens_previstos": []}
+    if mucin < -100 and conv < 25:
+        return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Atmosfera Tapada", "resum": f"Tot i que pot haver-hi energia, una forta inversió tèrmica (CIN de {mucin:.0f}) actua com una tapa, impedint el desenvolupament de núvols de tempesta.", "fenomens_previstos": []}
+
+    # --- 3. Classificació del Potencial de Tempesta ---
+    fenomens = []
+    resum = ""
+    
+    # Escenari 1: Supercèl·lules (El més sever)
+    if bwd_6km >= 35 and mucape >= 1500 and srh_1km >= 150:
+        nivell_risc = {"text": "Extrem", "color": "#9370DB"}
+        titol = "Potencial de Supercèl·lules"
+        resum = f"La combinació d'energia explosiva ({mucape:.0f} J/kg) i una forta cizalladura del vent ({bwd_6km:.0f} nusos) és molt favorable per a la formació de supercèl·lules. Aquestes són les tempestes més organitzades i perilloses."
+        fenomens.append("Calamarsa gran (> 2cm)")
+        fenomens.append("Fortes ratxes de vent (> 90 km/h)")
+        if lcl_hgt < 1200: fenomens.append("Possibilitat de tornados")
+    
+    # Escenari 2: Multicèl·lules Organitzades
+    elif bwd_6km >= 25 and mucape >= 800:
+        nivell_risc = {"text": "Alt", "color": "#DC3545"}
+        titol = "Tempestes Organitzades"
+        resum = f"L'energia disponible ({mucape:.0f} J/kg) i una cizalladura considerable ({bwd_6km:.0f} nusos) permetran que les tempestes s'organitzin en sistemes multicel·lulars o línies de tempesta."
+        fenomens.append("Calamarsa o pedra")
+        if dcape > 1000: fenomens.append("Esclafits o ratxes de vent molt fortes")
+        else: fenomens.append("Fortes ratxes de vent")
+
+    # Escenari 3: Tempestes d'Impuls (Fortes però desorganitzades)
+    elif mucape >= 1000 and bwd_6km < 20:
+        nivell_risc = {"text": "Moderat", "color": "#FD7E14"}
+        titol = "Tempestes d'Impuls Aïllades"
+        resum = f"Hi ha molta energia ({mucape:.0f} J/kg) però poca organització. Es poden formar tempestes puntuals però molt intenses, amb un cicle de vida curt."
+        fenomens.append("Xàfecs localment torrencials")
+        fenomens.append("Possible calamarsa petita")
+        fenomens.append("Ratxes de vent fortes sota la tempesta")
+
+    # Escenari 4: Xàfecs i Tronades Comunes
+    else:
+        nivell_risc = {"text": "Baix", "color": "#28A745"}
+        titol = "Xàfecs i Tronades"
+        resum = f"Les condicions són suficients per al desenvolupament de xàfecs i algunes tempestes, generalment de caràcter dispers i poc organitzat."
+        fenomens.append("Ruixats localment moderats")
+        fenomens.append("Activitat elèctrica aïllada")
+
+    if mucape > 800 and "Activitat elèctrica" not in "".join(fenomens):
+        fenomens.insert(0, "Activitat elèctrica freqüent")
+
+    return {"nivell_risc": nivell_risc, "titol": titol, "resum": resum, "fenomens_previstos": fenomens}
+
+def ui_bulleti_inteligent(bulleti_data):
+    """
+    Mostra el butlletí generat per l'algoritme a la interfície d'usuari.
+    """
+    st.markdown("##### Butlletí d'Alertes per a la Zona")
+    
+    st.markdown(f"""
+    <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444; margin-bottom: 10px;">
+         <span style="font-size: 1.2em; color: #FAFAFA;">Nivell de Risc: <strong style="color:{bulleti_data['nivell_risc']['color']}">{bulleti_data['nivell_risc']['text']}</strong></span>
+         <h6 style="color: white; margin-top: 10px; margin-bottom: 5px;">{bulleti_data['titol']}</h6>
+         <p style="font-size:0.95em; color:#a0a0b0; text-align: left;">{bulleti_data['resum']}</p>
+    """, unsafe_allow_html=True)
+    
+    if bulleti_data['fenomens_previstos']:
+        st.markdown("<b style='color: white;'>Fenòmens previstos:</b>", unsafe_allow_html=True)
+        for fenomen in bulleti_data['fenomens_previstos']:
+            st.markdown(f"- <span style='font-size:0.95em; color:#a0a0b0;'>{fenomen}</span>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL v6.0: Amb lògica d'amenaça directa refinada
-    per a alertes de proximitat (<5km) i de trajectòria.
+    PESTANYA D'ANÀLISI COMARCAL v7.0: Amb un nou i potent Butlletí Intel·ligent.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
 
     # --- CÀLCULS PREVIS ---
-    max_conv_point = None
-    storm_dir_to = None
-    distance_km = None
-    is_threat = False
+    max_conv_point = None; storm_dir_to = None; distance_km = None; is_threat = False
     
     with st.spinner("Analitzant focus de convergència i trajectòries..."):
         gdf_comarques = carregar_dades_geografiques()
@@ -7841,7 +7922,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
     with col_mapa:
         st.markdown("##### Focus de Convergència a la Zona")
-        # ... (El codi per dibuixar el mapa es manté igual) ...
         plt.style.use('default')
         fig, ax = crear_mapa_base(map_extent if 'map_extent' in locals() else MAP_EXTENT_CAT)
         ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
@@ -7875,44 +7955,19 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         st.pyplot(fig, use_container_width=True); plt.close(fig)
 
     with col_diagnostic:
-        st.markdown("##### Diagnòstic de la Zona")
-        
-        mucin = params_calc.get('MUCIN', 0) or 0
-        mucape = params_calc.get('MUCAPE', 0) or 0
-        
-        if valor_conv >= 100: nivell_alerta, color_alerta = "Extrem", "#9370DB"
-        elif valor_conv >= 60: nivell_alerta, color_alerta = "Molt Alt", "#DC3545"
-        elif valor_conv >= 40: nivell_alerta, color_alerta = "Alt", "#FD7E14"
-        elif valor_conv >= 20: nivell_alerta, color_alerta = "Moderat", "#28A745"
-        elif valor_conv >= 10: nivell_alerta, color_alerta = "Present", "#6495ED"
-        else: nivell_alerta, color_alerta = "Inexistent", "#6c757d"
+        bulleti_data = generar_bulleti_inteligent(params_calc, poble_sel)
+        ui_bulleti_inteligent(bulleti_data)
 
-        if valor_conv < 15: previsio_text = "No hi ha un mecanisme de dispar prou fort. El potencial de tempestes és molt baix o nul per a les properes hores."
-        elif mucin < -75: previsio_text = f"Hi ha un focus de convergència ({valor_conv:.0f}), però una forta 'tapa' (CIN de {mucin:.0f}) impedeix que les tempestes es desenvolupin."
-        elif mucape < 250: previsio_text = f"S'observa una zona de convergència ({valor_conv:.0f}), però l'atmosfera està molt estable i sense energia (CAPE de {mucape:.0f}). Com a molt, es podrien formar alguns núvols baixos."
-        elif mucape >= 2500 and valor_conv >= 60: previsio_text = f"Escenari de risc. La combinació d'una convergència extrema ({valor_conv:.0f}) i energia explosiva ({mucape:.0f}) és molt favorable per a supercèl·lules amb calamarsa gran i fortes ratxes de vent."
-        elif mucape >= 1500 and valor_conv >= 40: previsio_text = f"Alt potencial. La convergència notable ({valor_conv:.0f}) i l'atmosfera molt inestable ({mucape:.0f}) fan probables tempestes amb calamarsa i fortes ratxes de vent."
-        elif mucape >= 750 and valor_conv >= 20: previsio_text = f"La convergència ({valor_conv:.0f}) i la inestabilitat moderada ({mucape:.0f}) afavoreixen la formació de xàfecs i tempestes, algunes localment intenses."
-        else: previsio_text = f"Condicions favorables per a alguns ruixats. La convergència ({valor_conv:.0f}) sobre una atmosfera amb certa energia ({mucape:.0f}) pot generar xàfecs dispersos."
-        
-        st.markdown(f"""
-        <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444; margin-bottom: 10px;">
-             <span style="font-size: 1.2em; color: #FAFAFA;">Previsió: <strong style="color:{color_alerta}">{nivell_alerta}</strong></span>
-             <p style="font-size:0.95em; color:#a0a0b0; margin-top:10px; text-align: left;">{previsio_text}</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # --- NOU BLOC D'AMENAÇA DIRECTA AMB LÒGICA MILLORADA ---
         if distance_km is not None:
             if distance_km <= 5:
-                amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "A sobre!", "#DC3545", "⚠️", f"El focus de convergència principal és a menys de 5 km. La tempesta es formarà pràcticament sobre la teva posició."
+                amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "A sobre!", "#DC3545", "⚠️", f"El focus principal és a menys de 5 km. La tempesta es formarà pràcticament sobre la teva posició."
             elif is_threat:
                 amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "S'apropa!", "#FD7E14", "🎯", f"El focus principal a {distance_km:.0f} km es desplaça en la teva direcció. La tempesta podria arribar en les properes hores."
             else:
                 amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "No és una amenaça", "#28A745", "✅", f"El focus principal a {distance_km:.0f} km no és una amenaça directa, ja que la seva trajectòria no apunta cap a tu."
             
             st.markdown(f"""
-            <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444;">
+            <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444; margin-top:10px;">
                  <span style="font-size: 1.2em; color: #FAFAFA;">{amenaça_emoji} Amenaça Directa: <strong style="color:{amenaça_color}">{amenaça_titol}</strong></span>
                  <p style="font-size:0.95em; color:#a0a0b0; margin-top:10px; text-align: left;">{amenaça_text}</p>
             </div>
