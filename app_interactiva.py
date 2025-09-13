@@ -7331,10 +7331,12 @@ def ui_bulleti_inteligent(bulleti_data):
 
 
 
+
+
 def generar_bulleti_inteligent(params_calc, poble_sel):
     """
-    Algoritme intel·ligent v3.0: Genera un butlletí de risc i incorpora
-    l'anàlisi de l'alçada del LFC per a determinar la facilitat d'iniciació.
+    Algoritme intel·ligent v4.0: Genera un butlletí de risc amb una anàlisi
+    detallada de l'alçada del LFC per a determinar la facilitat d'iniciació.
     """
     # --- 1. Extracció segura de paràmetres ---
     mucape = params_calc.get('MUCAPE', 0) or 0
@@ -7342,7 +7344,7 @@ def generar_bulleti_inteligent(params_calc, poble_sel):
     bwd_6km = params_calc.get('BWD_0-6km', 0) or 0
     srh_1km = params_calc.get('SRH_0-1km', 0) or 0
     lcl_hgt = params_calc.get('LCL_Hgt', 9999) or 9999
-    lfc_hgt = params_calc.get('LFC_Hgt', 9999) or 9999 # <-- NOU PARÀMETRE
+    lfc_hgt = params_calc.get('LFC_Hgt', 9999) or 9999
     dcape = params_calc.get('DCAPE', 0) or 0
     rh_baixa = (params_calc.get('RH_CAPES', {}).get('baixa', 0) or 0)
     nivell_conv = next((int(k.split('_')[1].replace('hPa','')) for k in params_calc if k.startswith('CONV_')), 925)
@@ -7358,8 +7360,7 @@ def generar_bulleti_inteligent(params_calc, poble_sel):
         return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Atmosfera Tapada", "resum": f"Tot i que pot haver-hi energia, una forta inversió tèrmica (CIN de {mucin:.0f}) actua com una tapa, impedint el desenvolupament.", "fenomens_previstos": []}
 
     # --- 3. Classificació del Potencial de Tempesta ---
-    fenomens = []
-    resum = ""
+    fenomens = []; resum = ""
     
     if bwd_6km >= 35 and mucape >= 1500 and srh_1km >= 150:
         nivell_risc = {"text": "Extrem", "color": "#9370DB"}; titol = "Potencial de Supercèl·lules"
@@ -7384,14 +7385,21 @@ def generar_bulleti_inteligent(params_calc, poble_sel):
     if mucape > 800 and "Activitat elèctrica" not in "".join(fenomens):
         fenomens.insert(0, "Activitat elèctrica freqüent")
 
-    # --- 4. Modificador de Resum basat en el LFC ---
-    if lfc_hgt < 1500:
-        resum += " La iniciació de les tempestes serà fàcil a causa d'un nivell de convecció lliure baix."
-    elif lfc_hgt > 2500:
-        resum += " Tot i l'energia disponible, a les tempestes els hi costarà arrancar a causa d'un nivell de convecció lliure alt."
+    # --- 4. Modificador de Resum basat en el LFC (Lògica Detallada) ---
+    if lfc_hgt < 1000:
+        resum += " La iniciació serà immediata i explosiva (LFC molt baix)."
+    elif lfc_hgt < 1500:
+        resum += " La iniciació de les tempestes serà fàcil (LFC baix)."
+    elif lfc_hgt < 2000:
+        resum += " A les tempestes els hi podria costar una mica arrancar (LFC normal)."
+    elif lfc_hgt < 2500:
+        resum += " La iniciació es preveu complicada a causa d'un LFC alt."
+    elif lfc_hgt < 3000:
+        resum += " Tot i l'energia, la iniciació és difícil a causa d'un LFC molt alt."
+    else:
+        resum += " La iniciació de tempestes és molt improbable a causa d'un LFC extremadament alt."
         
     return {"nivell_risc": nivell_risc, "titol": titol, "resum": resum, "fenomens_previstos": fenomens}
-    
 
 
 
