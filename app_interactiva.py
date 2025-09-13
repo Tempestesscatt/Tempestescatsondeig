@@ -7336,9 +7336,9 @@ def ui_bulleti_inteligent(bulleti_data):
 
 def generar_bulleti_inteligent(params_calc, poble_sel):
     """
-    Algoritme intel·ligent v5.0: Genera un butlletí de risc que analitza
-    el balanç entre la força del disparador (Convergència) i el "cost energètic"
-    per iniciar la tempesta (CIN + LFC).
+    Algoritme intel·ligent v6.0: Versió final que prioritza el CAPE com a
+    requisit indispensable per a la classificació de tempestes severes,
+    evitant diagnòstics de "tempestes sense combustible".
     """
     # --- 1. Extracció segura de paràmetres ---
     mucape = params_calc.get('MUCAPE', 0) or 0
@@ -7352,48 +7352,49 @@ def generar_bulleti_inteligent(params_calc, poble_sel):
     nivell_conv = next((int(k.split('_')[1].replace('hPa','')) for k in params_calc if k.startswith('CONV_')), 925)
     conv = params_calc.get(f'CONV_{nivell_conv}hPa', 0) or 0
 
-    # --- 2. Anàlisi del Balanç Energètic (Disparador vs. Inhibició) ---
-    # Calculem el "cost" per iniciar la tempesta. Més CIN i LFC més alt = més cost.
-    cost_energetic = abs(mucin) + (lfc_hgt / 100) # Simple però efectiu
-    
-    # Calculem la "força" del disparador. La convergència és el factor principal.
+    # --- 2. Anàlisi del Balanç Energètic i Condicions de Veto ---
+    cost_energetic = abs(mucin) + (lfc_hgt / 100)
     força_disparador = conv * 5
 
-    # Condició de veto principal: No hi ha energia.
     if mucape < 300:
         if conv >= 15 and rh_baixa > 70:
-            return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Intent de Cúmuls", "resum": "Hi ha un mecanisme de dispar i humitat, però l'atmosfera no té prou energia. Es poden formar estrats densos o cúmuls que no arribaran a ser tempestes.", "fenomens_previstos": []}
+            return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Intent de Cúmuls", "resum": "Hi ha un mecanisme de dispar i humitat, però l'atmosfera no té prou energia (CAPE baix). Es poden formar estrats densos o cúmuls que no arribaran a ser tempestes.", "fenomens_previstos": []}
         else:
             return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Situació Estable", "resum": "L'atmosfera no té prou energia (CAPE baix) per a la formació de tempestes.", "fenomens_previstos": []}
 
-    # Nova condició de veto: El disparador no té prou força per superar el cost.
     if força_disparador < cost_energetic:
         return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Potencial Latent (Falta Disparador)", "resum": f"Tot i que hi ha energia ({mucape:.0f} J/kg), el disparador (Conv. {conv:.0f}) no té prou força per vèncer la inhibició atmosfèrica (CIN de {mucin:.0f} i LFC a {lfc_hgt:.0f}m). Les tempestes no s'iniciaran.", "fenomens_previstos": []}
 
-    # --- 3. Si el disparador és efectiu, classifiquem el potencial de tempesta ---
+    # --- 3. Classificació Jeràrquica del Potencial de Tempesta (Prioritzant CAPE) ---
     fenomens = []
     resum = ""
     
-    if bwd_6km >= 35 and mucape >= 1500 and srh_1km >= 150:
+    # <<<- LÒGICA CORREGIDA I REESTRUCTURADA ->>>
+    # Primer comprovem si hi ha prou energia per als escenaris més severs.
+    if mucape >= 1500 and bwd_6km >= 35 and srh_1km >= 150:
         nivell_risc = {"text": "Extrem", "color": "#9370DB"}; titol = "Potencial de Supercèl·lules"
         resum = f"La combinació d'energia explosiva ({mucape:.0f} J/kg) i una forta cizalladura ({bwd_6km:.0f} nusos) és molt favorable per a la formació de supercèl·lules."
         fenomens.extend(["Calamarsa gran (> 2cm)", "Fortes ratxes de vent (> 90 km/h)"])
         if lcl_hgt < 1200: fenomens.append("Possibilitat de tornados")
-    elif bwd_6km >= 25 and mucape >= 800:
+    
+    elif mucape >= 800 and bwd_6km >= 25:
         nivell_risc = {"text": "Alt", "color": "#DC3545"}; titol = "Tempestes Organitzades"
         resum = f"L'energia disponible ({mucape:.0f} J/kg) i una cizalladura considerable ({bwd_6km:.0f} nusos) permetran que les tempestes s'organitzin en sistemes multicel·lulars."
         fenomens.append("Calamarsa o pedra")
         if dcape > 1000: fenomens.append("Esclafits o ratxes de vent molt fortes")
         else: fenomens.append("Fortes ratxes de vent")
+
     elif mucape >= 1000 and bwd_6km < 20:
         nivell_risc = {"text": "Moderat", "color": "#FD7E14"}; titol = "Tempestes d'Impuls Aïllades"
         resum = f"Hi ha molta energia ({mucape:.0f} J/kg) però poca organització. Es poden formar tempestes puntuals però molt intenses."
         fenomens.extend(["Xàfecs localment torrencials", "Possible calamarsa petita", "Ratxes de vent fortes sota la tempesta"])
+
+    # Aquest és l'escenari per defecte si hi ha CAPE suficient (>300) però no arriba als llindars superiors.
     else:
         nivell_risc = {"text": "Baix", "color": "#28A745"}; titol = "Xàfecs i Tronades"
-        resum = f"Les condicions són suficients per al desenvolupament de xàfecs i algunes tempestes, generalment de caràcter dispers."
+        resum = f"Les condicions són suficients per al desenvolupament de xàfecs i algunes tempestes, generalment de caràcter dispers i poc organitzat."
         fenomens.extend(["Ruixats localment moderats", "Activitat elèctrica aïllada"])
-
+    
     if mucape > 800 and "Activitat elèctrica" not in "".join(fenomens):
         fenomens.insert(0, "Activitat elèctrica freqüent")
 
