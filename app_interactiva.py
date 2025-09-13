@@ -3760,14 +3760,26 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     # --- 4. DIBUIX DE LA CONVERGÈNCIA AMB FARCIMENT SUAU I LÍNIES NEGRES ---
     if np.any(smoothed_convergence > 0):
         cfg_conv = MAP_CONFIG['convergence']
+        
+        # <<<--- BLOC DE DIBUIX CORREGIT I FINAL ---
+        # 1. Creem una llista de nivells i colors per al farciment suau
+        all_levels = sorted(list(set(lvl for style in cfg_conv['styles'].values() for lvl in style['levels'])))
+        all_colors = []
+        for i in range(len(all_levels) - 1):
+            mid_point = (all_levels[i] + all_levels[i+1]) / 2
+            color_found = False
+            for style in cfg_conv['styles'].values():
+                if style['levels'][0] <= mid_point < style['levels'][-1] + 1:
+                    all_colors.append(style['color'])
+                    color_found = True
+                    break
+            if not color_found:
+                 all_colors.append((0,0,0,0)) # Color transparent per als forats
 
-        # Creem una paleta de colors completa per al farciment suau
-        all_levels = [10] + [lvl for style in cfg_conv['styles'].values() for lvl in style['levels']]
-        all_colors = [style['color'] for style in cfg_conv['styles'].values() for _ in style['levels']]
         cmap_fill = ListedColormap(all_colors)
-        norm_fill = BoundaryNorm(all_levels, ncolors=cmap_fill.N, clip=True)
+        norm_fill = BoundaryNorm(all_levels, ncolors=cmap_fill.N)
 
-        # Dibuixem el FARCIMENT DE COLOR SUAU I GRADUAL
+        # 2. Dibuixem el FARCIMENT DE COLOR SUAU I GRADUAL
         ax.contourf(grid_lon, grid_lat, smoothed_convergence,
                     levels=all_levels,
                     cmap=cmap_fill,
@@ -3776,7 +3788,7 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                     zorder=3,
                     transform=ccrs.PlateCarree())
 
-        # Dibuixem les LÍNIES NEGRES per sobre per delimitar les zones
+        # 3. Dibuixem les LÍNIES NEGRES per sobre per delimitar les zones
         for category_name, style in cfg_conv['styles'].items():
             line_style = '--' if category_name == 'Floixa' else '-'
             ax.contour(grid_lon, grid_lat, smoothed_convergence, 
@@ -3786,6 +3798,7 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                        linestyles=line_style,
                        zorder=4,
                        transform=ccrs.PlateCarree())
+        # --- FI DEL BLOC CORREGIT ---
 
         max_conv_value = np.max(smoothed_convergence)
         if max_conv_value > 0:
