@@ -6006,46 +6006,78 @@ def generar_icona_direccio(color, direccio_graus):
 
 
 
+def generar_icona_direccio(color, direccio_graus):
+    """
+    Versió millorada que crea icones minimalistes (cercle fi + fletxa)
+    similars als de la imatge de referència.
+    """
+    fig, ax = plt.subplots(figsize=(1, 1), dpi=72)
+    fig.patch.set_alpha(0)
+    ax.set_aspect('equal')
+    ax.set_xlim(-0.6, 0.6)
+    ax.set_ylim(-0.6, 0.6)
+    ax.axis('off')
+
+    # Dibuixa el cercle fi
+    cercle = Circle((0, 0), 0.5, facecolor='none', edgecolor=color, linewidth=2)
+    ax.add_patch(cercle)
+
+    # Dibuixa la fletxa interior
+    angle_rad = np.deg2rad(90 - direccio_graus)
+    ax.arrow(-0.3 * np.cos(angle_rad), -0.3 * np.sin(angle_rad), # Comença des del costat oposat
+             0.5 * np.cos(angle_rad), 0.5 * np.sin(angle_rad),   # Dibuixa a través del centre
+             head_width=0.15, head_length=0.1, fc=color, ec=color,
+             length_includes_head=True, zorder=10)
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0.05)
+    plt.close(fig)
+    return base64.b64encode(buf.getvalue()).decode()
+    
+
 def crear_llegenda_direccionalitat():
     """
-    Mostra una llegenda visual i explicativa per al mapa de focus de convergència comarcal.
-    Versió simplificada i més directa.
+    Mostra una llegenda visual i explicativa per al mapa de focus de convergència,
+    amb un estil minimalista i professional.
     """
     st.markdown("""
     <style>
         .legend-box { background-color: #2a2c34; border-radius: 10px; padding: 15px; border: 1px solid #444; margin-top: 15px; }
         .legend-title { font-size: 1.1em; font-weight: bold; color: #FAFAFA; margin-bottom: 12px; }
         .legend-section { display: flex; align-items: center; margin-bottom: 10px; }
-        .legend-icon-container { flex-shrink: 0; margin-right: 15px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
+        .legend-icon-container { flex-shrink: 0; margin-right: 15px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; }
         .legend-text-container { flex-grow: 1; font-size: 0.9em; color: #a0a0b0; }
         .legend-text-container b { color: #FFFFFF; }
+        .color-square { display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: middle; }
     </style>
     """, unsafe_allow_html=True)
 
-    # Genera les icones dinàmicament
-    icona_intensitat = generar_icona_direccio('#FD7E14', 45)  # Taronja, cap al NE
-    icona_direccio = generar_icona_direccio('#DC3545', 270) # Vermell, cap a l'Oest
+    icona_intensitat = generar_icona_direccio('#FD7E14', 45)
+    icona_direccio = generar_icona_direccio('#DC3545', 270)
 
     html_llegenda = (
         f'<div class="legend-box">'
         f'    <div class="legend-title">Com Interpretar el Focus de Convergència</div>'
-        f'    <p style="font-size:0.9em; color:#a0a0b0; margin-top:-5px; margin-bottom:15px;">El mapa mostra el punt de màxima convergència i la direcció de desplaçament prevista de la tempesta que es pugui formar.</p>'
+        f'    <p style="font-size:0.9em; color:#a0a0b0; margin-top:-5px; margin-bottom:15px;">El mapa mostra el punt de màxima convergència dins la comarca i la direcció de desplaçament prevista de la tempesta que es pugui formar.</p>'
         
         f'    <div class="legend-section">'
         f'        <div class="legend-icon-container">'
-        f'            <img src="data:image/png;base64,{icona_intensitat}" width="40">'
+        f'            <img src="data:image/png;base64,{icona_intensitat}" width="30">'
         f'        </div>'
         f'        <div class="legend-text-container">'
-        f'            <b>Intensitat (Color del Cercle):</b> Indica la força del "disparador" que pot iniciar la tempesta.'
+        f'            <b>Intensitat (Color del Cercle):</b> Indica la força del "disparador".<br>'
+        f'            <span class="color-square" style="background-color: #FD7E14;"></span><span>Alt, </span>'
+        f'            <span class="color-square" style="background-color: #DC3545;"></span><span>Molt Alt, </span>'
+        f'            <span class="color-square" style="background-color: #9370DB;"></span><span>Extrem.</span>'
         f'        </div>'
         f'    </div>'
         
         f'    <div class="legend-section">'
         f'        <div class="legend-icon-container">'
-        f'            <img src="data:image/png;base64,{icona_direccio}" width="40">'
+        f'            <img src="data:image/png;base64,{icona_direccio}" width="30">'
         f'        </div>'
         f'        <div class="legend-text-container">'
-        f'            <b>Direcció (Fletxa):</b> Estima la trajectòria que seguirà la tempesta un cop formada, basant-se en el vent a nivells mitjans (700-500hPa).'
+        f'            <b>Direcció (Fletxa):</b> Estima la trajectòria que seguirà la tempesta un cop formada, basant-se en el vent a nivells mitjans de l\'atmosfera (700-500hPa).'
         f'        </div>'
         f'    </div>'
         f'</div>'
