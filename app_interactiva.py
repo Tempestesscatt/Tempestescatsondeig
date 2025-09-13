@@ -6002,45 +6002,50 @@ def generar_icona_direccio(color, direccio_graus):
     plt.close(fig)
     return base64.b64encode(buf.getvalue()).decode()
 
+
+
+
+
 def crear_llegenda_direccionalitat():
     """
     Mostra una llegenda visual i explicativa per al mapa de focus de convergència comarcal.
+    Versió simplificada i més directa.
     """
     st.markdown("""
     <style>
         .legend-box { background-color: #2a2c34; border-radius: 10px; padding: 15px; border: 1px solid #444; margin-top: 15px; }
         .legend-title { font-size: 1.1em; font-weight: bold; color: #FAFAFA; margin-bottom: 12px; }
-        .legend-section { display: flex; align-items: flex-start; margin-bottom: 10px; }
-        .legend-icon-container { flex-shrink: 0; margin-right: 15px; width: 50px; height: 50px; }
-        .legend-text-container { flex-grow: 1; }
+        .legend-section { display: flex; align-items: center; margin-bottom: 10px; }
+        .legend-icon-container { flex-shrink: 0; margin-right: 15px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
+        .legend-text-container { flex-grow: 1; font-size: 0.9em; color: #a0a0b0; }
         .legend-text-container b { color: #FFFFFF; }
     </style>
     """, unsafe_allow_html=True)
 
-    icona_alt = generar_icona_direccio('#FD7E14', 45)  # Taronja, cap al NE
-    icona_molt_alt = generar_icona_direccio('#DC3545', 270) # Vermell, cap a l'Oest
+    # Genera les icones dinàmicament
+    icona_intensitat = generar_icona_direccio('#FD7E14', 45)  # Taronja, cap al NE
+    icona_direccio = generar_icona_direccio('#DC3545', 270) # Vermell, cap a l'Oest
 
     html_llegenda = (
         f'<div class="legend-box">'
         f'    <div class="legend-title">Com Interpretar el Focus de Convergència</div>'
-        f'    <p style="font-size:0.9em; color:#a0a0b0;">El mapa mostra el punt de <b>màxima convergència</b> dins la comarca i la <b>direcció de desplaçament</b> prevista de la tempesta que es pugui formar.</p>'
+        f'    <p style="font-size:0.9em; color:#a0a0b0; margin-top:-5px; margin-bottom:15px;">El mapa mostra el punt de màxima convergència i la direcció de desplaçament prevista de la tempesta que es pugui formar.</p>'
+        
         f'    <div class="legend-section">'
         f'        <div class="legend-icon-container">'
-        f'            <img src="data:image/png;base64,{icona_alt}" width="50">'
+        f'            <img src="data:image/png;base64,{icona_intensitat}" width="40">'
         f'        </div>'
         f'        <div class="legend-text-container">'
-        f'            <b>Intensitat (Color del Cercle):</b> Indica la força del "disparador".<br>'
-        f'            <span style="color:#FD7E14;">■ Taronja: Alt</span>, '
-        f'            <span style="color:#DC3545;">■ Vermell: Molt Alt</span>,'
-        f'            <span style="color:#9370DB;">■ Lila: Extrem.</span>'
+        f'            <b>Intensitat (Color del Cercle):</b> Indica la força del "disparador" que pot iniciar la tempesta.'
         f'        </div>'
         f'    </div>'
+        
         f'    <div class="legend-section">'
         f'        <div class="legend-icon-container">'
-        f'            <img src="data:image/png;base64,{icona_molt_alt}" width="50">'
+        f'            <img src="data:image/png;base64,{icona_direccio}" width="40">'
         f'        </div>'
         f'        <div class="legend-text-container">'
-        f'            <b>Direcció (Fletxa):</b> Estima la trajectòria que seguirà la tempesta un cop formada, basant-se en el vent a nivells mitjans de l\'atmosfera (700-500hPa).'
+        f'            <b>Direcció (Fletxa):</b> Estima la trajectòria que seguirà la tempesta un cop formada, basant-se en el vent a nivells mitjans (700-500hPa).'
         f'        </div>'
         f'    </div>'
         f'</div>'
