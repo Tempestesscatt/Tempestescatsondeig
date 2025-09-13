@@ -67,28 +67,28 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
 
+
 MAP_CONFIG = {
     'cape': {
         'colors': [
-            '#2E4598', '#3765AD', '#3F85C2', '#4AB5D8', '#53C9C6', '#50B69B', 
-            '#4CA26F', '#488D44', '#73AC39', '#A5C735', '#DDE330', '#FFF22C', 
-            '#FBC928', '#F8A124', '#F57A20', '#F2531C', '#EF2D18', '#E51D14', 
-            '#D01E15', '#BB1E16', '#A51E17', '#901E18', '#7B1F19', '#661F1A'
+            '#2c2c8c', '#4646b4', '#4682b4', '#87ceeb', '#add8e6', '#ffff96', 
+            '#ffff00', '#ffd700', '#ffac00', '#ff8c00', '#ff4500', '#ff0000', 
+            '#dc143c', '#a50021'
         ],
-        'levels': [0, 150, 300, 450, 600, 750, 900, 1050, 1200, 1350, 1500, 
-                   1650, 1800, 1950, 2100, 2250, 2400, 2550, 2700, 2850, 
-                   3000, 3150, 3300, 3450, 3601],
-        'cbar_ticks': [0, 450, 900, 1350, 1800, 2250, 2700, 3150, 3600],
-        'alpha': 0.70 # Ligero aumento de opacidad para mejor contraste
+        'levels': [0, 100, 250, 500, 750, 1000, 1500, 2000, 2500, 3000, 3500, 4001],
+        'cbar_ticks': [0, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000],
+        'alpha': 0.75
     },
     'convergence': {
         'styles': {
-            'Floixa': {'levels': [10, 20, 30, 40], 'color': '#28a745', 'width': 1.3},
-            'Moderada': {'levels': [50, 60, 70], 'color': '#FFD700', 'width': 1.9},
-            'Forta': {'levels': [80, 90, 100, 110], 'color': '#DC3545', 'width': 2.5},
-            'Extrema': {'levels': [120, 130, 140, 150], 'color': '#9370DB', 'width': 3.1}
+            # <<<--- CANVI PRINCIPAL AQUÍ: Nous colors molt més vius ---
+            'Floixa':   {'levels': [10, 20, 30, 40], 'color': '#00FF00', 'width': 1.4}, # Verd Neó
+            'Moderada': {'levels': [50, 60, 70],     'color': '#FFFF00', 'width': 2.0}, # Groc Elèctric
+            'Forta':    {'levels': [80, 90, 100, 110], 'color': '#FF0000', 'width': 2.6}, # Vermell Pur
+            'Extrema':  {'levels': [120, 130, 140, 150], 'color': '#FF00FF', 'width': 3.2}  # Fucsia/Magenta
+            # --- FI DEL CANVI ---
         },
-        'outline_width_factor': 1.5, # Factor para el grosor del contorno negro
+        'outline_width_factor': 2.0, 
         'sigma_filter': 2.5
     },
     'streamlines': {
@@ -101,8 +101,8 @@ MAP_CONFIG = {
         'cape_min': 500,
         'cape_max': 6000,
         'convergence_min': 10,
-        'dewpoint_low_level': 14, # Para niveles >= 950 hPa
-        'dewpoint_mid_level': 12, # Para niveles < 950 hPa
+        'dewpoint_low_level': 14,
+        'dewpoint_mid_level': 12,
     }
 }
 
