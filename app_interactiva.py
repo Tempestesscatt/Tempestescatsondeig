@@ -3721,9 +3721,8 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                                      nivell: int, timestamp_str: str, 
                                      map_extent: List[float]) -> plt.Figure:
     """
-    VERSIÓ 14.0 (COLORS VIBRANTS): Genera un mapa de pronòstic amb colors de
-    convergència d'alta visibilitat (verd neó, groc elèctric, vermell pur i fucsia)
-    per garantir el màxim contrast.
+    VERSIÓ 15.0 (ETIQUETES DE COLOR): Genera un mapa amb línies de convergència
+    negres i etiquetes numèriques petites i de colors vius per a una claredat màxima.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3759,20 +3758,31 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=MAP_CONFIG['convergence']['sigma_filter'])
     smoothed_convergence[smoothed_convergence < cfg_thresh['convergence_min']] = 0
 
-    # --- 4. DIBUIX DE LES ISOLÍNIES DE CONVERGÈNCIA AMB NOUS COLORS ---
+    # --- 4. DIBUIX DE LES ISOLÍNIES NEGRES AMB ETIQUETES DE COLOR ---
     if np.any(smoothed_convergence > 0):
         cfg_conv = MAP_CONFIG['convergence']
-        path_effect_label = [path_effects.withStroke(linewidth=2.5, foreground='white')]
+        # Definim l'efecte de contorn blanc per a les etiquetes numèriques
+        path_effect_label = [path_effects.withStroke(linewidth=2.0, foreground='white')]
+
         for style in cfg_conv['styles'].values():
-            linewidth = style['width']
-            outline_width = linewidth + cfg_conv['outline_width_factor']
-            path_effect_line = [path_effects.withStroke(linewidth=outline_width, foreground='black')]
-            contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=style['levels'], 
-                                  colors=style['color'], linewidths=linewidth, zorder=4,
-                                  transform=ccrs.PlateCarree(), path_effects=path_effect_line)
-            labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
+            # Dibuixem les línies del contorn en NEGRE
+            contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, 
+                                  levels=style['levels'], 
+                                  colors='black', # <-- Canvi Clau: Línies negres
+                                  linewidths=style['width'], 
+                                  zorder=4,
+                                  transform=ccrs.PlateCarree())
+            
+            # Afegim les etiquetes numèriques PETITES i DE COLORS sobre les línies negres
+            labels = ax.clabel(contours, inline=True, 
+                               fontsize=7, # <-- Mida de lletra petita
+                               fmt='%1.0f', 
+                               colors=style['color']) # <-- Canvi Clau: El color s'aplica a l'etiqueta
+            
+            # Apliquem el contorn blanc a cada etiqueta per a màxima llegibilitat
             for label in labels:
                 label.set_path_effects(path_effect_label)
+        
         max_conv_value = np.max(smoothed_convergence)
         if max_conv_value > 0:
             text_max = ax.text(0.02, 0.02, f"Convergència Màx: {max_conv_value:.0f}",
@@ -3780,7 +3790,7 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                                  fontweight='bold', va='bottom', ha='left', zorder=12)
             text_max.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
-    # --- 5. LLEGENDA PER A LA CONVERGÈNCIA ---
+    # --- 5. LLEGENDA PER A LA CONVERGÈNCIA (No canvia, explica el color de les etiquetes) ---
     legend_handles = [mlines.Line2D([], [], color=style['color'], linewidth=5, label=label) 
                       for label, style in MAP_CONFIG['convergence']['styles'].items()]
     ax.legend(handles=legend_handles, title="Convergència", loc='lower right', 
