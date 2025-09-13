@@ -1626,14 +1626,13 @@ def debug_calculos(p, T, Td, u, v, heights, prof):
 
 
     
-def crear_mapa_base(map_extent, projection=ccrs.PlateCarree()):
+def crear_mapa_base(map_extent: Tuple[float, float, float, float], projection=ccrs.PlateCarree()) -> Tuple[plt.Figure, plt.Axes]:
+    """Crea una figura y un eje de mapa base con Cartopy."""
     fig, ax = plt.subplots(figsize=(8, 8), dpi=100, subplot_kw={'projection': projection})
     ax.set_extent(map_extent, crs=ccrs.PlateCarree())
     
     ax.add_feature(cfeature.LAND, facecolor="#D4E6B5", zorder=0)
-    # --- LÍNIA MODIFICADA AQUÍ ---
-    ax.add_feature(cfeature.OCEAN, facecolor='#4682B4', zorder=0) # Canviat a un blau acer més suau
-    # ---------------------------------
+    ax.add_feature(cfeature.OCEAN, facecolor='#4682B4', zorder=0)
     ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
     if projection != ccrs.PlateCarree():
@@ -1642,29 +1641,21 @@ def crear_mapa_base(map_extent, projection=ccrs.PlateCarree()):
 
 
 
-def afegir_etiquetes_ciutats(ax, map_extent):
+def afegir_etiquetes_ciutats(ax: plt.Axes, map_extent: Tuple[float, float, float, float]):
     """
     Versió amb etiquetes més petites per a una millor claredat visual en fer zoom.
     """
     is_zoomed_in = (tuple(map_extent) != tuple(MAP_EXTENT_CAT))
 
     if is_zoomed_in:
-        # Itera sobre el diccionari de referència per als mapes
         for ciutat, coords in POBLES_MAPA_REFERENCIA.items():
             lon, lat = coords['lon'], coords['lat']
-            
-            # Comprovem si el punt de referència està dins dels límits del mapa visible
             if map_extent[0] < lon < map_extent[1] and map_extent[2] < lat < map_extent[3]:
-                
-                # Dibuixem el punt de referència
                 ax.plot(lon, lat, 'o', color='black', markersize=1,
                         markeredgecolor='black', markeredgewidth=1.5,
                         transform=ccrs.PlateCarree(), zorder=19)
-
-                # Dibuixem l'etiqueta de text al costat del punt
-                # <<-- CANVI CLAU: Hem reduït el 'fontsize' de 8 a 6 -->>
                 ax.text(lon + 0.02, lat, ciutat, 
-                        fontsize= 5, # <-- CANVIA AQUEST NÚMERO
+                        fontsize=5,
                         color='white',
                         transform=ccrs.PlateCarree(), 
                         zorder=2,
@@ -2942,38 +2933,6 @@ def carregar_dades_mapa_base_cat(variables, hourly_index):
     except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
         
         
-
-
-    
-    
-def afegir_etiquetes_ciutats(ax, map_extent):
-    """
-    Versió amb etiquetes més petites per a una millor claredat visual en fer zoom.
-    """
-    is_zoomed_in = (tuple(map_extent) != tuple(MAP_EXTENT_CAT))
-
-    if is_zoomed_in:
-        # Itera sobre el diccionari de referència per als mapes
-        for ciutat, coords in POBLES_MAPA_REFERENCIA.items():
-            lon, lat = coords['lon'], coords['lat']
-            
-            # Comprovem si el punt de referència està dins dels límits del mapa visible
-            if map_extent[0] < lon < map_extent[1] and map_extent[2] < lat < map_extent[3]:
-                
-                # Dibuixem el punt de referència
-                ax.plot(lon, lat, 'o', color='black', markersize=1,
-                        markeredgecolor='black', markeredgewidth=1.5,
-                        transform=ccrs.PlateCarree(), zorder=19)
-
-                # Dibuixem l'etiqueta de text al costat del punt
-                # <<-- CANVI CLAU: Hem reduït el 'fontsize' de 8 a 6 -->>
-                ax.text(lon + 0.02, lat, ciutat, 
-                        fontsize= 5, # <-- CANVIA AQUEST NÚMERO
-                        color='white',
-                        transform=ccrs.PlateCarree(), 
-                        zorder=2,
-                        path_effects=[path_effects.withStroke(linewidth=2.5, foreground='gray')])
-
 
 
 
