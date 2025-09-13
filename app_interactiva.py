@@ -1590,7 +1590,7 @@ def crear_mapa_base(map_extent, projection=ccrs.PlateCarree()):
     
     ax.add_feature(cfeature.LAND, facecolor="#D4E6B5", zorder=0)
     # --- LÍNIA MODIFICADA AQUÍ ---
-    ax.add_feature(cfeature.OCEAN, facecolor='#B695C0', zorder=0) # Canviat a color lila
+    ax.add_feature(cfeature.OCEAN, facecolor='#34568B', zorder=0) # Canviat a color blau marí
     # ---------------------------------
     ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
