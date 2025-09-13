@@ -1603,14 +1603,16 @@ def debug_calculos(p, T, Td, u, v, heights, prof):
 
     
 def crear_mapa_base(map_extent, projection=ccrs.PlateCarree()):
+    """
+    Versió amb fons neutral per a un estil GIS professional.
+    """
     fig, ax = plt.subplots(figsize=(8, 8), dpi=100, subplot_kw={'projection': projection})
     ax.set_extent(map_extent, crs=ccrs.PlateCarree())
     
-    # --- LÍNIA MODIFICADA AQUÍ ---
-    ax.add_feature(cfeature.LAND, facecolor="#D4E6B5", zorder=0) # Canviat a color verd
-    # ---------------------------------
+    # --- CANVI CLAU: Fons del terreny més suau i professional ---
+    ax.add_feature(cfeature.LAND, facecolor="#EAE5D9", zorder=0) 
     
-    ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
+    ax.add_feature(cfeature.OCEAN, facecolor='#B0C4DE', zorder=0)
     ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
     if projection != ccrs.PlateCarree():
@@ -3789,15 +3791,15 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ AMB RENDERITZAT SUAVITZAT I ISOLÍNIES PROFESSIONALS.
-    - Suavitza els nuclis de convergència amb un filtre Gaussiano per a un aspecte més natural.
-    - Dibuixa línies de contorn discontinuades per a valors baixos (15-30) i sòlides per a valors alts (>30).
-    - Utilitza una paleta de colors i nivells millorada per al farciment.
+    VERSIÓ D'ALTA FIDELITAT v2.0
+    - Renderitzat suavitzat amb filtre Gaussiano.
+    - Paleta de colors professional per a la convergència.
+    - Isòlines d'alta visibilitat amb efecte d'ombra per a una llegibilitat màxima.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
     
-    # --- 1. INTERPOLACIÓ A GRAELLA D'ALTA RESOLUCIÓ (Sense canvis) ---
+    # --- 1. INTERPOLACIÓ I CÀLCULS (Sense canvis) ---
     grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 300), np.linspace(map_extent[2], map_extent[3], 300))
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'linear')
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'linear')
@@ -3805,73 +3807,63 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     
-    # --- 2. MAPA DE VELOCITAT DEL VENT I STREAMLINES (Sense canvis) ---
-    colors_wind = [
-        '#d2d2f0', '#b4b4e6', '#78c8c8', '#50b48c', '#32cd32', '#64ff64',
-        '#ffff00', '#f5d264', '#e6b478', '#d7788c', '#ff69b4', '#9f78dc'
-    ]
+    # --- 2. MAPA DE FONS (VENT) - Amb més transparència per no distreure ---
+    colors_wind = ['#d2d2f0', '#b4b4e6', '#78c8c8', '#50b48c', '#32cd32', '#64ff64', '#ffff00', '#f5d264', '#e6b478', '#d7788c', '#ff69b4', '#9f78dc']
     speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]
-    custom_cmap = ListedColormap(colors_wind)
-    norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
-    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree(), alpha=0.7)
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.5, density=6.5, arrowsize=0.3, zorder=4, transform=ccrs.PlateCarree())
+    custom_cmap_wind = ListedColormap(colors_wind)
+    norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap_wind.N, clip=True)
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap_wind, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree(), alpha=0.6)
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='#404040', linewidth=0.4, density=6.5, arrowsize=0.3, zorder=4, transform=ccrs.PlateCarree())
     
-    # --- 3. CÀLCUL, FILTRATGE I SUAVITZAT DE CONVERGÈNCIA (CANVI CLAU) ---
+    # --- 3. CÀLCUL I SUAVITZAT DE LA CONVERGÈNCIA ---
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
         convergence[np.isnan(convergence)] = 0
         DEWPOINT_THRESHOLD = 14 if nivell >= 950 else 12
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
-        
-        # Llindar de detecció rebaixat a 15
-        effective_convergence = np.where((convergence >= 15) & (humid_mask), convergence, 0)
-
-    # <<<--- NOU: APLIQUEM EL FILTRE GAUSSIANO PER SUAVITZAR ---
-    # El valor de 'sigma' controla la intensitat del suavitzat. Més alt = més suau.
+        effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0)
+    
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
-    # Tornem a filtrar per eliminar el "soroll" de valors molt baixos que el suavitzat podria escampar.
     smoothed_convergence[smoothed_convergence < 15] = 0
     
-    # --- 4. DIBUIX DE LA CONVERGÈNCIA AMB NOU ESTIL ---
+    # --- 4. DIBUIX DE LA CONVERGÈNCIA (FARCIMENT) ---
     if np.any(smoothed_convergence > 0):
-        # Paleta de colors professional per al farciment
-        colors_conv = ['#5BC0DE', "#FBFF00", "#DC6D05", "#EC8383", "#F03D3D", "#FF0000", "#7C7EF0", "#0408EAFF", "#000070"]
-        cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_personalitzada", colors_conv)
+        # NOU: Paleta de colors d'alta qualitat per a la convergència
+        colors_conv = ['#00FFFF', '#00A6FF', '#0055FF', '#00FF00', '#FFFF00', '#FF7F00', '#FF0000', '#C80000', '#FF00FF', '#9932CC']
+        cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_professional", colors_conv)
         
-        # El farciment de color comença a 20 per no saturar visualment les zones més febles
         fill_levels = np.arange(20, 151, 5) 
         ax.contourf(grid_lon, grid_lat, smoothed_convergence,
-                    levels=fill_levels, cmap=cmap_conv, alpha=0.99,
+                    levels=fill_levels, cmap=cmap_conv, alpha=0.85,
                     zorder=3, transform=ccrs.PlateCarree(), extend='max')
 
-    # <<<--- NOU: ISOLÍNIES FINES I CONDICIONALS ---
-    # Definim els nivells on volem dibuixar línies
-    line_levels = [15, 30, 50, 70, 90, 120]
-    # Definim un estil per a cada nivell: discontinu ('--') per a 15, sòlid ('-') per a la resta
-    line_styles = ['--', '-', '-', '-', '-', '-']
-    # Definim el gruix de totes les línies a 1 (més fines)
-    line_widths = 1
+        # NOU: Isòlines d'alta visibilitat amb efecte d'ombra
+        line_levels = [15, 30, 50, 70, 90, 120]
+        line_styles = ['--', '-', '-', '-', '-', '-']
+        
+        # L'efecte "màgic": una vora negra al voltant de la línia principal
+        path_effect_ombra = [path_effects.withStroke(linewidth=2.5, foreground='black')]
 
-    contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
-                            levels=line_levels, 
-                            colors='black',
-                            linestyles=line_styles, # Passem la llista d'estils
-                            linewidths=line_widths, # Passem el gruix
-                            zorder=3,
-                            transform=ccrs.PlateCarree())
-    
-    # Afegim etiquetes a les isolínies amb un fons blanc per a millor llegibilitat
-    labels = ax.clabel(contours, inline=True, fontsize=5, fmt='%1.0f')
-    for label in labels:
-        label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.5))
+        contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
+                              levels=line_levels, 
+                              colors='white', # La línia principal és blanca
+                              linestyles=line_styles,
+                              linewidths=0.8, # Molt fina
+                              zorder=5, # Per sobre del farciment
+                              transform=ccrs.PlateCarree(),
+                              path_effects=path_effect_ombra) # Apliquem l'efecte
+        
+        labels = ax.clabel(contours, inline=True, fontsize=6, fmt='%1.0f')
+        for label in labels:
+            label.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')])
+            label.set_color("white")
 
     ax.set_title(f"Vent i Nuclis de Convergència EFECTIVA a {nivell}hPa\n{timestamp_str}",
-                 weight='bold', fontsize=16)
+                 weight='bold', fontsize=14)
     afegir_etiquetes_ciutats(ax, map_extent)
     
     return fig
-
 
 def forcar_regeneracio_animacio():
     """Incrementa la clau de regeneració per invalidar la memòria cau."""
