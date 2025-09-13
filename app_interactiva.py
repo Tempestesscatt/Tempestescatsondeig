@@ -7769,6 +7769,29 @@ def crear_llegenda_direccionalitat():
 
 
 
+
+
+def ui_bulleti_inteligent(bulleti_data):
+    """
+    Mostra el butlletí generat per l'algoritme a la interfície d'usuari.
+    """
+    st.markdown("##### Butlletí d'Alertes per a la Zona")
+    
+    st.markdown(f"""
+    <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444; margin-bottom: 10px;">
+         <span style="font-size: 1.2em; color: #FAFAFA;">Nivell de Risc: <strong style="color:{bulleti_data['nivell_risc']['color']}">{bulleti_data['nivell_risc']['text']}</strong></span>
+         <h6 style="color: white; margin-top: 10px; margin-bottom: 5px;">{bulleti_data['titol']}</h6>
+         <p style="font-size:0.95em; color:#a0a0b0; text-align: left;">{bulleti_data['resum']}</p>
+    """, unsafe_allow_html=True)
+    
+    if bulleti_data['fenomens_previstos']:
+        st.markdown("<b style='color: white;'>Fenòmens previstos:</b>", unsafe_allow_html=True)
+        for fenomen in bulleti_data['fenomens_previstos']:
+            st.markdown(f"- <span style='font-size:0.95em; color:#a0a0b0;'>{fenomen}</span>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+
 def generar_bulleti_inteligent(params_calc, poble_sel):
     """
     Algoritme intel·ligent v2.0: Genera un butlletí de risc i detecta
