@@ -3722,8 +3722,9 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                                      nivell: int, timestamp_str: str, 
                                      map_extent: List[float]) -> plt.Figure:
     """
-    VERSIÓ 24.0 (PALETA FINAL): Utilitza la paleta de colors de CAPE definitiva
-    per a una representació visual de màxima qualitat.
+    VERSIÓ 25.0 (NETEJA FINAL): Versió final del mapa que elimina el text de
+    "Convergència Màxima" per a una interfície més neta, mantenint el
+    marcador visual en el punt més intens.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3737,15 +3738,13 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_cape = np.nan_to_num(griddata((lons, lats), cape_data, (grid_lon, grid_lat), 'linear'))
 
-    # --- 2. DIBUIX DEL CAPE DE FONS (AMB LA NOVA PALETA) ---
+    # --- 2. DIBUIX DEL CAPE DE FONS ---
     cfg_cape = MAP_CONFIG['cape']
     cmap_cape = ListedColormap(cfg_cape['colors'])
     norm_cape = BoundaryNorm(cfg_cape['levels'], ncolors=cmap_cape.N, clip=True)
-    
     cape_mesh = ax.pcolormesh(grid_lon, grid_lat, grid_cape, 
                                cmap=cmap_cape, norm=norm_cape, 
                                alpha=cfg_cape['alpha'], zorder=2, transform=ccrs.PlateCarree())
-    
     cbar_cape = fig.colorbar(cape_mesh, ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=cfg_cape['cbar_ticks'])
     cbar_cape.set_label("CAPE (J/kg) - 'Combustible'")
     cbar_cape.ax.tick_params(labelsize=8)
@@ -3762,7 +3761,7 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=MAP_CONFIG['convergence']['sigma_filter'])
     smoothed_convergence[smoothed_convergence < cfg_thresh['convergence_min']] = 0
 
-    # --- 4. DIBUIX DE LA CONVERGÈNCIA ---
+    # --- 4. DIBUIX DE LA CONVERGÈNCIA I EL MARCADOR MÀXIM ---
     if np.any(smoothed_convergence > 0):
         cfg_conv = MAP_CONFIG['convergence']
         all_levels = sorted(list(set(lvl for style in cfg_conv['styles'].values() for lvl in style['levels'])))
@@ -3798,10 +3797,6 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                     transform=ccrs.PlateCarree(), zorder=12, solid_capstyle='butt')
             ax.plot([max_lon + 0.015, max_lon + line_len], [max_lat, max_lat], color='black', linewidth=line_width, 
                     transform=ccrs.PlateCarree(), zorder=12, solid_capstyle='butt')
-            text_max = ax.text(0.02, 0.02, f"Convergència Màx: {max_conv_value:.0f}",
-                                 transform=ax.transAxes, fontsize=12, color='white', 
-                                 fontweight='bold', va='bottom', ha='left', zorder=12)
-            text_max.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
     # --- 5. LLEGENDA PER A LA CONVERGÈNCIA ---
     legend_handles = []
