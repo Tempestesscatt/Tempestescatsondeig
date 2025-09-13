@@ -1634,13 +1634,10 @@ def verificar_datos_entrada(p, T, Td, u, v, heights):
 
 
 
-def crear_skewt(p, T, Td, u, v, sfc_prof, mu_prof, params_calc, titol, timestamp_str, zoom_capa_baixa=False):
+def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str, zoom_capa_baixa=False):
     """
-    VERSIÓ 6.0 (Enfocada Exclusivament en la Parcel·la Més Inestable - MU)
-    - Per eliminar tota confusió, ara només es dibuixa la trajectòria de la parcel·la més inestable (MU).
-    - Aquesta és la trajectòria que genera el MUCAPE i representa el màxim potencial convectiu real.
-    - L'ombrejat de CAPE/CIN correspon directament a aquesta única línia, fent el gràfic 100% coherent.
-    - S'ha eliminat la línia de la parcel·la de superfície (SFC) per a una màxima claredat.
+    Versió Definitiva v2.0: Soluciona el bug de l'ombra de CAPE/CIN desplaçada
+    netejant les dades just abans de dibuixar l'ombrejat.
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     
@@ -1658,6 +1655,7 @@ def crear_skewt(p, T, Td, u, v, sfc_prof, mu_prof, params_calc, titol, timestamp
     else:
         skew.ax.set_ylim(1000, 100)
         skew.ax.set_xlim(-40, 40)
+        
         pressio_superficie = p[0].m
         if pressio_superficie < 995:
             colors = ["#66462F", "#799845"] 
@@ -1671,24 +1669,26 @@ def crear_skewt(p, T, Td, u, v, sfc_prof, mu_prof, params_calc, titol, timestamp
     skew.plot_moist_adiabats(color='cornflowerblue', linestyle='--', alpha=0.5)
     skew.plot_mixing_lines(color='limegreen', linestyle='--', alpha=0.5)
     
-    # --- LÒGICA D'OMBREJAT I TRAJECTÒRIA SIMPLIFICADA I DEFINITIVA ---
-    
-    # L'ombrejat i la trajectòria es basen ÚNICAMENT en la parcel·la Més Inestable (MU).
-    if mu_prof is not None:
-        valid_shade_mask = np.isfinite(p.m) & np.isfinite(T.m) & np.isfinite(mu_prof.m)
-        p_clean, T_clean, prof_clean = p[valid_shade_mask], T[valid_shade_mask], mu_prof[valid_shade_mask]
+    # <<<--- CORRECCIÓ DE L'OMBRA DESPLAÇADA ---
+    if prof is not None:
+        # 1. Creem una màscara per a trobar només els nivells on TOTES les dades
+        #    necessàries per a l'ombrejat (pressió, temperatura i perfil de la parcel·la) són vàlides.
+        valid_shade_mask = np.isfinite(p.m) & np.isfinite(T.m) & np.isfinite(prof.m)
         
-        # Pintem el CAPE (vermell) i el CIN (blau) basant-nos en aquesta única trajectòria.
+        # 2. Creem perfils "nets" utilitzant aquesta màscara.
+        p_clean = p[valid_shade_mask]
+        T_clean = T[valid_shade_mask]
+        prof_clean = prof[valid_shade_mask]
+
+        # 3. Utilitzem aquestes dades netes NOMÉS per a dibuixar les ombres.
+        #    Això evita que els valors 'NaN' confonguin l'algorisme de rebliment.
         skew.shade_cape(p_clean, T_clean, prof_clean, color='red', alpha=0.2)
         skew.shade_cin(p_clean, T_clean, prof_clean, color='blue', alpha=0.2)
         
-        # Dibuixem la trajectòria de la parcel·la més inestable com la ÚNICA línia principal.
-        # Ara és una línia sòlida i amb una etiqueta més clara.
-        skew.plot(p, mu_prof, 'k', linewidth=3, linestyle='-', label='Trajectòria Parcel·la', 
-                  path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
-    
-    # S'HA ELIMINAT COMPLETAMENT EL DIBUIX DE LA TRAJECTÒRIA DE SUPERFÍCIE (SFC)
-    # --- FI DE LA CORRECCIÓ ---
+        # 4. Finalment, dibuixem la línia negra de la trajectòria utilitzant les dades originals,
+        #    ja que la funció 'plot' sí que sap com gestionar els forats correctament.
+        skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la (SFC)', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+    # <<<--- FI DE LA CORRECCIÓ ---
 
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
     skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
@@ -1705,7 +1705,6 @@ def crear_skewt(p, T, Td, u, v, sfc_prof, mu_prof, params_calc, titol, timestamp
     except Exception as e:
         print(f"Error dibuixant línies de nivell: {e}")
 
-    # La llegenda ara serà més neta i clara
     skew.ax.legend()
     return fig
 
