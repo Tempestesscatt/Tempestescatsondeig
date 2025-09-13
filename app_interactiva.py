@@ -7876,15 +7876,21 @@ def viatjar_a_comarca(nom_comarca):
 
 def ui_portal_viatges_rapids(alertes_totals, comarca_actual):
     """
-    Mostra un panell amb enllaços ràpids a altres comarques amb alertes actives.
+    Mostra un panell amb enllaços ràpids a altres comarques amb alertes actives,
+    filtrant per un llindar de convergència i CAPE significatiu.
     """
-    LLINDAR_CAPE_INTERES = 750  # Considerem una zona "interessant" si el CAPE al focus supera aquest valor
+    # <<<--- NOUS LLINDARS PER A UN FILTRAT MÉS ESTRICTE ---
+    LLINDAR_CAPE_INTERES = 500
+    LLINDAR_CONV_INTERES = 15
 
-    # Filtrem per trobar altres zones interessants (excloent l'actual)
+    # Filtrem per trobar altres zones realment interessants
     zones_interessants = {
         zona: data for zona, data in alertes_totals.items()
-        if data.get('cape', 0) >= LLINDAR_CAPE_INTERES and zona != comarca_actual
+        if data.get('cape', 0) >= LLINDAR_CAPE_INTERES and \
+           data.get('conv', 0) >= LLINDAR_CONV_INTERES and \
+           zona != comarca_actual
     }
+    # --- FI DELS NOUS LLINDARS ---
 
     # Ordenem les zones de més a menys CAPE
     zones_ordenades = sorted(zones_interessants.items(), key=lambda item: item[1]['cape'], reverse=True)
@@ -7899,11 +7905,11 @@ def ui_portal_viatges_rapids(alertes_totals, comarca_actual):
     with st.container(border=True):
         st.markdown("<h5 style='text-align: center;'>🚀 Portal de Viatges Ràpids</h5>", unsafe_allow_html=True)
         if not zones_ordenades:
-            st.info("No hi ha altres focus d'interès actius en aquest moment.")
+            st.info("No hi ha altres focus de tempesta significatius actius en aquest moment.")
         else:
             st.caption("Viatja directament a altres comarques amb potencial de tempesta:")
             cols = st.columns(2)
-            for i, (zona, data) in enumerate(zones_ordenades[:4]): # Mostrem un màxim de 4 per neteja
+            for i, (zona, data) in enumerate(zones_ordenades[:4]): # Mostrem un màxim de 4
                 with cols[i % 2]:
                     st.button(f"{zona} (CAPE: {data['cape']:.0f})", 
                               on_click=viatjar_a_comarca, 
