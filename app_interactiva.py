@@ -7732,8 +7732,8 @@ def crear_llegenda_direccionalitat():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL v3.0: Amb zones de convergència més suaus i
-    textos de diagnòstic nets (sense asteriscos).
+    PESTANYA D'ANÀLISI COMARCAL v4.0: Amb diagnòstic predictiu millorat que
+    explica què esperar a la zona en les properes hores.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -7755,8 +7755,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
         if not comarca_shape.empty and map_data and valor_conv > 10:
             bounds = comarca_shape.total_bounds
-            margin_lon = (bounds[2] - bounds[0]) * 0.3
-            margin_lat = (bounds[3] - bounds[1]) * 0.3
+            margin_lon = (bounds[2] - bounds[0]) * 0.3; margin_lat = (bounds[3] - bounds[1]) * 0.3
             map_extent = [bounds[0] - margin_lon, bounds[2] + margin_lon, bounds[1] - margin_lat, bounds[3] + margin_lat]
 
             lons, lats = map_data['lons'], map_data['lats']
@@ -7774,7 +7773,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                 humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
                 effective_convergence = np.where((convergence >= 10) & humid_mask, convergence, 0)
             
-            # <<<--- CANVI PRINCIPAL AQUÍ: Augmentem el suavitzat per a formes més orgàniques ---
             smoothed_convergence = gaussian_filter(effective_convergence, sigma=5.5)
             smoothed_convergence[smoothed_convergence < 10] = 0
 
@@ -7797,7 +7795,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                         
                         poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
                         if poble_coords and storm_dir_to is not None:
-                            user_lat, user_lon = poble_coords['lat'], poble_coords['lon']
+                            user_lat, user_lon = poble_coords['lat'], poble_coords['lat']
                             distance_km = haversine_distance(user_lat, user_lon, py, px)
                             bearing_to_user = get_bearing(py, px, user_lat, user_lon)
                             is_threat = angular_difference(storm_dir_to, bearing_to_user) <= 45
@@ -7807,20 +7805,18 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
     with col_mapa:
         st.markdown("##### Focus de Convergència a la Zona")
+        # ... (El codi per dibuixar el mapa es manté igual) ...
         plt.style.use('default')
         fig, ax = crear_mapa_base(map_extent if 'map_extent' in locals() else MAP_EXTENT_CAT)
         ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
-
         if max_conv_point is not None:
             fill_levels = [10, 20, 30, 40, 60, 80, 100, 120]
-            cmap = plt.get_cmap('plasma')
-            norm = BoundaryNorm(fill_levels, ncolors=cmap.N, clip=True)
+            cmap = plt.get_cmap('plasma'); norm = BoundaryNorm(fill_levels, ncolors=cmap.N, clip=True)
             ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels, cmap=cmap, norm=norm, alpha=0.75, zorder=3, transform=ccrs.PlateCarree(), extend='max')
             line_levels = [20, 40, 80]
             contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors='black', linestyles='--', linewidths=0.8, alpha=0.7, zorder=4, transform=ccrs.PlateCarree())
             labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
             for label in labels: label.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
-
             px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
             if valor_conv >= 10:
                 if valor_conv >= 100: indicator_color = '#9370DB'
@@ -7828,72 +7824,60 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                 elif valor_conv >= 40: indicator_color = '#FD7E14'
                 elif valor_conv >= 20: indicator_color = '#28A745'
                 else: indicator_color = '#6495ED'
-                
                 path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
                 circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
                 ax.add_patch(circle)
                 ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
-                
                 if storm_dir_to is not None:
-                    dir_rad = np.deg2rad(90 - storm_dir_to)
-                    length = 0.25
+                    dir_rad = np.deg2rad(90 - storm_dir_to); length = 0.25
                     end_x, end_y = px + length * np.cos(dir_rad), py + length * np.sin(dir_rad)
                     ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
-
         poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
         if poble_coords:
-            ax.text(poble_coords['lon'], poble_coords['lat'], '( Tú )\n▼', transform=ccrs.PlateCarree(),
-                    fontsize=10, fontweight='bold', color='black', ha='center', va='bottom', zorder=14,
-                    path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')])
-        
+            ax.text(poble_coords['lon'], poble_coords['lat'], '( Tú )\n▼', transform=ccrs.PlateCarree(), fontsize=10, fontweight='bold', color='black', ha='center', va='bottom', zorder=14, path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')])
         ax.set_title(f"Focus de Convergència a {comarca}", weight='bold', fontsize=12)
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
+        st.pyplot(fig, use_container_width=True); plt.close(fig)
 
     with col_diagnostic:
-        st.markdown("##### Diagnòstic de la Zona")
+        st.markdown("##### Veredicte de la Zona")
         
-        if valor_conv >= 100: nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"Focus de convergència excepcionalment fort ({valor_conv:.0f}). Senyal inequívoca per a temps sever organitzat."
-        elif valor_conv >= 60: nivell_alerta, color_alerta, emoji, descripcio = "Molt Alt", "#DC3545", "🔴", f"Focus de convergència extremadament fort ({valor_conv:.0f}). Senyal molt clara per a la formació imminent de tempestes severes."
-        elif valor_conv >= 40: nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FD7E14", "🟠", f"Focus de convergència forta ({valor_conv:.0f}). Disparador molt eficient; tempestes molt probables."
-        elif valor_conv >= 20: nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#28A745", "🟢", f"Zona de convergència moderada ({valor_conv:.0f}). Pot ser suficient per iniciar tempestes si l'atmosfera és inestable."
-        elif valor_conv >= 10: nivell_alerta, color_alerta, emoji, descripcio = "Present", "#6495ED", "🔵", f"Focus de convergència feble però present ({valor_conv:.0f}). Pot ser un precursor d'activitat si les condicions milloren."
-        else: nivell_alerta, color_alerta, emoji, descripcio = "Inexistent", "#6c757d", "⚪", "No es detecten focus de convergència significatius. El forçament dinàmic és nul."
+        # --- NOU BLOC DE DIAGNÒSTIC PREDICTIU ---
+        mucin = params_calc.get('MUCIN', 0) or 0
+        mucape = params_calc.get('MUCAPE', 0) or 0
+        
+        vered_titol, vered_color, vered_emoji, vered_desc = "", "", "", ""
 
-        if distance_km is not None:
-            # <<<--- TEXTOS CORREGITS SENSE ASTERISCS ---
-            descripcio += f" El focus principal es troba a {distance_km:.0f} km de la teva posició."
-            if is_threat:
-                descripcio += " <span style='color: #DC3545; font-weight: bold;'>S'està desplaçant en la teva direcció!</span>"
-            else:
-                descripcio += " <span style='color: #28A745; font-weight: bold;'>No sembla que es dirigeixi cap a tu.</span>"
+        if valor_conv < 15:
+            vered_titol, vered_color, vered_emoji, vered_desc = "Calma", "#6c757d", "🧘", "No hi ha un mecanisme de dispar prou fort a la zona. El potencial de tempestes és molt baix o nul per a les properes hores, independentment de la inestabilitat."
+        elif mucin < -75:
+            vered_titol, vered_color, vered_emoji, vered_desc = "Potencial Latent (Inhibit)", "#ffc107", "🔒", f"Hi ha un focus de convergència ({valor_conv:.0f}), però una forta 'tapa' (CIN de {mucin:.0f} J/kg) impedeix que les tempestes es desenvolupin. Caldrà veure si l'escalfament o una convergència més forta aconsegueixen trencar-la."
+        elif mucape < 250:
+            vered_titol, vered_color, vered_emoji, vered_desc = "Disparador Sense Combustible", "#6495ED", "💨", f"S'observa una zona de convergència ({valor_conv:.0f}), però l'atmosfera està molt estable i sense energia (CAPE de {mucape:.0f} J/kg). Com a molt, es podrien formar alguns núvols baixos sense més conseqüències."
+        # Si tenim dispar, poca tapa i combustible, comença la previsió seriosa:
+        elif mucape >= 2500 and valor_conv >= 60:
+            vered_titol, vered_color, vered_emoji, vered_desc = "Tempestes Severes", "#DC3545", "🔥", f"Escenari de risc. La combinació d'una convergència extrema ({valor_conv:.0f}) i una energia explosiva ({mucape:.0f} J/kg) és molt favorable. S'espera la formació ràpida de tempestes organitzades, possiblement supercèl·lules, amb risc de calamarsa gran i fortes ratxes de vent."
+        elif mucape >= 1500 and valor_conv >= 40:
+            vered_titol, vered_color, vered_emoji, vered_desc = "Tempestes Fortes", "#FD7E14", "🟠", f"Alt potencial de tempestes. La convergència és notable ({valor_conv:.0f}) i troba una atmosfera molt inestable ({mucape:.0f} J/kg). Són probables xàfecs intensos, tempestes amb calamarsa i fortes ratxes de vent en les properes hores."
+        elif mucape >= 750 and valor_conv >= 20:
+            vered_titol, vered_color, vered_emoji, vered_desc = "Xàfecs i Tronades", "#28A745", "🟢", f"La convergència ({valor_conv:.0f}) i la inestabilitat moderada ({mucape:.0f} J/kg) afavoreixen la formació de xàfecs i tempestes. Vigilar el cel, ja que es poden desenvolupar nuclis localment intensos."
+        else:
+            vered_titol, vered_color, vered_emoji, vered_desc = "Ruixats Aïllats", "#28A745", "🌦️", f"Condicions favorables per a alguns ruixats. La convergència present ({valor_conv:.0f}) sobre una atmosfera amb certa energia ({mucape:.0f} J/kg) pot generar xàfecs dispersos, especialment a zones de muntanya."
         
+        if distance_km is not None:
+            vered_desc += f"<br><br><i>El focus principal es troba a {distance_km:.0f} km de la teva posició. "
+            if is_threat:
+                vered_desc += "<span style='color: #DC3545; font-weight: bold;'>S'està desplaçant en la teva direcció!</span></i>"
+            else:
+                vered_desc += "<span style='color: #28A745; font-weight: bold;'>No sembla que es dirigeixi cap a tu.</span></i>"
+
         st.markdown(f"""
         <div style="text-align: center; padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444;">
-             <span style="font-size: 1.2em; color: #FAFAFA;">{emoji} Potencial de Dispar: <strong style="color:{color_alerta}">{nivell_alerta}</strong></span>
-             <p style="font-size:0.95em; color:#a0a0b0; margin-top:10px; text-align: left;">{descripcio}</p>
+             <span style="font-size: 1.2em; color: #FAFAFA;">{vered_emoji} Previsió: <strong style="color:{vered_color}">{vered_titol}</strong></span>
+             <p style="font-size:0.95em; color:#a0a0b0; margin-top:10px; text-align: left;">{vered_desc}</p>
         </div>
         """, unsafe_allow_html=True)
-
-        st.markdown("##### Validació Atmosfèrica")
-        if not params_calc:
-            st.warning("No hi ha dades de sondeig disponibles per a la validació.")
-        else:
-            mucin = params_calc.get('MUCIN', 0) or 0
-            mucape = params_calc.get('MUCAPE', 0) or 0
-            
-            if mucin < -75: vered_titol, vered_color, vered_emoji, vered_desc = "Inhibida", "#DC3545", "👎", f"Tot i la convergència, una inhibició (CIN) forta de {mucin:.0f} J/kg actua com una 'tapa', dificultant el desenvolupament de tempestes."
-            elif mucape < 250: vered_titol, vered_color, vered_emoji, vered_desc = "Sense Energia", "#FD7E14", "🤔", f"El disparador existeix, però l'atmosfera té molt poc 'combustible' (CAPE), amb només {mucape:.0f} J/kg. Les tempestes, si es formen, seran febles."
-            else: vered_titol, vered_color, vered_emoji, vered_desc = "Efectiva", "#28A745", "👍", f"Condicions favorables! La convergència troba una atmosfera amb energia ({mucape:.0f} J/kg) i inhibició baixa ({mucin:.0f} J/kg)."
-
-            st.markdown(f"""
-            <div style="text-align: center; padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444;">
-                 <span style="font-size: 1.1em; color: #FAFAFA;">{vered_emoji} Veredicte: Convergència <strong style="color:{vered_color}">{vered_titol}</strong></span>
-                 <p style="font-size:0.9em; color:#a0a0b0; margin-top:10px; text-align: left;">{vered_desc}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
         
+        st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
         crear_llegenda_direccionalitat()
         
 
