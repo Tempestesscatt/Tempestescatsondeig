@@ -3723,9 +3723,9 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                                      nivell: int, timestamp_str: str, 
                                      map_extent: List[float]) -> plt.Figure:
     """
-    VERSIÓ 16.0 (ESTIL INTERCALAT): Genera un mapa amb línies de convergència
-    discontínues per a valors baixos i contínues per a valors alts, sense
-    etiquetes numèriques per a un disseny més net.
+    VERSIÓ 17.0 (ESTIL TRAMAT): Genera un mapa amb línies de convergència
+    negres i un farciment de tramado ("hatch") de color a l'interior per a
+    una visualització professional i clara.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3761,28 +3761,32 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=MAP_CONFIG['convergence']['sigma_filter'])
     smoothed_convergence[smoothed_convergence < cfg_thresh['convergence_min']] = 0
 
-    # --- 4. DIBUIX DE LES ISOLÍNIES (ESTIL LÍNIES INTERCALADES) ---
+    # --- 4. DIBUIX DE LES ISOLÍNIES NEGRES I EL FARCIMENT DE TRAMAT ---
     if np.any(smoothed_convergence > 0):
         cfg_conv = MAP_CONFIG['convergence']
 
         for category_name, style in cfg_conv['styles'].items():
-            # Definim l'estil de la línia: discontínua per a 'Floixa', contínua per a la resta.
             line_style = '--' if category_name == 'Floixa' else '-'
             
-            # Mantenim el contorn negre per a la visibilitat
-            linewidth = style['width']
-            outline_width = linewidth + cfg_conv['outline_width_factor']
-            path_effect_line = [path_effects.withStroke(linewidth=outline_width, foreground='black')]
-            
-            # Dibuixem les línies amb el seu color i l'estil corresponent (sense números)
+            # Dibuixem les LÍNIES NEGRES que delimiten les zones
             ax.contour(grid_lon, grid_lat, smoothed_convergence, 
                        levels=style['levels'], 
-                       colors=style['color'], 
-                       linewidths=linewidth, 
-                       linestyles=line_style, # <-- Apliquem l'estil de línia
+                       colors='black', 
+                       linewidths=style['width'], 
+                       linestyles=line_style,
                        zorder=4,
-                       transform=ccrs.PlateCarree(), 
-                       path_effects=path_effect_line)
+                       transform=ccrs.PlateCarree())
+            
+            # Dibuixem el FARCIMENT DE TRAMAT DE COLOR a l'interior
+            ax.contourf(grid_lon, grid_lat, smoothed_convergence, 
+                        levels=style['levels'],
+                        colors='none', # Important: no volem fons de color sòlid
+                        hatches=[style['hatch']], # Apliquem el patró de ratlles/reixa
+                        edgecolor=style['color'], # El color s'aplica a les ratlles del tramado
+                        linewidths=0,
+                        alpha=0.9,
+                        zorder=3,
+                        transform=ccrs.PlateCarree())
 
         max_conv_value = np.max(smoothed_convergence)
         if max_conv_value > 0:
