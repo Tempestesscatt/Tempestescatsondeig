@@ -69,12 +69,23 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
 MAP_CONFIG = {
-    # <<<--- CANVI PRINCIPAL AQUÍ: Nova configuració per a un gradient suau ---
+    # <<<--- CANVI PRINCIPAL AQUÍ: Nova escala de CAPE amb groc a 1000 J/kg ---
     'cape': {
-        'cmap': 'turbo',  # Un mapa de colors continu i perceptivament uniforme
-        'levels_max': 4001, # El valor màxim de la nostra escala
+        'colors': [
+            '#add8e6',  # 0-250: Azul claro
+            '#4682b4',  # 250-500: Azul medio
+            '#98fb98',  # 500-750: Verde claro
+            '#2e8b57',  # 750-1000: Verde oscuro
+            '#ffff00',  # 1000-1500: AMARILLO
+            '#ffd700',  # 1500-2000: Naranja claro
+            '#ff8c00',  # 2000-2500: Naranja oscuro
+            '#ff0000',  # 2500-3000: Rojo
+            '#dc143c',  # 3000-3500: Rojo oscuro
+            '#c71585'   # 3500-4001: Magenta
+        ],
+        'levels': [0, 250, 500, 750, 1000, 1500, 2000, 2500, 3000, 3500, 4001],
         'cbar_ticks': [0, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000],
-        'alpha': 0.70 # Una transparència una mica menor per a colors més rics
+        'alpha': 0.75
     },
     # --- FI DEL CANVI ---
     'convergence': {
@@ -100,7 +111,6 @@ MAP_CONFIG = {
         'dewpoint_mid_level': 12,
     }
 }
-
 
 
 
@@ -3719,9 +3729,8 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                                      nivell: int, timestamp_str: str, 
                                      map_extent: List[float]) -> plt.Figure:
     """
-    VERSIÓ 21.0 (GRADIENT SUAU): Genera un mapa amb un farciment de CAPE suau
-    i continu per a una millor visualització, mantenint les línies de
-    convergència netes i clares.
+    VERSIÓ 22.0 (CAPE SIGNIFICATIU): Utilitza una escala de colors de CAPE
+    que ressalta els valors superiors a 1000 J/kg amb colors grocs i vermells.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3735,22 +3744,17 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_cape = np.nan_to_num(griddata((lons, lats), cape_data, (grid_lon, grid_lat), 'linear'))
 
-    # --- 2. DIBUIX DEL CAPE DE FONS (ESTIL GRADIENT SUAU) ---
+    # --- 2. DIBUIX DEL CAPE DE FONS (AMB NOVA ESCALA DISCRETA) ---
     cfg_cape = MAP_CONFIG['cape']
-    # Creem molts nivells per simular un gradient continu
-    cape_levels_smooth = np.linspace(0, cfg_cape['levels_max'], 100)
-    cmap_cape_smooth = plt.get_cmap(cfg_cape['cmap'])
+    cmap_cape = ListedColormap(cfg_cape['colors'])
+    norm_cape = BoundaryNorm(cfg_cape['levels'], ncolors=cmap_cape.N, clip=True)
     
-    # Utilitzem contourf per a un dibuix suau i interpolat
-    cape_fill = ax.contourf(grid_lon, grid_lat, grid_cape, 
-                            levels=cape_levels_smooth, 
-                            cmap=cmap_cape_smooth,
-                            alpha=cfg_cape['alpha'], 
-                            zorder=2, 
-                            transform=ccrs.PlateCarree(),
-                            extend='max')
+    # Tornem a pcolormesh per a un control precís dels colors per nivell
+    cape_mesh = ax.pcolormesh(grid_lon, grid_lat, grid_cape, 
+                               cmap=cmap_cape, norm=norm_cape, 
+                               alpha=cfg_cape['alpha'], zorder=2, transform=ccrs.PlateCarree())
     
-    cbar_cape = fig.colorbar(cape_fill, ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=cfg_cape['cbar_ticks'])
+    cbar_cape = fig.colorbar(cape_mesh, ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=cfg_cape['cbar_ticks'])
     cbar_cape.set_label("CAPE (J/kg) - 'Combustible'")
     cbar_cape.ax.tick_params(labelsize=8)
 
