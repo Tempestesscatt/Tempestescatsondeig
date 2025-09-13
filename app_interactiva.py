@@ -80,14 +80,12 @@ MAP_CONFIG = {
         'alpha': 0.75
     },
     'convergence': {
-        # <<<--- CANVI PRINCIPAL AQUÍ: S'afegeix un patró de tramado (hatch) per a cada nivell ---
         'styles': {
-            'Floixa':   {'levels': [10, 20, 30, 40], 'color': '#00FF00', 'width': 1.2, 'hatch': '/'},
-            'Moderada': {'levels': [50, 60, 70],     'color': '#FFFF00', 'width': 1.6, 'hatch': '//'},
-            'Forta':    {'levels': [80, 90, 100, 110], 'color': '#FF0000', 'width': 2.0, 'hatch': '+'},
-            'Extrema':  {'levels': [120, 130, 140, 150], 'color': '#FF00FF', 'width': 2.4, 'hatch': '++'}
+            'Floixa':   {'levels': [10, 20, 30, 40], 'color': '#00FF00', 'width': 1.2},
+            'Moderada': {'levels': [50, 60, 70],     'color': '#FFFF00', 'width': 1.6},
+            'Forta':    {'levels': [80, 90, 100, 110], 'color': '#FF0000', 'width': 2.0},
+            'Extrema':  {'levels': [120, 130, 140, 150], 'color': '#FF00FF', 'width': 2.4}
         },
-        # --- FI DEL CANVI ---
         'sigma_filter': 2.5
     },
     'streamlines': {
@@ -3721,9 +3719,9 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                                      nivell: int, timestamp_str: str, 
                                      map_extent: List[float]) -> plt.Figure:
     """
-    VERSIÓ 17.0 (ESTIL TRAMAT): Genera un mapa amb línies de convergència
-    negres i un farciment de tramado ("hatch") de color a l'interior per a
-    una visualització professional i clara.
+    VERSIÓ 18.0 (FARCIMENT SUAU): Genera un mapa amb un farciment de color molt
+    transparent per a la convergència, delimitat per línies negres sòlides o
+    discontínues per a un acabat professional.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3759,14 +3757,28 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=MAP_CONFIG['convergence']['sigma_filter'])
     smoothed_convergence[smoothed_convergence < cfg_thresh['convergence_min']] = 0
 
-    # --- 4. DIBUIX DE LES ISOLÍNIES NEGRES I EL FARCIMENT DE TRAMAT ---
+    # --- 4. DIBUIX DE LA CONVERGÈNCIA AMB FARCIMENT SUAU I LÍNIES NEGRES ---
     if np.any(smoothed_convergence > 0):
         cfg_conv = MAP_CONFIG['convergence']
 
+        # Creem una paleta de colors completa per al farciment suau
+        all_levels = [10] + [lvl for style in cfg_conv['styles'].values() for lvl in style['levels']]
+        all_colors = [style['color'] for style in cfg_conv['styles'].values() for _ in style['levels']]
+        cmap_fill = ListedColormap(all_colors)
+        norm_fill = BoundaryNorm(all_levels, ncolors=cmap_fill.N, clip=True)
+
+        # Dibuixem el FARCIMENT DE COLOR SUAU I GRADUAL
+        ax.contourf(grid_lon, grid_lat, smoothed_convergence,
+                    levels=all_levels,
+                    cmap=cmap_fill,
+                    norm=norm_fill,
+                    alpha=0.3,  # <-- MOLT TRANSPARENT ("MEGA SUPER FLUIX")
+                    zorder=3,
+                    transform=ccrs.PlateCarree())
+
+        # Dibuixem les LÍNIES NEGRES per sobre per delimitar les zones
         for category_name, style in cfg_conv['styles'].items():
             line_style = '--' if category_name == 'Floixa' else '-'
-            
-            # Dibuixem les LÍNIES NEGRES que delimiten les zones
             ax.contour(grid_lon, grid_lat, smoothed_convergence, 
                        levels=style['levels'], 
                        colors='black', 
@@ -3774,17 +3786,6 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                        linestyles=line_style,
                        zorder=4,
                        transform=ccrs.PlateCarree())
-            
-            # Dibuixem el FARCIMENT DE TRAMAT DE COLOR a l'interior
-            ax.contourf(grid_lon, grid_lat, smoothed_convergence, 
-                        levels=style['levels'],
-                        colors='none', # Important: no volem fons de color sòlid
-                        hatches=[style['hatch']], # Apliquem el patró de ratlles/reixa
-                        edgecolor=style['color'], # El color s'aplica a les ratlles del tramado
-                        linewidths=0,
-                        alpha=0.9,
-                        zorder=3,
-                        transform=ccrs.PlateCarree())
 
         max_conv_value = np.max(smoothed_convergence)
         if max_conv_value > 0:
