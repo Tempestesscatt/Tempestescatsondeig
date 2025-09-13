@@ -2632,19 +2632,26 @@ def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp
 
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None):
     """
-    Versió Final amb Lògica de Context:
-    - Comprova si la zona d'amenaça ja és la zona que s'està analitzant.
-    - Si és així, mostra un botó desactivat amb un missatge informatiu.
-    - Si no, mostra el botó interactiu per "viatjar" a la nova zona.
+    Versió Final amb Lògica de Context i Desempaquetat de Dades Corregit.
+    - Aquesta versió desempaqueta correctament els 8 valors retornats per `processar_dades_sondeig`.
+    - Passa els paràmetres correctes a `crear_skewt`.
     """
     if data_tuple:
+        # Ara 'sounding_data' conté 8 elements
         sounding_data, params_calculats = data_tuple
-        p, T, Td, u, v, heights, prof = sounding_data
+        
+        # <<<--- LÍNIA CORREGIDA: Ara desempaquetem 8 valors correctament ---
+        p, T, Td, u, v, heights, sfc_prof, mu_prof = sounding_data
         
         col1, col2 = st.columns(2, gap="large")
         with col1:
             zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 800 hPa)")
-            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=zoom_capa_baixa)
+            
+            # La crida a crear_skewt ja era correcta i li passa els paràmetres que necessita
+            fig_skewt = crear_skewt(p, T, Td, u, v, sfc_prof, mu_prof, params_calculats, 
+                                    f"Sondeig Vertical - {poble_sel}", timestamp_str, 
+                                    zoom_capa_baixa=zoom_capa_baixa)
+            
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             with st.container(border=True):
@@ -2655,20 +2662,14 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
 
-            # <<-- NOU BLOC DE LÒGICA AMB COMPROVACIÓ DE CONTEXT -->>
             if avis_proximitat and isinstance(avis_proximitat, dict):
-                # Sempre mostrem el missatge d'avís primer
                 st.warning(f"⚠️ **AVÍS DE PROXIMITAT:** {avis_proximitat['message']}")
-                
-                # Comprovem si el millor punt d'anàlisi és el que ja estem veient
                 if avis_proximitat['target_city'] == poble_sel:
-                    # Si és així, mostrem un botó desactivat i informatiu
                     st.button("📍 Ja ets a la millor zona convergent d'anàlisi, mira si hi ha MU/SBCAPE! I poc MU/SBCIN!",
                               help="El punt d'anàlisi més proper a l'amenaça és la localitat que ja estàs consultant.",
                               use_container_width=True,
                               disabled=True)
                 else:
-                    # Si no, mostrem el botó interactiu de sempre
                     tooltip_text = f"Viatjar a {avis_proximitat['target_city']}, el punt d'anàlisi més proper al nucli de convergència (Força: {avis_proximitat['conv_value']:.0f})."
                     st.button("🛰️ Analitzar Zona d'Amenaça", 
                               help=tooltip_text, 
@@ -2677,7 +2678,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
                               on_click=canviar_poble_analitzat,
                               args=(avis_proximitat['target_city'],)
                              )
-            # <<-- FI DEL NOU BLOC -->>
             
             st.markdown("##### Radar de Precipitació en Temps Real")
             radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
@@ -2685,7 +2685,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             st.components.v1.html(html_code, height=410)
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
-
+        
 def debug_convergence_calculation(map_data, llista_ciutats):
     """
     Funció de depuració per imprimir l'estat dels càlculs de convergència pas a pas.
