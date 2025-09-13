@@ -3715,9 +3715,8 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, cape_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ 9.0 (RENDERITZAT D'ISOLÍNIES PROFESSIONALS): La convergència es mostra
-    únicament com a isolínies. El color de cada línia varia segons la seva
-    intensitat, seguint una paleta de colors personalitzada. Sense farciment.
+    VERSIÓ 10.0 (PALETA CAPE PROFESSIONAL): Renderitza el CAPE de fons utilitzant
+    la paleta de colors i nivells d'alta definició proporcionada.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3731,13 +3730,28 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     grid_cape = griddata((lons, lats), cape_data, (grid_lon, grid_lat), 'linear')
     grid_cape = np.nan_to_num(grid_cape)
 
-    # --- 2. DIBUIX DEL CAPE DE FONS (Sense canvis) ---
-    cape_colors_professional = ['#00A0F0', '#00C8F0', '#00F0F0', '#00FFC8', '#00FF64', '#64FF00', '#C8FF00', '#FFFF00', '#FFE000', '#FFC000', '#FFA000', '#FF8000', '#FF6000', '#FF4040', '#FF0000', '#E00000', '#C00000', '#A00040', '#C00080', '#E000C0', '#FF00FF', '#FF80FF', '#FFC0FF', '#FFFFFF', '#C0C0C0', '#808080', '#404040', '#000000']
-    cape_levels_professional = [600, 800, 1000, 1200, 1400, 1600, 1800, 2000, 2200, 2400, 2800, 3200, 3600, 4500, 6000, 7000]
-    cmap_cape_prof = ListedColormap(cape_colors_professional[:len(cape_levels_professional)-1])
-    norm_cape_prof = BoundaryNorm(cape_levels_professional, ncolors=cmap_cape_prof.N, clip=True)
-    cape_mesh = ax.pcolormesh(grid_lon, grid_lat, grid_cape, cmap=cmap_cape_prof, norm=norm_cape_prof, alpha=0.6, zorder=2, transform=ccrs.PlateCarree())
-    cbar_cape = fig.colorbar(cape_mesh, ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=[1000, 2000, 3000, 4500, 6000])
+    # --- 2. DIBUIX DEL CAPE AMB LA NOVA PALETA PROFESSIONAL ---
+    # Definim els colors i nivells exactes de la imatge que has proporcionat
+    cape_colors_v2 = [
+        '#2E4598', '#3765AD', '#3F85C2', '#4AB5D8', '#53C9C6', '#50B69B', 
+        '#4CA26F', '#488D44', '#73AC39', '#A5C735', '#DDE330', '#FFF22C', 
+        '#FBC928', '#F8A124', '#F57A20', '#F2531C', '#EF2D18', '#E51D14', 
+        '#D01E15', '#BB1E16', '#A51E17', '#901E18', '#7B1F19', '#661F1A'
+    ]
+    cape_levels_v2 = [0, 150, 300, 450, 600, 750, 900, 1050, 1200, 1350, 1500, 
+                      1650, 1800, 1950, 2100, 2250, 2400, 2550, 2700, 2850, 
+                      3000, 3150, 3300, 3450, 3601]
+
+    cmap_cape_v2 = ListedColormap(cape_colors_v2)
+    norm_cape_v2 = BoundaryNorm(cape_levels_v2, ncolors=cmap_cape_v2.N, clip=True)
+    
+    cape_mesh = ax.pcolormesh(grid_lon, grid_lat, grid_cape, 
+                               cmap=cmap_cape_v2, norm=norm_cape_v2, 
+                               alpha=0.65, zorder=2, transform=ccrs.PlateCarree())
+    
+    # Seleccionem uns quants nivells per a la barra de color per evitar que estigui massa plena
+    cbar_ticks = [0, 450, 900, 1350, 1800, 2250, 2700, 3150, 3600]
+    cbar_cape = fig.colorbar(cape_mesh, ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=cbar_ticks)
     cbar_cape.set_label("CAPE (J/kg) - 'Combustible'")
     cbar_cape.ax.tick_params(labelsize=8)
 
@@ -3754,34 +3768,23 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
     smoothed_convergence[smoothed_convergence < 10] = 0
 
-    # --- 4. DIBUIX NOMÉS DE LES ISOLÍNIES DE CONVERGÈNCIA ---
+    # --- 4. DIBUIX DE LES ISOLÍNIES (Sense canvis) ---
     if np.any(smoothed_convergence > 0):
-        # 1. Creem la nova paleta de colors per a les línies
-        colors_iso = [
-            '#2E8B57', '#3CB371', '#9ACD32', '#FFD700', '#FFA500', 
-            '#FF4500', '#DC143C', '#B22222', '#8E44AD', '#DA70D6', '#DDA0DD'
-        ]
-        cmap_iso = ListedColormap(colors_iso)
+        line_styles = {
+            'Floixa': {'levels': [10, 20, 30, 40], 'color': '#28a745', 'width': 1.2},
+            'Moderada': {'levels': [50, 60, 70], 'color': '#FFD700', 'width': 1.8},
+            'Forta': {'levels': [80, 90, 100, 110], 'color': '#DC3545', 'width': 2.4},
+            'Extrema': {'levels': [120, 130, 140, 150], 'color': '#9370DB', 'width': 3.0}
+        }
+        for style in line_styles.values():
+            contours_conv = ax.contour(grid_lon, grid_lat, smoothed_convergence,
+                                       levels=style['levels'], colors=style['color'],
+                                       linewidths=style['width'], zorder=4,
+                                       transform=ccrs.PlateCarree())
+            labels_conv = ax.clabel(contours_conv, inline=True, fontsize=8, fmt='%1.0f')
+            for label in labels_conv:
+                label.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='white')])
         
-        # 2. Definim els nivells de les isolínies que volem dibuixar
-        line_levels = np.arange(10, 151, 10) # Dibuixem una línia cada 10 unitats
-        
-        # 3. Dibuixem les línies. Matplotlib s'encarregarà d'assignar el color correcte a cada línia.
-        contours_conv = ax.contour(grid_lon, grid_lat, smoothed_convergence,
-                                   levels=line_levels,
-                                   cmap=cmap_iso, # <-- Apliquem la nova paleta de colors
-                                   linewidths=1.5,
-                                   zorder=4,
-                                   transform=ccrs.PlateCarree())
-        
-        # 4. Afegim les etiquetes amb la mida de font reduïda
-        labels_conv = ax.clabel(contours_conv, inline=True, 
-                                fontsize=7, # <-- Mida de la font més petita
-                                fmt='%1.0f')
-        for label in labels_conv:
-            label.set_path_effects([path_effects.withStroke(linewidth=2.0, foreground='white')])
-        
-        # Indicador de força màxima (es manté igual)
         max_conv_value = np.max(smoothed_convergence)
         if max_conv_value > 0:
             text_max_conv = ax.text(0.02, 0.02, f"Convergència Màx: {max_conv_value:.0f}",
@@ -3789,10 +3792,8 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
                                     color='white', fontweight='bold', va='bottom', ha='left', zorder=12)
             text_max_conv.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
-
-    # --- 5. STREAMLINES, TÍTOL I ETIQUETES (Sense canvis) ---
+    # --- 5. STREAMLINES I TÍTOL (Sense canvis) ---
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.4, density=5.5, arrowsize=0.4, zorder=5, transform=ccrs.PlateCarree())
-
     ax.set_title(f"CAPE (fons), Convergència (línies) i Vent a {nivell}hPa\n{timestamp_str}",
                  weight='bold', fontsize=14)
     afegir_etiquetes_ciutats(ax, map_extent)
