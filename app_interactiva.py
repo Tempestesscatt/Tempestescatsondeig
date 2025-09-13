@@ -45,6 +45,8 @@ import geojsoncontour
 from matplotlib.patches import Polygon
 from matplotlib.patches import Polygon, Wedge
 from matplotlib.patches import Polygon, Wedge, Circle # Afegeix Circle aquí
+from typing import List, Tuple, Dict, Any  # <-- IMPORTACIÓ CORREGIDA
+import matplotlib.lines as mlines  
 
 
 
