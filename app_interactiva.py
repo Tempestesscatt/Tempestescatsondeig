@@ -7333,10 +7333,12 @@ def ui_bulleti_inteligent(bulleti_data):
 
 
 
+
 def generar_bulleti_inteligent(params_calc, poble_sel):
     """
-    Algoritme intel·ligent v4.0: Genera un butlletí de risc amb una anàlisi
-    detallada de l'alçada del LFC per a determinar la facilitat d'iniciació.
+    Algoritme intel·ligent v5.0: Genera un butlletí de risc que analitza
+    el balanç entre la força del disparador (Convergència) i el "cost energètic"
+    per iniciar la tempesta (CIN + LFC).
     """
     # --- 1. Extracció segura de paràmetres ---
     mucape = params_calc.get('MUCAPE', 0) or 0
@@ -7350,17 +7352,27 @@ def generar_bulleti_inteligent(params_calc, poble_sel):
     nivell_conv = next((int(k.split('_')[1].replace('hPa','')) for k in params_calc if k.startswith('CONV_')), 925)
     conv = params_calc.get(f'CONV_{nivell_conv}hPa', 0) or 0
 
-    # --- 2. Condicions de Veto ---
+    # --- 2. Anàlisi del Balanç Energètic (Disparador vs. Inhibició) ---
+    # Calculem el "cost" per iniciar la tempesta. Més CIN i LFC més alt = més cost.
+    cost_energetic = abs(mucin) + (lfc_hgt / 100) # Simple però efectiu
+    
+    # Calculem la "força" del disparador. La convergència és el factor principal.
+    força_disparador = conv * 5
+
+    # Condició de veto principal: No hi ha energia.
     if mucape < 300:
         if conv >= 15 and rh_baixa > 70:
             return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Intent de Cúmuls", "resum": "Hi ha un mecanisme de dispar i humitat, però l'atmosfera no té prou energia. Es poden formar estrats densos o cúmuls que no arribaran a ser tempestes.", "fenomens_previstos": []}
         else:
             return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Situació Estable", "resum": "L'atmosfera no té prou energia (CAPE baix) per a la formació de tempestes.", "fenomens_previstos": []}
-    if mucin < -100 and conv < 25:
-        return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Atmosfera Tapada", "resum": f"Tot i que pot haver-hi energia, una forta inversió tèrmica (CIN de {mucin:.0f}) actua com una tapa, impedint el desenvolupament.", "fenomens_previstos": []}
 
-    # --- 3. Classificació del Potencial de Tempesta ---
-    fenomens = []; resum = ""
+    # Nova condició de veto: El disparador no té prou força per superar el cost.
+    if força_disparador < cost_energetic:
+        return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Potencial Latent (Falta Disparador)", "resum": f"Tot i que hi ha energia ({mucape:.0f} J/kg), el disparador (Conv. {conv:.0f}) no té prou força per vèncer la inhibició atmosfèrica (CIN de {mucin:.0f} i LFC a {lfc_hgt:.0f}m). Les tempestes no s'iniciaran.", "fenomens_previstos": []}
+
+    # --- 3. Si el disparador és efectiu, classifiquem el potencial de tempesta ---
+    fenomens = []
+    resum = ""
     
     if bwd_6km >= 35 and mucape >= 1500 and srh_1km >= 150:
         nivell_risc = {"text": "Extrem", "color": "#9370DB"}; titol = "Potencial de Supercèl·lules"
@@ -7385,19 +7397,7 @@ def generar_bulleti_inteligent(params_calc, poble_sel):
     if mucape > 800 and "Activitat elèctrica" not in "".join(fenomens):
         fenomens.insert(0, "Activitat elèctrica freqüent")
 
-    # --- 4. Modificador de Resum basat en el LFC (Lògica Detallada) ---
-    if lfc_hgt < 1000:
-        resum += " La iniciació serà immediata i explosiva (LFC molt baix)."
-    elif lfc_hgt < 1500:
-        resum += " La iniciació de les tempestes serà fàcil (LFC baix)."
-    elif lfc_hgt < 2000:
-        resum += " A les tempestes els hi podria costar una mica arrancar (LFC normal)."
-    elif lfc_hgt < 2500:
-        resum += " La iniciació es preveu complicada a causa d'un LFC alt."
-    elif lfc_hgt < 3000:
-        resum += " Tot i l'energia, la iniciació és difícil a causa d'un LFC molt alt."
-    else:
-        resum += " La iniciació de tempestes és molt improbable a causa d'un LFC extremadament alt."
+    resum += " El disparador és prou fort per a iniciar la convecció."
         
     return {"nivell_risc": nivell_risc, "titol": titol, "resum": resum, "fenomens_previstos": fenomens}
 
