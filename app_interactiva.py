@@ -1253,12 +1253,17 @@ def calcular_mlcape_robusta(p, T, Td):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Completa (v36.0 - Suport Multi-Trajectòria).
-    - Calcula i retorna tant el perfil de superfície (sfc_prof) com el més inestable (mu_prof).
+    Versió Definitiva i Completa (v35.0).
+    - Neteja i ordena el perfil atmosfèric.
+    - Calcula un ampli rang de paràmetres termodinàmics i de cisallament.
+    - Inclou l'anàlisi d'humitat en 4 capes (fins a 100 hPa).
+    - Calcula el T-Td Spread i la velocitat del vent en nivells clau per als diagnòstics.
+    - Està dissenyada per ser extremadament robusta davant de dades incompletes.
     """
     if len(p_profile) < 4:
         return None, "Perfil atmosfèric massa curt."
 
+    # 1. Converteix les llistes a arrays de MetPy amb unitats
     p = np.array(p_profile) * units.hPa
     T = np.array(T_profile) * units.degC
     Td = np.array(Td_profile) * units.degC
@@ -1266,37 +1271,36 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     v = np.array(v_profile) * units('m/s')
     heights = np.array(h_profile) * units.meter
 
+    # 2. Neteja de dades: Elimina qualsevol nivell on falti una dada essencial
     valid_mask = np.isfinite(p.m) & np.isfinite(T.m) & np.isfinite(Td.m) & np.isfinite(u.m) & np.isfinite(v.m)
     p, T, Td, u, v, heights = p[valid_mask], T[valid_mask], Td[valid_mask], u[valid_mask], v[valid_mask], heights[valid_mask]
 
     if len(p) < 3:
         return None, "No hi ha prou dades vàlides després de la neteja."
 
+    # 3. Ordena el perfil per pressió (de major a menor)
     sort_idx = np.argsort(p.m)[::-1]
     p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
     
+    # Diccionari per emmagatzemar tots els paràmetres calculats
     params_calc = {}
-    heights_agl = heights - heights[0]
+    heights_agl = heights - heights[0] # Altures sobre el nivell del terra
 
+    # El pany (lock) és una bona pràctica per si s'executa en entorns amb múltiples fils
     with parcel_lock:
-        # --- CÀLCUL DE LES DUES TRAJECTÒRIES (SFC i MU) ---
-        sfc_prof, mu_prof = None, None
+        # --- Càlculs de la Trajectòria de la Parcel·la ---
+        sfc_prof, ml_prof = None, None
         try: 
             sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
         except Exception: 
-            return None, "Error crític: No s'ha pogut calcular el perfil de superfície."
+            return None, "Error crític: No s'ha pogut calcular ni el perfil de superfície."
         
         try: 
-            # Calculem la parcel·la MÉS INESTABLE (la que genera el MUCAPE)
-            # El paràmetre 'depth' indica fins on buscar (els primers 300hPa)
-            mu_p, mu_T, mu_Td, _ = mpcalc.most_unstable_parcel(p, T, Td, depth=300 * units.hPa)
-            # Calculem la trajectòria d'aquesta parcel·la
-            mu_prof = mpcalc.parcel_profile(p, mu_T, mu_Td).to('degC')
+            _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
         except Exception: 
-            mu_prof = None # Si falla, continuarem només amb la de superfície
+            ml_prof = None
             
-        # El perfil principal per a l'ombrejat serà el més inestable si existeix
-        main_prof = mu_prof if mu_prof is not None else sfc_prof
+        main_prof = ml_prof if ml_prof is not None else sfc_prof
 
         # --- Paràmetres d'Humitat i Temperatura per Capes ---
         try: 
@@ -1342,10 +1346,13 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             except: 
                 params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
 
-        try:
-            mlcape, mlcin = calcular_mlcape_robusta(p, T, Td)
-            params_calc['MLCAPE'] = mlcape; params_calc['MLCIN'] = mlcin
-        except:
+        if ml_prof is not None:
+            try:
+                mlcape, mlcin = mpcalc.cape_cin(p, T, Td, ml_prof)
+                params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
+            except: 
+                params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
+        else:
             params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
 
         if main_prof is not None:
@@ -1429,8 +1436,8 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             except: 
                 params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
         
-    # Retorna les dades processades i el diccionari de paràmetres, INCLOENT LES DUES TRAJECTÒRIES
-    return ((p, T, Td, u, v, heights, sfc_prof, mu_prof), params_calc), None
+    # Retorna les dades processades i el diccionari de paràmetres
+    return ((p, T, Td, u, v, heights, sfc_prof), params_calc), None
 
 
 
@@ -1596,16 +1603,14 @@ def debug_calculos(p, T, Td, u, v, heights, prof):
 
     
 def crear_mapa_base(map_extent, projection=ccrs.PlateCarree()):
-    """
-    Versió amb fons neutral per a un estil GIS professional.
-    """
     fig, ax = plt.subplots(figsize=(8, 8), dpi=100, subplot_kw={'projection': projection})
     ax.set_extent(map_extent, crs=ccrs.PlateCarree())
     
-    # --- CANVI CLAU: Fons del terreny més suau i professional ---
-    ax.add_feature(cfeature.LAND, facecolor="#EAE5D9", zorder=0) 
+    # --- LÍNIA MODIFICADA AQUÍ ---
+    ax.add_feature(cfeature.LAND, facecolor="#D4E6B5", zorder=0) # Canviat a color verd
+    # ---------------------------------
     
-    ax.add_feature(cfeature.OCEAN, facecolor='#B0C4DE', zorder=0)
+    ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
     ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
     if projection != ccrs.PlateCarree():
@@ -1707,6 +1712,7 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str, zoom_ca
 
     skew.ax.legend()
     return fig
+
 
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol, timestamp_str):
     """
@@ -2632,19 +2638,13 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
     - Si no, mostra el botó interactiu per "viatjar" a la nova zona.
     """
     if data_tuple:
-        # Ara 'sounding_data' conté 8 elements: p, T, Td, u, v, heights, sfc_prof, mu_prof
         sounding_data, params_calculats = data_tuple
-        p, T, Td, u, v, heights, sfc_prof, mu_prof = sounding_data
+        p, T, Td, u, v, heights, prof = sounding_data
         
         col1, col2 = st.columns(2, gap="large")
         with col1:
             zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 800 hPa)")
-            
-            # <<<--- LÍNIA MODIFICADA: Passem les dues trajectòries a la funció de dibuix ---
-            fig_skewt = crear_skewt(p, T, Td, u, v, sfc_prof, mu_prof, params_calculats, 
-                                    f"Sondeig Vertical - {poble_sel}", timestamp_str, 
-                                    zoom_capa_baixa=zoom_capa_baixa)
-            
+            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=zoom_capa_baixa)
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             with st.container(border=True):
@@ -2655,15 +2655,20 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
 
-            # ... (la resta de la funció amb la lògica dels botons i el radar es manté igual) ...
+            # <<-- NOU BLOC DE LÒGICA AMB COMPROVACIÓ DE CONTEXT -->>
             if avis_proximitat and isinstance(avis_proximitat, dict):
+                # Sempre mostrem el missatge d'avís primer
                 st.warning(f"⚠️ **AVÍS DE PROXIMITAT:** {avis_proximitat['message']}")
+                
+                # Comprovem si el millor punt d'anàlisi és el que ja estem veient
                 if avis_proximitat['target_city'] == poble_sel:
+                    # Si és així, mostrem un botó desactivat i informatiu
                     st.button("📍 Ja ets a la millor zona convergent d'anàlisi, mira si hi ha MU/SBCAPE! I poc MU/SBCIN!",
                               help="El punt d'anàlisi més proper a l'amenaça és la localitat que ja estàs consultant.",
                               use_container_width=True,
                               disabled=True)
                 else:
+                    # Si no, mostrem el botó interactiu de sempre
                     tooltip_text = f"Viatjar a {avis_proximitat['target_city']}, el punt d'anàlisi més proper al nucli de convergència (Força: {avis_proximitat['conv_value']:.0f})."
                     st.button("🛰️ Analitzar Zona d'Amenaça", 
                               help=tooltip_text, 
@@ -2672,6 +2677,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
                               on_click=canviar_poble_analitzat,
                               args=(avis_proximitat['target_city'],)
                              )
+            # <<-- FI DEL NOU BLOC -->>
             
             st.markdown("##### Radar de Precipitació en Temps Real")
             radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
@@ -2679,7 +2685,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             st.components.v1.html(html_code, height=410)
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
-        
 
 def debug_convergence_calculation(map_data, llista_ciutats):
     """
@@ -3784,15 +3789,15 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ D'ALTA FIDELITAT v4.0 (Etiquetes Minúscules)
-    - Renderitzat suavitzat amb filtre Gaussiano.
-    - Paleta de colors personalitzada per a la convergència.
-    - Isòlines d'alta visibilitat amb efecte d'ombra i etiquetes molt petites.
+    VERSIÓ AMB RENDERITZAT SUAVITZAT I ISOLÍNIES PROFESSIONALS.
+    - Suavitza els nuclis de convergència amb un filtre Gaussiano per a un aspecte més natural.
+    - Dibuixa línies de contorn discontinuades per a valors baixos (15-30) i sòlides per a valors alts (>30).
+    - Utilitza una paleta de colors i nivells millorada per al farciment.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
     
-    # --- 1. INTERPOLACIÓ I CÀLCULS (Sense canvis) ---
+    # --- 1. INTERPOLACIÓ A GRAELLA D'ALTA RESOLUCIÓ (Sense canvis) ---
     grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 300), np.linspace(map_extent[2], map_extent[3], 300))
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'linear')
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'linear')
@@ -3800,65 +3805,74 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     
-    # --- 2. MAPA DE FONS I STREAMLINES (Sense canvis) ---
-    colors_wind = ['#d2d2f0', '#b4b4e6', '#78c8c8', '#50b48c', '#32cd32', '#64ff64', '#ffff00', '#f5d264', '#e6b478', '#d7788c', '#ff69b4', '#9f78dc']
+    # --- 2. MAPA DE VELOCITAT DEL VENT I STREAMLINES (Sense canvis) ---
+    colors_wind = [
+        '#d2d2f0', '#b4b4e6', '#78c8c8', '#50b48c', '#32cd32', '#64ff64',
+        '#ffff00', '#f5d264', '#e6b478', '#d7788c', '#ff69b4', '#9f78dc'
+    ]
     speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]
-    custom_cmap_wind = ListedColormap(colors_wind)
-    norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap_wind.N, clip=True)
-    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap_wind, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree(), alpha=0.6)
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='#404040', linewidth=0.4, density=6.5, arrowsize=0.3, zorder=4, transform=ccrs.PlateCarree())
+    custom_cmap = ListedColormap(colors_wind)
+    norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree(), alpha=0.7)
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.5, density=6.5, arrowsize=0.3, zorder=4, transform=ccrs.PlateCarree())
     
-    # --- 3. CÀLCUL I SUAVITZAT DE LA CONVERGÈNCIA (Sense canvis) ---
+    # --- 3. CÀLCUL, FILTRATGE I SUAVITZAT DE CONVERGÈNCIA (CANVI CLAU) ---
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
         convergence[np.isnan(convergence)] = 0
         DEWPOINT_THRESHOLD = 14 if nivell >= 950 else 12
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
-        effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0)
-    
+        
+        # Llindar de detecció rebaixat a 15
+        effective_convergence = np.where((convergence >= 15) & (humid_mask), convergence, 0)
+
+    # <<<--- NOU: APLIQUEM EL FILTRE GAUSSIANO PER SUAVITZAR ---
+    # El valor de 'sigma' controla la intensitat del suavitzat. Més alt = més suau.
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
+    # Tornem a filtrar per eliminar el "soroll" de valors molt baixos que el suavitzat podria escampar.
     smoothed_convergence[smoothed_convergence < 15] = 0
     
-    # --- 4. DIBUIX DE LA CONVERGÈNCIA (FARCIMENT AMB LLEGENDA PERSONALITZADA) ---
+    # --- 4. DIBUIX DE LA CONVERGÈNCIA AMB NOU ESTIL ---
     if np.any(smoothed_convergence > 0):
-        fill_levels = [25, 30, 50, 100, 150]
-        colors_conv = ['#28a745', '#ffc107', '#dc3545', '#9370DB']
-        cmap_conv = ListedColormap(colors_conv)
-        norm_conv = BoundaryNorm(fill_levels, ncolors=cmap_conv.N, clip=True)
-
-        ax.contourf(grid_lon, grid_lat, smoothed_convergence,
-                    levels=fill_levels, cmap=cmap_conv, norm=norm_conv,
-                    alpha=0.85, zorder=3, transform=ccrs.PlateCarree(), extend='max')
-
-        # Dibuix d'isòlines amb efecte d'ombra
-        line_levels = [15, 30, 50, 70, 90, 120]
-        line_styles = ['--', '-', '-', '-', '-', '-']
-        path_effect_ombra = [path_effects.withStroke(linewidth=2.5, foreground='black')]
-
-        contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
-                              levels=line_levels, 
-                              colors='white',
-                              linestyles=line_styles,
-                              linewidths=0.8,
-                              zorder=5,
-                              transform=ccrs.PlateCarree(),
-                              path_effects=path_effect_ombra)
+        # Paleta de colors professional per al farciment
+        colors_conv = ['#5BC0DE', "#FBFF00", "#DC6D05", "#EC8383", "#F03D3D", "#FF0000", "#7C7EF0", "#0408EAFF", "#000070"]
+        cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_personalitzada", colors_conv)
         
-        # <<<--- CANVI CLAU AQUÍ: Mida de la font de les etiquetes ---
-        labels = ax.clabel(contours, inline=True, fontsize=4, fmt='%1.0f')
-        for label in labels:
-            # Adeqüem també el gruix de la vora a la nova mida de la font
-            label.set_path_effects([path_effects.withStroke(linewidth=1.8, foreground='black')])
-            label.set_color("white")
-        # <<<--- FI DEL CANVI CLAU ---
+        # El farciment de color comença a 20 per no saturar visualment les zones més febles
+        fill_levels = np.arange(20, 151, 5) 
+        ax.contourf(grid_lon, grid_lat, smoothed_convergence,
+                    levels=fill_levels, cmap=cmap_conv, alpha=0.99,
+                    zorder=3, transform=ccrs.PlateCarree(), extend='max')
+
+    # <<<--- NOU: ISOLÍNIES FINES I CONDICIONALS ---
+    # Definim els nivells on volem dibuixar línies
+    line_levels = [15, 30, 50, 70, 90, 120]
+    # Definim un estil per a cada nivell: discontinu ('--') per a 15, sòlid ('-') per a la resta
+    line_styles = ['--', '-', '-', '-', '-', '-']
+    # Definim el gruix de totes les línies a 1 (més fines)
+    line_widths = 1
+
+    contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
+                            levels=line_levels, 
+                            colors='black',
+                            linestyles=line_styles, # Passem la llista d'estils
+                            linewidths=line_widths, # Passem el gruix
+                            zorder=3,
+                            transform=ccrs.PlateCarree())
+    
+    # Afegim etiquetes a les isolínies amb un fons blanc per a millor llegibilitat
+    labels = ax.clabel(contours, inline=True, fontsize=5, fmt='%1.0f')
+    for label in labels:
+        label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.5))
 
     ax.set_title(f"Vent i Nuclis de Convergència EFECTIVA a {nivell}hPa\n{timestamp_str}",
-                 weight='bold', fontsize=14)
+                 weight='bold', fontsize=16)
     afegir_etiquetes_ciutats(ax, map_extent)
     
     return fig
-    
+
+
 def forcar_regeneracio_animacio():
     """Incrementa la clau de regeneració per invalidar la memòria cau."""
     if 'regenerate_key' in st.session_state:
