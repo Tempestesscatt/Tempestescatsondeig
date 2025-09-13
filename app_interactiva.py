@@ -3715,32 +3715,22 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, cape_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ 12.1 (CORREGIDA I ROBUSTA): Soluciona el 'ValueError: 'x' must be finite'
-    assegurant que totes les graelles de dades interpolades es netegin de valors NaN
-    abans de ser utilitzades per les funcions de dibuix.
+    VERSIÓ 11.0 (VISIBILITAT MÀXIMA): Les isolínies de convergència ara tenen
+    un contorn negre per garantir que siguin visibles sobre qualsevol color del mapa de CAPE.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
     
-    # --- 1. PREPARACIÓ I NETEJA DE DADES ---
+    # --- 1. PREPARACIÓ DE DADES (Sense canvis) ---
     grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 300), np.linspace(map_extent[2], map_extent[3], 300))
-    
-    # Interpolació
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'linear')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_cape = griddata((lons, lats), cape_data, (grid_lon, grid_lat), 'linear')
-
-    # <-- AQUEST ÉS EL BLOC DE CORRECCIÓ CLAU -->
-    # Ens assegurem que totes les graelles siguin finites abans de continuar.
     grid_cape = np.nan_to_num(grid_cape)
-    grid_dewpoint = np.nan_to_num(grid_dewpoint)
-    grid_u = np.nan_to_num(grid_u)
-    grid_v = np.nan_to_num(grid_v)
-    # <-- FI DE LA CORRECCIÓ -->
 
-    # --- 2. DIBUIX DEL CAPE DE FONS ---
+    # --- 2. DIBUIX DEL CAPE DE FONS (Sense canvis) ---
     cape_colors_v2 = [
         '#2E4598', '#3765AD', '#3F85C2', '#4AB5D8', '#53C9C6', '#50B69B', 
         '#4CA26F', '#488D44', '#73AC39', '#A5C735', '#DDE330', '#FFF22C', 
@@ -3760,11 +3750,11 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     cbar_cape.set_label("CAPE (J/kg) - 'Combustible'")
     cbar_cape.ax.tick_params(labelsize=8)
 
-    # --- 3. CÀLCUL I FILTRATGE DE CONVERGÈNCIA ---
+    # --- 3. CÀLCUL I FILTRATGE DE CONVERGÈNCIA (Sense canvis) ---
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
-        convergence = np.nan_to_num(convergence) # Neteja addicional per seguretat
+        convergence[np.isnan(convergence)] = 0
         DEWPOINT_THRESHOLD = 14 if nivell >= 950 else 12
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
         cape_mask = (grid_cape >= 500) & (grid_cape <= 6000)
@@ -3773,9 +3763,8 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
     smoothed_convergence[smoothed_convergence < 10] = 0
 
-    # --- 4. DIBUIX DE LES ISOLÍNIES AMB ETIQUETES INTEL·LIGENTS ---
+    # --- 4. DIBUIX DE LES ISOLÍNIES AMB CONTORN NEGRE ---
     if np.any(smoothed_convergence > 0):
-        CAPE_ALERT_THRESHOLD = 2000
         line_styles = {
             'Floixa': {'levels': [10, 20, 30, 40], 'color': '#28a745', 'width': 1.2},
             'Moderada': {'levels': [50, 60, 70], 'color': '#FFD700', 'width': 1.8},
@@ -3784,30 +3773,18 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
         }
 
         for style in line_styles.values():
+            # <-- CANVI PRINCIPAL AQUÍ: Definim l'efecte del contorn negre -->
             path_effect_line = [path_effects.withStroke(linewidth=style['width'] + 1.5, foreground='black')]
+            
             contours_conv = ax.contour(grid_lon, grid_lat, smoothed_convergence,
-                                       levels=style['levels'], colors=style['color'],
-                                       linewidths=style['width'], zorder=4,
+                                       levels=style['levels'], 
+                                       colors=style['color'],
+                                       linewidths=style['width'],
+                                       zorder=4,
                                        transform=ccrs.PlateCarree(),
-                                       path_effects=path_effect_line)
+                                       path_effects=path_effect_line) # <-- Apliquem l'efecte
             
-            label_formats = {}
-            for i, level in enumerate(contours_conv.levels):
-                is_high_cape = False
-                segments_for_level = contours_conv.allsegs[i]
-                if not segments_for_level: continue
-                
-                for segment in segments_for_level:
-                    mean_lon, mean_lat = np.mean(segment[:, 0]), np.mean(segment[:, 1])
-                    cape_at_segment = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_cape.flatten(), (mean_lon, mean_lat), method='nearest')
-                    if cape_at_segment >= CAPE_ALERT_THRESHOLD:
-                        is_high_cape = True
-                        break
-                label_formats[level] = f'%1.0f ⚡' if is_high_cape else '%1.0f'
-            
-            labels_conv = ax.clabel(contours_conv, inline=True, 
-                                    fontsize=6,
-                                    fmt=label_formats)
+            labels_conv = ax.clabel(contours_conv, inline=True, fontsize=8, fmt='%1.0f')
             for label in labels_conv:
                 label.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='white')])
         
@@ -3818,7 +3795,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
                                     color='white', fontweight='bold', va='bottom', ha='left', zorder=12)
             text_max_conv.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
-    # --- 5. STREAMLINES, TÍTOL I ETIQUETES ---
+    # --- 5. STREAMLINES, TÍTOL I ETIQUETES (Sense canvis) ---
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.4, density=5.5, arrowsize=0.4, zorder=5, transform=ccrs.PlateCarree())
     ax.set_title(f"CAPE (fons), Convergència (línies) i Vent a {nivell}hPa\n{timestamp_str}",
                  weight='bold', fontsize=14)
