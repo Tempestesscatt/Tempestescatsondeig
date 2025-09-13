@@ -3785,6 +3785,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
                                        path_effects=path_effect_line) # <-- Apliquem l'efecte
             
             labels_conv = ax.clabel(contours_conv, inline=True, fontsize=8, fmt='%1.0f')
+            # Afegim també un contorn a les etiquetes per millorar la seva llegibilitat
             for label in labels_conv:
                 label.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='white')])
         
