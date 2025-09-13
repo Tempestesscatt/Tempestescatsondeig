@@ -3715,8 +3715,9 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, cape_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ 10.0 (PALETA CAPE PROFESSIONAL): Renderitza el CAPE de fons utilitzant
-    la paleta de colors i nivells d'alta definició proporcionada.
+    VERSIÓ 12.0 (ETIQUETES INTEL·LIGENTS): Els números de les isolínies de convergència
+    són més petits. S'afegeix una alerta (⚡) si la convergència està en una zona
+    amb CAPE superior a 2000 J/kg.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3730,8 +3731,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     grid_cape = griddata((lons, lats), cape_data, (grid_lon, grid_lat), 'linear')
     grid_cape = np.nan_to_num(grid_cape)
 
-    # --- 2. DIBUIX DEL CAPE AMB LA NOVA PALETA PROFESSIONAL ---
-    # Definim els colors i nivells exactes de la imatge que has proporcionat
+    # --- 2. DIBUIX DEL CAPE DE FONS (Sense canvis) ---
     cape_colors_v2 = [
         '#2E4598', '#3765AD', '#3F85C2', '#4AB5D8', '#53C9C6', '#50B69B', 
         '#4CA26F', '#488D44', '#73AC39', '#A5C735', '#DDE330', '#FFF22C', 
@@ -3741,15 +3741,11 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     cape_levels_v2 = [0, 150, 300, 450, 600, 750, 900, 1050, 1200, 1350, 1500, 
                       1650, 1800, 1950, 2100, 2250, 2400, 2550, 2700, 2850, 
                       3000, 3150, 3300, 3450, 3601]
-
     cmap_cape_v2 = ListedColormap(cape_colors_v2)
     norm_cape_v2 = BoundaryNorm(cape_levels_v2, ncolors=cmap_cape_v2.N, clip=True)
-    
     cape_mesh = ax.pcolormesh(grid_lon, grid_lat, grid_cape, 
                                cmap=cmap_cape_v2, norm=norm_cape_v2, 
                                alpha=0.65, zorder=2, transform=ccrs.PlateCarree())
-    
-    # Seleccionem uns quants nivells per a la barra de color per evitar que estigui massa plena
     cbar_ticks = [0, 450, 900, 1350, 1800, 2250, 2700, 3150, 3600]
     cbar_cape = fig.colorbar(cape_mesh, ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=cbar_ticks)
     cbar_cape.set_label("CAPE (J/kg) - 'Combustible'")
@@ -3768,20 +3764,48 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
     smoothed_convergence[smoothed_convergence < 10] = 0
 
-    # --- 4. DIBUIX DE LES ISOLÍNIES (Sense canvis) ---
+    # --- 4. DIBUIX DE LES ISOLÍNIES AMB ETIQUETES INTEL·LIGENTS ---
     if np.any(smoothed_convergence > 0):
+        CAPE_ALERT_THRESHOLD = 2000 # Llindar de CAPE per a mostrar l'alerta
+        
         line_styles = {
             'Floixa': {'levels': [10, 20, 30, 40], 'color': '#28a745', 'width': 1.2},
             'Moderada': {'levels': [50, 60, 70], 'color': '#FFD700', 'width': 1.8},
             'Forta': {'levels': [80, 90, 100, 110], 'color': '#DC3545', 'width': 2.4},
             'Extrema': {'levels': [120, 130, 140, 150], 'color': '#9370DB', 'width': 3.0}
         }
+
         for style in line_styles.values():
+            path_effect_line = [path_effects.withStroke(linewidth=style['width'] + 1.5, foreground='black')]
+            
             contours_conv = ax.contour(grid_lon, grid_lat, smoothed_convergence,
                                        levels=style['levels'], colors=style['color'],
                                        linewidths=style['width'], zorder=4,
-                                       transform=ccrs.PlateCarree())
-            labels_conv = ax.clabel(contours_conv, inline=True, fontsize=8, fmt='%1.0f')
+                                       transform=ccrs.PlateCarree(),
+                                       path_effects=path_effect_line)
+            
+            # --- LÒGICA PER A LES ETIQUETES CONDICIONALS ---
+            label_formats = {}
+            for i, level in enumerate(contours_conv.levels):
+                # Comprovem si algun segment d'aquesta isolínia té CAPE alt
+                is_high_cape = False
+                segments_for_level = contours_conv.allsegs[i]
+                if not segments_for_level: continue
+                
+                for segment in segments_for_level:
+                    mean_lon, mean_lat = np.mean(segment[:, 0]), np.mean(segment[:, 1])
+                    cape_at_segment = griddata((grid_lon.flatten(), grid_lat.flatten()), grid_cape.flatten(), (mean_lon, mean_lat), method='nearest')
+                    if cape_at_segment >= CAPE_ALERT_THRESHOLD:
+                        is_high_cape = True
+                        break
+                
+                # Assignem el format de l'etiqueta
+                label_formats[level] = f'%1.0f ⚡' if is_high_cape else '%1.0f'
+            
+            # Apliquem les etiquetes amb el format i la mida de font correctes
+            labels_conv = ax.clabel(contours_conv, inline=True, 
+                                    fontsize=6, # <-- Mida de la font MÉS PETITA
+                                    fmt=label_formats)
             for label in labels_conv:
                 label.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='white')])
         
@@ -3792,13 +3816,15 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
                                     color='white', fontweight='bold', va='bottom', ha='left', zorder=12)
             text_max_conv.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
-    # --- 5. STREAMLINES I TÍTOL (Sense canvis) ---
+
+    # --- 5. STREAMLINES, TÍTOL I ETIQUETES ---
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.4, density=5.5, arrowsize=0.4, zorder=5, transform=ccrs.PlateCarree())
     ax.set_title(f"CAPE (fons), Convergència (línies) i Vent a {nivell}hPa\n{timestamp_str}",
                  weight='bold', fontsize=14)
     afegir_etiquetes_ciutats(ax, map_extent)
     
     return fig
+    
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_japo(nivell, hourly_index):
