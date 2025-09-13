@@ -1067,6 +1067,41 @@ CIUTATS_PER_COMARCA = {
 }
 
 
+
+
+CIUTATS_CATALUNYA = { ciutat: dades for comarca in CIUTATS_PER_COMARCA.values() for ciutat, dades in comarca.items() }
+
+# Afegeix els punts marins manualment
+PUNTS_MAR = {
+    'Costes de Girona (Mar)':   {'lat': 42.05, 'lon': 3.30, 'sea_dir': (0, 360)},
+    'Litoral Barceloní (Mar)': {'lat': 41.40, 'lon': 2.90, 'sea_dir': (0, 360)},
+    'Aigües de Tarragona (Mar)': {'lat': 40.90, 'lon': 2.00, 'sea_dir': (0, 360)},
+}
+CIUTATS_CATALUNYA.update(PUNTS_MAR)
+
+# Defineix les llistes necessàries a partir de la llista principal ja completa
+POBLACIONS_TERRA = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' not in k}
+CIUTATS_CONVIDAT = {
+    'Barcelona': CIUTATS_CATALUNYA['Barcelona'], 'Girona': CIUTATS_CATALUNYA['Girona'],
+    'Lleida': CIUTATS_CATALUNYA['Lleida'], 'Tarragona': CIUTATS_CATALUNYA['Tarragona']
+}
+
+POBLES_MAPA_REFERENCIA = {poble: {'lat': data['lat'], 'lon': data['lon']} for poble, data in POBLACIONS_TERRA.items()}
+
+# Genera les zones personalitzades a partir de les dades ja definides per comarca
+# AQUESTA ÉS LA SECCIÓ QUE HA ESTAT CORREGIDA
+CIUTATS_PER_ZONA_PERSONALITZADA = {
+    "Pirineu i Pre-Pirineu": { p: CIUTATS_CATALUNYA[p] for p in ['Vielha', 'Sort', 'Tremp', 'La Pobla de Segur', 'La Seu d\'Urgell', 'Puigcerdà', 'Bellver de Cerdanya', 'La Molina', 'Ripoll', 'Sant Joan de les Abadesses', 'Berga', 'Solsona', 'Olot', 'Santa Pau', 'Camprodon'] if p in CIUTATS_CATALUNYA },
+    "Plana de Lleida i Ponent": { p: CIUTATS_CATALUNYA[p] for p in ['Lleida', 'Alcarràs', 'Balaguer', 'Agramunt', 'Artesa de Segre', 'Calaf', 'Les Borges Blanques', 'Mollerussa', 'Tàrrega', 'Cervera'] if p in CIUTATS_CATALUNYA },
+    "Catalunya Central": { p: CIUTATS_CATALUNYA[p] for p in ['Manresa', 'Cardona', 'Igualada', 'Capellades', 'Vic', 'Manlleu', 'Centelles', 'Moià', 'Súria'] if p in CIUTATS_CATALUNYA },
+    "Litoral i Prelitoral Nord (Girona)": { p: CIUTATS_CATALUNYA[p] for p in ['Girona', 'Figueres', 'Banyoles', 'La Bisbal d\'Empordà', 'Roses', 'Cadaqués', 'Llançà', 'L\'Escala', 'Castelló d\'Empúries', 'La Jonquera', 'Palamós', 'Platja d\'Aro', 'Sant Feliu de Guíxols', 'Begur', 'Pals', 'Blanes', 'Lloret de Mar', 'Santa Coloma de Farners'] if p in CIUTATS_CATALUNYA },
+    "Litoral i Prelitoral Central (Barcelona)": { p: CIUTATS_CATALUNYA[p] for p in ['Barcelona', 'L\'Hospitalet de Llobregat', 'Badalona', 'Sabadell', 'Terrassa', 'Mataró', 'Granollers', 'Mollet del Vallès', 'Sant Cugat del Vallès', 'Rubí', 'Viladecans', 'Vilanova i la Geltrú', 'Sitges', 'Vilafranca del Penedès', 'El Vendrell', 'Calafell'] if p in CIUTATS_CATALUNYA },
+    "Camp de Tarragona": { p: CIUTATS_CATALUNYA[p] for p in ['Tarragona', 'Reus', 'Valls', 'Salou', 'Cambrils', 'Altafulla', 'Montblanc', 'Falset', 'Mont-roig del Camp'] if p in CIUTATS_CATALUNYA },
+    "Terres de l'Ebre": { p: CIUTATS_CATALUNYA[p] for p in ['Tortosa', 'Amposta', 'Alcanar', 'L\'Ametlla de Mar', 'Deltebre', 'La Ràpita', 'Móra d\'Ebre', 'Gandesa'] if p in CIUTATS_CATALUNYA },
+}
+
+
+
 # --- Constants per Tornado Alley ---
 API_URL_USA = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_USA = pytz.timezone('America/Chicago')
