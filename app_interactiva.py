@@ -1636,10 +1636,11 @@ def verificar_datos_entrada(p, T, Td, u, v, heights):
 
 def crear_skewt(p, T, Td, u, v, sfc_prof, mu_prof, params_calc, titol, timestamp_str, zoom_capa_baixa=False):
     """
-    VERSIÓ 5.0 (Lògica d'Ombrejat Corregida)
-    - Soluciona el bug crític que pintava el CAPE (energia positiva) com a CIN (blau).
-    - Assegura que l'àrea vermella (CAPE) i blava (CIN) es corresponguin correctament amb les definicions meteorològiques.
-    - Manté la visualització de les dues trajectòries (SFC i MU) per a una anàlisi completa.
+    VERSIÓ 6.0 (Enfocada Exclusivament en la Parcel·la Més Inestable - MU)
+    - Per eliminar tota confusió, ara només es dibuixa la trajectòria de la parcel·la més inestable (MU).
+    - Aquesta és la trajectòria que genera el MUCAPE i representa el màxim potencial convectiu real.
+    - L'ombrejat de CAPE/CIN correspon directament a aquesta única línia, fent el gràfic 100% coherent.
+    - S'ha eliminat la línia de la parcel·la de superfície (SFC) per a una màxima claredat.
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     
@@ -1670,29 +1671,23 @@ def crear_skewt(p, T, Td, u, v, sfc_prof, mu_prof, params_calc, titol, timestamp
     skew.plot_moist_adiabats(color='cornflowerblue', linestyle='--', alpha=0.5)
     skew.plot_mixing_lines(color='limegreen', linestyle='--', alpha=0.5)
     
-    # --- CORRECCIÓ CRÍTICA DE L'OMBREJAT ---
+    # --- LÒGICA D'OMBREJAT I TRAJECTÒRIA SIMPLIFICADA I DEFINITIVA ---
     
-    # L'ombrejat del CAPE/CIN es basa en la parcel·la MÉS INESTABLE (MU),
-    # ja que representa el màxim potencial d'energia i coincideix amb el valor MUCAPE.
+    # L'ombrejat i la trajectòria es basen ÚNICAMENT en la parcel·la Més Inestable (MU).
     if mu_prof is not None:
-        # Neteja de dades per evitar errors amb valors 'NaN'
         valid_shade_mask = np.isfinite(p.m) & np.isfinite(T.m) & np.isfinite(mu_prof.m)
         p_clean, T_clean, prof_clean = p[valid_shade_mask], T[valid_shade_mask], mu_prof[valid_shade_mask]
         
-        # MetPy gestiona automàticament on va el CAPE i on va el CIN.
-        # Simplement cridem les dues funcions i ell pintarà les àrees correctes.
-        # L'àrea on prof_clean > T_clean es pintarà de vermell (CAPE).
-        # L'àrea on prof_clean < T_clean es pintarà de blau (CIN).
+        # Pintem el CAPE (vermell) i el CIN (blau) basant-nos en aquesta única trajectòria.
         skew.shade_cape(p_clean, T_clean, prof_clean, color='red', alpha=0.2)
         skew.shade_cin(p_clean, T_clean, prof_clean, color='blue', alpha=0.2)
-
-    # El dibuix de les trajectòries es manté igual
-    if mu_prof is not None:
-        skew.plot(p, mu_prof, 'k', linewidth=2.5, linestyle='--', label='Trajectòria Parcel·la (MU)', 
-                  path_effects=[path_effects.withStroke(linewidth=3.5, foreground='white')])
-    if sfc_prof is not None:
-        skew.plot(p, sfc_prof, 'k', linewidth=2.5, label='Trajectòria Parcel·la (SFC)',
-                  path_effects=[path_effects.withStroke(linewidth=3.5, foreground='white')])
+        
+        # Dibuixem la trajectòria de la parcel·la més inestable com la ÚNICA línia principal.
+        # Ara és una línia sòlida i amb una etiqueta més clara.
+        skew.plot(p, mu_prof, 'k', linewidth=3, linestyle='-', label='Trajectòria Parcel·la', 
+                  path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
+    
+    # S'HA ELIMINAT COMPLETAMENT EL DIBUIX DE LA TRAJECTÒRIA DE SUPERFÍCIE (SFC)
     # --- FI DE LA CORRECCIÓ ---
 
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
@@ -1704,16 +1699,15 @@ def crear_skewt(p, T, Td, u, v, sfc_prof, mu_prof, params_calc, titol, timestamp
     skew.ax.set_xlabel("Temperatura (°C)"); skew.ax.set_ylabel("Pressió (hPa)")
 
     try:
-        # La lògica per a les línies de nivell es manté igual
         if 'LCL_p' in params_calc and pd.notna(params_calc['LCL_p']): skew.plot_lcl_line(color='blue', linestyle='--', linewidth=1.5)
         if 'LFC_p' in params_calc and pd.notna(params_calc['LFC_p']): skew.plot_lfc_line(color='green', linestyle='--', linewidth=1.5)
         if 'EL_p' in params_calc and pd.notna(params_calc['EL_p']): skew.plot_el_line(color='red', linestyle='--', linewidth=1.5)
     except Exception as e:
         print(f"Error dibuixant línies de nivell: {e}")
 
+    # La llegenda ara serà més neta i clara
     skew.ax.legend()
     return fig
-
 
 def crear_hodograf_avancat(p, u, v, heights, params_calc, titol, timestamp_str):
     """
