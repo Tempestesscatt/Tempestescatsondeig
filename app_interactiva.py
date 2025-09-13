@@ -2901,35 +2901,7 @@ def carregar_dades_mapa_base_cat(variables, hourly_index):
         
         
 
-@st.cache_data(ttl=3600)
-def carregar_dades_mapa_cat(nivell, hourly_index):
-    try:
-        # Assegurem que sempre demanem la temperatura de superfície
-        variables_base = ["temperature_2m", "dew_point_2m"]
-        
-        if nivell >= 950:
-            variables = variables_base + [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-            map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
-            if error: return None, error
-            map_data_raw['dewpoint_data'] = map_data_raw.pop('dew_point_2m')
-            map_data_raw['temperature_data'] = map_data_raw.pop('temperature_2m')
-        else:
-            variables = variables_base + [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-            map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
-            if error: return None, error
-            
-            # Usem les dades del nivell per a la visualització, però guardem les de superfície per a l'anàlisi
-            temp_nivell = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
-            rh_nivell = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
-            map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_nivell, rh_nivell).m
-            map_data_raw['temperature_data'] = map_data_raw.pop('temperature_2m') # Guardem la de superfície
-            map_data_raw.pop('dew_point_2m') # La de superfície ja no la necessitem aquí
 
-        map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
-        map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
-        return map_data_raw, None
-    except Exception as e:
-        return None, f"Error en processar dades del mapa: {e}"
     
     
 def afegir_etiquetes_ciutats(ax, map_extent):
@@ -3502,30 +3474,31 @@ def ui_pestanya_mapes_canada(hourly_index_sel, timestamp_str, nivell_sel, poble_
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
 
+
+
+
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_cat(nivell, hourly_index):
     """
-    Versió definitiva. Assegura que SEMPRE es demanen les dades de superfície
-    (T i Td) per a l'anàlisi d'humitat, independentment del nivell seleccionat.
+    Versió millorada que carrega també el CAPE per als mapes combinats.
     """
     try:
-        # Llista base de variables que SEMPRE necessitem per a l'anàlisi
-        variables_base = ["temperature_2m", "dew_point_2m"]
+        # AFEGIM 'cape' A LA LLISTA DE VARIABLES
+        variables_base = ["temperature_2m", "dew_point_2m", "cape"]
         
-        # Variables específiques del nivell seleccionat per al mapa
         variables_nivell = [f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
         if nivell < 950:
             variables_nivell.extend([f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa"])
 
-        # Demanem totes les variables juntes
         map_data_raw, error = carregar_dades_mapa_base_cat(variables_base + variables_nivell, hourly_index)
         if error: return None, error
 
-        # Guardem les dades de superfície amb noms clars per a la funció de convergència
+        # Extraiem el CAPE i el guardem
+        map_data_raw['cape_data'] = map_data_raw.pop('cape')
+        
         map_data_raw['sfc_temp_data'] = map_data_raw.pop('temperature_2m')
         map_data_raw['sfc_dewpoint_data'] = map_data_raw.pop('dew_point_2m')
 
-        # Processem les dades per a la VISUALITZACIÓ del mapa
         if nivell >= 950:
             map_data_raw['dewpoint_data'] = map_data_raw['sfc_dewpoint_data']
         else:
@@ -3540,27 +3513,7 @@ def carregar_dades_mapa_cat(nivell, hourly_index):
     except Exception as e:
         return None, f"Error en processar dades del mapa: {e}"
 
-@st.cache_data(ttl=3600)
-def carregar_dades_mapa_cat(nivell, hourly_index):
-    try:
-        if nivell >= 950:
-            variables = ["dew_point_2m", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-            map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
-            if error: return None, error
-            map_data_raw['dewpoint_data'] = map_data_raw.pop('dew_point_2m')
-        else:
-            variables = [f"temperature_{nivell}hPa", f"relative_humidity_{nivell}hPa", f"wind_speed_{nivell}hPa", f"wind_direction_{nivell}hPa"]
-            map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
-            if error: return None, error
-            temp_data = np.array(map_data_raw.pop(f'temperature_{nivell}hPa')) * units.degC
-            rh_data = np.array(map_data_raw.pop(f'relative_humidity_{nivell}hPa')) * units.percent
-            map_data_raw['dewpoint_data'] = mpcalc.dewpoint_from_relative_humidity(temp_data, rh_data).m
 
-        map_data_raw['speed_data'] = map_data_raw.pop(f'wind_speed_{nivell}hPa')
-        map_data_raw['dir_data'] = map_data_raw.pop(f'wind_direction_{nivell}hPa')
-        return map_data_raw, None
-    except Exception as e:
-        return None, f"Error en processar dades del mapa: {e}"
         
 @st.cache_data(ttl=1800, max_entries=5, show_spinner=False)
 def obtenir_ciutats_actives(hourly_index):
@@ -3758,92 +3711,73 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
         else:
             st.warning("No s'han pogut obtenir les dades per generar el mapa.")
 
-def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
+def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, cape_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ 2.0 (MILLORADA): Renderitzat d'alta qualitat per a la convergència amb
-    paleta de colors personalitzada (11 colors), rang de 15 a 150, i línies sòlides.
+    VERSIÓ 3.0 (PROFESSIONAL): Renderitza el CAPE com a fons de color, superposant
+    els nuclis de convergència i les línies de vent per a un anàlisi complet.
     """
     plt.style.use('default')
+    # Usem la funció base que ja inclou el relleu orogràfic
     fig, ax = crear_mapa_base(map_extent)
     
-    # --- 1. PREPARACIÓ DE DADES (Sense canvis) ---
+    # --- 1. PREPARACIÓ DE TOTES LES DADES ---
     grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 300), np.linspace(map_extent[2], map_extent[3], 300))
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'linear')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+    
+    # Interpolació del CAPE i neteja de possibles NaNs
+    grid_cape = griddata((lons, lats), cape_data, (grid_lon, grid_lat), 'linear')
+    grid_cape = np.nan_to_num(grid_cape) # Important per evitar errors
 
-    # --- 2. CÀLCUL I FILTRATGE DE CONVERGÈNCIA (Llindar actualitzat) ---
+    # --- 2. DIBUIX DEL CAPE COM A CAPA DE FONS (zorder=2) ---
+    cape_levels = [250, 500, 1000, 1500, 2000, 2500, 3000]
+    cape_cmap = plt.get_cmap('YlOrRd') # Paleta de groc a vermell
+    norm_cape = BoundaryNorm(cape_levels, ncolors=cape_cmap.N, clip=True)
+    
+    # Dibuixem el CAPE amb transparència per deixar veure l'orografia
+    cape_mesh = ax.pcolormesh(grid_lon, grid_lat, grid_cape, cmap=cape_cmap, norm=norm_cape, 
+                               alpha=0.5, zorder=2, transform=ccrs.PlateCarree())
+    
+    # Afegim una barra de color per al CAPE
+    cbar_cape = fig.colorbar(cape_mesh, ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=cape_levels)
+    cbar_cape.set_label("CAPE (J/kg) - 'Combustible'")
+
+    # --- 3. CÀLCUL I DIBUIX DE LA CONVERGÈNCIA SUPERPOSADA (zorder=3) ---
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
         convergence[np.isnan(convergence)] = 0
         DEWPOINT_THRESHOLD = 14 if nivell >= 950 else 12
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
-        effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0) # <-- Llindar canviat a 15
+        effective_convergence = np.where((convergence >= 20) & humid_mask, convergence, 0) # Llindar a 20 per claredat
 
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
-    smoothed_convergence[smoothed_convergence < 15] = 0 # <-- Llindar canviat a 15
+    smoothed_convergence[smoothed_convergence < 20] = 0
 
-    # --- 3. DIBUIX DE LA CONVERGÈNCIA (Bloc completament nou) ---
     if np.any(smoothed_convergence > 0):
-        # 1. Nova paleta de 11 colors i 12 nivells (15 a 150) com has demanat
-        colors_conv = [
-            '#87CEEB',  # Blau fluix
-            '#90EE90',  # Verd fluix
-            '#32CD32',  # Verd fort
-            '#FFFFE0',  # Groc fluix
-            '#FFD700',  # Groc fort
-            '#FFA500',  # Taronja fluix
-            '#FF8C00',  # Taronja fort
-            '#F08080',  # Vermell fluix
-            '#DC3545',  # Vermell fort
-            '#D8BFD8',  # Lila fluix
-            '#9370DB'   # Lila fort
-        ]
-        fill_levels = [15, 25, 35, 45, 55, 65, 80, 95, 110, 125, 140, 151]
+        # Dibuixem NOMÉS les LÍNIES de contorn de la convergència, sense farciment de color
+        line_levels_conv = [30, 50, 70, 90, 120, 150]
+        contours_conv = ax.contour(grid_lon, grid_lat, smoothed_convergence,
+                                   levels=line_levels_conv, 
+                                   colors='blue', # Color blau per contrastar amb el fons càlid del CAPE
+                                   linewidths=[1, 1.2, 1.5, 1.8, 2.2, 2.5], # Línies més gruixudes com més forta la conv.
+                                   zorder=4,
+                                   transform=ccrs.PlateCarree())
         
-        cmap_conv = ListedColormap(colors_conv)
-        norm_conv = BoundaryNorm(fill_levels, ncolors=cmap_conv.N, clip=True)
-
-        # 2. Dibuixem el farciment de color (contourf)
-        im = ax.contourf(grid_lon, grid_lat, smoothed_convergence,
-                         levels=fill_levels, cmap=cmap_conv, norm=norm_conv,
-                         alpha=0.8, zorder=3, transform=ccrs.PlateCarree(), extend='max')
-
-        # 3. Dibuixem les línies de contorn SÒLIDES a partir de 30
-        line_levels = [30, 50, 70, 90, 120, 150]
-        contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
-                              levels=line_levels, 
-                              colors='black',
-                              linestyles='solid', # <-- Línies sòlides
-                              linewidths=0.8, zorder=4,
-                              transform=ccrs.PlateCarree())
-        
-        # 4. Etiquetes de les línies amb alta visibilitat
-        labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
-        for label in labels:
+        labels_conv = ax.clabel(contours_conv, inline=True, fontsize=8, fmt='%1.0f')
+        for label in labels_conv:
             label.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='white')])
-            
-        # 5. Afegim la barra de color (llegenda)
-        cbar = fig.colorbar(im, ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=fill_levels)
-        cbar.set_label("Intensitat de la Convergència (x10⁻⁵ s⁻¹)")
 
-    # --- 4. STREAMLINES I TÍTOL (Sense canvis, però superposats) ---
+    # --- 4. STREAMLINES I TÍTOL (zorder=5) ---
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.4, density=5.5, arrowsize=0.4, zorder=5, transform=ccrs.PlateCarree())
 
-    ax.set_title(f"Focus de Convergència Efectiva a {nivell}hPa\n{timestamp_str}",
-                 weight='bold', fontsize=16)
+    ax.set_title(f"CAPE (fons), Convergència (línies blaves) i Vent a {nivell}hPa\n{timestamp_str}",
+                 weight='bold', fontsize=14)
     afegir_etiquetes_ciutats(ax, map_extent)
     
     return fig
-    
-def forcar_regeneracio_animacio():
-    """Incrementa la clau de regeneració per invalidar la memòria cau."""
-    if 'regenerate_key' in st.session_state:
-        st.session_state.regenerate_key += 1
-    else:
-        st.session_state.regenerate_key = 1
 
 
 
@@ -6875,21 +6809,22 @@ def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, hourly_index,
 def generar_mapa_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
     """
     Funció generadora que crea i desa a la memòria cau el mapa de convergència.
-    Només s'executa si els paràmetres (hora, nivell, zoom) canvien.
+    Ara també passa les dades de CAPE a la funció de dibuix.
     """
     map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
     if error or not map_data:
-        # Retorna None si no es poden carregar les dades
         return None
     
-    # El tuple es converteix de nou a llista per a la funció de dibuix
     map_extent_list = list(map_extent_tuple)
     
     fig = crear_mapa_forecast_combinat_cat(
         map_data['lons'], map_data['lats'], 
         map_data['speed_data'], map_data['dir_data'], 
-        map_data['dewpoint_data'], nivell, 
-        timestamp_str, map_extent_list
+        map_data['dewpoint_data'],
+        map_data['cape_data'],  # <-- Passem el nou paràmetre CAPE
+        nivell, 
+        timestamp_str, 
+        map_extent_list
     )
     return fig
 
@@ -7704,6 +7639,15 @@ def run_catalunya_app():
                     ui_explicacio_adveccio()
 
 
+
+
+def forcar_regeneracio_animacio():
+    """Incrementa la clau de regeneració per invalidar la memòria cau."""
+    if 'regenerate_key' in st.session_state:
+        st.session_state.regenerate_key += 1
+    else:
+        st.session_state.regenerate_key = 1
+        
 def ui_mapa_display_peninsula(alertes_per_zona, hourly_index, show_labels):
     """
     Funció de VISUALITZACIÓ específica per al mapa de l'Est Peninsular.
