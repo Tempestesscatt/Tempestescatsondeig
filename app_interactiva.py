@@ -3715,8 +3715,8 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, cape_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ 7.0 (NOMÉS ISOLÍNIES): Renderitza el CAPE de fons. La convergència es
-    mostra ÚNICAMENT com a isolínies de color segons la intensitat, sense farciment.
+    VERSIÓ 8.0 (LLINDAR AMPLIAT): Renderitza el CAPE de fons. La convergència es
+    mostra a partir d'un valor de 10, amb isolínies de color segons la intensitat.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3740,7 +3740,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     cbar_cape.set_label("CAPE (J/kg) - 'Combustible'")
     cbar_cape.ax.tick_params(labelsize=8)
 
-    # --- 3. CÀLCUL I FILTRATGE AVANÇAT DE CONVERGÈNCIA (Sense canvis) ---
+    # --- 3. CÀLCUL I FILTRATGE AVANÇAT DE CONVERGÈNCIA (Llindar rebaixat a 10) ---
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
@@ -3748,22 +3748,25 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
         DEWPOINT_THRESHOLD = 14 if nivell >= 950 else 12
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
         cape_mask = (grid_cape >= 500) & (grid_cape <= 6000)
-        effective_convergence = np.where((convergence >= 20) & humid_mask & cape_mask, convergence, 0)
+        
+        # <-- CANVI PRINCIPAL AQUÍ: Llindar rebaixat a 10 -->
+        effective_convergence = np.where((convergence >= 10) & humid_mask & cape_mask, convergence, 0)
 
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
-    smoothed_convergence[smoothed_convergence < 20] = 0
+    # <-- I AQUÍ TAMBÉ -->
+    smoothed_convergence[smoothed_convergence < 10] = 0
 
-    # --- 4. DIBUIX DE LES ISOLÍNIES DE CONVERGÈNCIA (SENSE FARCIMENT) ---
+    # --- 4. DIBUIX DE LES ISOLÍNIES (SENSE FARCIMENT) ---
     if np.any(smoothed_convergence > 0):
-        # Definim els llindars i colors per a les línies
+        # Definim els llindars i colors per a les línies, començant des de 10
         line_styles = {
-            'Floixa': {'levels': [20, 30, 40], 'color': '#28a745', 'width': 1.2},
+            # <-- NIVELLS DE LA CATEGORIA "FLOIXA" ACTUALITZATS -->
+            'Floixa': {'levels': [10, 20, 30, 40], 'color': '#28a745', 'width': 1.2},
             'Moderada': {'levels': [50, 60, 70], 'color': '#FFD700', 'width': 1.8},
             'Forta': {'levels': [80, 90, 100, 110], 'color': '#DC3545', 'width': 2.4},
             'Extrema': {'levels': [120, 130, 140, 150], 'color': '#9370DB', 'width': 3.0}
         }
 
-        # Dibuixem cada grup de línies amb el seu color corresponent
         for style in line_styles.values():
             contours_conv = ax.contour(grid_lon, grid_lat, smoothed_convergence,
                                        levels=style['levels'], 
@@ -3793,7 +3796,6 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     afegir_etiquetes_ciutats(ax, map_extent)
     
     return fig
-
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_japo(nivell, hourly_index):
