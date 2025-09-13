@@ -69,16 +69,14 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
 MAP_CONFIG = {
+    # <<<--- CANVI PRINCIPAL AQUÍ: Nova configuració per a un gradient suau ---
     'cape': {
-        'colors': [
-            '#2c2c8c', '#4646b4', '#4682b4', '#87ceeb', '#add8e6', '#ffff96', 
-            '#ffff00', '#ffd700', '#ffac00', '#ff8c00', '#ff4500', '#ff0000', 
-            '#dc143c', '#a50021'
-        ],
-        'levels': [0, 100, 250, 500, 750, 1000, 1500, 2000, 2500, 3000, 3500, 4001],
+        'cmap': 'turbo',  # Un mapa de colors continu i perceptivament uniforme
+        'levels_max': 4001, # El valor màxim de la nostra escala
         'cbar_ticks': [0, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000],
-        'alpha': 0.75
+        'alpha': 0.70 # Una transparència una mica menor per a colors més rics
     },
+    # --- FI DEL CANVI ---
     'convergence': {
         'styles': {
             'Comuna':     {'levels': [10, 20, 30, 40], 'color': '#00FF00', 'width': 1.2},
@@ -102,6 +100,8 @@ MAP_CONFIG = {
         'dewpoint_mid_level': 12,
     }
 }
+
+
 
 
 NUVOL_ICON_BASE64 = {
@@ -3719,8 +3719,9 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                                      nivell: int, timestamp_str: str, 
                                      map_extent: List[float]) -> plt.Figure:
     """
-    VERSIÓ 20.0 (MARCADOR MÀXIM): Afegeix un marcador especial ("pivotet")
-    al punt de màxima convergència per identificar ràpidament la zona més activa.
+    VERSIÓ 21.0 (GRADIENT SUAU): Genera un mapa amb un farciment de CAPE suau
+    i continu per a una millor visualització, mantenint les línies de
+    convergència netes i clares.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3734,13 +3735,22 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_cape = np.nan_to_num(griddata((lons, lats), cape_data, (grid_lon, grid_lat), 'linear'))
 
-    # --- 2. DIBUIX DEL CAPE DE FONS ---
+    # --- 2. DIBUIX DEL CAPE DE FONS (ESTIL GRADIENT SUAU) ---
     cfg_cape = MAP_CONFIG['cape']
-    cmap_cape = ListedColormap(cfg_cape['colors'])
-    norm_cape = BoundaryNorm(cfg_cape['levels'], ncolors=cmap_cape.N, clip=True)
-    cape_mesh = ax.pcolormesh(grid_lon, grid_lat, grid_cape, cmap=cmap_cape, norm=norm_cape, 
-                               alpha=cfg_cape['alpha'], zorder=2, transform=ccrs.PlateCarree())
-    cbar_cape = fig.colorbar(cape_mesh, ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=cfg_cape['cbar_ticks'])
+    # Creem molts nivells per simular un gradient continu
+    cape_levels_smooth = np.linspace(0, cfg_cape['levels_max'], 100)
+    cmap_cape_smooth = plt.get_cmap(cfg_cape['cmap'])
+    
+    # Utilitzem contourf per a un dibuix suau i interpolat
+    cape_fill = ax.contourf(grid_lon, grid_lat, grid_cape, 
+                            levels=cape_levels_smooth, 
+                            cmap=cmap_cape_smooth,
+                            alpha=cfg_cape['alpha'], 
+                            zorder=2, 
+                            transform=ccrs.PlateCarree(),
+                            extend='max')
+    
+    cbar_cape = fig.colorbar(cape_fill, ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=cfg_cape['cbar_ticks'])
     cbar_cape.set_label("CAPE (J/kg) - 'Combustible'")
     cbar_cape.ax.tick_params(labelsize=8)
 
@@ -3756,7 +3766,7 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=MAP_CONFIG['convergence']['sigma_filter'])
     smoothed_convergence[smoothed_convergence < cfg_thresh['convergence_min']] = 0
 
-    # --- 4. DIBUIX DE LA CONVERGÈNCIA I EL MARCADOR MÀXIM ---
+    # --- 4. DIBUIX DE LA CONVERGÈNCIA ---
     if np.any(smoothed_convergence > 0):
         cfg_conv = MAP_CONFIG['convergence']
         all_levels = sorted(list(set(lvl for style in cfg_conv['styles'].values() for lvl in style['levels'])))
@@ -3776,19 +3786,15 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
             line_style = '--' if category_name == 'Comuna' else '-'
             ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=style['levels'], colors='black', 
                        linewidths=style['width'], linestyles=line_style, zorder=4, transform=ccrs.PlateCarree())
-
-        # --- NOU BLOC: DIBUIXAR EL MARCADOR DEL PUNT DE MÀXIMA CONVERGÈNCIA ---
+        
         max_conv_value = np.max(smoothed_convergence)
         if max_conv_value > 0:
             max_idx = np.unravel_index(np.argmax(smoothed_convergence), smoothed_convergence.shape)
             max_lon, max_lat = grid_lon[max_idx], grid_lat[max_idx]
-            
             marker_color = '#FFFFFF'
             for style in cfg_conv['styles'].values():
                 if style['levels'][0] <= max_conv_value < style['levels'][-1] + 10:
-                    marker_color = style['color']
-                    break
-
+                    marker_color = style['color']; break
             ax.plot(max_lon, max_lat, 's', color=marker_color, markersize=8, markeredgecolor='black', 
                     markeredgewidth=1.5, transform=ccrs.PlateCarree(), zorder=13)
             line_len = 0.08; line_width = 2.5
@@ -3796,12 +3802,11 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                     transform=ccrs.PlateCarree(), zorder=12, solid_capstyle='butt')
             ax.plot([max_lon + 0.015, max_lon + line_len], [max_lat, max_lat], color='black', linewidth=line_width, 
                     transform=ccrs.PlateCarree(), zorder=12, solid_capstyle='butt')
-            
             text_max = ax.text(0.02, 0.02, f"Convergència Màx: {max_conv_value:.0f}",
                                  transform=ax.transAxes, fontsize=12, color='white', 
                                  fontweight='bold', va='bottom', ha='left', zorder=12)
             text_max.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
-            
+
     # --- 5. LLEGENDA PER A LA CONVERGÈNCIA ---
     legend_handles = []
     for label, style in MAP_CONFIG['convergence']['styles'].items():
@@ -3823,6 +3828,7 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     afegir_etiquetes_ciutats(ax, map_extent)
     
     return fig
+    
     
 
 @st.cache_data(ttl=3600)
