@@ -1599,6 +1599,34 @@ def crear_mapa_base(map_extent, projection=ccrs.PlateCarree()):
         ax.add_feature(cfeature.STATES, linestyle=':', edgecolor='gray', zorder=5)
     return fig, ax
 
+def afegir_etiquetes_ciutats(ax, map_extent):
+    """
+    Versió amb etiquetes més petites per a una millor claredat visual en fer zoom.
+    """
+    is_zoomed_in = (tuple(map_extent) != tuple(MAP_EXTENT_CAT))
+
+    if is_zoomed_in:
+        # Itera sobre el diccionari de referència per als mapes
+        for ciutat, coords in POBLES_MAPA_REFERENCIA.items():
+            lon, lat = coords['lon'], coords['lat']
+            
+            # Comprovem si el punt de referència està dins dels límits del mapa visible
+            if map_extent[0] < lon < map_extent[1] and map_extent[2] < lat < map_extent[3]:
+                
+                # Dibuixem el punt de referència
+                ax.plot(lon, lat, 'o', color='black', markersize=1,
+                        markeredgecolor='black', markeredgewidth=1.5,
+                        transform=ccrs.PlateCarree(), zorder=19)
+
+                # Dibuixem l'etiqueta de text al costat del punt
+                # <<-- CANVI CLAU: Hem reduït el 'fontsize' de 8 a 6 -->>
+                ax.text(lon + 0.02, lat, ciutat, 
+                        fontsize= 5, # <-- CANVIA AQUEST NÚMERO
+                        color='white',
+                        transform=ccrs.PlateCarree(), 
+                        zorder=2,
+                        path_effects=[path_effects.withStroke(linewidth=2.5, foreground='gray')])
+
 
 def verificar_datos_entrada(p, T, Td, u, v, heights):
     """Verificar que los datos de entrada son válidos"""
@@ -3807,7 +3835,6 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     
     return fig
 
-
 def forcar_regeneracio_animacio():
     """Incrementa la clau de regeneració per invalidar la memòria cau."""
     if 'regenerate_key' in st.session_state:
@@ -4395,6 +4422,105 @@ def ui_pestanya_webcams(poble_sel, zona_activa):
 
 
 
+
+
+@st.cache_data(show_spinner="Carregant mapa de selecció...")
+def carregar_dades_geografiques():
+    """
+    Versió final i robusta que busca automàticament el mapa personalitzat
+    i, si no el troba, utilitza el mapa de comarques per defecte.
+    """
+    noms_possibles = ["mapes_personalitzat.geojson", "comarques.geojson"]
+    file_to_load = None
+    for file in noms_possibles:
+        if os.path.exists(file):
+            file_to_load = file
+            break
+
+    if file_to_load is None:
+        st.error(
+            "**Error Crític: Mapa no trobat.**\n\n"
+            "No s'ha trobat l'arxiu `mapa_personalitzat.geojson` ni `comarques.geojson` a la carpeta de l'aplicació. "
+            "Assegura't que almenys un d'aquests dos arxius existeixi."
+        )
+        return None
+
+    try:
+        gdf = gpd.read_file(file_to_load)
+        # --- LÍNIA CORREGIDA ---
+        # Apliquem la mateixa solució que a la península per a més robustesa.
+        gdf = gdf.set_crs("EPSG:4326", allow_override=True)
+        return gdf
+    except Exception as e:
+        st.error(f"S'ha produït un error en carregar l'arxiu de mapa '{file_to_load}': {e}")
+        return None
+
+def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index, show_labels):
+    """
+    Funció de VISUALITZACIÓ. Ara rep 'show_labels' com un paràmetre directe.
+    """
+    st.markdown("#### Mapa de Situació")
+    
+    selected_area_str = st.session_state.get('selected_area_peninsula') or st.session_state.get('selected_area')
+
+    alertes_tuple = tuple(sorted((k, float(v)) for k, v in alertes_per_zona.items()))
+    
+    map_data = preparar_dades_mapa_cachejat(
+        alertes_tuple, 
+        selected_area_str, 
+        hourly_index, 
+        show_labels  # <-- Ara utilitza el paràmetre rebut
+    )
+    
+    if not map_data:
+        st.error("No s'han pogut generar les dades per al mapa.")
+        return None
+
+    map_params = {
+        "location": [41.83, 1.87], "zoom_start": 8,
+        "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+        "attr": "Tiles &copy; Esri &mdash; and the GIS User Community",
+        "scrollWheelZoom": True, "dragging": True, "zoom_control": True, "doubleClickZoom": True,
+        "max_bounds": [[40.4, 0.0], [42.9, 3.5]], "min_zoom": 8, "max_zoom": 12
+    }
+
+    if selected_area_str and "---" not in selected_area_str:
+        gdf_temp = gpd.read_file(map_data["gdf"])
+        cleaned_selected_area = selected_area_str.strip().replace('.', '')
+        zona_shape = gdf_temp[gdf_temp[map_data["property_name"]].str.strip().replace('.', '') == cleaned_selected_area]
+        if not zona_shape.empty:
+            centroid = zona_shape.geometry.centroid.iloc[0]
+            map_params.update({
+                "location": [centroid.y, centroid.x], "zoom_start": 10,
+                "scrollWheelZoom": False, "dragging": False, "zoom_control": False, "doubleClickZoom": False,
+                "max_bounds": [[zona_shape.total_bounds[1], zona_shape.total_bounds[0]], [zona_shape.total_bounds[3], zona_shape.total_bounds[2]]]
+            })
+
+    m = folium.Map(**map_params)
+
+    def style_function(feature):
+        nom_feature_raw = feature.get('properties', {}).get(map_data["property_name"])
+        style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
+        if nom_feature_raw:
+            nom_feature = nom_feature_raw.strip().replace('.', '')
+            style = map_data["styles"].get(nom_feature, style)
+            cleaned_selected_area = selected_area_str.strip().replace('.', '') if selected_area_str else ''
+            if nom_feature == cleaned_selected_area:
+                style.update({'fillColor': '#007bff', 'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.5})
+        return style
+
+    folium.GeoJson(
+        map_data["gdf"], style_function=style_function,
+        highlight_function=lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5},
+        tooltip=folium.GeoJsonTooltip(fields=[map_data["property_name"]], aliases=['Zona:'])
+    ).add_to(m)
+
+    for marker in map_data["markers"]:
+        icon = folium.DivIcon(html=marker['icon_html'])
+        folium.Marker(location=marker['location'], icon=icon, tooltip=marker['tooltip']).add_to(m)
+    
+    return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
+    
 @st.cache_data(show_spinner="Carregant geometries municipals...")
 def carregar_dades_municipis():
     """
