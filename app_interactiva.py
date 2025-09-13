@@ -3791,10 +3791,10 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ D'ALTA FIDELITAT v2.0
+    VERSIÓ D'ALTA FIDELITAT v3.0 (Llegenda Personalitzada)
     - Renderitzat suavitzat amb filtre Gaussiano.
-    - Paleta de colors professional per a la convergència.
-    - Isòlines d'alta visibilitat amb efecte d'ombra per a una llegibilitat màxima.
+    - Paleta de colors professional i personalitzada per a la convergència.
+    - Isòlines d'alta visibilitat amb efecte d'ombra.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3807,7 +3807,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     
-    # --- 2. MAPA DE FONS (VENT) - Amb més transparència per no distreure ---
+    # --- 2. MAPA DE FONS (VENT) I STREAMLINES (Sense canvis) ---
     colors_wind = ['#d2d2f0', '#b4b4e6', '#78c8c8', '#50b48c', '#32cd32', '#64ff64', '#ffff00', '#f5d264', '#e6b478', '#d7788c', '#ff69b4', '#9f78dc']
     speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]
     custom_cmap_wind = ListedColormap(colors_wind)
@@ -3815,7 +3815,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap_wind, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree(), alpha=0.6)
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='#404040', linewidth=0.4, density=6.5, arrowsize=0.3, zorder=4, transform=ccrs.PlateCarree())
     
-    # --- 3. CÀLCUL I SUAVITZAT DE LA CONVERGÈNCIA ---
+    # --- 3. CÀLCUL I SUAVITZAT DE LA CONVERGÈNCIA (Sense canvis) ---
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
@@ -3827,32 +3827,36 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
     smoothed_convergence[smoothed_convergence < 15] = 0
     
-    # --- 4. DIBUIX DE LA CONVERGÈNCIA (FARCIMENT) ---
+    # --- 4. DIBUIX DE LA CONVERGÈNCIA (FARCIMENT AMB LLEGENDA PERSONALITZADA) ---
     if np.any(smoothed_convergence > 0):
-        # NOU: Paleta de colors d'alta qualitat per a la convergència
-        colors_conv = ['#00FFFF', '#00A6FF', '#0055FF', '#00FF00', '#FFFF00', '#FF7F00', '#FF0000', '#C80000', '#FF00FF', '#9932CC']
-        cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_professional", colors_conv)
+        # <<<--- CANVI CLAU AQUÍ: Definim la teva llegenda personalitzada ---
+        # Els nivells defineixen els límits INFERIORS de cada color.
+        fill_levels = [25, 30, 50, 100, 150] # Llindars: 25(verd), 30(groc), 50(vermell), 100(lila), fins a 150
+        colors_conv = ['#28a745', '#ffc107', '#dc3545', '#9370DB'] # Verd, groc, vermell, lila
         
-        fill_levels = np.arange(20, 151, 5) 
-        ax.contourf(grid_lon, grid_lat, smoothed_convergence,
-                    levels=fill_levels, cmap=cmap_conv, alpha=0.85,
-                    zorder=3, transform=ccrs.PlateCarree(), extend='max')
+        # Creem el mapa de colors i la normalització per a colors discrets
+        cmap_conv = ListedColormap(colors_conv)
+        norm_conv = BoundaryNorm(fill_levels, ncolors=cmap_conv.N, clip=True)
 
-        # NOU: Isòlines d'alta visibilitat amb efecte d'ombra
+        # Dibuixem el farciment utilitzant la nova paleta i normalització
+        ax.contourf(grid_lon, grid_lat, smoothed_convergence,
+                    levels=fill_levels, cmap=cmap_conv, norm=norm_conv,
+                    alpha=0.85, zorder=3, transform=ccrs.PlateCarree(), extend='max')
+        # <<<--- FI DEL CANVI CLAU ---
+
+        # Les isòlines amb efecte d'ombra es mantenen igual per a un acabat professional
         line_levels = [15, 30, 50, 70, 90, 120]
         line_styles = ['--', '-', '-', '-', '-', '-']
-        
-        # L'efecte "màgic": una vora negra al voltant de la línia principal
         path_effect_ombra = [path_effects.withStroke(linewidth=2.5, foreground='black')]
 
         contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
                               levels=line_levels, 
-                              colors='white', # La línia principal és blanca
+                              colors='white',
                               linestyles=line_styles,
-                              linewidths=0.8, # Molt fina
-                              zorder=5, # Per sobre del farciment
+                              linewidths=0.8,
+                              zorder=5,
                               transform=ccrs.PlateCarree(),
-                              path_effects=path_effect_ombra) # Apliquem l'efecte
+                              path_effects=path_effect_ombra)
         
         labels = ax.clabel(contours, inline=True, fontsize=6, fmt='%1.0f')
         for label in labels:
@@ -3864,7 +3868,6 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     afegir_etiquetes_ciutats(ax, map_extent)
     
     return fig
-
 def forcar_regeneracio_animacio():
     """Incrementa la clau de regeneració per invalidar la memòria cau."""
     if 'regenerate_key' in st.session_state:
