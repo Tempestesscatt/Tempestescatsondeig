@@ -64,6 +64,48 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
 
+
+MAP_CONFIG = {
+    'cape': {
+        'colors': [
+            '#2E4598', '#3765AD', '#3F85C2', '#4AB5D8', '#53C9C6', '#50B69B', 
+            '#4CA26F', '#488D44', '#73AC39', '#A5C735', '#DDE330', '#FFF22C', 
+            '#FBC928', '#F8A124', '#F57A20', '#F2531C', '#EF2D18', '#E51D14', 
+            '#D01E15', '#BB1E16', '#A51E17', '#901E18', '#7B1F19', '#661F1A'
+        ],
+        'levels': [0, 150, 300, 450, 600, 750, 900, 1050, 1200, 1350, 1500, 
+                   1650, 1800, 1950, 2100, 2250, 2400, 2550, 2700, 2850, 
+                   3000, 3150, 3300, 3450, 3601],
+        'cbar_ticks': [0, 450, 900, 1350, 1800, 2250, 2700, 3150, 3600],
+        'alpha': 0.70 # Ligero aumento de opacidad para mejor contraste
+    },
+    'convergence': {
+        'styles': {
+            'Floixa': {'levels': [10, 20, 30, 40], 'color': '#28a745', 'width': 1.3},
+            'Moderada': {'levels': [50, 60, 70], 'color': '#FFD700', 'width': 1.9},
+            'Forta': {'levels': [80, 90, 100, 110], 'color': '#DC3545', 'width': 2.5},
+            'Extrema': {'levels': [120, 130, 140, 150], 'color': '#9370DB', 'width': 3.1}
+        },
+        'outline_width_factor': 1.5, # Factor para el grosor del contorno negro
+        'sigma_filter': 2.5
+    },
+    'streamlines': {
+        'color': 'black',
+        'linewidth': 0.4,
+        'density': 5.5,
+        'arrowsize': 0.4
+    },
+    'thresholds': {
+        'cape_min': 500,
+        'cape_max': 6000,
+        'convergence_min': 10,
+        'dewpoint_low_level': 14, # Para niveles >= 950 hPa
+        'dewpoint_mid_level': 12, # Para niveles < 950 hPa
+    }
+}
+
+
+
 NUVOL_ICON_BASE64 = {
     # --- Cel Clar i Núvols de Bon Temps ---
     "Cel Serè": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjN0VDRkZGIi8+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMTIiIGZpbGw9IiNGRkQwNTkiLz48L3N2Zz4=",
