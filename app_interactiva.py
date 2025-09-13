@@ -3759,77 +3759,79 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ FINAL AMB ESCALA AJUSTADA I CORRECCIÓ D'ERRORS.
+    VERSIÓ 2.0 (MILLORADA): Renderitzat d'alta qualitat per a la convergència amb
+    paleta de colors personalitzada (11 colors), rang de 15 a 150, i línies sòlides.
     """
-    # Tornem a l'estil per defecte (fons clar)
     plt.style.use('default')
-
     fig, ax = crear_mapa_base(map_extent)
     
-    # --- 1. INTERPOLACIÓ ---
+    # --- 1. PREPARACIÓ DE DADES (Sense canvis) ---
     grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 300), np.linspace(map_extent[2], map_extent[3], 300))
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'linear')
-    grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'linear')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-    
-    # --- 2. MAPA DE VELOCITAT DEL VENT ---
-    colors_wind = [
-        '#d2d2f0', '#b4b4e6', '#78c8c8', '#50b48c', '#32cd32', '#64ff64',
-        '#ffff00', '#f5d264', '#e6b478', '#d7788c', '#ff69b4', '#9f78dc',
-        '#8c64c8', '#8296d7', '#96b4d7', '#d2b4e6', '#e6dcc8', '#f5e6b4'
-    ]
-    speed_levels = [0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104, 130, 166, 184, 200]
-    custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
-    
-    ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree(), alpha=0.7)
-    
-    # --- STREAMLINES DEL VENT ---
-    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.5, density=6.5, arrowsize=0.3, zorder=4, transform=ccrs.PlateCarree())
-    
-    # --- 3. CÀLCUL I FILTRATGE DE CONVERGÈNCIA ---
+
+    # --- 2. CÀLCUL I FILTRATGE DE CONVERGÈNCIA (Llindar actualitzat) ---
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
         convergence[np.isnan(convergence)] = 0
         DEWPOINT_THRESHOLD = 14 if nivell >= 950 else 12
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
-        
-        # Correcció d'un altre petit bug: s'han d'utilitzar parèntesis amb l'operador '&'
-        effective_convergence = np.where((convergence >= 20) & (humid_mask), convergence, 0)
+        effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0) # <-- Llindar canviat a 15
 
-    # Aquesta és la línia que donava l'error 'NameError'
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
-    
-    smoothed_convergence[smoothed_convergence < 20] = 0
-    
-    # --- 4. DIBUIX DE LA CONVERGÈNCIA ---
-    if np.any(smoothed_convergence > 0):
-        colors_conv = [
-            '#5BC0DE', "#FBFF00", "#DC6D05", "#EC8383", "#F03D3D", 
-            "#FF0000", "#7C7EF0", "#0408EAFF", "#000070"
-        ]
-        cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_personalitzada", colors_conv)
-        
-        fill_levels = np.arange(30, 151, 5)
-        ax.contourf(grid_lon, grid_lat, smoothed_convergence,
-                    levels=fill_levels, cmap=cmap_conv, alpha=0.99,
-                    zorder=3, transform=ccrs.PlateCarree(), extend='max')
+    smoothed_convergence[smoothed_convergence < 15] = 0 # <-- Llindar canviat a 15
 
-        line_levels = [20, 30, 50, 70, 90, 120]
+    # --- 3. DIBUIX DE LA CONVERGÈNCIA (Bloc completament nou) ---
+    if np.any(smoothed_convergence > 0):
+        # 1. Nova paleta de 11 colors i 12 nivells (15 a 150) com has demanat
+        colors_conv = [
+            '#87CEEB',  # Blau fluix
+            '#90EE90',  # Verd fluix
+            '#32CD32',  # Verd fort
+            '#FFFFE0',  # Groc fluix
+            '#FFD700',  # Groc fort
+            '#FFA500',  # Taronja fluix
+            '#FF8C00',  # Taronja fort
+            '#F08080',  # Vermell fluix
+            '#DC3545',  # Vermell fort
+            '#D8BFD8',  # Lila fluix
+            '#9370DB'   # Lila fort
+        ]
+        fill_levels = [15, 25, 35, 45, 55, 65, 80, 95, 110, 125, 140, 151]
+        
+        cmap_conv = ListedColormap(colors_conv)
+        norm_conv = BoundaryNorm(fill_levels, ncolors=cmap_conv.N, clip=True)
+
+        # 2. Dibuixem el farciment de color (contourf)
+        im = ax.contourf(grid_lon, grid_lat, smoothed_convergence,
+                         levels=fill_levels, cmap=cmap_conv, norm=norm_conv,
+                         alpha=0.8, zorder=3, transform=ccrs.PlateCarree(), extend='max')
+
+        # 3. Dibuixem les línies de contorn SÒLIDES a partir de 30
+        line_levels = [30, 50, 70, 90, 120, 150]
         contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
                               levels=line_levels, 
                               colors='black',
-                              linestyles='--', linewidths=1, zorder=3,
+                              linestyles='solid', # <-- Línies sòlides
+                              linewidths=0.8, zorder=4,
                               transform=ccrs.PlateCarree())
         
-        labels = ax.clabel(contours, inline=True, fontsize=5, fmt='%1.0f')
+        # 4. Etiquetes de les línies amb alta visibilitat
+        labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
         for label in labels:
-            label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.5))
+            label.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='white')])
+            
+        # 5. Afegim la barra de color (llegenda)
+        cbar = fig.colorbar(im, ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=fill_levels)
+        cbar.set_label("Intensitat de la Convergència (x10⁻⁵ s⁻¹)")
 
-    # Ajustos finals del títol
-    ax.set_title(f"Vent i Nuclis de Convergència EFECTIVA a {nivell}hPa\n{timestamp_str}",
+    # --- 4. STREAMLINES I TÍTOL (Sense canvis, però superposats) ---
+    ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.4, density=5.5, arrowsize=0.4, zorder=5, transform=ccrs.PlateCarree())
+
+    ax.set_title(f"Focus de Convergència Efectiva a {nivell}hPa\n{timestamp_str}",
                  weight='bold', fontsize=16)
     afegir_etiquetes_ciutats(ax, map_extent)
     
@@ -5724,7 +5726,6 @@ def direccio_moviment(des_de_graus):
     return cap_on_va
 
 
-
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     """
     Gestiona la interfície de la pestanya "Anàlisi de Mapes" per a Catalunya,
@@ -5735,7 +5736,7 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     col_capa, col_zoom = st.columns(2)
     with col_capa:
         mapa_sel = st.selectbox("Selecciona la capa del mapa:", 
-                               ["Anàlisi de Vent i Convergència", "Vent a 700hPa", "Vent a 300hPa"], 
+                               ["Anàlisi de Vent i Convergència", "Anàlisi d'Advecció (Fronts)", "Vent a 700hPa", "Vent a 300hPa"], 
                                key="map_cat")
     with col_zoom: 
         zoom_sel = st.selectbox("Nivell de Zoom:", 
@@ -5746,23 +5747,44 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     
     with st.spinner(f"Carregant i generant mapa... (només la primera vegada)"):
         if "Convergència" in mapa_sel:
-            # Crida a la funció per al mapa de convergència
             fig = generar_mapa_cachejat_cat(hourly_index_sel, nivell_sel, timestamp_str, tuple(selected_extent))
             if fig is None:
                 st.error(f"Error en carregar les dades per al mapa de convergència.")
             else:
                 st.pyplot(fig, use_container_width=True)
-                plt.close(fig) # Important per alliberar memòria
+                plt.close(fig)
         
-        else:
-            # Crida a la funció per als mapes de vent
+        elif "Advecció" in mapa_sel:
+            nivell_adveccio = st.selectbox(
+                "Nivell per a l'anàlisi d'advecció:",
+                options=[1000, 925, 850, 700, 500],
+                format_func=lambda x: f"{x} hPa", key="advection_level_selector_tab"
+            )
+            map_data_adv, error_adv = carregar_dades_mapa_adveccio_cat(nivell_adveccio, hourly_index_sel)
+            if error_adv or not map_data_adv:
+                st.error(f"Error en carregar les dades d'advecció: {error_adv}")
+            else:
+                timestamp_str_mapa = timestamp_str.split('|')[1].strip() if '|' in timestamp_str else timestamp_str
+                fig_adv = crear_mapa_adveccio_cat(
+                    map_data_adv['lons'], map_data_adv['lats'],
+                    map_data_adv['temp_data'], map_data_adv['speed_data'],
+                    map_data_adv['dir_data'], 
+                    nivell_adveccio,
+                    timestamp_str_mapa, 
+                    selected_extent
+                )
+                st.pyplot(fig_adv, use_container_width=True)
+                plt.close(fig_adv)
+                ui_explicacio_adveccio()
+        
+        else: # Mapes de només vent
             nivell_vent = 700 if "700" in mapa_sel else 300
             fig = generar_mapa_vents_cachejat_cat(hourly_index_sel, nivell_vent, timestamp_str, tuple(selected_extent))
             if fig is None:
                 st.error(f"Error en carregar les dades per al mapa de vent a {nivell_vent}hPa.")
             else:
                 st.pyplot(fig, use_container_width=True)
-                plt.close(fig) # Important per alliberar memòria
+                plt.close(fig)
 
     if "Convergència" in mapa_sel:
         ui_explicacio_convergencia()
