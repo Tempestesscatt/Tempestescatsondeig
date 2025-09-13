@@ -1253,17 +1253,12 @@ def calcular_mlcape_robusta(p, T, Td):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Completa (v35.0).
-    - Neteja i ordena el perfil atmosfèric.
-    - Calcula un ampli rang de paràmetres termodinàmics i de cisallament.
-    - Inclou l'anàlisi d'humitat en 4 capes (fins a 100 hPa).
-    - Calcula el T-Td Spread i la velocitat del vent en nivells clau per als diagnòstics.
-    - Està dissenyada per ser extremadament robusta davant de dades incompletes.
+    Versió Definitiva i Completa (v36.0 - Suport Multi-Trajectòria).
+    - Calcula i retorna tant el perfil de superfície (sfc_prof) com el més inestable (mu_prof).
     """
     if len(p_profile) < 4:
         return None, "Perfil atmosfèric massa curt."
 
-    # 1. Converteix les llistes a arrays de MetPy amb unitats
     p = np.array(p_profile) * units.hPa
     T = np.array(T_profile) * units.degC
     Td = np.array(Td_profile) * units.degC
@@ -1271,36 +1266,37 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     v = np.array(v_profile) * units('m/s')
     heights = np.array(h_profile) * units.meter
 
-    # 2. Neteja de dades: Elimina qualsevol nivell on falti una dada essencial
     valid_mask = np.isfinite(p.m) & np.isfinite(T.m) & np.isfinite(Td.m) & np.isfinite(u.m) & np.isfinite(v.m)
     p, T, Td, u, v, heights = p[valid_mask], T[valid_mask], Td[valid_mask], u[valid_mask], v[valid_mask], heights[valid_mask]
 
     if len(p) < 3:
         return None, "No hi ha prou dades vàlides després de la neteja."
 
-    # 3. Ordena el perfil per pressió (de major a menor)
     sort_idx = np.argsort(p.m)[::-1]
     p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
     
-    # Diccionari per emmagatzemar tots els paràmetres calculats
     params_calc = {}
-    heights_agl = heights - heights[0] # Altures sobre el nivell del terra
+    heights_agl = heights - heights[0]
 
-    # El pany (lock) és una bona pràctica per si s'executa en entorns amb múltiples fils
     with parcel_lock:
-        # --- Càlculs de la Trajectòria de la Parcel·la ---
-        sfc_prof, ml_prof = None, None
+        # --- CÀLCUL DE LES DUES TRAJECTÒRIES (SFC i MU) ---
+        sfc_prof, mu_prof = None, None
         try: 
             sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
         except Exception: 
-            return None, "Error crític: No s'ha pogut calcular ni el perfil de superfície."
+            return None, "Error crític: No s'ha pogut calcular el perfil de superfície."
         
         try: 
-            _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
+            # Calculem la parcel·la MÉS INESTABLE (la que genera el MUCAPE)
+            # El paràmetre 'depth' indica fins on buscar (els primers 300hPa)
+            mu_p, mu_T, mu_Td, _ = mpcalc.most_unstable_parcel(p, T, Td, depth=300 * units.hPa)
+            # Calculem la trajectòria d'aquesta parcel·la
+            mu_prof = mpcalc.parcel_profile(p, mu_T, mu_Td).to('degC')
         except Exception: 
-            ml_prof = None
+            mu_prof = None # Si falla, continuarem només amb la de superfície
             
-        main_prof = ml_prof if ml_prof is not None else sfc_prof
+        # El perfil principal per a l'ombrejat serà el més inestable si existeix
+        main_prof = mu_prof if mu_prof is not None else sfc_prof
 
         # --- Paràmetres d'Humitat i Temperatura per Capes ---
         try: 
@@ -1346,13 +1342,10 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             except: 
                 params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
 
-        if ml_prof is not None:
-            try:
-                mlcape, mlcin = mpcalc.cape_cin(p, T, Td, ml_prof)
-                params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
-            except: 
-                params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
-        else:
+        try:
+            mlcape, mlcin = calcular_mlcape_robusta(p, T, Td)
+            params_calc['MLCAPE'] = mlcape; params_calc['MLCIN'] = mlcin
+        except:
             params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
 
         if main_prof is not None:
@@ -1436,8 +1429,8 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             except: 
                 params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
         
-    # Retorna les dades processades i el diccionari de paràmetres
-    return ((p, T, Td, u, v, heights, sfc_prof), params_calc), None
+    # Retorna les dades processades i el diccionari de paràmetres, INCLOENT LES DUES TRAJECTÒRIES
+    return ((p, T, Td, u, v, heights, sfc_prof, mu_prof), params_calc), None
 
 
 
@@ -1641,10 +1634,11 @@ def verificar_datos_entrada(p, T, Td, u, v, heights):
 
 
 
-def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str, zoom_capa_baixa=False):
+def crear_skewt(p, T, Td, u, v, sfc_prof, mu_prof, params_calc, titol, timestamp_str, zoom_capa_baixa=False):
     """
-    Versió Definitiva v2.0: Soluciona el bug de l'ombra de CAPE/CIN desplaçada
-    netejant les dades just abans de dibuixar l'ombrejat.
+    Versió Definitiva v4.0: Dibuixa tant la trajectòria de superfície (SFC, sòlida)
+    com la de la parcel·la més inestable (MU, discontínua) per a una interpretació completa.
+    L'ombrejat del CAPE ara correspon a la trajectòria MU, justificant el valor del paràmetre MUCAPE.
     """
     fig = plt.figure(dpi=150, figsize=(7, 8))
     
@@ -1676,26 +1670,25 @@ def crear_skewt(p, T, Td, u, v, prof, params_calc, titol, timestamp_str, zoom_ca
     skew.plot_moist_adiabats(color='cornflowerblue', linestyle='--', alpha=0.5)
     skew.plot_mixing_lines(color='limegreen', linestyle='--', alpha=0.5)
     
-    # <<<--- CORRECCIÓ DE L'OMBRA DESPLAÇADA ---
-    if prof is not None:
-        # 1. Creem una màscara per a trobar només els nivells on TOTES les dades
-        #    necessàries per a l'ombrejat (pressió, temperatura i perfil de la parcel·la) són vàlides.
-        valid_shade_mask = np.isfinite(p.m) & np.isfinite(T.m) & np.isfinite(prof.m)
-        
-        # 2. Creem perfils "nets" utilitzant aquesta màscara.
-        p_clean = p[valid_shade_mask]
-        T_clean = T[valid_shade_mask]
-        prof_clean = prof[valid_shade_mask]
-
-        # 3. Utilitzem aquestes dades netes NOMÉS per a dibuixar les ombres.
-        #    Això evita que els valors 'NaN' confonguin l'algorisme de rebliment.
+    # --- CANVI CLAU: DIBUIX DE L'OMBJAT I LES DUES TRAJECTÒRIES ---
+    
+    # 1. L'ombrejat del CAPE/CIN es basa en la parcel·la MÉS INESTABLE (MU),
+    #    ja que representa el màxim potencial d'energia i coincideix amb el valor MUCAPE.
+    if mu_prof is not None:
+        valid_shade_mask = np.isfinite(p.m) & np.isfinite(T.m) & np.isfinite(mu_prof.m)
+        p_clean, T_clean, prof_clean = p[valid_shade_mask], T[valid_shade_mask], mu_prof[valid_shade_mask]
         skew.shade_cape(p_clean, T_clean, prof_clean, color='red', alpha=0.2)
         skew.shade_cin(p_clean, T_clean, prof_clean, color='blue', alpha=0.2)
         
-        # 4. Finalment, dibuixem la línia negra de la trajectòria utilitzant les dades originals,
-        #    ja que la funció 'plot' sí que sap com gestionar els forats correctament.
-        skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la (SFC)', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
-    # <<<--- FI DE LA CORRECCIÓ ---
+        # Dibuixem la trajectòria de la parcel·la més inestable (línia negra discontínua)
+        skew.plot(p, mu_prof, 'k', linewidth=2.5, linestyle='--', label='Trajectòria Parcel·la (MU)', 
+                  path_effects=[path_effects.withStroke(linewidth=3.5, foreground='white')])
+
+    # 2. Dibuixem sempre la trajectòria de superfície (línia negra sòlida)
+    if sfc_prof is not None:
+        skew.plot(p, sfc_prof, 'k', linewidth=2.5, label='Trajectòria Parcel·la (SFC)',
+                  path_effects=[path_effects.withStroke(linewidth=3.5, foreground='white')])
+    # --- FI DEL CANVI ---
 
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
     skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
@@ -2640,13 +2633,19 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
     - Si no, mostra el botó interactiu per "viatjar" a la nova zona.
     """
     if data_tuple:
+        # Ara 'sounding_data' conté 8 elements: p, T, Td, u, v, heights, sfc_prof, mu_prof
         sounding_data, params_calculats = data_tuple
-        p, T, Td, u, v, heights, prof = sounding_data
+        p, T, Td, u, v, heights, sfc_prof, mu_prof = sounding_data
         
         col1, col2 = st.columns(2, gap="large")
         with col1:
             zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 800 hPa)")
-            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=zoom_capa_baixa)
+            
+            # <<<--- LÍNIA MODIFICADA: Passem les dues trajectòries a la funció de dibuix ---
+            fig_skewt = crear_skewt(p, T, Td, u, v, sfc_prof, mu_prof, params_calculats, 
+                                    f"Sondeig Vertical - {poble_sel}", timestamp_str, 
+                                    zoom_capa_baixa=zoom_capa_baixa)
+            
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             with st.container(border=True):
@@ -2657,20 +2656,15 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             st.pyplot(fig_hodo, use_container_width=True)
             plt.close(fig_hodo)
 
-            # <<-- NOU BLOC DE LÒGICA AMB COMPROVACIÓ DE CONTEXT -->>
+            # ... (la resta de la funció amb la lògica dels botons i el radar es manté igual) ...
             if avis_proximitat and isinstance(avis_proximitat, dict):
-                # Sempre mostrem el missatge d'avís primer
                 st.warning(f"⚠️ **AVÍS DE PROXIMITAT:** {avis_proximitat['message']}")
-                
-                # Comprovem si el millor punt d'anàlisi és el que ja estem veient
                 if avis_proximitat['target_city'] == poble_sel:
-                    # Si és així, mostrem un botó desactivat i informatiu
                     st.button("📍 Ja ets a la millor zona convergent d'anàlisi, mira si hi ha MU/SBCAPE! I poc MU/SBCIN!",
                               help="El punt d'anàlisi més proper a l'amenaça és la localitat que ja estàs consultant.",
                               use_container_width=True,
                               disabled=True)
                 else:
-                    # Si no, mostrem el botó interactiu de sempre
                     tooltip_text = f"Viatjar a {avis_proximitat['target_city']}, el punt d'anàlisi més proper al nucli de convergència (Força: {avis_proximitat['conv_value']:.0f})."
                     st.button("🛰️ Analitzar Zona d'Amenaça", 
                               help=tooltip_text, 
@@ -2679,7 +2673,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
                               on_click=canviar_poble_analitzat,
                               args=(avis_proximitat['target_city'],)
                              )
-            # <<-- FI DEL NOU BLOC -->>
             
             st.markdown("##### Radar de Precipitació en Temps Real")
             radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
@@ -2687,6 +2680,7 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             st.components.v1.html(html_code, height=410)
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
+        
 
 def debug_convergence_calculation(map_data, llista_ciutats):
     """
