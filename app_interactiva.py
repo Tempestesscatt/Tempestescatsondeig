@@ -80,14 +80,12 @@ MAP_CONFIG = {
         'alpha': 0.75
     },
     'convergence': {
-        # <<<--- CANVI PRINCIPAL AQUÍ: Noves etiquetes més descriptives ---
         'styles': {
             'Comuna':     {'levels': [10, 20, 30, 40], 'color': '#00FF00', 'width': 1.2},
             'Interessant':{'levels': [50, 60, 70],     'color': '#FFFF00', 'width': 1.6},
             'Molt Forta': {'levels': [80, 90, 100, 110], 'color': '#FF0000', 'width': 2.0},
             'Extrema':    {'levels': [120, 130, 140, 150], 'color': '#FF00FF', 'width': 2.4}
         },
-        # --- FI DEL CANVI ---
         'sigma_filter': 2.5
     },
     'streamlines': {
@@ -104,7 +102,6 @@ MAP_CONFIG = {
         'dewpoint_mid_level': 12,
     }
 }
-
 
 
 NUVOL_ICON_BASE64 = {
@@ -3722,9 +3719,8 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                                      nivell: int, timestamp_str: str, 
                                      map_extent: List[float]) -> plt.Figure:
     """
-    VERSIÓ 19.0 (LLEGENDA INTEL·LIGENT): Genera un mapa amb farciment suau i
-    una llegenda descriptiva que mostra l'estil de línia (discontínua/contínua)
-    per a cada nivell de convergència.
+    VERSIÓ 20.0 (MARCADOR MÀXIM): Afegeix un marcador especial ("pivotet")
+    al punt de màxima convergència per identificar ràpidament la zona més activa.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3760,7 +3756,7 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=MAP_CONFIG['convergence']['sigma_filter'])
     smoothed_convergence[smoothed_convergence < cfg_thresh['convergence_min']] = 0
 
-    # --- 4. DIBUIX DE LA CONVERGÈNCIA AMB FARCIMENT SUAU I LÍNIES NEGRES ---
+    # --- 4. DIBUIX DE LA CONVERGÈNCIA I EL MARCADOR MÀXIM ---
     if np.any(smoothed_convergence > 0):
         cfg_conv = MAP_CONFIG['convergence']
         all_levels = sorted(list(set(lvl for style in cfg_conv['styles'].values() for lvl in style['levels'])))
@@ -3781,27 +3777,38 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
             ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=style['levels'], colors='black', 
                        linewidths=style['width'], linestyles=line_style, zorder=4, transform=ccrs.PlateCarree())
 
+        # --- NOU BLOC: DIBUIXAR EL MARCADOR DEL PUNT DE MÀXIMA CONVERGÈNCIA ---
         max_conv_value = np.max(smoothed_convergence)
         if max_conv_value > 0:
+            max_idx = np.unravel_index(np.argmax(smoothed_convergence), smoothed_convergence.shape)
+            max_lon, max_lat = grid_lon[max_idx], grid_lat[max_idx]
+            
+            marker_color = '#FFFFFF'
+            for style in cfg_conv['styles'].values():
+                if style['levels'][0] <= max_conv_value < style['levels'][-1] + 10:
+                    marker_color = style['color']
+                    break
+
+            ax.plot(max_lon, max_lat, 's', color=marker_color, markersize=8, markeredgecolor='black', 
+                    markeredgewidth=1.5, transform=ccrs.PlateCarree(), zorder=13)
+            line_len = 0.08; line_width = 2.5
+            ax.plot([max_lon - line_len, max_lon - 0.015], [max_lat, max_lat], color='black', linewidth=line_width, 
+                    transform=ccrs.PlateCarree(), zorder=12, solid_capstyle='butt')
+            ax.plot([max_lon + 0.015, max_lon + line_len], [max_lat, max_lat], color='black', linewidth=line_width, 
+                    transform=ccrs.PlateCarree(), zorder=12, solid_capstyle='butt')
+            
             text_max = ax.text(0.02, 0.02, f"Convergència Màx: {max_conv_value:.0f}",
                                  transform=ax.transAxes, fontsize=12, color='white', 
                                  fontweight='bold', va='bottom', ha='left', zorder=12)
             text_max.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
-
-    # --- 5. LLEGENDA PER A LA CONVERGÈNCIA (AMB ESTILS DE LÍNIA) ---
+            
+    # --- 5. LLEGENDA PER A LA CONVERGÈNCIA ---
     legend_handles = []
     for label, style in MAP_CONFIG['convergence']['styles'].items():
-        # Definim l'estil de línia per a la llegenda
         line_style = '--' if label == 'Comuna' else '-'
-        handle = mlines.Line2D([], [], color='black', # La línia a la llegenda també serà negra
-                               marker='s', # Afegim un quadrat de color
-                               markerfacecolor=style['color'],
-                               markersize=10,
-                               linestyle=line_style,
-                               linewidth=2, 
-                               label=label)
+        handle = mlines.Line2D([], [], color='black', marker='s', markerfacecolor=style['color'],
+                               markersize=10, linestyle=line_style, linewidth=2, label=label)
         legend_handles.append(handle)
-
     ax.legend(handles=legend_handles, title="Convergència", loc='lower right', 
               fontsize=9, title_fontsize=11, frameon=True, framealpha=0.9, facecolor='white')
 
