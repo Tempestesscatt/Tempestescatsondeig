@@ -7451,6 +7451,7 @@ def tornar_al_mapa_general():
 def run_catalunya_app():
     """
     Funció principal que gestiona tota la lògica i la interfície per a la zona de Catalunya.
+    VERSIÓ FINAL amb la nova lògica d'alertes i la correcció d'indentació.
     """
     # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
@@ -7501,8 +7502,88 @@ def run_catalunya_app():
 
     # --- PAS 3: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # Aquí va tota la lògica per a la vista detallada d'un poble (amb les pestanyes, etc.)
-        # Aquesta part es pot mantenir com la tenies.
+        poble_sel = st.session_state.poble_sel
+        st.success(f"### Anàlisi per a: {poble_sel}")
+        
+        col_nav1, col_nav2 = st.columns(2)
+        with col_nav1:
+            st.button("⬅️ Tornar a la Comarca", on_click=tornar_a_seleccio_comarca, use_container_width=True, help=f"Torna a la llista de municipis de {st.session_state.selected_area}.")
+        with col_nav2:
+            st.button("🗺️ Tornar al Mapa General", on_click=tornar_al_mapa_general, use_container_width=True, help="Torna al mapa de selecció de totes les comarques de Catalunya.")
+            
+        timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
+        
+        menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi de Mapes", "Simulació de Núvol"]
+        menu_icons = ["fullscreen", "graph-up-arrow", "map", "cloud-upload"]
+        if not is_guest:
+            menu_options.append("💬 Assistent IA")
+            menu_icons.append("chat-quote-fill")
+        
+        active_tab = option_menu(
+            menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", 
+            orientation="horizontal", key=f'option_menu_{poble_sel}'
+        )
+        
+        with st.spinner(f"Carregant dades d'anàlisi per a {poble_sel}..."):
+            lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
+            data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+
+        if error_msg or not data_tuple:
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg if error_msg else 'Dades no disponibles.'}")
+        else:
+            if final_index is not None and final_index != hourly_index_sel:
+                adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+                adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
+                st.warning(f"Avís: Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: {adjusted_local_time.strftime('%H:%Mh')}.")
+            
+            params_calc = data_tuple[1]
+            if active_tab in ["Anàlisi Comarcal", "Anàlisi Vertical", "💬 Assistent IA"]:
+                with st.spinner("Carregant dades de convergència..."):
+                    map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
+                    if map_data_conv:
+                        conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+                        if pd.notna(conv_puntual):
+                            params_calc[f'CONV_{nivell_sel}hPa'] = conv_puntual
+            
+            if active_tab == "Anàlisi Comarcal":
+                comarca_actual = get_comarca_for_poble(poble_sel)
+                if comarca_actual:
+                    alertes_zona = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
+                    valor_conv_comarcal = alertes_zona.get(comarca_actual, {}).get('conv', 0)
+                    map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
+                    ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calc, hora_sel_str, data_tuple)
+            elif active_tab == "Anàlisi Vertical":
+                ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+            elif active_tab == "Anàlisi de Mapes":
+                ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
+            elif active_tab == "Simulació de Núvol":
+                st.markdown(f"#### Simulació del Cicle de Vida per a {poble_sel}")
+                st.caption(timestamp_str)
+                if 'regenerate_key' not in st.session_state: st.session_state.regenerate_key = 0
+                if st.button("🔄 Regenerar Totes les Animacions"): forcar_regeneracio_animacio()
+                with st.spinner("Generant simulacions visuals..."):
+                    params_tuple = tuple(sorted(params_calc.items()))
+                    gifs = generar_animacions_professionals(params_tuple, timestamp_str, st.session_state.regenerate_key)
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.markdown("<h5 style='text-align: center;'>1. Iniciació</h5>", unsafe_allow_html=True)
+                    if gifs['iniciacio']: st.image(gifs['iniciacio'])
+                    else: st.info("Condicions estables.")
+                with col2:
+                    st.markdown("<h5 style='text-align: center;'>2. Maduresa</h5>", unsafe_allow_html=True)
+                    if gifs['maduresa']: st.image(gifs['maduresa'])
+                    else: st.info("Sense energia per a tempesta.")
+                with col3:
+                    st.markdown("<h5 style='text-align: center;'>3. Dissipació</h5>", unsafe_allow_html=True)
+                    if gifs['dissipacio']: st.image(gifs['dissipacio'])
+                    else: st.info("Sense fase final.")
+                st.divider()
+                ui_guia_tall_vertical(params_calc, nivell_sel)
+            elif active_tab == "💬 Assistent IA" and not is_guest:
+                analisi_temps = analitzar_potencial_meteorologic(params_calc, nivell_sel, hora_sel_str)[0]
+                interpretacions_ia = interpretar_parametres(params_calc, nivell_sel)
+                sounding_data = data_tuple[0] if data_tuple else None
+                ui_pestanya_assistent_ia(params_calc, poble_sel, analisi_temps, interpretacions_ia, sounding_data)
     else: 
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
         st.session_state.setdefault('show_comarca_labels', True)
