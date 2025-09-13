@@ -7793,40 +7793,25 @@ def generar_bulleti_inteligent(params_calc, poble_sel):
     fenomens = []
     resum = ""
     
-    # Escenari 1: Supercèl·lules (El més sever)
     if bwd_6km >= 35 and mucape >= 1500 and srh_1km >= 150:
-        nivell_risc = {"text": "Extrem", "color": "#9370DB"}
-        titol = "Potencial de Supercèl·lules"
-        resum = f"La combinació d'energia explosiva ({mucape:.0f} J/kg) i una forta cizalladura del vent ({bwd_6km:.0f} nusos) és molt favorable per a la formació de supercèl·lules. Aquestes són les tempestes més organitzades i perilloses."
-        fenomens.append("Calamarsa gran (> 2cm)")
-        fenomens.append("Fortes ratxes de vent (> 90 km/h)")
+        nivell_risc = {"text": "Extrem", "color": "#9370DB"}; titol = "Potencial de Supercèl·lules"
+        resum = f"La combinació d'energia explosiva ({mucape:.0f} J/kg) i una forta cizalladura del vent ({bwd_6km:.0f} nusos) és molt favorable per a la formació de supercèl·lules."
+        fenomens.extend(["Calamarsa gran (> 2cm)", "Fortes ratxes de vent (> 90 km/h)"])
         if lcl_hgt < 1200: fenomens.append("Possibilitat de tornados")
-    
-    # Escenari 2: Multicèl·lules Organitzades
     elif bwd_6km >= 25 and mucape >= 800:
-        nivell_risc = {"text": "Alt", "color": "#DC3545"}
-        titol = "Tempestes Organitzades"
-        resum = f"L'energia disponible ({mucape:.0f} J/kg) i una cizalladura considerable ({bwd_6km:.0f} nusos) permetran que les tempestes s'organitzin en sistemes multicel·lulars o línies de tempesta."
+        nivell_risc = {"text": "Alt", "color": "#DC3545"}; titol = "Tempestes Organitzades"
+        resum = f"L'energia disponible ({mucape:.0f} J/kg) i una cizalladura considerable ({bwd_6km:.0f} nusos) permetran que les tempestes s'organitzin en sistemes multicel·lulars."
         fenomens.append("Calamarsa o pedra")
         if dcape > 1000: fenomens.append("Esclafits o ratxes de vent molt fortes")
         else: fenomens.append("Fortes ratxes de vent")
-
-    # Escenari 3: Tempestes d'Impuls (Fortes però desorganitzades)
     elif mucape >= 1000 and bwd_6km < 20:
-        nivell_risc = {"text": "Moderat", "color": "#FD7E14"}
-        titol = "Tempestes d'Impuls Aïllades"
-        resum = f"Hi ha molta energia ({mucape:.0f} J/kg) però poca organització. Es poden formar tempestes puntuals però molt intenses, amb un cicle de vida curt."
-        fenomens.append("Xàfecs localment torrencials")
-        fenomens.append("Possible calamarsa petita")
-        fenomens.append("Ratxes de vent fortes sota la tempesta")
-
-    # Escenari 4: Xàfecs i Tronades Comunes
+        nivell_risc = {"text": "Moderat", "color": "#FD7E14"}; titol = "Tempestes d'Impuls Aïllades"
+        resum = f"Hi ha molta energia ({mucape:.0f} J/kg) però poca organització. Es poden formar tempestes puntuals però molt intenses."
+        fenomens.extend(["Xàfecs localment torrencials", "Possible calamarsa petita", "Ratxes de vent fortes sota la tempesta"])
     else:
-        nivell_risc = {"text": "Baix", "color": "#28A745"}
-        titol = "Xàfecs i Tronades"
-        resum = f"Les condicions són suficients per al desenvolupament de xàfecs i algunes tempestes, generalment de caràcter dispers i poc organitzat."
-        fenomens.append("Ruixats localment moderats")
-        fenomens.append("Activitat elèctrica aïllada")
+        nivell_risc = {"text": "Baix", "color": "#28A745"}; titol = "Xàfecs i Tronades"
+        resum = f"Les condicions són suficients per al desenvolupament de xàfecs i algunes tempestes, generalment de caràcter dispers."
+        fenomens.extend(["Ruixats localment moderats", "Activitat elèctrica aïllada"])
 
     if mucape > 800 and "Activitat elèctrica" not in "".join(fenomens):
         fenomens.insert(0, "Activitat elèctrica freqüent")
@@ -7854,15 +7839,18 @@ def ui_bulleti_inteligent(bulleti_data):
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL v7.0: Amb un nou i potent Butlletí Intel·ligent.
+    PESTANYA D'ANÀLISI COMARCAL v8.0: Amb marcador gris i discontinu per a risc nul.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
 
     # --- CÀLCULS PREVIS ---
-    max_conv_point = None; storm_dir_to = None; distance_km = None; is_threat = False
+    max_conv_point = None; storm_dir_to = None; distance_km = None; is_threat = False; bulleti_data = None
     
     with st.spinner("Analitzant focus de convergència i trajectòries..."):
+        if params_calc:
+            bulleti_data = generar_bulleti_inteligent(params_calc, poble_sel)
+        
         gdf_comarques = carregar_dades_geografiques()
         if gdf_comarques is None:
             st.error("No s'ha pogut carregar el mapa de comarques."); return
@@ -7933,14 +7921,22 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors='black', linestyles='--', linewidths=0.8, alpha=0.7, zorder=4, transform=ccrs.PlateCarree())
             labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
             for label in labels: label.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
+            
             px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
-            if valor_conv >= 10:
+            path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
+            
+            # <<<--- NOVA LÒGICA PER AL MARCADOR ---
+            if bulleti_data and bulleti_data['nivell_risc']['text'] == "Nul":
+                circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor='grey', linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect, linestyle='--')
+                ax.add_patch(circle)
+                ax.plot(px, py, 'x', color='grey', markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
+            else:
                 if valor_conv >= 100: indicator_color = '#9370DB'
                 elif valor_conv >= 60: indicator_color = '#DC3545'
                 elif valor_conv >= 40: indicator_color = '#FD7E14'
                 elif valor_conv >= 20: indicator_color = '#28A745'
                 else: indicator_color = '#6495ED'
-                path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
+                
                 circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
                 ax.add_patch(circle)
                 ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
@@ -7948,6 +7944,8 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     dir_rad = np.deg2rad(90 - storm_dir_to); length = 0.25
                     end_x, end_y = px + length * np.cos(dir_rad), py + length * np.sin(dir_rad)
                     ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+            # --- FI DE LA NOVA LÒGICA ---
+
         poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
         if poble_coords:
             ax.text(poble_coords['lon'], poble_coords['lat'], '( Tú )\n▼', transform=ccrs.PlateCarree(), fontsize=10, fontweight='bold', color='black', ha='center', va='bottom', zorder=14, path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')])
@@ -7955,8 +7953,10 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         st.pyplot(fig, use_container_width=True); plt.close(fig)
 
     with col_diagnostic:
-        bulleti_data = generar_bulleti_inteligent(params_calc, poble_sel)
-        ui_bulleti_inteligent(bulleti_data)
+        if bulleti_data:
+            ui_bulleti_inteligent(bulleti_data)
+        else:
+            st.warning("No hi ha prou dades per generar el butlletí d'alertes.")
 
         if distance_km is not None:
             if distance_km <= 5:
@@ -7975,6 +7975,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
         st.caption(f"Aquesta anàlisi es basa en el sondeig de {poble_sel}.")
         crear_llegenda_direccionalitat()
+        
         
         
 
