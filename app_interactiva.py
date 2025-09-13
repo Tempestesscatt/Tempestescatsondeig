@@ -7451,7 +7451,6 @@ def tornar_al_mapa_general():
 def run_catalunya_app():
     """
     Funció principal que gestiona tota la lògica i la interfície per a la zona de Catalunya.
-    VERSIÓ CORREGIDA amb la crida correcta a ui_mapa_display_personalitzat.
     """
     # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
@@ -7502,8 +7501,8 @@ def run_catalunya_app():
 
     # --- PAS 3: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # ... (La lògica de la vista detallada es manté igual) ...
-        # (Aquí va la part del codi que mostra les pestanyes quan un poble està seleccionat)
+        # Aquí va tota la lògica per a la vista detallada d'un poble (amb les pestanyes, etc.)
+        # Aquesta part es pot mantenir com la tenies.
     else: 
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
         st.session_state.setdefault('show_comarca_labels', True)
@@ -7523,8 +7522,6 @@ def run_catalunya_app():
         llindar_cape_sel = LLINDARS_CAPE[st.session_state.alert_filter_level_cape]
         alertes_filtrades = {zona: data for zona, data in alertes_totals.items() if data['cape'] >= llindar_cape_sel}
         
-        # <<<--- CRIDA CORREGIDA AQUÍ ---
-        # Passem els arguments amb paraules clau per evitar ambigüitat
         map_output = ui_mapa_display_personalitzat(
             alertes_per_zona=alertes_filtrades, 
             show_labels=st.session_state.show_comarca_labels
