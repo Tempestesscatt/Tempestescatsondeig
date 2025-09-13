@@ -80,15 +80,14 @@ MAP_CONFIG = {
         'alpha': 0.75
     },
     'convergence': {
+        # <<<--- CANVI PRINCIPAL AQUÍ: S'afegeix un patró de tramado (hatch) per a cada nivell ---
         'styles': {
-            # <<<--- CANVI PRINCIPAL AQUÍ: Nous colors molt més vius ---
-            'Floixa':   {'levels': [10, 20, 30, 40], 'color': '#00FF00', 'width': 1.4}, # Verd Neó
-            'Moderada': {'levels': [50, 60, 70],     'color': '#FFFF00', 'width': 2.0}, # Groc Elèctric
-            'Forta':    {'levels': [80, 90, 100, 110], 'color': '#FF0000', 'width': 2.6}, # Vermell Pur
-            'Extrema':  {'levels': [120, 130, 140, 150], 'color': '#FF00FF', 'width': 3.2}  # Fucsia/Magenta
-            # --- FI DEL CANVI ---
+            'Floixa':   {'levels': [10, 20, 30, 40], 'color': '#00FF00', 'width': 1.2, 'hatch': '/'},
+            'Moderada': {'levels': [50, 60, 70],     'color': '#FFFF00', 'width': 1.6, 'hatch': '//'},
+            'Forta':    {'levels': [80, 90, 100, 110], 'color': '#FF0000', 'width': 2.0, 'hatch': '+'},
+            'Extrema':  {'levels': [120, 130, 140, 150], 'color': '#FF00FF', 'width': 2.4, 'hatch': '++'}
         },
-        'outline_width_factor': 2.0, 
+        # --- FI DEL CANVI ---
         'sigma_filter': 2.5
     },
     'streamlines': {
@@ -105,7 +104,6 @@ MAP_CONFIG = {
         'dewpoint_mid_level': 12,
     }
 }
-
 
 
 NUVOL_ICON_BASE64 = {
