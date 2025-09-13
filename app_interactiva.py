@@ -3791,10 +3791,10 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ D'ALTA FIDELITAT v3.0 (Llegenda Personalitzada)
+    VERSIÓ D'ALTA FIDELITAT v4.0 (Etiquetes Minúscules)
     - Renderitzat suavitzat amb filtre Gaussiano.
-    - Paleta de colors professional i personalitzada per a la convergència.
-    - Isòlines d'alta visibilitat amb efecte d'ombra.
+    - Paleta de colors personalitzada per a la convergència.
+    - Isòlines d'alta visibilitat amb efecte d'ombra i etiquetes molt petites.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3807,7 +3807,7 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     
-    # --- 2. MAPA DE FONS (VENT) I STREAMLINES (Sense canvis) ---
+    # --- 2. MAPA DE FONS I STREAMLINES (Sense canvis) ---
     colors_wind = ['#d2d2f0', '#b4b4e6', '#78c8c8', '#50b48c', '#32cd32', '#64ff64', '#ffff00', '#f5d264', '#e6b478', '#d7788c', '#ff69b4', '#9f78dc']
     speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]
     custom_cmap_wind = ListedColormap(colors_wind)
@@ -3829,22 +3829,16 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     
     # --- 4. DIBUIX DE LA CONVERGÈNCIA (FARCIMENT AMB LLEGENDA PERSONALITZADA) ---
     if np.any(smoothed_convergence > 0):
-        # <<<--- CANVI CLAU AQUÍ: Definim la teva llegenda personalitzada ---
-        # Els nivells defineixen els límits INFERIORS de cada color.
-        fill_levels = [25, 30, 50, 100, 150] # Llindars: 25(verd), 30(groc), 50(vermell), 100(lila), fins a 150
-        colors_conv = ['#28a745', '#ffc107', '#dc3545', '#9370DB'] # Verd, groc, vermell, lila
-        
-        # Creem el mapa de colors i la normalització per a colors discrets
+        fill_levels = [25, 30, 50, 100, 150]
+        colors_conv = ['#28a745', '#ffc107', '#dc3545', '#9370DB']
         cmap_conv = ListedColormap(colors_conv)
         norm_conv = BoundaryNorm(fill_levels, ncolors=cmap_conv.N, clip=True)
 
-        # Dibuixem el farciment utilitzant la nova paleta i normalització
         ax.contourf(grid_lon, grid_lat, smoothed_convergence,
                     levels=fill_levels, cmap=cmap_conv, norm=norm_conv,
                     alpha=0.85, zorder=3, transform=ccrs.PlateCarree(), extend='max')
-        # <<<--- FI DEL CANVI CLAU ---
 
-        # Les isòlines amb efecte d'ombra es mantenen igual per a un acabat professional
+        # Dibuix d'isòlines amb efecte d'ombra
         line_levels = [15, 30, 50, 70, 90, 120]
         line_styles = ['--', '-', '-', '-', '-', '-']
         path_effect_ombra = [path_effects.withStroke(linewidth=2.5, foreground='black')]
@@ -3858,16 +3852,20 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
                               transform=ccrs.PlateCarree(),
                               path_effects=path_effect_ombra)
         
-        labels = ax.clabel(contours, inline=True, fontsize=6, fmt='%1.0f')
+        # <<<--- CANVI CLAU AQUÍ: Mida de la font de les etiquetes ---
+        labels = ax.clabel(contours, inline=True, fontsize=4, fmt='%1.0f')
         for label in labels:
-            label.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')])
+            # Adeqüem també el gruix de la vora a la nova mida de la font
+            label.set_path_effects([path_effects.withStroke(linewidth=1.8, foreground='black')])
             label.set_color("white")
+        # <<<--- FI DEL CANVI CLAU ---
 
     ax.set_title(f"Vent i Nuclis de Convergència EFECTIVA a {nivell}hPa\n{timestamp_str}",
                  weight='bold', fontsize=14)
     afegir_etiquetes_ciutats(ax, map_extent)
     
     return fig
+    
 def forcar_regeneracio_animacio():
     """Incrementa la clau de regeneració per invalidar la memòria cau."""
     if 'regenerate_key' in st.session_state:
