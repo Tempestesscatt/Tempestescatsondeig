@@ -1590,13 +1590,16 @@ def crear_mapa_base(map_extent, projection=ccrs.PlateCarree()):
     
     ax.add_feature(cfeature.LAND, facecolor="#D4E6B5", zorder=0)
     # --- LÍNIA MODIFICADA AQUÍ ---
-    ax.add_feature(cfeature.OCEAN, facecolor='#34568B', zorder=0) # Canviat a color blau marí
+    ax.add_feature(cfeature.OCEAN, facecolor='#4682B4', zorder=0) # Canviat a un blau acer més suau
     # ---------------------------------
     ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
     if projection != ccrs.PlateCarree():
         ax.add_feature(cfeature.STATES, linestyle=':', edgecolor='gray', zorder=5)
     return fig, ax
+
+
+
 
 def afegir_etiquetes_ciutats(ax, map_extent):
     """
