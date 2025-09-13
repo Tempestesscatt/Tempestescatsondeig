@@ -3721,9 +3721,9 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                                      nivell: int, timestamp_str: str, 
                                      map_extent: List[float]) -> plt.Figure:
     """
-    VERSIÓ 12.1 (BORDES MILLORATS): Genera un mapa de pronòstic combinat amb CAPE, 
-    convergència i vent. Les isolínies de convergència tenen un contorn negre més
-    gruixut per a una visibilitat màxima sobre el mapa de CAPE.
+    VERSIÓ 13.0 (NOVA ESCALA CAPE): Genera un mapa de pronòstic amb la nova
+    paleta de colors per al CAPE (0-4000 J/kg) i contorns de convergència
+    gruixuts per a màxima visibilitat.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3737,7 +3737,7 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_cape = np.nan_to_num(griddata((lons, lats), cape_data, (grid_lon, grid_lat), 'linear'))
 
-    # --- 2. DIBUIX DEL CAPE DE FONS ---
+    # --- 2. DIBUIX DEL CAPE DE FONS (AMB LA NOVA ESCALA) ---
     cfg_cape = MAP_CONFIG['cape']
     cmap_cape = ListedColormap(cfg_cape['colors'])
     norm_cape = BoundaryNorm(cfg_cape['levels'], ncolors=cmap_cape.N, clip=True)
@@ -3763,21 +3763,16 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     if np.any(smoothed_convergence > 0):
         cfg_conv = MAP_CONFIG['convergence']
         path_effect_label = [path_effects.withStroke(linewidth=2.5, foreground='white')]
-
         for style in cfg_conv['styles'].values():
             linewidth = style['width']
-            # <<<--- AQUÍ ES DEFINEIX EL CONTORN NEGRE MÉS GRUIXUT ---
             outline_width = linewidth + cfg_conv['outline_width_factor']
             path_effect_line = [path_effects.withStroke(linewidth=outline_width, foreground='black')]
-            
             contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=style['levels'], 
                                   colors=style['color'], linewidths=linewidth, zorder=4,
-                                  transform=ccrs.PlateCarree(), path_effects=path_effect_line) # S'aplica aquí
-            
+                                  transform=ccrs.PlateCarree(), path_effects=path_effect_line)
             labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
             for label in labels:
                 label.set_path_effects(path_effect_label)
-        
         max_conv_value = np.max(smoothed_convergence)
         if max_conv_value > 0:
             text_max = ax.text(0.02, 0.02, f"Convergència Màx: {max_conv_value:.0f}",
