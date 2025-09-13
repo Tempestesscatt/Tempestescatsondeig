@@ -1588,14 +1588,24 @@ def crear_mapa_base(map_extent, projection=ccrs.PlateCarree()):
     fig, ax = plt.subplots(figsize=(8, 8), dpi=100, subplot_kw={'projection': projection})
     ax.set_extent(map_extent, crs=ccrs.PlateCarree())
     
-    ax.add_feature(cfeature.LAND, facecolor="#D4E6B5", zorder=0)
-    # --- LÍNIA MODIFICADA AQUÍ ---
-    ax.add_feature(cfeature.OCEAN, facecolor='#4682B4', zorder=0) # Canviat a un blau acer més suau
-    # ---------------------------------
+    # --- NOU: AFEGIM EL RELLEU OMBREJAT ---
+    # Aquesta capa dibuixa les ombres de les muntanyes. La posem a un zorder baix.
+    shaded_relief = cfeature.ShadedRelief(cmap=plt.cm.gray)
+    ax.add_feature(shaded_relief, zorder=1)
+    
+    # --- MODIFICAT: Fem el color de la terra semitransparent ---
+    # En posar una transparència (alpha), permetem que l'ombrejat de sota sigui visible.
+    ax.add_feature(cfeature.LAND, facecolor="#D4E6B5", alpha=0.6, zorder=2)
+    
+    # El color del mar es manté igual, al mateix nivell que la terra
+    ax.add_feature(cfeature.OCEAN, facecolor='#4682B4', zorder=2)
+    
+    # Les línies de costa i fronteres van per sobre de tot
     ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
     if projection != ccrs.PlateCarree():
         ax.add_feature(cfeature.STATES, linestyle=':', edgecolor='gray', zorder=5)
+        
     return fig, ax
 
 
