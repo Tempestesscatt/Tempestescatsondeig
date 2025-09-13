@@ -606,7 +606,6 @@ CIUTATS_PER_COMARCA = {
 }
 
 
-# Genera la llista plana de CIUTATS_CATALUNYA a partir de la font única
 CIUTATS_CATALUNYA = { ciutat: dades for comarca in CIUTATS_PER_COMARCA.values() for ciutat, dades in comarca.items() }
 
 # Afegeix els punts marins manualment
@@ -626,15 +625,16 @@ CIUTATS_CONVIDAT = {
 
 POBLES_MAPA_REFERENCIA = {poble: {'lat': data['lat'], 'lon': data['lon']} for poble, data in POBLACIONS_TERRA.items()}
 
+# <<<--- DICCIONARI CORREGIT AQUÍ ---
 # Genera les zones personalitzades a partir de les dades ja definides per comarca
 CIUTATS_PER_ZONA_PERSONALITZADA = {
-    "Pirineu i Pre-Pirineu": { p: CIUTATS_CATALUNYA[p] for p in ['Vielha', 'Sort', 'Sarroca de Bellera', 'Tremp', 'La Pobla de Segur', 'La Seu d\'Urgell', 'Puigcerdà', 'Bellver de Cerdanya', 'La Molina', 'Ripoll', 'Sant Joan de les Abadesses', 'Berga', 'Solsona', 'Olot', 'Santa Pau', 'Castellfollit de la Roca'] if p in CIUTATS_CATALUNYA },
-    "Plana de Lleida i Ponent": { p: CIUTATS_CATALUNYA[p] for p in ['Lleida', 'Soses', 'Balaguer', 'Agramunt', 'Camarasa', 'Calaf', 'Les Borges Blanques', 'Mollerussa', 'Tàrrega', 'Cervera'] if p in CIUTATS_CATALUNYA },
-    "Catalunya Central": { p: CIUTATS_CATALUNYA[p] for p in ['Manresa', 'Cardona', 'Igualada', 'Capellades', 'Vic', 'Manlleu', 'Centelles', 'Vidrà'] if p in CIUTATS_CATALUNYA },
-    "Litoral i Prelitoral Nord (Girona)": { p: CIUTATS_CATALUNYA[p] for p in ['Girona', 'Figueres', 'Banyoles', 'La Bisbal d\'Empordà', 'Roses', 'Cadaqués', 'Llançà', 'L\'Escala', 'Castelló d\'Empúries', 'La Jonquera', 'Palamós', 'Platja d\'Aro', 'Sant Feliu de Guíxols', 'Begur', 'Pals', 'Calonge', 'Santa Cristina d\'Aro', 'Blanes', 'Lloret de Mar', 'Tossa de Mar', 'Santa Coloma de Farners', 'Arbúcies', 'Hostalric', 'Cassà de la Selva', 'Llagostera', 'Flaçà', 'Riudellots de la Selva', 'Vidreres'] if p in CIUTATS_CATALUNYA },
-    "Litoral i Prelitoral Central (Barcelona)": { p: CIUTATS_CATALUNYA[p] for p in ['Barcelona', 'L\'Hospitalet de Llobregat', 'Santa Coloma de Gramenet', 'Sabadell', 'Terrassa', 'Mataró', 'Granollers', 'Mollet del Vallès', 'Sant Cugat del Vallès', 'Rubí', 'Viladecans', 'Castellbisbal', 'Cerdanyola del Vallès', 'Montcada i Reixac', 'Sant Quirze del Vallès', 'Castellar del Vallès', 'Cardedeu', 'Caldes de Montbui', 'Arenys de Mar', 'Calella', 'Malgrat de Mar', 'Pineda de Mar', 'Santa Susanna', 'Vilassar de Mar', 'Alella', 'Cabrera de Mar', 'Vilanova i la Geltrú', 'Sitges', 'Vilafranca del Penedès', 'Sant Pere de Ribes', 'Olesa de Montserrat', 'Sant Feliu de Llobregat', 'Castelldefels', 'Tordera', 'Sant Celoni'] if p in CIUTATS_CATALUNYA },
-    "Camp de Tarragona": { p: CIUTATS_CATALUNYA[p] for p in ['Tarragona', 'Reus', 'Valls', 'Salou', 'Cambrils', 'Altafulla', 'La Selva del Camp', 'Montblanc', 'Falset'] if p in CIUTATS_CATALUNYA },
-    "Terres de l'Ebre": { p: CIUTATS_CATALUNYA[p] for p in ['Tortosa', 'Amposta', 'Alcanar', 'L\'Ametlla de Mar', 'La Sénia', 'Móra d\'Ebre', 'Gandesa', 'Horta de Sant Joan', 'Batea'] if p in CIUTATS_CATALUNYA },
+    "Pirineu i Pre-Pirineu": { p: CIUTATS_CATALUNYA[p] for p in ['Vielha', 'Sort', 'Tremp', 'La Pobla de Segur', 'La Seu d\'Urgell', 'Puigcerdà', 'Bellver de Cerdanya', 'La Molina', 'Ripoll', 'Sant Joan de les Abadesses', 'Berga', 'Solsona', 'Olot', 'Santa Pau', 'Camprodon'] if p in CIUTATS_CATALUNYA },
+    "Plana de Lleida i Ponent": { p: CIUTATS_CATALUNYA[p] for p in ['Lleida', 'Alcarràs', 'Balaguer', 'Agramunt', 'Artesa de Segre', 'Calaf', 'Les Borges Blanques', 'Mollerussa', 'Tàrrega', 'Cervera'] if p in CIUTATS_CATALUNYA },
+    "Catalunya Central": { p: CIUTATS_CATALUNYA[p] for p in ['Manresa', 'Cardona', 'Igualada', 'Capellades', 'Vic', 'Manlleu', 'Centelles', 'Moià', 'Súria'] if p in CIUTATS_CATALUNYA },
+    "Litoral i Prelitoral Nord (Girona)": { p: CIUTATS_CATALUNYA[p] for p in ['Girona', 'Figueres', 'Banyoles', 'La Bisbal d\'Empordà', 'Roses', 'Cadaqués', 'Llançà', 'L\'Escala', 'Castelló d\'Empúries', 'La Jonquera', 'Palamós', 'Platja d\'Aro', 'Sant Feliu de Guíxols', 'Begur', 'Pals', 'Blanes', 'Lloret de Mar', 'Santa Coloma de Farners'] if p in CIUTATS_CATALUNYA },
+    "Litoral i Prelitoral Central (Barcelona)": { p: CIUTATS_CATALUNYA[p] for p in ['Barcelona', 'L\'Hospitalet de Llobregat', 'Badalona', 'Sabadell', 'Terrassa', 'Mataró', 'Granollers', 'Mollet del Vallès', 'Sant Cugat del Vallès', 'Rubí', 'Viladecans', 'Vilanova i la Geltrú', 'Sitges', 'Vilafranca del Penedès', 'El Vendrell', 'Calafell'] if p in CIUTATS_CATALUNYA },
+    "Camp de Tarragona": { p: CIUTATS_CATALUNYA[p] for p in ['Tarragona', 'Reus', 'Valls', 'Salou', 'Cambrils', 'Altafulla', 'Montblanc', 'Falset', 'Mont-roig del Camp'] if p in CIUTATS_CATALUNYA },
+    "Terres de l'Ebre": { p: CIUTATS_CATALUNYA[p] for p in ['Tortosa', 'Amposta', 'Alcanar', 'L\'Ametlla de Mar', 'Deltebre', 'La Ràpita', 'Móra d\'Ebre', 'Gandesa'] if p in CIUTATS_CATALUNYA },
 }
 
 
