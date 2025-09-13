@@ -69,15 +69,15 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
 MAP_CONFIG = {
-    # <<<--- CANVI PRINCIPAL AQUÍ: Nova escala de colors per al CAPE basada en la teva imatge ---
+    # <<<--- CANVI PRINCIPAL AQUÍ: Nova paleta de colors professional per al CAPE ---
     'cape': {
         'colors': [
-            '#00008B', '#0000CD', '#4169E1', '#00BFFF', '#48D1CC', '#2E8B57',
-            '#32CD32', '#ADFF2F', '#FFFF00', '#FFD700', '#FFA500', '#FF4500',
-            '#FF0000', '#B22222', '#8B0000'
+            '#2E8B57', '#3CB371', '#66CDAA', '#00FF7F', '#ADFF2F', '#FFFF00',
+            '#FFD700', '#FFA500', '#FF8C00', '#FF4500', '#FF0000', '#DC143C',
+            '#C71585', '#9932CC', '#8A2BE2'
         ],
-        'levels': [0, 250, 500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000, 3300, 3601],
-        'cbar_ticks': [0, 500, 1000, 1500, 2000, 2500, 3000, 3600],
+        'levels': [0, 250, 500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000, 3400, 3800, 4001],
+        'cbar_ticks': [0, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000],
         'alpha': 0.75
     },
     # --- FI DEL CANVI ---
@@ -3722,8 +3722,8 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                                      nivell: int, timestamp_str: str, 
                                      map_extent: List[float]) -> plt.Figure:
     """
-    VERSIÓ 23.0 (NOVA PALETA CAPE): Utilitza la nova escala de colors detallada
-    per al CAPE de 0 a 3600 J/kg per a una anàlisi visual més precisa.
+    VERSIÓ 24.0 (PALETA FINAL): Utilitza la paleta de colors de CAPE definitiva
+    per a una representació visual de màxima qualitat.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3737,7 +3737,7 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_cape = np.nan_to_num(griddata((lons, lats), cape_data, (grid_lon, grid_lat), 'linear'))
 
-    # --- 2. DIBUIX DEL CAPE DE FONS (AMB LA NOVA ESCALA DE LA IMATGE) ---
+    # --- 2. DIBUIX DEL CAPE DE FONS (AMB LA NOVA PALETA) ---
     cfg_cape = MAP_CONFIG['cape']
     cmap_cape = ListedColormap(cfg_cape['colors'])
     norm_cape = BoundaryNorm(cfg_cape['levels'], ncolors=cmap_cape.N, clip=True)
@@ -3824,6 +3824,8 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     afegir_etiquetes_ciutats(ax, map_extent)
     
     return fig
+
+
     
     
 
