@@ -7767,10 +7767,12 @@ def crear_llegenda_direccionalitat():
     
     st.markdown(html_llegenda, unsafe_allow_html=True)
 
+
+
 def generar_bulleti_inteligent(params_calc, poble_sel):
     """
-    Algoritme intel·ligent que genera un butlletí de risc meteorològic
-    basant-se en la combinació de paràmetres clau del sondeig.
+    Algoritme intel·ligent v2.0: Genera un butlletí de risc i detecta
+    situacions de "Intent de Cúmuls" en escenaris de baix CAPE.
     """
     # --- 1. Extracció segura de paràmetres ---
     mucape = params_calc.get('MUCAPE', 0) or 0
@@ -7780,12 +7782,29 @@ def generar_bulleti_inteligent(params_calc, poble_sel):
     pwat = params_calc.get('PWAT', 0) or 0
     lcl_hgt = params_calc.get('LCL_Hgt', 9999) or 9999
     dcape = params_calc.get('DCAPE', 0) or 0
+    rh_baixa = (params_calc.get('RH_CAPES', {}).get('baixa', 0) or 0)
     nivell_conv = next((int(k.split('_')[1].replace('hPa','')) for k in params_calc if k.startswith('CONV_')), 925)
     conv = params_calc.get(f'CONV_{nivell_conv}hPa', 0) or 0
 
     # --- 2. Condicions de Veto (Si no es compleixen, no hi ha tempesta) ---
     if mucape < 300:
-        return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Situació Estable", "resum": "L'atmosfera no té prou energia (CAPE baix) per a la formació de tempestes. S'espera temps tranquil.", "fenomens_previstos": []}
+        # <<<--- NOVA LÒGICA AQUÍ ---
+        if conv >= 15 and rh_baixa > 70:
+            return {
+                "nivell_risc": {"text": "Nul", "color": "#6c757d"}, 
+                "titol": "Intent de Cúmuls", 
+                "resum": "Hi ha un mecanisme de dispar (convergència) i humitat, però l'atmosfera no té prou energia (CAPE baix). Es poden formar estrats densos o cúmuls que no arribaran a ser tempestes.", 
+                "fenomens_previstos": []
+            }
+        else:
+            return {
+                "nivell_risc": {"text": "Nul", "color": "#6c757d"}, 
+                "titol": "Situació Estable", 
+                "resum": "L'atmosfera no té prou energia (CAPE baix) per a la formació de tempestes. S'espera temps tranquil.", 
+                "fenomens_previstos": []
+            }
+        # --- FI DE LA NOVA LÒGICA ---
+
     if mucin < -100 and conv < 25:
         return {"nivell_risc": {"text": "Nul", "color": "#6c757d"}, "titol": "Atmosfera Tapada", "resum": f"Tot i que pot haver-hi energia, una forta inversió tèrmica (CIN de {mucin:.0f}) actua com una tapa, impedint el desenvolupament de núvols de tempesta.", "fenomens_previstos": []}
 
@@ -7817,26 +7836,7 @@ def generar_bulleti_inteligent(params_calc, poble_sel):
         fenomens.insert(0, "Activitat elèctrica freqüent")
 
     return {"nivell_risc": nivell_risc, "titol": titol, "resum": resum, "fenomens_previstos": fenomens}
-
-def ui_bulleti_inteligent(bulleti_data):
-    """
-    Mostra el butlletí generat per l'algoritme a la interfície d'usuari.
-    """
-    st.markdown("##### Butlletí d'Alertes per a la Zona")
     
-    st.markdown(f"""
-    <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444; margin-bottom: 10px;">
-         <span style="font-size: 1.2em; color: #FAFAFA;">Nivell de Risc: <strong style="color:{bulleti_data['nivell_risc']['color']}">{bulleti_data['nivell_risc']['text']}</strong></span>
-         <h6 style="color: white; margin-top: 10px; margin-bottom: 5px;">{bulleti_data['titol']}</h6>
-         <p style="font-size:0.95em; color:#a0a0b0; text-align: left;">{bulleti_data['resum']}</p>
-    """, unsafe_allow_html=True)
-    
-    if bulleti_data['fenomens_previstos']:
-        st.markdown("<b style='color: white;'>Fenòmens previstos:</b>", unsafe_allow_html=True)
-        for fenomen in bulleti_data['fenomens_previstos']:
-            st.markdown(f"- <span style='font-size:0.95em; color:#a0a0b0;'>{fenomen}</span>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
     PESTANYA D'ANÀLISI COMARCAL v9.0: Amb anàlisi de posició de l'usuari
