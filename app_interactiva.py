@@ -906,16 +906,23 @@ THRESHOLDS_GLOBALS = {
     'BWD_0-1km': (15, 25, 35),
     'SRH_0-1km': (100, 150, 250), 
     'SRH_0-3km': (150, 250, 400),
-    
-    # --- NOUS LLINDARS AFEGITS ---
-    # Per a LCL/LFC, els valors s'interpreten de manera inversa (més baix és pitjor)
-    'LCL_Hgt': (1000, 1500), # <1000m (Vermell), 1000-1500m (Verd), >1500m (Gris)
-    'LFC_Hgt': (1500, 2500), # <1500m (Vermell), 1500-2500m (Verd), >2500m (Gris)
-    
-    # Per a UPDRAFT, valors més alts són pitjors
-    'MAX_UPDRAFT': (25, 40, 55) # >25m/s (Groc), >40m/s (Taronja), >55m/s (Vermell)
+    'LCL_Hgt': (1000, 1500), 
+    'LFC_Hgt': (1500, 2500),
+    'MAX_UPDRAFT': (25, 40, 55),
+    'DCAPE': (500, 1000, 1500),
+    'LR_0-3km': (6.5, 7.5, 8.5),
+    'LR_700-500hPa': (6, 7, 8),
+    'K_INDEX': (20, 30, 40),
+    'TOTAL_TOTALS': (44, 48, 52),
+    'SHOWALTER_INDEX': (2, -1, -4),
+    'EBWD': (25, 40, 55),
+    'ESRH': (100, 250, 400),
+    'STP_CIN': (0.5, 1, 2.5),
+    'SCP': (1, 4, 8),
+    'SHIP': (0.5, 1, 2),
+    # --- NOU LLINDAR AFEGIT ---
+    'SWEAT_INDEX': (250, 300, 400),
 }
-
 
 def graus_a_direccio_cardinal(graus):
     """Converteix un valor en graus a la seva direcció cardinal (N, NNE, NE, etc.)."""
@@ -1253,13 +1260,11 @@ def calcular_mlcape_robusta(p, T, Td):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Completa (v35.1 - CORREGIDA).
-    - Assegura que el retorn inclogui 8 elements de dades (incloent ml_prof).
+    Versió Definitiva i Ampliada (v37.0).
+    - Afegeix el càlcul de l'índex SWEAT.
     """
-    if len(p_profile) < 4:
-        return None, "Perfil atmosfèric massa curt."
+    if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
 
-    # 1. Converteix les llistes a arrays de MetPy amb unitats
     p = np.array(p_profile) * units.hPa
     T = np.array(T_profile) * units.degC
     Td = np.array(Td_profile) * units.degC
@@ -1267,14 +1272,10 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     v = np.array(v_profile) * units('m/s')
     heights = np.array(h_profile) * units.meter
 
-    # 2. Neteja de dades
     valid_mask = np.isfinite(p.m) & np.isfinite(T.m) & np.isfinite(Td.m) & np.isfinite(u.m) & np.isfinite(v.m)
     p, T, Td, u, v, heights = p[valid_mask], T[valid_mask], Td[valid_mask], u[valid_mask], v[valid_mask], heights[valid_mask]
+    if len(p) < 3: return None, "No hi ha prou dades vàlides."
 
-    if len(p) < 3:
-        return None, "No hi ha prou dades vàlides després de la neteja."
-
-    # 3. Ordena el perfil per pressió
     sort_idx = np.argsort(p.m)[::-1]
     p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
     
@@ -1283,157 +1284,147 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
 
     with parcel_lock:
         sfc_prof, ml_prof = None, None
-        try: 
-            sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
-        except Exception: 
-            return None, "Error crític: No s'ha pogut calcular el perfil de superfície."
-        
-        try: 
-            _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
-        except Exception: 
-            ml_prof = None
-            
+        try: sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
+        except Exception: return None, "Error crític: No s'ha pogut calcular el perfil de superfície."
+        try: _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
+        except Exception: ml_prof = None
         main_prof = ml_prof if ml_prof is not None else sfc_prof
 
-        # ... (TOTA LA RESTA DE CÀLCULS DINS DE LA FUNCIÓ ES MANTENEN IGUALS) ...
-        # (No cal copiar-los tots aquí per brevetat, ja que no canvien)
-
-        # --- Paràmetres d'Humitat i Temperatura per Capes ---
-        try: 
-            rh = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
-            params_calc['RH_CAPES'] = {
-                'baixa': np.mean(rh[(p.m <= 1000) & (p.m > 850)]), 
-                'mitjana': np.mean(rh[(p.m <= 850) & (p.m > 500)]), 
-                'alta': np.mean(rh[(p.m <= 500) & (p.m > 250)]),
-                'molt_alta': np.mean(rh[(p.m <= 250) & (p.m >= 100)])
-            }
-        except: 
-            params_calc['RH_CAPES'] = {'baixa': np.nan, 'mitjana': np.nan, 'alta': np.nan, 'molt_alta': np.nan}
-        
-        try:
-            spread = (T - Td).m
-            params_calc['TD_SPREAD_BAIXA'] = np.mean(spread[(p.m <= 1000) & (p.m > 850)])
-            params_calc['TD_SPREAD_MITJANA'] = np.mean(spread[(p.m <= 850) & (p.m > 500)])
-        except:
-            params_calc['TD_SPREAD_BAIXA'] = 20
-            params_calc['TD_SPREAD_MITJANA'] = 20
-
+        # --- Paràmetres Base (Inestabilitat, Humitat, Nivells) ---
+        try: sbcape, sbcin = mpcalc.cape_cin(p, T, Td, sfc_prof); params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m); params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if sbcape.m > 0 else 0.0
+        except: params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
+        try: mlcape, mlcin = mpcalc.cape_cin(p, T, Td, ml_prof); params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
+        except: params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
+        try: mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td); params_calc['MUCAPE'] = float(mucape.m); params_calc['MUCIN'] = float(mucin.m)
+        except: params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
+        try: params_calc['LI'] = float(mpcalc.lifted_index(p, T, main_prof).m)
+        except: params_calc['LI'] = np.nan
         try: params_calc['PWAT'] = float(mpcalc.precipitable_water(p, Td).to('mm').m)
         except: params_calc['PWAT'] = np.nan
-        
+        try: lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); params_calc['LCL_p'] = float(lcl_p.m); params_calc['LCL_Hgt'] = float(np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1]))
+        except: params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
+        try: lfc_p, _ = mpcalc.lfc(p, T, Td, main_prof); params_calc['LFC_p'] = float(lfc_p.m); params_calc['LFC_Hgt'] = float(np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1]))
+        except: params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
+        try: el_p, _ = mpcalc.el(p, T, Td, main_prof); params_calc['EL_p'] = float(el_p.m); params_calc['EL_Hgt'] = float(np.interp(el_p.m, p.m[::-1], heights_agl.m[::-1]))
+        except: params_calc.update({'EL_p': np.nan, 'EL_Hgt': np.nan})
         try: _, fl_h = mpcalc.freezing_level(p, T, heights); params_calc['FREEZING_LVL_HGT'] = float(fl_h[0].to('m').m)
         except: params_calc['FREEZING_LVL_HGT'] = np.nan
+        try: params_calc['T_500hPa'] = float(np.interp(500, p.m[::-1], T.m[::-1]))
+        except: params_calc['T_500hPa'] = np.nan
         
-        try:
-            p_numeric, T_numeric = p.m, T.m
-            if len(p_numeric) >= 2 and p_numeric.min() <= 500 <= p_numeric.max():
-                params_calc['T_500hPa'] = float(np.interp(500, p_numeric[::-1], T_numeric[::-1]))
-            else:
-                params_calc['T_500hPa'] = np.nan
-        except: 
-            params_calc['T_500hPa'] = np.nan
-
-        # --- Paràmetres d'Inestabilitat (CAPE / CIN / LI) ---
-        if sfc_prof is not None:
-            try:
-                sbcape, sbcin = mpcalc.cape_cin(p, T, Td, sfc_prof)
-                params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m)
-                params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if sbcape.m > 0 else 0.0
-            except: 
-                params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
-
-        if ml_prof is not None:
-            try:
-                mlcape, mlcin = mpcalc.cape_cin(p, T, Td, ml_prof)
-                params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
-            except: 
-                params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
-        else:
-            params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
-
-        if main_prof is not None:
-            try: 
-                params_calc['LI'] = float(mpcalc.lifted_index(p, T, main_prof).m)
-            except: 
-                params_calc['LI'] = np.nan
-        
-        try:
-            mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td)
-            params_calc['MUCAPE'] = float(mucape.m); params_calc['MUCIN'] = float(mucin.m)
-        except: 
-            params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
-        
-        try:
-            idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
-            cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], main_prof[:idx_3km+1])
-            params_calc['CAPE_0-3km'] = float(cape_0_3.m)
-        except: 
-            params_calc['CAPE_0-3km'] = np.nan
-
-        # --- Nivells Característics (LCL, LFC, EL) ---
-        try:
-            lfc_p, _ = mpcalc.lfc(p, T, Td, main_prof)
-            params_calc['LFC_p'] = float(lfc_p.m)
-            params_calc['LFC_Hgt'] = float(np.interp(lfc_p.m, p.m[::-1], heights_agl.m[::-1]))
-        except: 
-            params_calc.update({'LFC_p': np.nan, 'LFC_Hgt': np.nan})
-        
-        try:
-            el_p, _ = mpcalc.el(p, T, Td, main_prof)
-            params_calc['EL_p'] = float(el_p.m)
-            params_calc['EL_Hgt'] = float(np.interp(el_p.m, p.m[::-1], heights_agl.m[::-1]))
-        except: 
-            params_calc.update({'EL_p': np.nan, 'EL_Hgt': np.nan})
-            
-        try:
-            lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0])
-            params_calc['LCL_p'] = float(lcl_p.m)
-            params_calc['LCL_Hgt'] = float(np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1]))
-        except: 
-            params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
-
-        # --- Paràmetres de Vent i Cisallament (Shear & Helicity) ---
-        try:
-            if p.m.min() <= 500:
-                u_500 = np.interp(500, p.m[::-1], u.m[::-1]) * units('m/s')
-                v_500 = np.interp(500, p.m[::-1], v.m[::-1]) * units('m/s')
-                params_calc['WSPD_500hPa'] = float(mpcalc.wind_speed(u_500, v_500).to('kt').m)
-        except:
-            params_calc['WSPD_500hPa'] = 0
-        try:
-            if p.m.min() <= 700:
-                u_700 = np.interp(700, p.m[::-1], u.m[::-1]) * units('m/s')
-                v_700 = np.interp(700, p.m[::-1], v.m[::-1]) * units('m/s')
-                params_calc['WSPD_700hPa'] = float(mpcalc.wind_speed(u_700, v_700).to('kt').m)
-        except:
-            params_calc['WSPD_700hPa'] = 0
-
+        # --- Paràmetres de Cisallament (Shear & Helicity) ---
         try:
             for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
                 bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter)
                 params_calc[f'BWD_{name}'] = float(mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m)
-        except: 
-            params_calc.update({'BWD_0-1km': np.nan, 'BWD_0-6km': np.nan})
-        
-        try:
-            rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
-            params_calc['RM'] = (float(rm[0].m), float(rm[1].m))
-            params_calc['LM'] = (float(lm[0].m), float(lm[1].m))
-            params_calc['Mean_Wind'] = (float(mean_wind[0].m), float(mean_wind[1].m))
-        except Exception:
-            params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan), 'Mean_Wind': (np.nan, np.nan)})
-
-        if params_calc.get('RM') and not np.isnan(params_calc['RM'][0]):
-            u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
+        except: params_calc.update({'BWD_0-1km': np.nan, 'BWD_0-6km': np.nan})
+        try: rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights); u_storm, v_storm = rm; params_calc['RM'] = (float(rm[0].m), float(rm[1].m)); params_calc['LM'] = (float(lm[0].m), float(lm[1].m))
+        except: u_storm, v_storm = (np.nan, np.nan); params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan)})
+        if pd.notna(u_storm):
             try:
                 for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
                     srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.meter, storm_u=u_storm, storm_v=v_storm)[0]
                     params_calc[f'SRH_{name}'] = float(srh.m)
-            except: 
-                params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
+            except: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
 
-    # <<<--- CANVI CLAU: Assegurem que retornem 8 elements de dades --->>>
-    return ((p, T, Td, u, v, heights, sfc_prof, ml_prof), params_calc), None
+        # --- CÀLCUL DE LA CAPA EFECTIVA ---
+        try:
+            bottom_eff, top_eff = mpcalc.effective_inflow_layer(p, T, Td)
+            params_calc['EFF_INFLOW_BOTTOM'] = float(bottom_eff.m) if bottom_eff else np.nan
+            params_calc['EFF_INFLOW_TOP'] = float(top_eff.m) if top_eff else np.nan
+            if bottom_eff and top_eff and pd.notna(u_storm):
+                ebwd_u, ebwd_v = mpcalc.bulk_shear(p, u, v, height=heights, bottom=bottom_eff, depth=(top_eff - bottom_eff))
+                params_calc['EBWD'] = float(mpcalc.wind_speed(ebwd_u, ebwd_v).to('kt').m)
+                esrh = mpcalc.storm_relative_helicity(heights, u, v, bottom=bottom_eff, depth=(top_eff - bottom_eff), storm_u=u_storm, storm_v=v_storm)[0]
+                params_calc['ESRH'] = float(esrh.m)
+            else: params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
+        except: params_calc.update({'EBWD': np.nan, 'ESRH': np.nan})
+
+        # --- PARÀMETRES TERMODINÀMICS ADDICIONALS ---
+        try: params_calc['DCAPE'] = float(mpcalc.dcape(p, T, Td)[0].m)
+        except: params_calc['DCAPE'] = np.nan
+        try: params_calc['LR_0-3km'] = float(mpcalc.lapse_rate(p, T, heights, depth=3000 * units.meter).to('delta_degC/km').m)
+        except: params_calc['LR_0-3km'] = np.nan
+        try: params_calc['LR_700-500hPa'] = float(mpcalc.lapse_rate(p, T, bottom=700*units.hPa, top=500*units.hPa).to('delta_degC/km').m)
+        except: params_calc['LR_700-500hPa'] = np.nan
+        try: params_calc['K_INDEX'] = float(mpcalc.k_index(p, T, Td).m)
+        except: params_calc['K_INDEX'] = np.nan
+        try: params_calc['TOTAL_TOTALS'] = float(mpcalc.total_totals_index(p, T, Td).m)
+        except: params_calc['TOTAL_TOTALS'] = np.nan
+        try: params_calc['SHOWALTER_INDEX'] = float(mpcalc.showalter_index(p, T, Td).m)
+        except: params_calc['SHOWALTER_INDEX'] = np.nan
+        # --- NOU PARÀMETRE AFEGIT ---
+        try: params_calc['SWEAT_INDEX'] = float(mpcalc.sweat_index(p, T, Td, u, v).m)
+        except: params_calc['SWEAT_INDEX'] = np.nan
+
+        # --- ÍNDEXS COMPOSTOS SEVERS ---
+        try:
+            lcl_hgt_m = params_calc.get('LCL_Hgt', 9999) * units.meter
+            sbcape_jkg = params_calc.get('SBCAPE', 0) * units('J/kg')
+            srh_1km_m2s2 = params_calc.get('SRH_0-1km', 0) * units('m^2/s^2')
+            bwd_6km_ms = (params_calc.get('BWD_0-6km', 0) * units.kt).to('m/s')
+            params_calc['STP_CIN'] = float(mpcalc.significant_tornado(sbcape=sbcape_jkg, srh1=srh_1km_m2s2, bwd6=bwd_6km_ms, lcl_height=lcl_hgt_m).m)
+        except: params_calc['STP_CIN'] = np.nan
+        try:
+            mucape_jkg = params_calc.get('MUCAPE', 0) * units('J/kg')
+           
+
+
+
+
+def ui_parametres_addicionals_sondeig(params):
+    """
+    Mostra una secció expandible amb paràmetres de sondeig avançats,
+    agrupats per categories per a una millor llegibilitat.
+    """
+    if not params:
+        return
+
+    def styled_metric_small(label, value, unit, param_key, tooltip="", precision=1, reverse=False):
+        color = get_color_global(value, param_key, reverse_colors=reverse) if pd.notna(value) else "#808080"
+        val_str = f"{value:.{precision}f}" if pd.notna(value) else "---"
+        tooltip_html = f'<span title="{tooltip}" style="cursor: help; opacity: 0.7;"> ❓</span>' if tooltip else ""
+        
+        st.markdown(f"""
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-bottom: 1px solid #333;">
+            <span style="font-size: 0.9em; color: #FAFAFA;">{label}{tooltip_html}</span>
+            <strong style="font-size: 1.1em; color: {color};">{val_str} <span style="font-size: 0.8em; color: #808080;">{unit}</span></strong>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with st.expander("🔬 Anàlisi de Paràmetres Addicionals", expanded=False):
+        st.markdown("##### Índexs Compostos Severs")
+        col1, col2 = st.columns(2)
+        with col1:
+            styled_metric_small("Supercell Composite (SCP)", params.get('SCP'), "", 'SCP', tooltip="Potencial per a supercèl·lules. >1 és significatiu.")
+            styled_metric_small("Significant Hail (SHIP)", params.get('SHIP'), "", 'SHIP', tooltip="Potencial per a calamarsa severa (>5cm). >1 és significatiu.")
+        with col2:
+            styled_metric_small("Significant Tornado (STP)", params.get('STP_CIN'), "", 'STP_CIN', tooltip="Potencial per a tornados significatius (EF2+). >1 és significatiu.")
+            st.empty() 
+
+        st.divider()
+        st.markdown("##### Termodinàmica Detallada")
+        col3, col4, col5 = st.columns(3)
+        with col3:
+            styled_metric_small("Downdraft CAPE (DCAPE)", params.get('DCAPE'), "J/kg", 'DCAPE', tooltip="Potencial per a ràfegues de vent descendents severes.")
+            styled_metric_small("K Index", params.get('K_INDEX'), "", 'K_INDEX', tooltip="Potencial de tempestes per massa d'aire. >35 indica alt potencial.")
+        with col4:
+            styled_metric_small("Lapse Rate 0-3km", params.get('LR_0-3km'), "°C/km", 'LR_0-3km', tooltip="Refredament amb l'altura a capes baixes. >7.5°C/km és molt inestable.")
+            styled_metric_small("Total Totals Index", params.get('TOTAL_TOTALS'), "", 'TOTAL_TOTALS', tooltip="Índex de severitat. >50 indica potencial per a tempestes fortes.")
+        with col5:
+            styled_metric_small("Lapse Rate 700-500hPa", params.get('LR_700-500hPa'), "°C/km", 'LR_700-500hPa', tooltip="Inestabilitat a nivells mitjans. >7°C/km afavoreix la calamarsa.")
+            styled_metric_small("Showalter Index", params.get('SHOWALTER_INDEX'), "", 'SHOWALTER_INDEX', reverse=True, tooltip="Mesura d'inestabilitat. Valors negatius indiquen potencial de tempesta.")
+            
+        st.divider()
+        st.markdown("##### Cinemàtica i Cisallament Avançat")
+        col6, col7 = st.columns(2)
+        with col6:
+            styled_metric_small("Effective SRH (ESRH)", params.get('ESRH'), "m²/s²", 'ESRH', tooltip="Helicitat relativa a la tempesta a la capa efectiva. >150 m²/s² afavoreix supercèl·lules.")
+            styled_metric_small("Effective Inflow Base", params.get('EFF_INFLOW_BOTTOM'), "hPa", 'EFF_INFLOW_BOTTOM', tooltip="Base de la capa d'aire que alimenta la tempesta.")
+        with col7:
+            styled_metric_small("Effective Shear (EBWD)", params.get('EBWD'), "nusos", 'EBWD', tooltip="Cisallament del vent a la capa efectiva. >40 nusos afavoreix supercèl·lules.")
+            styled_metric_small("Effective Inflow Top", params.get('EFF_INFLOW_TOP'), "hPa", 'EFF_INFLOW_TOP', tooltip="Sostre de la capa d'aire que alimenta la tempesta.")
+
 
 
 
@@ -2136,10 +2127,8 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Final i Definitiva (v42.9).
-    - Reestructura la secció "Tipus de Cel Previst" per mostrar cada diagnòstic
-      en una fila vertical separada, solucionant permanentment els problemes
-      d'espaiat i superposició quan n'apareix més d'un.
+    Versió Definitiva (v43.2).
+    - Afegeix el paràmetre SWEAT Index per omplir l'espai final i completar la secció de paràmetres avançats.
     """
     TOOLTIPS = { 'SBCAPE': "Energia Potencial Convectiva Disponible (CAPE) des de la superfície...", 'MUCAPE': "El valor màxim de CAPE a l'atmosfera...", 'CONV_PUNTUAL': "Mesura com l'aire s'ajunta en un punt...", 'SBCIN': "Energia d'Inhibició Convectiva (CIN) des de la superfície...", 'MUCIN': "La 'tapa' més feble de l'atmosfera...", 'LI': "Índex d'Elevació...", 'PWAT': "Aigua Precipitable Total...", 'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació...", 'LFC_Hgt': "Alçada del Nivell de Convecció Lliure...", 'EL_Hgt': "Alçada del Nivell d'Equilibri...", 'BWD_0-6km': "Cisallament del vent entre la superfície i 6 km...", 'BWD_0-1km': "Cisallament del vent a nivells baixos...", 'T_500hPa': "Temperatura a 500 hPa...", 'PUNTUACIO_TEMPESTA': "Índex global que combina ingredients...", 'AMENACA_CALAMARSA': "Potencial de calamarsa gran...", 'AMENACA_LLAMPS': "Potencial d'activitat elèctrica..." }
     
@@ -2161,8 +2150,8 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br><strong style="font-size: 1.6em; color: {color};">{text}</strong></div>""", unsafe_allow_html=True)
 
+    # --- SECCIÓ DE PARÀMETRES PRINCIPALS ---
     st.markdown("##### Paràmetres del Sondeig")
-
     cols_fila1 = st.columns(3)
     with cols_fila1[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE', tooltip_text=TOOLTIPS.get('SBCAPE'))
     with cols_fila1[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
@@ -2173,33 +2162,16 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with st.container(border=True):
         st.markdown('<p style="text-align:center; font-size: 0.9em; color: #FAFAFA; margin-bottom: 8px;">Tipus de Cel Previst</p>', unsafe_allow_html=True)
         analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
-        
         if analisi_temps_list:
-            # --- DISSENY NOU: BUCLE VERTICAL ---
             for i, diag in enumerate(analisi_temps_list):
-                desc = diag.get("descripcio", "Desconegut")
-                veredicte = diag.get("veredicte", "")
+                desc, veredicte = diag.get("descripcio", "Desconegut"), diag.get("veredicte", "")
                 b64_img = NUVOL_ICON_BASE64.get(desc, NUVOL_ICON_BASE64["fallback"])
-
-                # Creem una fila per a cada diagnòstic
                 img_col, text_col = st.columns([0.2, 0.8], gap="medium", vertical_alignment="center")
-                
-                with img_col:
-                    st.image(b64_img, width=50)
-                
+                with img_col: st.image(b64_img, width=50)
                 with text_col:
-                    st.markdown(f"""
-                    <div style="line-height: 1.3;">
-                        <strong style="font-size: 1.05em; color: #FFFFFF;">{veredicte}</strong><br>
-                        <span style="font-size: 0.85em; color: #A0A0A0; font-style: italic;">({desc})</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                # Afegim un separador si no és l'últim element
-                if i < len(analisi_temps_list) - 1:
-                    st.markdown("<hr style='margin: 8px 0; border-color: #444;'>", unsafe_allow_html=True)
-        else:
-            st.warning("No s'ha pogut determinar el tipus de cel.")
+                    st.markdown(f'<div style="line-height: 1.3;"><strong style="font-size: 1.05em; color: #FFFFFF;">{veredicte}</strong><br><span style="font-size: 0.85em; color: #A0A0A0; font-style: italic;">({desc})</span></div>', unsafe_allow_html=True)
+                if i < len(analisi_temps_list) - 1: st.markdown("<hr style='margin: 8px 0; border-color: #444;'>", unsafe_allow_html=True)
+        else: st.warning("No s'ha pogut determinar el tipus de cel.")
 
     cols_fila2 = st.columns(4)
     with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
@@ -2222,6 +2194,39 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_amenaces[1]: styled_qualitative("Índex de Potencial", f"{puntuacio_resultat['score']} / 10", puntuacio_resultat['color'], tooltip_text=TOOLTIPS.get('PUNTUACIO_TEMPESTA'))
     with cols_amenaces[2]: styled_qualitative("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], tooltip_text=TOOLTIPS.get('AMENACA_LLAMPS'))
     
+    # --- BLOC DE PARÀMETRES AVANÇATS (SEMPRE VISIBLE) ---
+    st.divider()
+    st.markdown("##### Paràmetres Avançats")
+
+    st.markdown("###### Índexs Compostos Severs")
+    c1, c2, c3 = st.columns(3)
+    with c1: styled_metric("SCP", params.get('SCP'), "", 'SCP', tooltip_text="Supercell Composite Parameter. Potencial per a supercèl·lules. >1 és significatiu.", precision=1)
+    with c2: styled_metric("STP (CIN)", params.get('STP_CIN'), "", 'STP_CIN', tooltip_text="Significant Tornado Parameter. Potencial per a tornados significatius (EF2+). >1 és significatiu.", precision=1)
+    with c3: styled_metric("SHIP", params.get('SHIP'), "", 'SHIP', tooltip_text="Significant Hail Parameter. Potencial per a calamarsa severa (>5cm). >1 és significatiu.", precision=1)
+
+    st.markdown("###### Termodinàmica Detallada")
+    c4, c5, c6 = st.columns(3)
+    with c4: styled_metric("DCAPE", params.get('DCAPE'), "J/kg", 'DCAPE', tooltip_text="Downdraft CAPE. Potencial per a ràfegues de vent descendents severes.")
+    with c5: styled_metric("K Index", params.get('K_INDEX'), "", 'K_INDEX', tooltip_text="Potencial de tempestes per massa d'aire. >35 indica alt potencial.")
+    with c6: styled_metric("Total Totals", params.get('TOTAL_TOTALS'), "", 'TOTAL_TOTALS', tooltip_text="Índex de severitat. >50 indica potencial per a tempestes fortes.")
+    
+    c7, c8, c9 = st.columns(3)
+    with c7: styled_metric("LR 0-3km", params.get('LR_0-3km'), "°C/km", 'LR_0-3km', tooltip_text="Refredament amb l'altura a capes baixes. >7.5°C/km és molt inestable.", precision=1)
+    with c8: styled_metric("LR 700-500", params.get('LR_700-500hPa'), "°C/km", 'LR_700-500hPa', tooltip_text="Inestabilitat a nivells mitjans. >7°C/km afavoreix la calamarsa.", precision=1)
+    with c9: styled_metric("Showalter", params.get('SHOWALTER_INDEX'), "", 'SHOWALTER_INDEX', reverse_colors=True, tooltip_text="Mesura d'inestabilitat. Valors negatius indiquen potencial de tempesta.")
+
+    st.markdown("###### Cinemàtica i Índexs Addicionals")
+    c10, c11 = st.columns(2)
+    with c10: styled_metric("Effective SRH", params.get('ESRH'), "m²/s²", 'ESRH', tooltip_text="Helicitat relativa a la tempesta a la capa efectiva. >150 m²/s² afavoreix supercèl·lules.")
+    with c11: styled_metric("Effective Shear", params.get('EBWD'), "nusos", 'EBWD', tooltip_text="Cisallament del vent a la capa efectiva. >40 nusos afavoreix supercèl·lules.")
+    
+    c12, c13, c14 = st.columns(3)
+    with c12: styled_metric("Eff. Inflow Base", params.get('EFF_INFLOW_BOTTOM'), "hPa", 'EFF_INFLOW_BOTTOM', tooltip_text="Base de la capa d'aire que alimenta la tempesta.")
+    with c13: styled_metric("Eff. Inflow Top", params.get('EFF_INFLOW_TOP'), "hPa", 'EFF_INFLOW_TOP', tooltip_text="Sostre de la capa d'aire que alimenta la tempesta.")
+    # --- NOU PARÀMETRE AFEGIT PER OMPLIR L'ESPAI ---
+    with c14: styled_metric("SWEAT Index", params.get('SWEAT_INDEX'), "", 'SWEAT_INDEX', tooltip_text="Índex de risc de temps sever. >300 indica potencial sever.")
+        
+        
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
     """
     Sistema de Diagnòstic v2.0: Analitza els fenòmens eòlics a diferents nivells
@@ -2625,28 +2630,20 @@ def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp
     with col2: st.markdown(crear_dial_vent_animat("925 hPa", dir_925, spd_925), unsafe_allow_html=True)
     with col3: st.markdown(crear_dial_vent_animat("700 hPa", dir_700, spd_700), unsafe_allow_html=True)
 
+
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None):
     """
-    Versió Final amb Lògica de Context i Desempaquetat de Dades Corregit.
-    - Desempaqueta correctament els 8 valors.
-    - Passa els paràmetres correctes a `crear_skewt`.
+    Versió Final i Neta: Els paràmetres addicionals ja no es mostren aquí,
+    sinó que estan integrats a la caixa de paràmetres principal.
     """
     if data_tuple:
         sounding_data, params_calculats = data_tuple
-        
-        # <<<--- CANVI 1: Desempaquetem 8 valors correctament ---
-        p, T, Td, u, v, heights, sfc_prof, mu_prof = sounding_data
+        p, T, Td, u, v, heights, prof = sounding_data
         
         col1, col2 = st.columns(2, gap="large")
         with col1:
             zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 800 hPa)")
-            
-            # <<<--- CANVI 2: La crida a crear_skewt ara és correcta ---
-            # Passem només un perfil (sfc_prof) i el diccionari de paràmetres.
-            fig_skewt = crear_skewt(p, T, Td, u, v, sfc_prof, params_calculats, 
-                                    f"Sondeig Vertical - {poble_sel}", timestamp_str, 
-                                    zoom_capa_baixa=zoom_capa_baixa)
-            
+            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=zoom_capa_baixa)
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             with st.container(border=True):
@@ -2678,9 +2675,11 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
             html_code = f"""<div style="position: relative; width: 100%; height: 410px; border-radius: 10px; overflow: hidden;"><iframe src="{radar_url}" width="100%" height="410" frameborder="0" style="border:0;"></iframe><div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div></div>"""
             st.components.v1.html(html_code, height=410)
+            
+            # La crida a la funció de paràmetres addicionals s'ha eliminat d'aquí.
+
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
-    
 
 
 
@@ -3736,15 +3735,14 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ AMB RENDERITZAT SUAVITZAT I ISOLÍNIES PROFESSIONALS.
-    - Suavitza els nuclis de convergència amb un filtre Gaussiano per a un aspecte més natural.
-    - Dibuixa línies de contorn discontinuades per a valors baixos (15-30) i sòlides per a valors alts (>30).
-    - Utilitza una paleta de colors i nivells millorada per al farciment.
+    VERSIÓ FINAL AMB ESCALA AJUSTADA I CORRECCIÓ D'ERRORS.
     """
+    # Tornem a l'estil per defecte (fons clar)
     plt.style.use('default')
+
     fig, ax = crear_mapa_base(map_extent)
     
-    # --- 1. INTERPOLACIÓ A GRAELLA D'ALTA RESOLUCIÓ (Sense canvis) ---
+    # --- 1. INTERPOLACIÓ ---
     grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 300), np.linspace(map_extent[2], map_extent[3], 300))
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'linear')
     grid_speed = griddata((lons, lats), speed_data, (grid_lon, grid_lat), 'linear')
@@ -3752,18 +3750,21 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     
-    # --- 2. MAPA DE VELOCITAT DEL VENT I STREAMLINES (Sense canvis) ---
+    # --- 2. MAPA DE VELOCITAT DEL VENT ---
     colors_wind = [
         '#d2d2f0', '#b4b4e6', '#78c8c8', '#50b48c', '#32cd32', '#64ff64',
-        '#ffff00', '#f5d264', '#e6b478', '#d7788c', '#ff69b4', '#9f78dc'
+        '#ffff00', '#f5d264', '#e6b478', '#d7788c', '#ff69b4', '#9f78dc',
+        '#8c64c8', '#8296d7', '#96b4d7', '#d2b4e6', '#e6dcc8', '#f5e6b4'
     ]
-    speed_levels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]
-    custom_cmap = ListedColormap(colors_wind)
-    norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    speed_levels = [0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104, 130, 166, 184, 200]
+    custom_cmap = ListedColormap(colors_wind); norm_speed = BoundaryNorm(speed_levels, ncolors=custom_cmap.N, clip=True)
+    
     ax.pcolormesh(grid_lon, grid_lat, grid_speed, cmap=custom_cmap, norm=norm_speed, zorder=2, transform=ccrs.PlateCarree(), alpha=0.7)
+    
+    # --- STREAMLINES DEL VENT ---
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.5, density=6.5, arrowsize=0.3, zorder=4, transform=ccrs.PlateCarree())
     
-    # --- 3. CÀLCUL, FILTRATGE I SUAVITZAT DE CONVERGÈNCIA (CANVI CLAU) ---
+    # --- 3. CÀLCUL I FILTRATGE DE CONVERGÈNCIA ---
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
@@ -3771,48 +3772,39 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
         DEWPOINT_THRESHOLD = 14 if nivell >= 950 else 12
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
         
-        # Llindar de detecció rebaixat a 15
-        effective_convergence = np.where((convergence >= 15) & (humid_mask), convergence, 0)
+        # Correcció d'un altre petit bug: s'han d'utilitzar parèntesis amb l'operador '&'
+        effective_convergence = np.where((convergence >= 20) & (humid_mask), convergence, 0)
 
-    # <<<--- NOU: APLIQUEM EL FILTRE GAUSSIANO PER SUAVITZAR ---
-    # El valor de 'sigma' controla la intensitat del suavitzat. Més alt = més suau.
+    # Aquesta és la línia que donava l'error 'NameError'
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
-    # Tornem a filtrar per eliminar el "soroll" de valors molt baixos que el suavitzat podria escampar.
-    smoothed_convergence[smoothed_convergence < 15] = 0
     
-    # --- 4. DIBUIX DE LA CONVERGÈNCIA AMB NOU ESTIL ---
+    smoothed_convergence[smoothed_convergence < 20] = 0
+    
+    # --- 4. DIBUIX DE LA CONVERGÈNCIA ---
     if np.any(smoothed_convergence > 0):
-        # Paleta de colors professional per al farciment
-        colors_conv = ['#5BC0DE', "#FBFF00", "#DC6D05", "#EC8383", "#F03D3D", "#FF0000", "#7C7EF0", "#0408EAFF", "#000070"]
+        colors_conv = [
+            '#5BC0DE', "#FBFF00", "#DC6D05", "#EC8383", "#F03D3D", 
+            "#FF0000", "#7C7EF0", "#0408EAFF", "#000070"
+        ]
         cmap_conv = LinearSegmentedColormap.from_list("conv_cmap_personalitzada", colors_conv)
         
-        # El farciment de color comença a 20 per no saturar visualment les zones més febles
-        fill_levels = np.arange(20, 151, 5) 
+        fill_levels = np.arange(30, 151, 5)
         ax.contourf(grid_lon, grid_lat, smoothed_convergence,
                     levels=fill_levels, cmap=cmap_conv, alpha=0.99,
                     zorder=3, transform=ccrs.PlateCarree(), extend='max')
 
-    # <<<--- NOU: ISOLÍNIES FINES I CONDICIONALS ---
-    # Definim els nivells on volem dibuixar línies
-    line_levels = [15, 30, 50, 70, 90, 120]
-    # Definim un estil per a cada nivell: discontinu ('--') per a 15, sòlid ('-') per a la resta
-    line_styles = ['--', '-', '-', '-', '-', '-']
-    # Definim el gruix de totes les línies a 1 (més fines)
-    line_widths = 1
+        line_levels = [20, 30, 50, 70, 90, 120]
+        contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
+                              levels=line_levels, 
+                              colors='black',
+                              linestyles='--', linewidths=1, zorder=3,
+                              transform=ccrs.PlateCarree())
+        
+        labels = ax.clabel(contours, inline=True, fontsize=5, fmt='%1.0f')
+        for label in labels:
+            label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.5))
 
-    contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
-                            levels=line_levels, 
-                            colors='black',
-                            linestyles=line_styles, # Passem la llista d'estils
-                            linewidths=line_widths, # Passem el gruix
-                            zorder=3,
-                            transform=ccrs.PlateCarree())
-    
-    # Afegim etiquetes a les isolínies amb un fons blanc per a millor llegibilitat
-    labels = ax.clabel(contours, inline=True, fontsize=5, fmt='%1.0f')
-    for label in labels:
-        label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1, alpha=0.5))
-
+    # Ajustos finals del títol
     ax.set_title(f"Vent i Nuclis de Convergència EFECTIVA a {nivell}hPa\n{timestamp_str}",
                  weight='bold', fontsize=16)
     afegir_etiquetes_ciutats(ax, map_extent)
@@ -5939,7 +5931,7 @@ def crear_llegenda_direccionalitat():
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
-    PESTANYA D'ANÀLISI COMARCAL amb llindar de convergència a 15 i línies condicionals.
+    PESTANYA D'ANÀLISI COMARCAL amb estil visual millorat.
     """
     st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -5989,23 +5981,15 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     ax.contourf(grid_lon, grid_lat, smoothed_convergence, 
                                 levels=fill_levels, cmap=cmap, norm=norm, 
                                 alpha=0.75, zorder=3, transform=ccrs.PlateCarree(), extend='max')
-                    
-                    # <<<--- CANVI AQUÍ: LÍNIES DE CONTORN CONDICIONALS TAMBÉ AL MAPA COMARCAL --->>>
-                    line_levels = [15, 30, 60, 100]
-                    line_styles = ['--', '-', '-', '-'] # Discontínua per a 15, sòlida per a la resta
-                    
+                    line_levels = [30, 60, 100]
                     contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, 
-                                          levels=line_levels, 
-                                          colors='black', 
-                                          linestyles=line_styles, # Passem la llista d'estils
-                                          linewidths=0.8, alpha=0.7, 
+                                          levels=line_levels, colors='black', 
+                                          linestyles='--', linewidths=0.8, alpha=0.7, 
                                           zorder=4, transform=ccrs.PlateCarree())
-                    
                     labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
                     for label in labels:
                         label.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
 
-                # La resta de la lògica per al punt màxim i la direccionalitat es manté igual
                 points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
                 gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
                 points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
@@ -6014,12 +5998,11 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
                     px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
                     
-                    if data_tuple and valor_conv >= 15: # Rebaixem el llindar per dibuixar la fletxa
+                    if data_tuple and valor_conv >= 20:
                         if valor_conv >= 100: indicator_color = '#9370DB'
                         elif valor_conv >= 60: indicator_color = '#DC3545'
                         elif valor_conv >= 40: indicator_color = '#FD7E14'
-                        elif valor_conv >= 20: indicator_color = '#28A745'
-                        else: indicator_color = '#6495ED' # Color blau per al nou rang 15-19
+                        else: indicator_color = '#28A745'
                         
                         path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
                         
@@ -6064,7 +6047,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             plt.close(fig)
 
     with col_diagnostic:
-        # La part de diagnòstic es manté igual, ja que la lògica de text és correcta
         st.markdown("##### Diagnòstic de la Zona")
         if valor_conv >= 100:
             nivell_alerta, color_alerta, emoji, descripcio = "Extrem", "#9370DB", "🔥", f"S'ha detectat un focus de convergència excepcionalment fort a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta és una senyal inequívoca per a la formació de temps sever organitzat i potencialment perillós."
@@ -6074,8 +6056,8 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             nivell_alerta, color_alerta, emoji, descripcio = "Alt", "#FD7E14", "🟠", f"Hi ha un focus de convergència forta a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquest és un disparador molt eficient i és molt probable que es desenvolupin tempestes a la zona."
         elif valor_conv >= 20:
             nivell_alerta, color_alerta, emoji, descripcio = "Moderat", "#28A745", "🟢", f"S'observa una zona de convergència moderada a la comarca, amb un valor màxim de {valor_conv:.0f}. Aquesta condició pot ser suficient per iniciar tempestes si l'atmosfera és inestable."
-        else: # Aquest cas ara cobrirà de 0 a 19
-            nivell_alerta, color_alerta, emoji, descripcio = "Baix / Feble", "#6c757d", "⚪", f"Es detecta una convergència feble (Valor: {valor_conv:.0f}) o no hi ha focus significatius. El forçament dinàmic per iniciar tempestes és limitat."
+        else:
+            nivell_alerta, color_alerta, emoji, descripcio = "Baix", "#6c757d", "⚪", f"No es detecten focus de convergència significatius (Valor: {valor_conv:.0f}). El forçament dinàmic per iniciar tempestes és feble o inexistent."
 
         st.markdown(f"""
         <div style="text-align: center; padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444;">
@@ -6111,6 +6093,8 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             st.caption(f"Aquesta validació es basa en el sondeig vertical de {poble_sel}.")
         
         crear_llegenda_direccionalitat()
+
+# --- BLOC 1: SUBSTITUEIX TOTES LES FUNCIONS on_... PER AQUESTES ---
 
 def on_day_change_cat():
     """ Callback segur per al canvi de dia a Catalunya. """
