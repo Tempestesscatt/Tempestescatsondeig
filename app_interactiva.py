@@ -3721,10 +3721,9 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                                      nivell: int, timestamp_str: str, 
                                      map_extent: List[float]) -> plt.Figure:
     """
-    VERSIÓ 12.0 (MILLORADA): Genera un mapa de pronòstic combinat amb CAPE, 
-    convergència i vent. Inclou una llegenda explícita per a la convergència i 
-    utilitza una configuració centralitzada per a un estil fàcilment personalitzable.
-    Les isolínies de convergència tenen un contorn negre per a màxima visibilitat.
+    VERSIÓ 12.1 (BORDES MILLORATS): Genera un mapa de pronòstic combinat amb CAPE, 
+    convergència i vent. Les isolínies de convergència tenen un contorn negre més
+    gruixut per a una visibilitat màxima sobre el mapa de CAPE.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3732,7 +3731,6 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     # --- 1. PREPARACIÓ DE DADES ---
     grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 300), 
                                      np.linspace(map_extent[2], map_extent[3], 300))
-    
     grid_dewpoint = griddata((lons, lats), dewpoint_data, (grid_lon, grid_lat), 'linear')
     u_comp, v_comp = mpcalc.wind_components(np.array(speed_data) * units('km/h'), np.array(dir_data) * units.degrees)
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
@@ -3754,11 +3752,9 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
-    
     dewpoint_thresh = cfg_thresh['dewpoint_low_level'] if nivell >= 950 else cfg_thresh['dewpoint_mid_level']
     humid_mask = grid_dewpoint >= dewpoint_thresh
     cape_mask = (grid_cape >= cfg_thresh['cape_min']) & (grid_cape <= cfg_thresh['cape_max'])
-    
     effective_convergence = np.where((convergence >= cfg_thresh['convergence_min']) & humid_mask & cape_mask, convergence, 0)
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=MAP_CONFIG['convergence']['sigma_filter'])
     smoothed_convergence[smoothed_convergence < cfg_thresh['convergence_min']] = 0
@@ -3770,12 +3766,13 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
 
         for style in cfg_conv['styles'].values():
             linewidth = style['width']
+            # <<<--- AQUÍ ES DEFINEIX EL CONTORN NEGRE MÉS GRUIXUT ---
             outline_width = linewidth + cfg_conv['outline_width_factor']
             path_effect_line = [path_effects.withStroke(linewidth=outline_width, foreground='black')]
             
             contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=style['levels'], 
                                   colors=style['color'], linewidths=linewidth, zorder=4,
-                                  transform=ccrs.PlateCarree(), path_effects=path_effect_line)
+                                  transform=ccrs.PlateCarree(), path_effects=path_effect_line) # S'aplica aquí
             
             labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
             for label in labels:
@@ -3805,6 +3802,7 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     afegir_etiquetes_ciutats(ax, map_extent)
     
     return fig
+    
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_japo(nivell, hourly_index):
