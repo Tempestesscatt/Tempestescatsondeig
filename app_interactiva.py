@@ -3721,9 +3721,9 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                                      nivell: int, timestamp_str: str, 
                                      map_extent: List[float]) -> plt.Figure:
     """
-    VERSIÓ 13.0 (NOVA ESCALA CAPE): Genera un mapa de pronòstic amb la nova
-    paleta de colors per al CAPE (0-4000 J/kg) i contorns de convergència
-    gruixuts per a màxima visibilitat.
+    VERSIÓ 14.0 (COLORS VIBRANTS): Genera un mapa de pronòstic amb colors de
+    convergència d'alta visibilitat (verd neó, groc elèctric, vermell pur i fucsia)
+    per garantir el màxim contrast.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3737,7 +3737,7 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_cape = np.nan_to_num(griddata((lons, lats), cape_data, (grid_lon, grid_lat), 'linear'))
 
-    # --- 2. DIBUIX DEL CAPE DE FONS (AMB LA NOVA ESCALA) ---
+    # --- 2. DIBUIX DEL CAPE DE FONS ---
     cfg_cape = MAP_CONFIG['cape']
     cmap_cape = ListedColormap(cfg_cape['colors'])
     norm_cape = BoundaryNorm(cfg_cape['levels'], ncolors=cmap_cape.N, clip=True)
@@ -3759,7 +3759,7 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=MAP_CONFIG['convergence']['sigma_filter'])
     smoothed_convergence[smoothed_convergence < cfg_thresh['convergence_min']] = 0
 
-    # --- 4. DIBUIX DE LES ISOLÍNIES DE CONVERGÈNCIA AMB CONTORN NEGRE ---
+    # --- 4. DIBUIX DE LES ISOLÍNIES DE CONVERGÈNCIA AMB NOUS COLORS ---
     if np.any(smoothed_convergence > 0):
         cfg_conv = MAP_CONFIG['convergence']
         path_effect_label = [path_effects.withStroke(linewidth=2.5, foreground='white')]
