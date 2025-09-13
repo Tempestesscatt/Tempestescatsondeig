@@ -1588,11 +1588,10 @@ def crear_mapa_base(map_extent, projection=ccrs.PlateCarree()):
     fig, ax = plt.subplots(figsize=(8, 8), dpi=100, subplot_kw={'projection': projection})
     ax.set_extent(map_extent, crs=ccrs.PlateCarree())
     
+    ax.add_feature(cfeature.LAND, facecolor="#D4E6B5", zorder=0)
     # --- LÍNIA MODIFICADA AQUÍ ---
-    ax.add_feature(cfeature.LAND, facecolor="#D4E6B5", zorder=0) # Canviat a color verd
+    ax.add_feature(cfeature.OCEAN, facecolor='#B695C0', zorder=0) # Canviat a color lila
     # ---------------------------------
-    
-    ax.add_feature(cfeature.OCEAN, facecolor='#b0c4de', zorder=0)
     ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
     ax.add_feature(cfeature.BORDERS, linestyle='-', edgecolor='black', zorder=5)
     if projection != ccrs.PlateCarree():
@@ -3759,8 +3758,8 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_data, nivell, timestamp_str, map_extent):
     """
-    VERSIÓ 2.1 (MILLORADA): Renderitzat d'alta qualitat per a la convergència amb
-    paleta de colors personalitzada (el primer color és gris clar).
+    VERSIÓ 2.0 (MILLORADA): Renderitzat d'alta qualitat per a la convergència amb
+    paleta de colors personalitzada (11 colors), rang de 15 a 150, i línies sòlides.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3772,23 +3771,23 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
     grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
     grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
 
-    # --- 2. CÀLCUL I FILTRATGE DE CONVERGÈNCIA (Sense canvis) ---
+    # --- 2. CÀLCUL I FILTRATGE DE CONVERGÈNCIA (Llindar actualitzat) ---
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
         convergence[np.isnan(convergence)] = 0
         DEWPOINT_THRESHOLD = 14 if nivell >= 950 else 12
         humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
-        effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0)
+        effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0) # <-- Llindar canviat a 15
 
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=2.5)
-    smoothed_convergence[smoothed_convergence < 15] = 0
+    smoothed_convergence[smoothed_convergence < 15] = 0 # <-- Llindar canviat a 15
 
-    # --- 3. DIBUIX DE LA CONVERGÈNCIA (Amb la paleta de colors actualitzada) ---
+    # --- 3. DIBUIX DE LA CONVERGÈNCIA (Bloc completament nou) ---
     if np.any(smoothed_convergence > 0):
-        # 1. Paleta de 11 colors amb el primer canviat a gris clar
+        # 1. Nova paleta de 11 colors i 12 nivells (15 a 150) com has demanat
         colors_conv = [
-            '#D3D3D3',  # Gris clar <-- CANVI REALITZAT AQUÍ
+            '#87CEEB',  # Blau fluix
             '#90EE90',  # Verd fluix
             '#32CD32',  # Verd fort
             '#FFFFE0',  # Groc fluix
@@ -3810,25 +3809,25 @@ def crear_mapa_forecast_combinat_cat(lons, lats, speed_data, dir_data, dewpoint_
                          levels=fill_levels, cmap=cmap_conv, norm=norm_conv,
                          alpha=0.8, zorder=3, transform=ccrs.PlateCarree(), extend='max')
 
-        # 3. Dibuixem les línies de contorn sòlides a partir de 30
+        # 3. Dibuixem les línies de contorn SÒLIDES a partir de 30
         line_levels = [30, 50, 70, 90, 120, 150]
         contours = ax.contour(grid_lon, grid_lat, smoothed_convergence,
                               levels=line_levels, 
                               colors='black',
-                              linestyles='solid',
+                              linestyles='solid', # <-- Línies sòlides
                               linewidths=0.8, zorder=4,
                               transform=ccrs.PlateCarree())
         
-        # 4. Etiquetes de les línies
+        # 4. Etiquetes de les línies amb alta visibilitat
         labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
         for label in labels:
             label.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='white')])
             
-        # 5. Barra de color
+        # 5. Afegim la barra de color (llegenda)
         cbar = fig.colorbar(im, ax=ax, orientation='vertical', shrink=0.7, pad=0.02, ticks=fill_levels)
         cbar.set_label("Intensitat de la Convergència (x10⁻⁵ s⁻¹)")
 
-    # --- 4. STREAMLINES I TÍTOL ---
+    # --- 4. STREAMLINES I TÍTOL (Sense canvis, però superposats) ---
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color='black', linewidth=0.4, density=5.5, arrowsize=0.4, zorder=5, transform=ccrs.PlateCarree())
 
     ax.set_title(f"Focus de Convergència Efectiva a {nivell}hPa\n{timestamp_str}",
