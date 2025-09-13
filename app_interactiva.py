@@ -371,262 +371,71 @@ MAP_EXTENT_ALEMANYA = [5.5, 15.5, 47.0, 55.5]
 PRESS_LEVELS_ICON = sorted([1000, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 
 
+
+
+# --- BLOC ÚNIC I DEFINITIU DE DADES GEOGRÀFIQUES DE CATALUNYA ---
 API_URL_CAT = "https://api.open-meteo.com/v1/forecast"
 TIMEZONE_CAT = pytz.timezone('Europe/Madrid')
 PRESS_LEVELS_AROME = sorted([1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
 MAP_EXTENT_CAT = [0, 3.5, 40.4, 43]
 
 MAP_ZOOM_LEVELS_CAT = {
-    'Catalunya (Complet)': MAP_EXTENT_CAT,
-    'Barcelona': [1.8, 2.6, 41.25, 41.65],
-    'Girona': [2.5, 3.4, 41.8, 42.2],
-    'Lleida': [0.3, 0.95, 41.5, 41.75],
-    'Tarragona': [0.9, 1.35, 40.95, 41.3]
+    'Catalunya (Complet)': MAP_EXTENT_CAT, 'Barcelona': [1.8, 2.6, 41.25, 41.65],
+    'Girona': [2.5, 3.4, 41.8, 42.2], 'Lleida': [0.3, 0.95, 41.5, 41.75], 'Tarragona': [0.9, 1.35, 40.95, 41.3]
 }
 
 CIUTATS_PER_COMARCA = {
-    "Alt Camp": {
-        'Valls': {'lat': 41.2872, 'lon': 1.2505, 'sea_dir': (110, 220)},
-        'Alcover': {'lat': 41.2642, 'lon': 1.1712, 'sea_dir': (110, 220)},
-        'El Pla de Santa Maria': {'lat': 41.3831, 'lon': 1.3000, 'sea_dir': None},
-    },
-    "Alt Empordà": {
-        'Figueres': {'lat': 42.2662, 'lon': 2.9622, 'sea_dir': (70, 160)},
-        'Roses': {'lat': 42.2619, 'lon': 3.1764, 'sea_dir': (90, 200)},
-        'La Jonquera': {'lat': 42.4194, 'lon': 2.8752, 'sea_dir': None},
-        'Llançà': {'lat': 42.3625, 'lon': 3.1539, 'sea_dir': (0, 150)},
-        'Cadaqués': {'lat': 42.2888, 'lon': 3.2770, 'sea_dir': (0, 180)},
-        'Castelló d\'Empúries': {'lat': 42.2582, 'lon': 3.0725, 'sea_dir': (70, 160)},
-        'L\'Escala': {'lat': 42.1235, 'lon': 3.1311, 'sea_dir': (0, 160)},
-    },
-    "Alt Penedès": {
-        'Vilafranca del Penedès': {'lat': 41.3453, 'lon': 1.6995, 'sea_dir': (100, 200)},
-        'Sant Sadurní d\'Anoia': {'lat': 41.4287, 'lon': 1.7850, 'sea_dir': (100, 200)},
-        'Gelida': {'lat': 41.4392, 'lon': 1.8624, 'sea_dir': None},
-    },
-    "Alt Urgell": {
-        'La Seu d\'Urgell': {'lat': 42.3582, 'lon': 1.4593, 'sea_dir': None},
-        'Oliana': {'lat': 42.0664, 'lon': 1.3142, 'sea_dir': None},
-        'Coll de Nargó': {'lat': 42.1751, 'lon': 1.3197, 'sea_dir': None},
-    },
-    "Anoia": {
-        'Igualada': {'lat': 41.5791, 'lon': 1.6174, 'sea_dir': None},
-        'Calaf': {'lat': 41.7311, 'lon': 1.5126, 'sea_dir': None},
-        'Capellades': {'lat': 41.5312, 'lon': 1.6874, 'sea_dir': None},
-    },
-    "Bages": {
-        'Manresa': {'lat': 41.7230, 'lon': 1.8268, 'sea_dir': None},
-        'Cardona': {'lat': 41.9138, 'lon': 1.6806, 'sea_dir': None},
-        'Súria': {'lat': 41.8322, 'lon': 1.7483, 'sea_dir': None},
-    },
-    "Baix Camp": {
-        'Reus': {'lat': 41.1550, 'lon': 1.1075, 'sea_dir': (120, 220)},
-        'Cambrils': {'lat': 41.0667, 'lon': 1.0500, 'sea_dir': (110, 220)},
-        'Mont-roig del Camp': {'lat': 41.0877, 'lon': 0.9610, 'sea_dir': (110, 220)},
-        'La Selva del Camp': {'lat': 41.2131, 'lon': 1.1384, 'sea_dir': (110, 220)},
-    },
-    "Baix Ebre": {
-        'Tortosa': {'lat': 40.8126, 'lon': 0.5211, 'sea_dir': (60, 160)},
-        'L\'Ametlla de Mar': {'lat': 40.8824, 'lon': 0.8016, 'sea_dir': (90, 200)},
-        'Deltebre': {'lat': 40.7188, 'lon': 0.7099, 'sea_dir': (80, 180)},
-    },
-    "Baix Empordà": {
-        'La Bisbal d\'Empordà': {'lat': 41.9602, 'lon': 3.0378, 'sea_dir': (80, 170)},
-        'Palamós': {'lat': 41.8465, 'lon': 3.1287, 'sea_dir': (80, 190)},
-        'Sant Feliu de Guíxols': {'lat': 41.7801, 'lon': 3.0278, 'sea_dir': (80, 190)},
-        'Platja d\'Aro': {'lat': 41.8175, 'lon': 3.0645, 'sea_dir': (80, 190)},
-        'Begur': {'lat': 41.9542, 'lon': 3.2076, 'sea_dir': (0, 180)},
-    },
-    "Baix Llobregat": {
-        'Sant Feliu de Llobregat': {'lat': 41.3833, 'lon': 2.0500, 'sea_dir': (100, 200)},
-        'Castelldefels': {'lat': 41.2806, 'lon': 1.9750, 'sea_dir': (100, 210)},
-        'Viladecans': {'lat': 41.3155, 'lon': 2.0194, 'sea_dir': (100, 200)},
-        'Olesa de Montserrat': {'lat': 41.5451, 'lon': 1.8955, 'sea_dir': None},
-    },
-    "Baix Penedès": { # <-- COMARCA AFEGIDA
-        'El Vendrell': {'lat': 41.2195, 'lon': 1.5350, 'sea_dir': (100, 200)},
-        'Calafell': {'lat': 41.1994, 'lon': 1.5701, 'sea_dir': (100, 200)},
-        'Cunit': {'lat': 41.1982, 'lon': 1.6358, 'sea_dir': (100, 200)},
-    },
-    "Barcelonès": {
-        'Barcelona': {'lat': 41.3851, 'lon': 2.1734, 'sea_dir': (90, 190)},
-        'Badalona': {'lat': 41.4503, 'lon': 2.2472, 'sea_dir': (90, 190)},
-        'Santa Coloma de Gramenet': {'lat': 41.4550, 'lon': 2.2111, 'sea_dir': (90, 190)},
-    },
-    "Berguedà": {
-        'Berga': {'lat': 42.1051, 'lon': 1.8458, 'sea_dir': None},
-        'Puig-reig': {'lat': 41.9754, 'lon': 1.8814, 'sea_dir': None},
-        'Gironella': {'lat': 42.0368, 'lon': 1.8821, 'sea_dir': None},
-    },
-    "Cerdanya": {
-        'Puigcerdà': {'lat': 42.4331, 'lon': 1.9287, 'sea_dir': None},
-        'Bellver de Cerdanya': {'lat': 42.3705, 'lon': 1.7770, 'sea_dir': None},
-        'La Molina': {'lat': 42.3361, 'lon': 1.9463, 'sea_dir': None},
-    },
-    "Conca de Barberà": {
-        'Montblanc': {'lat': 41.3761, 'lon': 1.1610, 'sea_dir': None},
-        'L\'Espluga de Francolí': {'lat': 41.3969, 'lon': 1.1039, 'sea_dir': None},
-        'Santa Coloma de Queralt': {'lat': 41.5361, 'lon': 1.3855, 'sea_dir': None},
-    },
-    "Garraf": {
-        'Vilanova i la Geltrú': {'lat': 41.2241, 'lon': 1.7252, 'sea_dir': (100, 200)},
-        'Sitges': {'lat': 41.2351, 'lon': 1.8117, 'sea_dir': (100, 220)},
-        'Sant Pere de Ribes': {'lat': 41.2599, 'lon': 1.7725, 'sea_dir': (100, 220)},
-    },
-    "Garrigues": {
-        'Les Borges Blanques': {'lat': 41.5224, 'lon': 0.8674, 'sea_dir': None},
-        'Juneda': {'lat': 41.5515, 'lon': 0.8242, 'sea_dir': None},
-        'Arbeca': {'lat': 41.5434, 'lon': 0.9234, 'sea_dir': None},
-    },
-    "Garrotxa": {
-        'Olot': {'lat': 42.1818, 'lon': 2.4900, 'sea_dir': None},
-        'Besalú': {'lat': 42.2007, 'lon': 2.7001, 'sea_dir': None},
-        'Santa Pau': {'lat': 42.1448, 'lon': 2.5695, 'sea_dir': None},
-    },
-    "Gironès": {
-        'Girona': {'lat': 41.9831, 'lon': 2.8249, 'sea_dir': (80, 170)},
-        'Cassà de la Selva': {'lat': 41.8893, 'lon': 2.8736, 'sea_dir': (80, 170)},
-        'Llagostera': {'lat': 41.8291, 'lon': 2.8931, 'sea_dir': (80, 180)},
-        'Riudellots de la Selva': {'lat': 41.9080, 'lon': 2.8099, 'sea_dir': (80, 170)},
-    },
-    "Maresme": {
-        'Mataró': {'lat': 41.5388, 'lon': 2.4449, 'sea_dir': (90, 180)},
-        'Calella': {'lat': 41.6146, 'lon': 2.6653, 'sea_dir': (90, 180)},
-        'Arenys de Mar': {'lat': 41.5815, 'lon': 2.5504, 'sea_dir': (90, 180)},
-        'Vilassar de Mar': {'lat': 41.5057, 'lon': 2.3920, 'sea_dir': (90, 180)},
-    },
-    "Moianès": { # <-- COMARCA AFEGIDA
-        'Moià': {'lat': 41.8105, 'lon': 2.0967, 'sea_dir': None},
-        'Castellterçol': {'lat': 41.7533, 'lon': 2.1209, 'sea_dir': None},
-        'L\'Estany': {'lat': 41.8653, 'lon': 2.1130, 'sea_dir': None},
-    },
-    "Montsià": {
-        'Amposta': {'lat': 40.7093, 'lon': 0.5810, 'sea_dir': (70, 170)},
-        'La Ràpita': {'lat': 40.6179, 'lon': 0.5905, 'sea_dir': (60, 160)},
-        'Alcanar': {'lat': 40.5434, 'lon': 0.4820, 'sea_dir': (60, 160)},
-    },
-    "Noguera": {
-        'Balaguer': {'lat': 41.7904, 'lon': 0.8066, 'sea_dir': None},
-        'Artesa de Segre': {'lat': 41.8950, 'lon': 1.0483, 'sea_dir': None},
-        'Ponts': {'lat': 41.9167, 'lon': 1.1833, 'sea_dir': None},
-    },
-    "Osona": {
-        'Vic': {'lat': 41.9301, 'lon': 2.2545, 'sea_dir': None},
-        'Manlleu': {'lat': 42.0016, 'lon': 2.2844, 'sea_dir': None},
-        'Torelló': {'lat': 42.0494, 'lon': 2.2619, 'sea_dir': None},
-    },
-    "Pallars Jussà": {
-        'Tremp': {'lat': 42.1664, 'lon': 0.8953, 'sea_dir': None},
-        'La Pobla de Segur': {'lat': 42.2472, 'lon': 0.9678, 'sea_dir': None},
-        'Isona': {'lat': 42.1187, 'lon': 1.0560, 'sea_dir': None},
-    },
-    "Pallars Sobirà": {
-        'Sort': {'lat': 42.4131, 'lon': 1.1278, 'sea_dir': None},
-        'Esterri d\'Àneu': {'lat': 42.6322, 'lon': 1.1219, 'sea_dir': None},
-        'Llavorsí': {'lat': 42.4930, 'lon': 1.2201, 'sea_dir': None},
-    },
-    "Pla de l'Estany": {
-        'Banyoles': {'lat': 42.1197, 'lon': 2.7667, 'sea_dir': (80, 170)},
-        'Porqueres': {'lat': 42.1283, 'lon': 2.7501, 'sea_dir': (80, 170)},
-        'Cornellà del Terri': {'lat': 42.0833, 'lon': 2.8167, 'sea_dir': (80, 170)},
-    },
-    "Pla d_Urgell": {
-        'Mollerussa': {'lat': 41.6315, 'lon': 0.8931, 'sea_dir': None},
-        'Bellvís': {'lat': 41.6934, 'lon': 0.8716, 'sea_dir': None},
-        'Linyola': {'lat': 41.7135, 'lon': 0.9080, 'sea_dir': None},
-    },
-    "Priorat": {
-        'Falset': {'lat': 41.1444, 'lon': 0.8208, 'sea_dir': None},
-        'Cornudella de Montsant': {'lat': 41.2651, 'lon': 0.9056, 'sea_dir': None},
-        'Porrera': {'lat': 41.1891, 'lon': 0.8540, 'sea_dir': None},
-    },
-    "Ribera d_Ebre": {
-        'Móra d\'Ebre': {'lat': 41.0945, 'lon': 0.6450, 'sea_dir': None},
-        'Flix': {'lat': 41.2307, 'lon': 0.5501, 'sea_dir': None},
-        'Ascó': {'lat': 41.2037, 'lon': 0.5699, 'sea_dir': None},
-    },
-    "Ripollès": {
-        'Ripoll': {'lat': 42.2013, 'lon': 2.1903, 'sea_dir': None},
-        'Camprodon': {'lat': 42.3134, 'lon': 2.3644, 'sea_dir': None},
-        'Sant Joan de les Abadesses': {'lat': 42.2355, 'lon': 2.2858, 'sea_dir': None},
-    },
-    "Segarra": {
-        'Cervera': {'lat': 41.6709, 'lon': 1.2721, 'sea_dir': None},
-        'Guissona': {'lat': 41.7824, 'lon': 1.2905, 'sea_dir': None},
-        'Torà': {'lat': 41.8124, 'lon': 1.4024, 'sea_dir': None},
-    },
-    "Segrià": {
-        'Lleida': {'lat': 41.6177, 'lon': 0.6200, 'sea_dir': None},
-        'Alcarràs': {'lat': 41.5606, 'lon': 0.5251, 'sea_dir': None},
-        'Aitona': {'lat': 41.4883, 'lon': 0.4578, 'sea_dir': None},
-    },
-    "Selva": {
-        'Santa Coloma de Farners': {'lat': 41.8596, 'lon': 2.6703, 'sea_dir': None},
-        'Blanes': {'lat': 41.6748, 'lon': 2.7917, 'sea_dir': (80, 180)},
-        'Lloret de Mar': {'lat': 41.7005, 'lon': 2.8450, 'sea_dir': (80, 180)},
-        'Hostalric': {'lat': 41.7479, 'lon': 2.6360, 'sea_dir': None},
-    },
-    "Solsonès": {
-        'Solsona': {'lat': 41.9942, 'lon': 1.5161, 'sea_dir': None},
-        'Sant Llorenç de Morunys': {'lat': 42.1374, 'lon': 1.5900, 'sea_dir': None},
-        'Olius': {'lat': 41.9785, 'lon': 1.5323, 'sea_dir': None},
-    },
-    "Tarragonès": {
-        'Tarragona': {'lat': 41.1189, 'lon': 1.2445, 'sea_dir': (110, 220)},
-        'Salou': {'lat': 41.0763, 'lon': 1.1417, 'sea_dir': (110, 220)},
-        'Altafulla': {'lat': 41.1417, 'lon': 1.3750, 'sea_dir': (110, 220)},
-    },
-    "Terra Alta": {
-        'Gandesa': {'lat': 41.0526, 'lon': 0.4337, 'sea_dir': None},
-        'Horta de Sant Joan': {'lat': 40.9545, 'lon': 0.3160, 'sea_dir': None},
-        'Batea': {'lat': 41.0954, 'lon': 0.3119, 'sea_dir': None},
-    },
-    "Urgell": {
-        'Tàrrega': {'lat': 41.6469, 'lon': 1.1415, 'sea_dir': None},
-        'Agramunt': {'lat': 41.7871, 'lon': 1.0967, 'sea_dir': None},
-        'Bellpuig': {'lat': 41.6247, 'lon': 1.0118, 'sea_dir': None},
-    },
-    "Val d'Aran": {
-        'Vielha': {'lat': 42.7027, 'lon': 0.7966, 'sea_dir': None},
-        'Bossòst': {'lat': 42.7877, 'lon': 0.6908, 'sea_dir': None},
-        'Les': {'lat': 42.8126, 'lon': 0.7144, 'sea_dir': None},
-    },
-    "Vallès Occidental": {
-        'Sabadell': {'lat': 41.5483, 'lon': 2.1075, 'sea_dir': (100, 200)},
-        'Terrassa': {'lat': 41.5615, 'lon': 2.0084, 'sea_dir': (100, 200)},
-        'Sant Cugat del Vallès': {'lat': 41.4727, 'lon': 2.0863, 'sea_dir': (100, 200)},
-        'Rubí': {'lat': 41.4936, 'lon': 2.0323, 'sea_dir': (100, 200)},
-    },
-    "Vallès Oriental": {
-        'Granollers': {'lat': 41.6083, 'lon': 2.2886, 'sea_dir': (90, 180)},
-        'Mollet del Vallès': {'lat': 41.5385, 'lon': 2.2144, 'sea_dir': (100, 200)},
-        'Sant Celoni': {'lat': 41.6903, 'lon': 2.4908, 'sea_dir': None},
-        'Cardedeu': {'lat': 41.6403, 'lon': 2.3582, 'sea_dir': (90, 180)},
-    },
+    "Alt Camp": { 'Valls': {'lat': 41.2872, 'lon': 1.2505}, 'Alcover': {'lat': 41.2642, 'lon': 1.1712}, 'El Pla de Santa Maria': {'lat': 41.3831, 'lon': 1.3000} },
+    "Alt Empordà": { 'Figueres': {'lat': 42.2662, 'lon': 2.9622}, 'Roses': {'lat': 42.2619, 'lon': 3.1764}, 'La Jonquera': {'lat': 42.4194, 'lon': 2.8752}, 'Llançà': {'lat': 42.3625, 'lon': 3.1539}, 'Cadaqués': {'lat': 42.2888, 'lon': 3.2770}, 'Castelló d\'Empúries': {'lat': 42.2582, 'lon': 3.0725}, 'L\'Escala': {'lat': 42.1235, 'lon': 3.1311} },
+    "Alt Penedès": { 'Vilafranca del Penedès': {'lat': 41.3453, 'lon': 1.6995}, 'Sant Sadurní d\'Anoia': {'lat': 41.4287, 'lon': 1.7850}, 'Gelida': {'lat': 41.4392, 'lon': 1.8624} },
+    "Alt Urgell": { 'La Seu d\'Urgell': {'lat': 42.3582, 'lon': 1.4593}, 'Oliana': {'lat': 42.0664, 'lon': 1.3142}, 'Coll de Nargó': {'lat': 42.1751, 'lon': 1.3197} },
+    "Anoia": { 'Igualada': {'lat': 41.5791, 'lon': 1.6174}, 'Calaf': {'lat': 41.7311, 'lon': 1.5126}, 'Capellades': {'lat': 41.5312, 'lon': 1.6874} },
+    "Bages": { 'Manresa': {'lat': 41.7230, 'lon': 1.8268}, 'Cardona': {'lat': 41.9138, 'lon': 1.6806}, 'Súria': {'lat': 41.8322, 'lon': 1.7483} },
+    "Baix Camp": { 'Reus': {'lat': 41.1550, 'lon': 1.1075}, 'Cambrils': {'lat': 41.0667, 'lon': 1.0500}, 'Mont-roig del Camp': {'lat': 41.0877, 'lon': 0.9610}, 'La Selva del Camp': {'lat': 41.2131, 'lon': 1.1384} },
+    "Baix Ebre": { 'Tortosa': {'lat': 40.8126, 'lon': 0.5211}, 'L\'Ametlla de Mar': {'lat': 40.8824, 'lon': 0.8016}, 'Deltebre': {'lat': 40.7188, 'lon': 0.7099} },
+    "Baix Empordà": { 'La Bisbal d\'Empordà': {'lat': 41.9602, 'lon': 3.0378}, 'Palamós': {'lat': 41.8465, 'lon': 3.1287}, 'Sant Feliu de Guíxols': {'lat': 41.7801, 'lon': 3.0278}, 'Platja d\'Aro': {'lat': 41.8175, 'lon': 3.0645}, 'Begur': {'lat': 41.9542, 'lon': 3.2076} },
+    "Baix Llobregat": { 'Sant Feliu de Llobregat': {'lat': 41.3833, 'lon': 2.0500}, 'Castelldefels': {'lat': 41.2806, 'lon': 1.9750}, 'Viladecans': {'lat': 41.3155, 'lon': 2.0194}, 'Olesa de Montserrat': {'lat': 41.5451, 'lon': 1.8955} },
+    "Baix Penedès": { 'El Vendrell': {'lat': 41.2195, 'lon': 1.5350}, 'Calafell': {'lat': 41.1994, 'lon': 1.5701}, 'Cunit': {'lat': 41.1982, 'lon': 1.6358} },
+    "Barcelonès": { 'Barcelona': {'lat': 41.3851, 'lon': 2.1734}, 'Badalona': {'lat': 41.4503, 'lon': 2.2472}, 'Santa Coloma de Gramenet': {'lat': 41.4550, 'lon': 2.2111} },
+    "Berguedà": { 'Berga': {'lat': 42.1051, 'lon': 1.8458}, 'Puig-reig': {'lat': 41.9754, 'lon': 1.8814}, 'Gironella': {'lat': 42.0368, 'lon': 1.8821} },
+    "Cerdanya": { 'Puigcerdà': {'lat': 42.4331, 'lon': 1.9287}, 'Bellver de Cerdanya': {'lat': 42.3705, 'lon': 1.7770}, 'La Molina': {'lat': 42.3361, 'lon': 1.9463} },
+    "Conca de Barberà": { 'Montblanc': {'lat': 41.3761, 'lon': 1.1610}, 'L\'Espluga de Francolí': {'lat': 41.3969, 'lon': 1.1039}, 'Santa Coloma de Queralt': {'lat': 41.5361, 'lon': 1.3855} },
+    "Garraf": { 'Vilanova i la Geltrú': {'lat': 41.2241, 'lon': 1.7252}, 'Sitges': {'lat': 41.2351, 'lon': 1.8117}, 'Sant Pere de Ribes': {'lat': 41.2599, 'lon': 1.7725} },
+    "Garrigues": { 'Les Borges Blanques': {'lat': 41.5224, 'lon': 0.8674}, 'Juneda': {'lat': 41.5515, 'lon': 0.8242}, 'Arbeca': {'lat': 41.5434, 'lon': 0.9234} },
+    "Garrotxa": { 'Olot': {'lat': 42.1818, 'lon': 2.4900}, 'Besalú': {'lat': 42.2007, 'lon': 2.7001}, 'Santa Pau': {'lat': 42.1448, 'lon': 2.5695} },
+    "Gironès": { 'Girona': {'lat': 41.9831, 'lon': 2.8249}, 'Cassà de la Selva': {'lat': 41.8893, 'lon': 2.8736}, 'Llagostera': {'lat': 41.8291, 'lon': 2.8931}, 'Riudellots de la Selva': {'lat': 41.9080, 'lon': 2.8099} },
+    "Maresme": { 'Mataró': {'lat': 41.5388, 'lon': 2.4449}, 'Calella': {'lat': 41.6146, 'lon': 2.6653}, 'Arenys de Mar': {'lat': 41.5815, 'lon': 2.5504}, 'Vilassar de Mar': {'lat': 41.5057, 'lon': 2.3920} },
+    "Moianès": { 'Moià': {'lat': 41.8105, 'lon': 2.0967}, 'Castellterçol': {'lat': 41.7533, 'lon': 2.1209}, 'L\'Estany': {'lat': 41.8653, 'lon': 2.1130} },
+    "Montsià": { 'Amposta': {'lat': 40.7093, 'lon': 0.5810}, 'La Ràpita': {'lat': 40.6179, 'lon': 0.5905}, 'Alcanar': {'lat': 40.5434, 'lon': 0.4820} },
+    "Noguera": { 'Balaguer': {'lat': 41.7904, 'lon': 0.8066}, 'Artesa de Segre': {'lat': 41.8950, 'lon': 1.0483}, 'Ponts': {'lat': 41.9167, 'lon': 1.1833} },
+    "Osona": { 'Vic': {'lat': 41.9301, 'lon': 2.2545}, 'Manlleu': {'lat': 42.0016, 'lon': 2.2844}, 'Torelló': {'lat': 42.0494, 'lon': 2.2619} },
+    "Pallars Jussà": { 'Tremp': {'lat': 42.1664, 'lon': 0.8953}, 'La Pobla de Segur': {'lat': 42.2472, 'lon': 0.9678}, 'Isona': {'lat': 42.1187, 'lon': 1.0560} },
+    "Pallars Sobirà": { 'Sort': {'lat': 42.4131, 'lon': 1.1278}, 'Esterri d\'Àneu': {'lat': 42.6322, 'lon': 1.1219}, 'Llavorsí': {'lat': 42.4930, 'lon': 1.2201} },
+    "Pla de l'Estany": { 'Banyoles': {'lat': 42.1197, 'lon': 2.7667}, 'Porqueres': {'lat': 42.1283, 'lon': 2.7501}, 'Cornellà del Terri': {'lat': 42.0833, 'lon': 2.8167} },
+    "Pla d_Urgell": { 'Mollerussa': {'lat': 41.6315, 'lon': 0.8931}, 'Bellvís': {'lat': 41.6934, 'lon': 0.8716}, 'Linyola': {'lat': 41.7135, 'lon': 0.9080} },
+    "Priorat": { 'Falset': {'lat': 41.1444, 'lon': 0.8208}, 'Cornudella de Montsant': {'lat': 41.2651, 'lon': 0.9056}, 'Porrera': {'lat': 41.1891, 'lon': 0.8540} },
+    "Ribera d_Ebre": { 'Móra d\'Ebre': {'lat': 41.0945, 'lon': 0.6450}, 'Flix': {'lat': 41.2307, 'lon': 0.5501}, 'Ascó': {'lat': 41.2037, 'lon': 0.5699} },
+    "Ripollès": { 'Ripoll': {'lat': 42.2013, 'lon': 2.1903}, 'Camprodon': {'lat': 42.3134, 'lon': 2.3644}, 'Sant Joan de les Abadesses': {'lat': 42.2355, 'lon': 2.2858} },
+    "Segarra": { 'Cervera': {'lat': 41.6709, 'lon': 1.2721}, 'Guissona': {'lat': 41.7824, 'lon': 1.2905}, 'Torà': {'lat': 41.8124, 'lon': 1.4024} },
+    "Segrià": { 'Lleida': {'lat': 41.6177, 'lon': 0.6200}, 'Alcarràs': {'lat': 41.5606, 'lon': 0.5251}, 'Aitona': {'lat': 41.4883, 'lon': 0.4578} },
+    "Selva": { 'Santa Coloma de Farners': {'lat': 41.8596, 'lon': 2.6703}, 'Blanes': {'lat': 41.6748, 'lon': 2.7917}, 'Lloret de Mar': {'lat': 41.7005, 'lon': 2.8450}, 'Hostalric': {'lat': 41.7479, 'lon': 2.6360} },
+    "Solsonès": { 'Solsona': {'lat': 41.9942, 'lon': 1.5161}, 'Sant Llorenç de Morunys': {'lat': 42.1374, 'lon': 1.5900}, 'Olius': {'lat': 41.9785, 'lon': 1.5323} },
+    "Tarragonès": { 'Tarragona': {'lat': 41.1189, 'lon': 1.2445}, 'Salou': {'lat': 41.0763, 'lon': 1.1417}, 'Altafulla': {'lat': 41.1417, 'lon': 1.3750} },
+    "Terra Alta": { 'Gandesa': {'lat': 41.0526, 'lon': 0.4337}, 'Horta de Sant Joan': {'lat': 40.9545, 'lon': 0.3160}, 'Batea': {'lat': 41.0954, 'lon': 0.3119} },
+    "Urgell": { 'Tàrrega': {'lat': 41.6469, 'lon': 1.1415}, 'Agramunt': {'lat': 41.7871, 'lon': 1.0967}, 'Bellpuig': {'lat': 41.6247, 'lon': 1.0118} },
+    "Val d'Aran": { 'Vielha': {'lat': 42.7027, 'lon': 0.7966}, 'Bossòst': {'lat': 42.7877, 'lon': 0.6908}, 'Les': {'lat': 42.8126, 'lon': 0.7144} },
+    "Vallès Occidental": { 'Sabadell': {'lat': 41.5483, 'lon': 2.1075}, 'Terrassa': {'lat': 41.5615, 'lon': 2.0084}, 'Sant Cugat del Vallès': {'lat': 41.4727, 'lon': 2.0863}, 'Rubí': {'lat': 41.4936, 'lon': 2.0323} },
+    "Vallès Oriental": { 'Granollers': {'lat': 41.6083, 'lon': 2.2886}, 'Mollet del Vallès': {'lat': 41.5385, 'lon': 2.2144}, 'Sant Celoni': {'lat': 41.6903, 'lon': 2.4908}, 'Cardedeu': {'lat': 41.6403, 'lon': 2.3582} },
 }
-
 
 CIUTATS_CATALUNYA = { ciutat: dades for comarca in CIUTATS_PER_COMARCA.values() for ciutat, dades in comarca.items() }
-
-# Afegeix els punts marins manualment
-PUNTS_MAR = {
-    'Costes de Girona (Mar)':   {'lat': 42.05, 'lon': 3.30, 'sea_dir': (0, 360)},
-    'Litoral Barceloní (Mar)': {'lat': 41.40, 'lon': 2.90, 'sea_dir': (0, 360)},
-    'Aigües de Tarragona (Mar)': {'lat': 40.90, 'lon': 2.00, 'sea_dir': (0, 360)},
-}
+PUNTS_MAR = { 'Costes de Girona (Mar)': {'lat': 42.05, 'lon': 3.30}, 'Litoral Barceloní (Mar)': {'lat': 41.40, 'lon': 2.90}, 'Aigües de Tarragona (Mar)': {'lat': 40.90, 'lon': 2.00} }
 CIUTATS_CATALUNYA.update(PUNTS_MAR)
 
-# Defineix les llistes necessàries a partir de la llista principal ja completa
 POBLACIONS_TERRA = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' not in k}
-CIUTATS_CONVIDAT = {
-    'Barcelona': CIUTATS_CATALUNYA['Barcelona'], 'Girona': CIUTATS_CATALUNYA['Girona'],
-    'Lleida': CIUTATS_CATALUNYA['Lleida'], 'Tarragona': CIUTATS_CATALUNYA['Tarragona']
-}
-
+CIUTATS_CONVIDAT = { 'Barcelona': CIUTATS_CATALUNYA['Barcelona'], 'Girona': CIUTATS_CATALUNYA['Girona'], 'Lleida': CIUTATS_CATALUNYA['Lleida'], 'Tarragona': CIUTATS_CATALUNYA['Tarragona'] }
 POBLES_MAPA_REFERENCIA = {poble: {'lat': data['lat'], 'lon': data['lon']} for poble, data in POBLACIONS_TERRA.items()}
 
-# <<<--- DICCIONARI CORREGIT AQUÍ ---
-# Genera les zones personalitzades a partir de les dades ja definides per comarca
 CIUTATS_PER_ZONA_PERSONALITZADA = {
     "Pirineu i Pre-Pirineu": { p: CIUTATS_CATALUNYA[p] for p in ['Vielha', 'Sort', 'Tremp', 'La Pobla de Segur', 'La Seu d\'Urgell', 'Puigcerdà', 'Bellver de Cerdanya', 'La Molina', 'Ripoll', 'Sant Joan de les Abadesses', 'Berga', 'Solsona', 'Olot', 'Santa Pau', 'Camprodon'] if p in CIUTATS_CATALUNYA },
     "Plana de Lleida i Ponent": { p: CIUTATS_CATALUNYA[p] for p in ['Lleida', 'Alcarràs', 'Balaguer', 'Agramunt', 'Artesa de Segre', 'Calaf', 'Les Borges Blanques', 'Mollerussa', 'Tàrrega', 'Cervera'] if p in CIUTATS_CATALUNYA },
@@ -637,468 +446,12 @@ CIUTATS_PER_ZONA_PERSONALITZADA = {
     "Terres de l'Ebre": { p: CIUTATS_CATALUNYA[p] for p in ['Tortosa', 'Amposta', 'Alcanar', 'L\'Ametlla de Mar', 'Deltebre', 'La Ràpita', 'Móra d\'Ebre', 'Gandesa'] if p in CIUTATS_CATALUNYA },
 }
 
-
-
-
-POBLES_MAPA_REFERENCIA = {
-    # Capitals de província (es poden repetir si també vols que surtin sempre al mapa)
-    "Barcelona": {'lat': 41.3851, 'lon': 2.1734}, "Girona": {'lat': 41.9831, 'lon': 2.8249},
-    "Lleida": {'lat': 41.6177, 'lon': 0.6200}, "Tarragona": {'lat': 41.1189, 'lon': 1.2445},
-
-    # Llista de pobles addicionals només per al mapa
-    "Altafulla": {'lat': 41.1417, 'lon': 1.3750}, "Agramunt": {'lat': 41.7871, 'lon': 1.0967},
-    "Alcanar": {'lat': 40.5434, 'lon': 0.4820}, "Alella": {'lat': 41.4947, 'lon': 2.2955},
-    "Arenys de Mar": {'lat': 41.5815, 'lon': 2.5504}, "Arenys de Munt": {'lat': 41.6094, 'lon': 2.5411},
-    "Balaguer": {'lat': 41.7904, 'lon': 0.8066}, "Berga": {'lat': 42.1051, 'lon': 1.8458},
-    "Banyoles": {'lat': 42.1197, 'lon': 2.7667}, "Cabrera de Mar": {'lat': 41.5275, 'lon': 2.3958},
-    "Caldes de Montbui": {'lat': 41.6315, 'lon': 2.1678}, "Calella": {'lat': 41.6146, 'lon': 2.6653},
-    "Calaf": {'lat': 41.7311, 'lon': 1.5126}, "Camarasa": {'lat': 41.8753, 'lon': 0.8804},
-    "Capellades": {'lat': 41.5312, 'lon': 1.6874}, "Cardedeu": {'lat': 41.6403, 'lon': 2.3582},
-    "Cardona": {'lat': 41.9138, 'lon': 1.6806}, "Castellbisbal": {'lat': 41.4776, 'lon': 1.9866},
-    "Castellar del Vallès": {'lat': 41.6186, 'lon': 2.0875}, "Castelló d'Empúries": {'lat': 42.2582, 'lon': 3.0725},
-    "Centelles": {'lat': 41.7963, 'lon': 2.2203}, "Cerdanyola del Vallès": {'lat': 41.4925, 'lon': 2.1415},
-    "Figueres": {'lat': 42.2662, 'lon': 2.9622}, "Flaçà": {'lat': 42.0494, 'lon': 2.9559},
-    "Granollers": {'lat': 41.6083, 'lon': 2.2886}, "Igualada": {'lat': 41.5791, 'lon': 1.6174},
-    "L'Ametlla de Mar": {'lat': 40.8824, 'lon': 0.8016}, "L'Escala": {'lat': 42.1235, 'lon': 3.1311},
-    "L'Hospitalet de Llobregat": {'lat': 41.3571, 'lon': 2.1030}, "La Bisbal d'Empordà": {'lat': 41.9602, 'lon': 3.0378},
-    "La Jonquera": {'lat': 42.4194, 'lon': 2.8752}, "La Seu d'Urgell": {'lat': 42.3582, 'lon': 1.4593},
-    "La Selva del Camp": {'lat': 41.2131, 'lon': 1.1384}, "La Sénia": {'lat': 40.6322, 'lon': 0.2831},
-    "Manresa": {'lat': 41.7230, 'lon': 1.8268}, "Mataró": {'lat': 41.5388, 'lon': 2.4449},
-    "Mollet del Vallès": {'lat': 41.5385, 'lon': 2.2144}, "Montblanc": {'lat': 41.3761, 'lon': 1.1610},
-    "Montcada i Reixac": {'lat': 41.4851, 'lon': 2.1884}, "Olot": {'lat': 42.1818, 'lon': 2.4900},
-    "Olesa de Montserrat": {'lat': 41.5451, 'lon': 1.8955}, "Palamós": {'lat': 41.8465, 'lon': 3.1287},
-    "Pals": {'lat': 41.9688, 'lon': 3.1458}, "Pineda de Mar": {'lat': 41.6277, 'lon': 2.6908},
-    "Reus": {'lat': 41.1550, 'lon': 1.1075}, "Ripoll": {'lat': 42.2013, 'lon': 2.1903},
-    "Roses": {'lat': 42.2619, 'lon': 3.1764}, "Rubí": {'lat': 41.4936, 'lon': 2.0323},
-    "Sabadell": {'lat': 41.5483, 'lon': 2.1075}, "Sant Cugat del Vallès": {'lat': 41.4727, 'lon': 2.0863},
-    "Sant Feliu de Guíxols": {'lat': 41.7801, 'lon': 3.0278}, "Sant Feliu de Llobregat": {'lat': 41.3833, 'lon': 2.0500},
-    "Sant Joan de les Abadesses": {'lat': 42.2355, 'lon': 2.2858}, "Sant Quirze del Vallès": {'lat': 41.5303, 'lon': 2.0831},
-    "Santa Coloma de Farners": {'lat': 41.8596, 'lon': 2.6703}, "Santa Coloma de Gramenet": {'lat': 41.4550, 'lon': 2.2111},
-    "Sarroca de Bellera": {'lat': 42.3957, 'lon': 0.8656}, "Soses": {'lat': 41.5358, 'lon': 0.5186},
-    "Solsona": {'lat': 41.9942, 'lon': 1.5161}, "Sort": {'lat': 42.4131, 'lon': 1.1278},
-    "Terrassa": {'lat': 41.5615, 'lon': 2.0084}, "Tortosa": {'lat': 40.8126, 'lon': 0.5211},
-    "Valls": {'lat': 41.2872, 'lon': 1.2505}, "Vic": {'lat': 41.9301, 'lon': 2.2545},
-    "Vielha": {'lat': 42.7027, 'lon': 0.7966}, "Vilafranca del Penedès": {'lat': 41.3453, 'lon': 1.6995},
-    "Vilanova i la Geltrú": {'lat': 41.2241, 'lon': 1.7252}, "Blanes": {'lat': 41.6748, 'lon': 2.7917},
-    "Llançà": {'lat': 42.3625, 'lon': 3.1539}, "Platja d’Aro": {'lat': 41.8175, 'lon': 3.0645},
-    "Sitges": {'lat': 41.2351, 'lon': 1.8117}, "Cadaqués": {'lat': 42.2888, 'lon': 3.2770},
-    "Cambrils": {'lat': 41.0667, 'lon': 1.0500}, "Salou": {'lat': 41.0763, 'lon': 1.1417},
-    "Vidreres": {'lat': 41.7876, 'lon': 2.7788}, "Begur": {'lat': 41.9542, 'lon': 3.2076},
-    "Castellfollit de la Roca": {'lat': 42.2201, 'lon': 2.5517}, "Santa Pau": {'lat': 42.1448, 'lon': 2.5695},
-    "La Pobla de Segur": {'lat': 42.2472, 'lon': 0.9678}, "Bellver de Cerdanya": {'lat': 42.3705, 'lon': 1.7770},
-    "Puigcerdà": {'lat': 42.4331, 'lon': 1.9287}, "Manlleu": {'lat': 42.0016, 'lon': 2.2844},
-    "Tremp": {'lat': 42.1664, 'lon': 0.8953}, "Arbúcies": {'lat': 41.8159, 'lon': 2.5152},
-    "Viladecans": {'lat': 41.3155, 'lon': 2.0194}, "Vilassar de Mar": {'lat': 41.5057, 'lon': 2.3920},
-    "Vilassar de Dalt": {'lat': 41.5167, 'lon': 2.3583}, "Sant Pere de Ribes": {'lat': 41.2599, 'lon': 1.7725},
-    "Santa Susanna": {'lat': 41.6366, 'lon': 2.7098}, "Malgrat de Mar": {'lat': 41.6461, 'lon': 2.7423},
-    "Calonge": {'lat': 41.8601, 'lon': 3.0768}, "Lloret de Mar": {'lat': 41.7005, 'lon': 2.8450},
-    "Santa Cristina d'Aro": {'lat': 41.8130, 'lon': 2.9976}, "Cassà de la Selva": {'lat': 41.8893, 'lon': 2.8736},
-    "Vidrà": {'lat': 42.1226, 'lon': 2.3116}, "Llagostera": {'lat': 41.8291, 'lon': 2.8931},
-    "Riudellots de la Selva": {'lat': 41.9080, 'lon': 2.8099}, "Hostalric": {'lat': 41.7479, 'lon': 2.6360}
-}
-
-
-
-
-
-CIUTATS_PER_ZONA_PERSONALITZADA = {
-    "Pirineu i Pre-Pirineu": {
-        'Vielha': CIUTATS_CATALUNYA['Vielha'],
-        'Sort': CIUTATS_CATALUNYA['Sort'],
-        'Sarroca de Bellera': CIUTATS_CATALUNYA['Sarroca de Bellera'],
-        'Tremp': CIUTATS_CATALUNYA['Tremp'],
-        'La Pobla de Segur': CIUTATS_CATALUNYA['La Pobla de Segur'],
-        'La Seu d\'Urgell': CIUTATS_CATALUNYA['La Seu d\'Urgell'],
-        'Puigcerdà': CIUTATS_CATALUNYA['Puigcerdà'],
-        'Bellver de Cerdanya': CIUTATS_CATALUNYA['Bellver de Cerdanya'],
-        'Ripoll': CIUTATS_CATALUNYA['Ripoll'],
-        'Sant Joan de les Abadesses': CIUTATS_CATALUNYA['Sant Joan de les Abadesses'],
-        'Berga': CIUTATS_CATALUNYA['Berga'],
-        'Solsona': CIUTATS_CATALUNYA['Solsona'],
-        'Olot': CIUTATS_CATALUNYA['Olot'],
-        'Santa Pau': CIUTATS_CATALUNYA['Santa Pau'],
-        'Castellfollit de la Roca': CIUTATS_CATALUNYA['Castellfollit de la Roca'],
-    },
-    "Plana de Lleida i Ponent": {
-        'Lleida': CIUTATS_CATALUNYA['Lleida'],
-        'Soses': CIUTATS_CATALUNYA['Soses'],
-        'Balaguer': CIUTATS_CATALUNYA['Balaguer'],
-        'Agramunt': CIUTATS_CATALUNYA['Agramunt'],
-        'Camarasa': CIUTATS_CATALUNYA['Camarasa'],
-        'Calaf': CIUTATS_CATALUNYA['Calaf'],
-    },
-    "Catalunya Central": {
-        'Manresa': CIUTATS_CATALUNYA['Manresa'],
-        'Cardona': CIUTATS_CATALUNYA['Cardona'],
-        'Igualada': CIUTATS_CATALUNYA['Igualada'],
-        'Capellades': CIUTATS_CATALUNYA['Capellades'],
-        'Vic': CIUTATS_CATALUNYA['Vic'],
-        'Manlleu': CIUTATS_CATALUNYA['Manlleu'],
-        'Centelles': CIUTATS_CATALUNYA['Centelles'],
-        'Vidrà': CIUTATS_CATALUNYA['Vidrà'],
-    },
-    "Litoral i Prelitoral Nord (Girona)": {
-        'Girona': CIUTATS_CATALUNYA['Girona'],
-        'Figueres': CIUTATS_CATALUNYA['Figueres'],
-        'Banyoles': CIUTATS_CATALUNYA['Banyoles'],
-        'La Bisbal d\'Empordà': CIUTATS_CATALUNYA['La Bisbal d\'Empordà'],
-        'Roses': CIUTATS_CATALUNYA['Roses'],
-        'Cadaqués': CIUTATS_CATALUNYA['Cadaqués'],
-        'Llançà': CIUTATS_CATALUNYA['Llançà'],
-        'L\'Escala': CIUTATS_CATALUNYA['L\'Escala'],
-        'Castelló d\'Empúries': CIUTATS_CATALUNYA['Castelló d\'Empúries'],
-        'La Jonquera': CIUTATS_CATALUNYA['La Jonquera'],
-        'Palamós': CIUTATS_CATALUNYA['Palamós'],
-        'Platja d\'Aro': CIUTATS_CATALUNYA['Platja d\'Aro'],
-        'Sant Feliu de Guíxols': CIUTATS_CATALUNYA['Sant Feliu de Guíxols'],
-        'Begur': CIUTATS_CATALUNYA['Begur'],
-        'Pals': CIUTATS_CATALUNYA['Pals'],
-        'Calonge': CIUTATS_CATALUNYA['Calonge'],
-        'Santa Cristina d\'Aro': CIUTATS_CATALUNYA['Santa Cristina d\'Aro'],
-        'Blanes': CIUTATS_CATALUNYA['Blanes'],
-        'Lloret de Mar': CIUTATS_CATALUNYA['Lloret de Mar'],
-        'Santa Coloma de Farners': CIUTATS_CATALUNYA['Santa Coloma de Farners'],
-        'Arbúcies': CIUTATS_CATALUNYA['Arbúcies'],
-        'Hostalric': CIUTATS_CATALUNYA['Hostalric'],
-        'Cassà de la Selva': CIUTATS_CATALUNYA['Cassà de la Selva'],
-        'Llagostera': CIUTATS_CATALUNYA['Llagostera'],
-        'Flaçà': CIUTATS_CATALUNYA['Flaçà'],
-        'Riudellots de la Selva': CIUTATS_CATALUNYA['Riudellots de la Selva'],
-        'Vidreres': CIUTATS_CATALUNYA['Vidreres'],
-    },
-    "Litoral i Prelitoral Central (Barcelona)": {
-        'Barcelona': CIUTATS_CATALUNYA['Barcelona'],
-        'L\'Hospitalet de Llobregat': CIUTATS_CATALUNYA['L\'Hospitalet de Llobregat'],
-        'Santa Coloma de Gramenet': CIUTATS_CATALUNYA['Santa Coloma de Gramenet'],
-        'Sabadell': CIUTATS_CATALUNYA['Sabadell'],
-        'Terrassa': CIUTATS_CATALUNYA['Terrassa'],
-        'Mataró': CIUTATS_CATALUNYA['Mataró'],
-        'Granollers': CIUTATS_CATALUNYA['Granollers'],
-        'Mollet del Vallès': CIUTATS_CATALUNYA['Mollet del Vallès'],
-        'Sant Cugat del Vallès': CIUTATS_CATALUNYA['Sant Cugat del Vallès'],
-        'Rubí': CIUTATS_CATALUNYA['Rubí'],
-        'Viladecans': CIUTATS_CATALUNYA['Viladecans'],
-        'Castellbisbal': CIUTATS_CATALUNYA['Castellbisbal'],
-        'Cerdanyola del Vallès': CIUTATS_CATALUNYA['Cerdanyola del Vallès'],
-        'Montcada i Reixac': CIUTATS_CATALUNYA['Montcada i Reixac'],
-        'Sant Quirze del Vallès': CIUTATS_CATALUNYA['Sant Quirze del Vallès'],
-        'Castellar del Vallès': CIUTATS_CATALUNYA['Castellar del Vallès'],
-        'Cardedeu': CIUTATS_CATALUNYA['Cardedeu'],
-        'Caldes de Montbui': CIUTATS_CATALUNYA['Caldes de Montbui'],
-        'Arenys de Mar': CIUTATS_CATALUNYA['Arenys de Mar'],
-        'Calella': CIUTATS_CATALUNYA['Calella'],
-        'Malgrat de Mar': CIUTATS_CATALUNYA['Malgrat de Mar'],
-        'Pineda de Mar': CIUTATS_CATALUNYA['Pineda de Mar'],
-        'Santa Susanna': CIUTATS_CATALUNYA['Santa Susanna'],
-        'Vilassar de Mar': CIUTATS_CATALUNYA['Vilassar de Mar'],
-        'Alella': CIUTATS_CATALUNYA['Alella'],
-        'Cabrera de Mar': CIUTATS_CATALUNYA['Cabrera de Mar'],
-        'Vilanova i la Geltrú': CIUTATS_CATALUNYA['Vilanova i la Geltrú'],
-        'Sitges': CIUTATS_CATALUNYA['Sitges'],
-        'Vilafranca del Penedès': CIUTATS_CATALUNYA['Vilafranca del Penedès'],
-        'Sant Pere de Ribes': CIUTATS_CATALUNYA['Sant Pere de Ribes'],
-        'Olesa de Montserrat': CIUTATS_CATALUNYA['Olesa de Montserrat'],
-        'Sant Feliu de Llobregat': CIUTATS_CATALUNYA['Sant Feliu de Llobregat'],
-    },
-    "Camp de Tarragona": {
-        'Tarragona': CIUTATS_CATALUNYA['Tarragona'],
-        'Reus': CIUTATS_CATALUNYA['Reus'],
-        'Valls': CIUTATS_CATALUNYA['Valls'],
-        'Salou': CIUTATS_CATALUNYA['Salou'],
-        'Cambrils': CIUTATS_CATALUNYA['Cambrils'],
-        'Altafulla': CIUTATS_CATALUNYA['Altafulla'],
-        'La Selva del Camp': CIUTATS_CATALUNYA['La Selva del Camp'],
-        'Montblanc': CIUTATS_CATALUNYA['Montblanc'],
-    },
-    "Terres de l'Ebre": {
-        'Tortosa': CIUTATS_CATALUNYA['Tortosa'],
-        'Amposta': CIUTATS_CATALUNYA['Amposta'],
-        'Alcanar': CIUTATS_CATALUNYA['Alcanar'],
-        'L\'Ametlla de Mar': CIUTATS_CATALUNYA['L\'Ametlla de Mar'],
-        'La Sénia': CIUTATS_CATALUNYA['La Sénia'],
-    },
-}
-
-POBLES_IMPORTANTS = {
-    "Barcelona", "Girona", "Lleida", "Tarragona", "Altafulla", "Agramunt", "Alcanar", 
-    "Alella", "Arenys de Mar", "Arenys de Munt", "Balaguer", "Berga", "Banyoles", 
-    "Cabrera de Mar", "Caldes de Montbui", "Calella", "Calaf", "Camarasa", "Capellades", 
-    "Cardedeu", "Cardona", "Castellbisbal", "Castellar del Vallès", "Castelló d'Empúries", 
-    "Centelles", "Cerdanyola del Vallès", "Figueres", "Flaçà", "Granollers", "Igualada", 
-    "L'Ametlla de Mar", "L'Escala", "L'Hospitalet de Llobregat", "La Bisbal d'Empordà", 
-    "La Jonquera", "La Seu d'Urgell", "La Selva del Camp", "La Sénia", "Manresa", "Mataró", 
-    "Mollet del Vallès", "Montblanc", "Montcada i Reixac", "Olot", "Olesa de Montserrat", 
-    "Palamós", "Pals", "Pineda de Mar", "Reus", "Ripoll", "Roses", "Rubí", "Sabadell", 
-    "Sant Cugat del Vallès", "Sant Feliu de Guíxols", "Sant Feliu de Llobregat", 
-    "Sant Joan de les Abadesses", "Sant Quirze del Vallès", "Santa Coloma de Farners", 
-    "Santa Coloma de Gramenet",  # Hem tret "Sarroca de Bellera" d'aquí
-    "Soses", "Solsona", "Sort", 
-    "Terrassa", "Tortosa", "Valls", "Vic", "Vielha", "Vilafranca del Penedès", 
-    "Vilanova i la Geltrú", "Blanes", "Llançà", "Platja d’Aro", "Sitges", "Cadaqués", 
-    "Cambrils", "Salou", "Vidreres", "Begur", "Castellfollit de la Roca", "Santa Pau", 
-    "La Pobla de Segur", "Bellver de Cerdanya", "Puigcerdà", "Manlleu", "Tremp", 
-    "Arbúcies", "Viladecans", "Vilassar de Mar", "Vilassar de Dalt", "Sant Pere de Ribes", 
-    "Santa Susanna", "Malgrat de Mar", "Calonge", "Lloret de Mar", "Santa Cristina d'Aro", 
-    "Cassà de la Selva", "Vidrà", "Llagostera", "Riudellots de la Selva", "Hostalric"
-}
-
-POBLACIONS_TERRA = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' not in k}
-PUNTS_MAR = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' in k}
-CIUTATS_CONVIDAT = {
-    'Barcelona': CIUTATS_CATALUNYA['Barcelona'], 'Girona': CIUTATS_CATALUNYA['Girona'],
-    'Lleida': CIUTATS_CATALUNYA['Lleida'], 'Tarragona': CIUTATS_CATALUNYA['Tarragona']
-}
-
-POBLACIONS_TERRA = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' not in k}
-PUNTS_MAR = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' in k}
-CIUTATS_CONVIDAT = {
-    'Barcelona': CIUTATS_CATALUNYA['Barcelona'], 'Girona': CIUTATS_CATALUNYA['Girona'],
-    'Lleida': CIUTATS_CATALUNYA['Lleida'], 'Tarragona': CIUTATS_CATALUNYA['Tarragona']
-}
-MAP_EXTENT_CAT = [0, 3.5, 40.4, 43]
-PRESS_LEVELS_AROME = sorted([1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100], reverse=True)
-
-MAP_ZOOM_LEVELS_CAT = {
-    'Catalunya (Complet)': MAP_EXTENT_CAT, 
-
-    # Capitals de província amb marge ampliat
-    'Barcelona': [1.8, 2.6, 41.25, 41.65],
-    'Girona': [2.5, 3.4, 41.8, 42.2],
-    'Lleida': [0.3, 0.95, 41.5, 41.75],
-    'Tarragona': [0.9, 1.35, 40.95, 41.3]
-}
-
-CIUTATS_PER_COMARCA = {
-    "Alt Camp": {
-        'Valls': {'lat': 41.2872, 'lon': 1.2505, 'sea_dir': (110, 220)},
-    },
-    "Alt Empordà": {
-        'Cadaqués': {'lat': 42.2888, 'lon': 3.2770, 'sea_dir': (0, 180)},
-        'Castelló d\'Empúries': {'lat': 42.2582, 'lon': 3.0725, 'sea_dir': (70, 160)},
-        'Figueres': {'lat': 42.2662, 'lon': 2.9622, 'sea_dir': (70, 160)},
-        'L\'Escala': {'lat': 42.1235, 'lon': 3.1311, 'sea_dir': (0, 160)},
-        'La Jonquera': {'lat': 42.4194, 'lon': 2.8752, 'sea_dir': None},
-        'Llançà': {'lat': 42.3625, 'lon': 3.1539, 'sea_dir': (0, 150)},
-        'Roses': {'lat': 42.2619, 'lon': 3.1764, 'sea_dir': (90, 200)},
-    },
-    "Alt Penedès": {
-        'Vilafranca del Penedès': {'lat': 41.3453, 'lon': 1.6995, 'sea_dir': (100, 200)},
-    },
-    "Alt Urgell": {
-        'La Seu d\'Urgell': {'lat': 42.3582, 'lon': 1.4593, 'sea_dir': None},
-    },
-    "Anoia": {
-        'Calaf': {'lat': 41.7311, 'lon': 1.5126, 'sea_dir': None},
-        'Capellades': {'lat': 41.5312, 'lon': 1.6874, 'sea_dir': None},
-        'Igualada': {'lat': 41.5791, 'lon': 1.6174, 'sea_dir': None},
-    },
-    "Bages": {
-        'Cardona': {'lat': 41.9138, 'lon': 1.6806, 'sea_dir': None},
-        'Manresa': {'lat': 41.7230, 'lon': 1.8268, 'sea_dir': None},
-    },
-    "Baix Camp": {
-        'Cambrils': {'lat': 41.0667, 'lon': 1.0500, 'sea_dir': (110, 220)},
-        'La Selva del Camp': {'lat': 41.2131, 'lon': 1.1384, 'sea_dir': (110, 220)},
-        'Reus': {'lat': 41.1550, 'lon': 1.1075, 'sea_dir': (120, 220)},
-    },
-    "Baix Ebre": {
-        'L\'Ametlla de Mar': {'lat': 40.8824, 'lon': 0.8016, 'sea_dir': (90, 200)},
-        'Tortosa': {'lat': 40.8126, 'lon': 0.5211, 'sea_dir': (60, 160)},
-    },
-    "Baix Empordà": {
-        'Begur': {'lat': 41.9542, 'lon': 3.2076, 'sea_dir': (0, 180)},
-        'Calonge': {'lat': 41.8601, 'lon': 3.0768, 'sea_dir': (80, 190)},
-        'La Bisbal d\'Empordà': {'lat': 41.9602, 'lon': 3.0378, 'sea_dir': (80, 170)},
-        'Palamós': {'lat': 41.8465, 'lon': 3.1287, 'sea_dir': (80, 190)},
-        'Pals': {'lat': 41.9688, 'lon': 3.1458, 'sea_dir': (0, 180)},
-        'Platja d\'Aro': {'lat': 41.8175, 'lon': 3.0645, 'sea_dir': (80, 190)},
-        'Sant Feliu de Guíxols': {'lat': 41.7801, 'lon': 3.0278, 'sea_dir': (80, 190)},
-        'Santa Cristina d\'Aro': {'lat': 41.8130, 'lon': 2.9976, 'sea_dir': (80, 190)},
-    },
-    "Baix Llobregat": {
-        'Castellbisbal': {'lat': 41.4776, 'lon': 1.9866, 'sea_dir': None},
-        'Castelldefels': {'lat': 41.2806, 'lon': 1.9750, 'sea_dir': (100, 210)},
-        'L\'Hospitalet de Llobregat': {'lat': 41.3571, 'lon': 2.1030, 'sea_dir': (90, 190)},
-        'Olesa de Montserrat': {'lat': 41.5451, 'lon': 1.8955, 'sea_dir': None},
-        'Sant Feliu de Llobregat': {'lat': 41.3833, 'lon': 2.0500, 'sea_dir': (100, 200)},
-        'Viladecans': {'lat': 41.3155, 'lon': 2.0194, 'sea_dir': (100, 200)},
-    },
-    "Barcelonès": {
-        'Barcelona': {'lat': 41.3851, 'lon': 2.1734, 'sea_dir': (90, 190)},
-        'Santa Coloma de Gramenet': {'lat': 41.4550, 'lon': 2.2111, 'sea_dir': (90, 190)},
-    },
-    "Berguedà": {
-        'Berga': {'lat': 42.1051, 'lon': 1.8458, 'sea_dir': None},
-    },
-    "Cerdanya": {
-        'Bellver de Cerdanya': {'lat': 42.3705, 'lon': 1.7770, 'sea_dir': None},
-        'La Molina': {'lat': 42.3361, 'lon': 1.9463, 'sea_dir': None},
-        'Puigcerdà': {'lat': 42.4331, 'lon': 1.9287, 'sea_dir': None},
-    },
-    "Conca de Barberà": {
-        'Montblanc': {'lat': 41.3761, 'lon': 1.1610, 'sea_dir': None},
-    },
-    "Garraf": {
-        'Sant Pere de Ribes': {'lat': 41.2599, 'lon': 1.7725, 'sea_dir': (100, 220)},
-        'Sitges': {'lat': 41.2351, 'lon': 1.8117, 'sea_dir': (100, 220)},
-        'Vilanova i la Geltrú': {'lat': 41.2241, 'lon': 1.7252, 'sea_dir': (100, 200)},
-    },
-    "Garrigues": {
-        'Les Borges Blanques': {'lat': 41.5224, 'lon': 0.8674, 'sea_dir': None},
-    },
-    "Garrotxa": {
-        'Castellfollit de la Roca': {'lat': 42.2201, 'lon': 2.5517, 'sea_dir': None},
-        'Olot': {'lat': 42.1818, 'lon': 2.4900, 'sea_dir': None},
-        'Santa Pau': {'lat': 42.1448, 'lon': 2.5695, 'sea_dir': None},
-    },
-    "Gironès": {
-        'Cassà de la Selva': {'lat': 41.8893, 'lon': 2.8736, 'sea_dir': (80, 170)},
-        'Flaçà': {'lat': 42.0494, 'lon': 2.9559, 'sea_dir': (80, 170)},
-        'Girona': {'lat': 41.9831, 'lon': 2.8249, 'sea_dir': (80, 170)},
-        'Llagostera': {'lat': 41.8291, 'lon': 2.8931, 'sea_dir': (80, 180)},
-        'Riudellots de la Selva': {'lat': 41.9080, 'lon': 2.8099, 'sea_dir': (80, 170)},
-    },
-    "Maresme": {
-        'Alella': {'lat': 41.4947, 'lon': 2.2955, 'sea_dir': (90, 180)},
-        'Arenys de Mar': {'lat': 41.5815, 'lon': 2.5504, 'sea_dir': (90, 180)},
-        'Arenys de Munt': {'lat': 41.6094, 'lon': 2.5411, 'sea_dir': None},
-        'Cabrera de Mar': {'lat': 41.5275, 'lon': 2.3958, 'sea_dir': (90, 180)},
-        'Calella': {'lat': 41.6146, 'lon': 2.6653, 'sea_dir': (90, 180)},
-        'Malgrat de Mar': {'lat': 41.6461, 'lon': 2.7423, 'sea_dir': (90, 180)},
-        'Mataró': {'lat': 41.5388, 'lon': 2.4449, 'sea_dir': (90, 180)},
-        'Pineda de Mar': {'lat': 41.6277, 'lon': 2.6908, 'sea_dir': (90, 180)},
-        'Santa Susanna': {'lat': 41.6366, 'lon': 2.7098, 'sea_dir': (90, 180)},
-        'Tordera': {'lat': 41.7011, 'lon': 2.7183, 'sea_dir': None},
-        'Vilassar de Dalt': {'lat': 41.5167, 'lon': 2.3583, 'sea_dir': None},
-        'Vilassar de Mar': {'lat': 41.5057, 'lon': 2.3920, 'sea_dir': (90, 180)},
-    },
-    "Montsià": {
-        'Alcanar': {'lat': 40.5434, 'lon': 0.4820, 'sea_dir': (60, 160)},
-        'Amposta': {'lat': 40.7093, 'lon': 0.5810, 'sea_dir': (70, 170)},
-        'La Sénia': {'lat': 40.6322, 'lon': 0.2831, 'sea_dir': None},
-    },
-    "Noguera": {
-        'Agramunt': {'lat': 41.7871, 'lon': 1.0967, 'sea_dir': None},
-        'Balaguer': {'lat': 41.7904, 'lon': 0.8066, 'sea_dir': None},
-        'Camarasa': {'lat': 41.8753, 'lon': 0.8804, 'sea_dir': None},
-    },
-    "Osona": {
-        'Centelles': {'lat': 41.7963, 'lon': 2.2203, 'sea_dir': None},
-        'Manlleu': {'lat': 42.0016, 'lon': 2.2844, 'sea_dir': None},
-        'Vic': {'lat': 41.9301, 'lon': 2.2545, 'sea_dir': None},
-        'Vidrà': {'lat': 42.1226, 'lon': 2.3116, 'sea_dir': None},
-    },
-    "Pallars Jussà": {
-        'La Pobla de Segur': {'lat': 42.2472, 'lon': 0.9678, 'sea_dir': None},
-        'Tremp': {'lat': 42.1664, 'lon': 0.8953, 'sea_dir': None},
-    },
-    "Pallars Sobirà": {
-        'Sarroca de Bellera': {'lat': 42.3957, 'lon': 0.8656, 'sea_dir': None},
-        'Sort': {'lat': 42.4131, 'lon': 1.1278, 'sea_dir': None},
-    },
-    "Pla de l'Estany": {
-        'Banyoles': {'lat': 42.1197, 'lon': 2.7667, 'sea_dir': (80, 170)},
-    },
-    "Pla d_Urgell": {
-        'Mollerussa': {'lat': 41.6315, 'lon': 0.8931, 'sea_dir': None},
-    },
-    "Priorat": {
-        'Falset': {'lat': 41.1444, 'lon': 0.8208, 'sea_dir': None},
-    },
-    "Ribera d_Ebre": {
-        'Móra d\'Ebre': {'lat': 41.0945, 'lon': 0.6450, 'sea_dir': None},
-    },
-    "Ripollès": {
-        'Ripoll': {'lat': 42.2013, 'lon': 2.1903, 'sea_dir': None},
-        'Sant Joan de les Abadesses': {'lat': 42.2355, 'lon': 2.2858, 'sea_dir': None},
-    },
-    "Segarra": {
-        'Cervera': {'lat': 41.6709, 'lon': 1.2721, 'sea_dir': None},
-    },
-    "Segrià": {
-        'Lleida': {'lat': 41.6177, 'lon': 0.6200, 'sea_dir': None},
-        'Soses': {'lat': 41.5358, 'lon': 0.5186, 'sea_dir': None},
-    },
-    "Selva": {
-        'Arbúcies': {'lat': 41.8159, 'lon': 2.5152, 'sea_dir': None},
-        'Blanes': {'lat': 41.6748, 'lon': 2.7917, 'sea_dir': (80, 180)},
-        'Hostalric': {'lat': 41.7479, 'lon': 2.6360, 'sea_dir': None},
-        'Lloret de Mar': {'lat': 41.7005, 'lon': 2.8450, 'sea_dir': (80, 180)},
-        'Santa Coloma de Farners': {'lat': 41.8596, 'lon': 2.6703, 'sea_dir': None},
-        'Tossa de Mar': {'lat': 41.7167, 'lon': 2.9333, 'sea_dir': (90, 200)},
-        'Vidreres': {'lat': 41.7876, 'lon': 2.7788, 'sea_dir': (80, 180)},
-    },
-    "Solsonès": {
-        'Solsona': {'lat': 41.9942, 'lon': 1.5161, 'sea_dir': None},
-    },
-    "Tarragonès": {
-        'Altafulla': {'lat': 41.1417, 'lon': 1.3750, 'sea_dir': (110, 220)},
-        'Salou': {'lat': 41.0763, 'lon': 1.1417, 'sea_dir': (110, 220)},
-        'Tarragona': {'lat': 41.1189, 'lon': 1.2445, 'sea_dir': (110, 220)},
-    },
-    "Terra Alta": {
-        'Batea': {'lat': 41.0954, 'lon': 0.3119, 'sea_dir': None},
-        'Gandesa': {'lat': 41.0526, 'lon': 0.4337, 'sea_dir': None},
-        'Horta de Sant Joan': {'lat': 40.9545, 'lon': 0.3160, 'sea_dir': None},
-    },
-    "Urgell": {
-        'Tàrrega': {'lat': 41.6469, 'lon': 1.1415, 'sea_dir': None},
-    },
-    "Val d'Aran": {
-        'Vielha': {'lat': 42.7027, 'lon': 0.7966, 'sea_dir': None},
-    },
-    "Vallès Occidental": {
-        'Castellar del Vallès': {'lat': 41.6186, 'lon': 2.0875, 'sea_dir': None},
-        'Cerdanyola del Vallès': {'lat': 41.4925, 'lon': 2.1415, 'sea_dir': (100, 200)},
-        'Montcada i Reixac': {'lat': 41.4851, 'lon': 2.1884, 'sea_dir': (100, 200)},
-        'Rubí': {'lat': 41.4936, 'lon': 2.0323, 'sea_dir': (100, 200)},
-        'Sabadell': {'lat': 41.5483, 'lon': 2.1075, 'sea_dir': (100, 200)},
-        'Sant Cugat del Vallès': {'lat': 41.4727, 'lon': 2.0863, 'sea_dir': (100, 200)},
-        'Sant Quirze del Vallès': {'lat': 41.5303, 'lon': 2.0831, 'sea_dir': None},
-        'Terrassa': {'lat': 41.5615, 'lon': 2.0084, 'sea_dir': (100, 200)},
-    },
-    "Vallès Oriental": {
-        'Caldes de Montbui': {'lat': 41.6315, 'lon': 2.1678, 'sea_dir': None},
-        'Cardedeu': {'lat': 41.6403, 'lon': 2.3582, 'sea_dir': (90, 180)},
-        'Granollers': {'lat': 41.6083, 'lon': 2.2886, 'sea_dir': (90, 180)},
-        'Mollet del Vallès': {'lat': 41.5385, 'lon': 2.2144, 'sea_dir': (100, 200)},
-        'Sant Celoni': {'lat': 41.6903, 'lon': 2.4908, 'sea_dir': None},
-    },
-}
-
-
-
-
-CIUTATS_CATALUNYA = { ciutat: dades for comarca in CIUTATS_PER_COMARCA.values() for ciutat, dades in comarca.items() }
-
-# Afegeix els punts marins manualment
-PUNTS_MAR = {
-    'Costes de Girona (Mar)':   {'lat': 42.05, 'lon': 3.30, 'sea_dir': (0, 360)},
-    'Litoral Barceloní (Mar)': {'lat': 41.40, 'lon': 2.90, 'sea_dir': (0, 360)},
-    'Aigües de Tarragona (Mar)': {'lat': 40.90, 'lon': 2.00, 'sea_dir': (0, 360)},
-}
-CIUTATS_CATALUNYA.update(PUNTS_MAR)
-
-# Defineix les llistes necessàries a partir de la llista principal ja completa
-POBLACIONS_TERRA = {k: v for k, v in CIUTATS_CATALUNYA.items() if '(Mar)' not in k}
-CIUTATS_CONVIDAT = {
-    'Barcelona': CIUTATS_CATALUNYA['Barcelona'], 'Girona': CIUTATS_CATALUNYA['Girona'],
-    'Lleida': CIUTATS_CATALUNYA['Lleida'], 'Tarragona': CIUTATS_CATALUNYA['Tarragona']
-}
-
-POBLES_MAPA_REFERENCIA = {poble: {'lat': data['lat'], 'lon': data['lon']} for poble, data in POBLACIONS_TERRA.items()}
-
-# Genera les zones personalitzades a partir de les dades ja definides per comarca
-# AQUESTA ÉS LA SECCIÓ QUE HA ESTAT CORREGIDA
-CIUTATS_PER_ZONA_PERSONALITZADA = {
-    "Pirineu i Pre-Pirineu": { p: CIUTATS_CATALUNYA[p] for p in ['Vielha', 'Sort', 'Tremp', 'La Pobla de Segur', 'La Seu d\'Urgell', 'Puigcerdà', 'Bellver de Cerdanya', 'La Molina', 'Ripoll', 'Sant Joan de les Abadesses', 'Berga', 'Solsona', 'Olot', 'Santa Pau', 'Camprodon'] if p in CIUTATS_CATALUNYA },
-    "Plana de Lleida i Ponent": { p: CIUTATS_CATALUNYA[p] for p in ['Lleida', 'Alcarràs', 'Balaguer', 'Agramunt', 'Artesa de Segre', 'Calaf', 'Les Borges Blanques', 'Mollerussa', 'Tàrrega', 'Cervera'] if p in CIUTATS_CATALUNYA },
-    "Catalunya Central": { p: CIUTATS_CATALUNYA[p] for p in ['Manresa', 'Cardona', 'Igualada', 'Capellades', 'Vic', 'Manlleu', 'Centelles', 'Moià', 'Súria'] if p in CIUTATS_CATALUNYA },
-    "Litoral i Prelitoral Nord (Girona)": { p: CIUTATS_CATALUNYA[p] for p in ['Girona', 'Figueres', 'Banyoles', 'La Bisbal d\'Empordà', 'Roses', 'Cadaqués', 'Llançà', 'L\'Escala', 'Castelló d\'Empúries', 'La Jonquera', 'Palamós', 'Platja d\'Aro', 'Sant Feliu de Guíxols', 'Begur', 'Pals', 'Blanes', 'Lloret de Mar', 'Santa Coloma de Farners'] if p in CIUTATS_CATALUNYA },
-    "Litoral i Prelitoral Central (Barcelona)": { p: CIUTATS_CATALUNYA[p] for p in ['Barcelona', 'L\'Hospitalet de Llobregat', 'Badalona', 'Sabadell', 'Terrassa', 'Mataró', 'Granollers', 'Mollet del Vallès', 'Sant Cugat del Vallès', 'Rubí', 'Viladecans', 'Vilanova i la Geltrú', 'Sitges', 'Vilafranca del Penedès', 'El Vendrell', 'Calafell'] if p in CIUTATS_CATALUNYA },
-    "Camp de Tarragona": { p: CIUTATS_CATALUNYA[p] for p in ['Tarragona', 'Reus', 'Valls', 'Salou', 'Cambrils', 'Altafulla', 'Montblanc', 'Falset', 'Mont-roig del Camp'] if p in CIUTATS_CATALUNYA },
-    "Terres de l'Ebre": { p: CIUTATS_CATALUNYA[p] for p in ['Tortosa', 'Amposta', 'Alcanar', 'L\'Ametlla de Mar', 'Deltebre', 'La Ràpita', 'Móra d\'Ebre', 'Gandesa'] if p in CIUTATS_CATALUNYA },
-}
+# --- Tornado Alley ---
+API_URL_USA = "https://api.open-meteo.com/v1/forecast"
+TIMEZONE_USA = pytz.timezone('America/Chicago')
+USA_CITIES = { 'Dallas, TX': {'lat': 32.7767, 'lon': -96.7970}, 'Wichita, KS': {'lat': 37.6872, 'lon': -97.3301}, 'Houston, TX': {'lat': 29.7604, 'lon': -95.3698}, 'Kansas City, MO': {'lat': 39.0997, 'lon': -94.5786} }
+MAP_EXTENT_USA = [-105, -85, 28, 48]
+PRESS_LEVELS_HRRR = sorted([1000, 975, 950, 925, 900, 875, 850, 825, 800, 775, 750, 725, 700, 675, 650, 625, 600, 575, 550, 525, 500, 475, 450, 425, 400, 375, 350, 325, 300, 275, 250, 225, 200, 175, 150, 125, 100], reverse=True)
 
 
 
