@@ -3716,7 +3716,7 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_data: np.ndarray, 
                                      dir_data: np.ndarray, dewpoint_data: np.ndarray, cape_data: np.ndarray, 
                                      nivell: int, timestamp_str: str, 
-                                     map_extent: Tuple[float, float, float, float]) -> plt.Figure:
+                                     map_extent: List[float]) -> plt.Figure:
     """
     VERSIÓ 12.0 (MILLORADA): Genera un mapa de pronòstic combinat amb CAPE, 
     convergència i vent. Inclou una llegenda explícita per a la convergència i 
@@ -3778,12 +3778,12 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
             for label in labels:
                 label.set_path_effects(path_effect_label)
         
-        # Text de valor màxim de convergència
         max_conv_value = np.max(smoothed_convergence)
-        text_max = ax.text(0.02, 0.02, f"Convergència Màx: {max_conv_value:.0f}",
+        if max_conv_value > 0:
+            text_max = ax.text(0.02, 0.02, f"Convergència Màx: {max_conv_value:.0f}",
                                  transform=ax.transAxes, fontsize=12, color='white', 
                                  fontweight='bold', va='bottom', ha='left', zorder=12)
-        text_max.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
+            text_max.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
     # --- 5. LLEGENDA PER A LA CONVERGÈNCIA ---
     legend_handles = [mlines.Line2D([], [], color=style['color'], linewidth=5, label=label) 
@@ -3802,7 +3802,6 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     afegir_etiquetes_ciutats(ax, map_extent)
     
     return fig
-    
 
 @st.cache_data(ttl=3600)
 def carregar_dades_mapa_japo(nivell, hourly_index):
