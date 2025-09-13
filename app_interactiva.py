@@ -1435,10 +1435,9 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                     params_calc[f'SRH_{name}'] = float(srh.m)
             except: 
                 params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-        
-    # Retorna les dades processades i el diccionari de paràmetres
-    return ((p, T, Td, u, v, heights, sfc_prof), params_calc), None
-
+    
+    # <<<--- LÍNIA MODIFICADA: Ara retornem 8 valors a la primera tupla --->>>
+    return ((p, T, Td, u, v, heights, sfc_prof, ml_prof), params_calc), None
 
 
 
@@ -2637,24 +2636,26 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
     - Passa els paràmetres correctes a `crear_skewt`.
     """
     if data_tuple:
-        # Ara 'sounding_data' conté 8 elements
+        # Ara 'data_tuple' conté dos elements: una tupla amb les dades i un diccionari de paràmetres
         sounding_data, params_calculats = data_tuple
         
         # <<<--- LÍNIA CORREGIDA: Ara desempaquetem 8 valors correctament ---
-        p, T, Td, u, v, heights, sfc_prof, mu_prof = sounding_data
+        p, T, Td, u, v, heights, sfc_prof, mu_prof = sounding_data # mu_prof és el ml_prof
         
         col1, col2 = st.columns(2, gap="large")
         with col1:
             zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 800 hPa)")
             
-            # La crida a crear_skewt ja era correcta i li passa els paràmetres que necessita
-            fig_skewt = crear_skewt(p, T, Td, u, v, sfc_prof, mu_prof, params_calculats, 
+            # <<<--- LÍNIA CORREGIDA: La crida a crear_skewt ara és correcta ---
+            # Passem només un perfil (sfc_prof) i els paràmetres calculats.
+            fig_skewt = crear_skewt(p, T, Td, u, v, sfc_prof, params_calculats, 
                                     f"Sondeig Vertical - {poble_sel}", timestamp_str, 
                                     zoom_capa_baixa=zoom_capa_baixa)
             
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             with st.container(border=True):
+                # Passar sounding_data (la tupla de 8 elements) és correcte aquí.
                 ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual, poble_sel, avis_proximitat)
 
         with col2:
@@ -2685,54 +2686,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             st.components.v1.html(html_code, height=410)
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
-        
-def debug_convergence_calculation(map_data, llista_ciutats):
-    """
-    Funció de depuració per imprimir l'estat dels càlculs de convergència pas a pas.
-    Aquesta versió és sintàcticament correcta.
-    """
-    st.warning("⚠️ MODE DE DEPURACIÓ ACTIVAT. Revisa la terminal on has executat Streamlit.")
-    print("\n\n" + "="*50)
-    print("INICI DE LA DEPURACIÓ DE CONVERGÈNCIA")
-    print("="*50)
-
-    # --> INICI DEL BLOC TRY
-    try:
-        if not map_data or 'lons' not in map_data or len(map_data['lons']) < 4:
-            print("[ERROR] No hi ha prou dades al `map_data` inicial.")
-            print("="*50 + "\n\n")
-            return {}
-
-        print(f"[PAS 1] Dades d'entrada rebudes:")
-        print(f"  - Punts de dades (lons/lats): {len(map_data['lons'])}")
-        print(f"  - Claus disponibles: {list(map_data.keys())}")
-
-        print("\n[PAS 2] Crida a la funció de càlcul real...")
-        # Cridem la funció real per obtenir el resultat
-        resultats = calcular_convergencies_per_llista(map_data, llista_ciutats)
-        print("  - Càlcul completat sense errors.")
-        
-        print("\n[PAS 3] Verificant resultat per a Barcelona...")
-        if 'Barcelona' in resultats:
-            dades_bcn = resultats['Barcelona']
-            valor_conv_bcn = dades_bcn.get('conv')
-            es_humit_bcn = dades_bcn.get('es_humit')
-            print(f"  - VALOR DE CONVERGÈNCIA PER A BCN: {valor_conv_bcn}")
-            print(f"  - ÉS HUMIT A BCN?: {es_humit_bcn}")
-        else:
-            print("  - [ERROR] No s'han trobat resultats per a Barcelona.")
-        
-        print("="*50 + "\nFI DE LA DEPURACIÓ\n" + "="*50 + "\n\n")
-
-        return resultats
-
-    # --> BLOC EXCEPT CORRESPONENT I CORRECTAMENT INDENTAT
-    except Exception as e:
-        print(f"[ERROR CRÍTIC] Excepció durant la depuració: {e}")
-        import traceback
-        traceback.print_exc()
-        print("="*50 + "\n\n")
-        return {}
     
 
 
