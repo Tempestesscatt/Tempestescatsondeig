@@ -844,9 +844,12 @@ def calcular_mlcape_robusta(p, T, Td):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i COMPLETA v11.0.
-    - NOU: Calcula la Theta-E a 850 hPa.
-    - NOU: Calcula i emmagatzema la humitat relativa per capes.
+    Versió Definitiva i COMPLETA v12.0.
+    - **CANVI CLAU**: S'han ajustat els rangs de càlcul de la Humitat Relativa per
+      capes seguint especificacions tècniques precises.
+      - Baixa: 1000 - 850 hPa
+      - Mitjana: 850 - 400 hPa
+      - Alta: 400 - 100 hPa
     - Aquesta versió està completa, sense omissions per brevetat.
     """
     # --- 1. PREPARACIÓ I VALIDACIÓ DE DADES ---
@@ -937,7 +940,6 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     try: params_calc['T_500hPa'] = float(np.interp(500, p.m[::-1], T.m[::-1]))
     except Exception: params_calc['T_500hPa'] = np.nan
 
-    # --- NOU BLOC DE CÀLCUL: THETA-E i HUMITAT PER CAPES ---
     try:
         p_850 = 850 * units.hPa
         T_850 = np.interp(p_850.m, p.m[::-1], T.m[::-1]) * units.degC
@@ -947,12 +949,13 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     except Exception:
         params_calc['THETAE_850hPa'] = np.nan
 
+    # --- CÀLCUL DE RH% AMB ELS RANGS AJUSTATS ---
     try: 
         rh = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
         params_calc['RH_CAPES'] = {
             'baixa': np.mean(rh[(p.m <= 1000) & (p.m > 850)]),
-            'mitjana': np.mean(rh[(p.m <= 850) & (p.m > 500)]),
-            'alta': np.mean(rh[(p.m <= 500) & (p.m > 250)])
+            'mitjana': np.mean(rh[(p.m <= 850) & (p.m > 400)]),
+            'alta': np.mean(rh[(p.m <= 400) & (p.m >= 100)])
         }
     except Exception:
         params_calc['RH_CAPES'] = {'baixa': np.nan, 'mitjana': np.nan, 'alta': np.nan}
@@ -1001,7 +1004,6 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     # --- 6. RETORN DE LES DADES PROCESSADES ---
     processed_tuple = (p, T, Td, u, v, heights, main_prof)
     return (processed_tuple, params_calc), None
-           
 
 
 
