@@ -832,24 +832,21 @@ def calcular_mlcape_robusta(p, T, Td):
         return 0.0, 0.0
 
 
+# -*- coding: utf-8 -*-
+
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Impecable v10.0. Aquesta funció processa les dades brutes d'un sondeig
-    per calcular un conjunt complet de paràmetres de temps sever de manera extremadament robusta.
+    Versió Definitiva i Corregida v10.1 (amb el nom correcte). Aquesta funció processa les dades brutes
+    d'un sondeig per calcular un conjunt complet de paràmetres de temps sever de manera robusta.
 
     PRINCIPIS DE DISSENY:
-    1.  **Robustesa Total**: Cada càlcul està aïllat. Un error en un paràmetre no impedirà el càlcul dels altres.
-    2.  **Completesa**: Calcula tots els paràmetres termodinàmics, cinemàtics i compostos rellevants.
-    3.  **Coherència**: Assegura que els perfils de bombolla (parcel profiles) es calculen correctament i s'utilitzen
-        de manera consistent per a tots els paràmetres derivats, solucionant el bug de CAPE=0.
-    4.  **Claredat**: El codi està organitzat en blocs lògics per a un fàcil manteniment.
-
-    Retorna:
-        - Un tuple amb les dades processades i el diccionari de paràmetres.
-        - Un missatge d'error si hi ha un problema crític inicial.
+    1.  Robustesa Total: Cada càlcul està aïllat. Un error en un paràmetre no aturarà els altres.
+    2.  Completesa: Calcula tots els paràmetres termodinàmics, cinemàtics i compostos rellevants.
+    3.  Coherència: Assegura que els perfils de bombolla (parcel profiles) es calculen correctament i s'utilitzen
+        de manera consistent, solucionant el bug de CAPE=0.
+    4.  Claredat: Codi organitzat en blocs lògics.
     """
     # --- 1. PREPARACIÓ I VALIDACIÓ DE DADES ---
-    # Aquesta part assegura que les dades d'entrada són netes i estan en el format correcte.
     if len(p_profile) < 4:
         return None, "Perfil atmosfèric massa curt per a una anàlisi fiable."
 
@@ -860,14 +857,12 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     v = np.array(v_profile) * units('m/s')
     heights = np.array(h_profile) * units.meter
 
-    # Neteja de valors no vàlids (NaN)
     valid_indices = ~np.isnan(p.m) & ~np.isnan(T.m) & ~np.isnan(Td.m) & ~np.isnan(u.m) & ~np.isnan(v.m)
     p, T, Td, u, v, heights = p[valid_indices], T[valid_indices], Td[valid_indices], u[valid_indices], v[valid_indices], heights[valid_indices]
     
     if len(p) < 4:
         return None, "No hi ha prou nivells amb dades vàlides per a l'anàlisi."
 
-    # Ordenació per pressió (de superfície cap amunt)
     sort_idx = np.argsort(p.m)[::-1]
     p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
     
@@ -875,7 +870,6 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     params_calc = {}
 
     # --- 2. CÀLCUL DELS PERFILS DE BOMBOLLA (PARCEL PROFILES) ---
-    # Aquest és el pas més crític per a la precisió de la CAPE.
     sfc_prof, ml_prof, mu_prof = None, None, None
     try:
         sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
@@ -883,20 +877,15 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         return None, "Error crític: No s'ha pogut calcular el perfil de la bombolla de superfície."
 
     try:
-        # Perfil de la capa mixta (100 hPa), més representatiu durant el dia
         _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
         ml_prof = ml_prof.to('degC')
-    except Exception:
-        ml_prof = sfc_prof # Si falla, utilitzem el de superfície com a fallback
+    except Exception: ml_prof = sfc_prof
 
     try:
-        # Perfil de la bombolla més inestable (MUCAPE)
         p_mu, T_mu, Td_mu, _ = mpcalc.most_unstable_parcel(p, T, Td)
         mu_prof = mpcalc.parcel_profile(p, T_mu, Td_mu).to('degC')
-    except Exception:
-        mu_prof = sfc_prof # Fallback
+    except Exception: mu_prof = sfc_prof
 
-    # El perfil principal per a paràmetres generals serà el de capa mixta.
     main_prof = ml_prof if ml_prof is not None else sfc_prof
 
     # --- 3. CÀLCULS TERMODINÀMICS ---
@@ -973,12 +962,10 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     except Exception: params_calc['EBWD'], params_calc['ESRH'] = np.nan, np.nan
     
     try:
-        # Utilitzem MUCAPE i ESRH per a un SCP més precís
         params_calc['SCP'] = float(mpcalc.supercell_composite(params_calc['MUCAPE'] * units('J/kg'), params_calc['ESRH'] * units('m^2/s^2'), params_calc['EBWD'] * units.kt).m)
     except Exception: params_calc['SCP'] = np.nan
 
     try:
-        # La versió amb CIN és més fiable
         params_calc['STP_CIN'] = float(mpcalc.significant_tornado(params_calc['SBCAPE'] * units('J/kg'), params_calc['SRH_0-1km'] * units('m^2/s^2'), params_calc['BWD_0-6km'] * units.kt, params_calc['LCL_Hgt'] * units.m, params_calc['SBCIN'] * units('J/kg')).m)
     except Exception: params_calc['STP_CIN'] = np.nan
 
@@ -989,7 +976,6 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     except Exception: params_calc['SWEAT_INDEX'] = np.nan
 
     # --- 6. RETORN DE LES DADES PROCESSADES ---
-    # El paquet de dades per a dibuixar i el diccionari de paràmetres calculats.
     processed_tuple = (p, T, Td, u, v, heights, main_prof)
     return (processed_tuple, params_calc), None
            
