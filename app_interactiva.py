@@ -110,39 +110,10 @@ MAP_CONFIG = {
 
 
 
-@st.cache_data
-def convertir_img_a_base64(ruta_arxiu):
-    """
-    Llegeix un arxiu d'imatge local i el converteix a format Base64
-    per a ser incrustat directament en HTML.
-    """
-    try:
-        with open(ruta_arxiu, "rb") as f:
-            contingut = base64.b64encode(f.read()).decode("utf-8")
-        return f"data:image/jpeg;base64,{contingut}"
-    except FileNotFoundError:
-        # Si no troba la imatge, intenta carregar una imatge de fallback
-        try:
-            with open("imatges_reals/fallback.jpg", "rb") as f:
-                contingut = base64.b64encode(f.read()).decode("utf-8")
-            return f"data:image/jpeg;base64,{contingut}"
-        except FileNotFoundError:
-            return "" # Si ni tan sols troba el fallback, retorna una cadena buida
+
             
 
-# AFEGEIX AQUEST NOU DICCIONARI AL TEU CODI
-NUVOL_FOTO_BASE64 = {
-    "Cel Serè": "data:image/jpeg;base64,...", # Posa aquí la teva cadena Base64 per a un cel serè
-    "Cúmuls de bon temps": "data:image/jpeg;base64,...",
-    "Tempesta Comuna": "data:image/jpeg;base64,...",
-    "Tempestes Organitzades": "data:image/jpeg;base64,...", # Posa aquí la foto d'una tempesta organitzada
-    "Potencial de Supercèl·lula": "data:image/jpeg;base64,...", # Posa aquí una foto espectacular de supercèl·lula
-    "Tempesta Aïllada (Molt energètica)": "data:image/jpeg;base64,...",
-    "Nimbostratus (Pluja Contínua)": "data:image/jpeg;base64,...",
-    "Estratus (Boira alta / Cel tancat)": "data:image/jpeg;base64,...",
-    # Afegeix la resta de categories que vulguis...
-    "fallback": "data:image/jpeg;base64,..." # Una imatge genèrica de núvols per si no en troba cap
-}
+
 
 
     
@@ -1762,20 +1733,15 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
     
 
 
-
-def image_to_base64(file_path):
-    with open(file_path, "rb") as image_file:
-        encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
-        return f"data:image/jpeg;base64,{encoded_string}"
-
-
 # -*- coding: utf-8 -*-
+import os # Assegura't que 'os' estigui importat a la part superior del teu script
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva v52.0 (Càrrega des de Repositori).
-    - **CANVI PRINCIPAL**: Ja no depèn d'un diccionari Base64. Ara carrega les imatges
-      directament des de la carpeta 'imatges_reals' mitjançant una funció auxiliar.
+    Versió Definitiva v53.0 (Càrrega Directa d'Arxius).
+    - **CANVI PRINCIPAL**: Aquesta versió utilitza st.image() per carregar les fotos directament
+      des de la carpeta 'imatges_reals', eliminant completament la necessitat de Base64.
+    - El disseny mostra la imatge i el text a sota, de manera neta i directa.
     """
     TOOLTIPS = {
         'MLCAPE': "Mixed-Layer CAPE: Energia disponible per a una parcel·la d'aire mitjana en els 100hPa inferiors. Molt representatiu de les condicions reals.",
@@ -1840,34 +1806,33 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_fila1[4]:
         styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
 
-    # --- BLOC VISUAL AMB FOTO DE FONS (ARA CARREGADA DES D'ARXIU) ---
-    analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
-    if analisi_temps_list:
-        diag = analisi_temps_list[0]
-        desc, veredicte = diag.get("descripcio", "Desconegut"), diag.get("veredicte", "")
-        
-        # Construeix la ruta a l'arxiu i el converteix
-        ruta_arxiu_imatge = f"imatges_reals/{desc}.jpg"
-        b64_img = convertir_img_a_base64(ruta_arxiu_imatge)
+    # --- BLOC VISUAL AMB st.image() ---
+    with st.container(border=True):
+        analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
+        if analisi_temps_list:
+            diag = analisi_temps_list[0]
+            desc, veredicte = diag.get("descripcio", "Desconegut"), diag.get("veredicte", "")
+            
+            # Construeix la ruta a l'arxiu
+            ruta_arxiu_imatge = f"imatges_reals/{desc}.jpg"
+            ruta_fallback = "imatges_reals/fallback.jpg"
 
-        st.markdown(f"""
-        <div style="
-            position: relative; width: 100%; height: 180px; border-radius: 10px;
-            background-image: url('{b64_img}'); background-size: cover; background-position: center;
-            display: flex; align-items: flex-end; padding: 15px;
-            box-shadow: inset 0 -80px 60px -30px rgba(0,0,0,0.8); margin-bottom: 10px;
-        ">
-            <div style="color: white; text-shadow: 2px 2px 5px rgba(0,0,0,0.8);">
-                <strong style="font-size: 1.3em;">{veredicte}</strong><br>
-                <em style="font-size: 0.9em; color: #DDDDDD;">({desc})</em>
+            # Comprova si l'arxiu existeix i el mostra, sinó mostra el fallback
+            if os.path.exists(ruta_arxiu_imatge):
+                st.image(ruta_arxiu_imatge, use_container_width=True)
+            elif os.path.exists(ruta_fallback):
+                st.image(ruta_fallback, use_container_width=True)
+            
+            # Mostra el text a sota de la imatge
+            st.markdown(f"""
+            <div style="text-align: center; margin-top: 10px;">
+                <strong style="font-size: 1.1em; color: #FFFFFF;">{veredicte}</strong><br>
+                <em style="font-size: 0.9em; color: #A0A0B0;">({desc})</em>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        with st.container(border=True):
+            """, unsafe_allow_html=True)
+        else:
             st.warning("No s'ha pogut determinar el tipus de cel.")
 
-    # ... La resta de la funció (files 2 i 3 de paràmetres, amenaces, etc.) no canvia ...
     cols_fila2 = st.columns(4)
     with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols_fila2[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
