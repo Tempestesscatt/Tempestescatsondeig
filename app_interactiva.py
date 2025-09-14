@@ -1718,18 +1718,18 @@ MAPA_IMATGES_REALS = {
 
 # -*- coding: utf-8 -*-
 
-def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
+def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None, map_cape=None):
     """
-    Versió Definitiva v65.0 (Reorganització per Seccions).
-    - **CANVI PRINCIPAL**: La disposició dels paràmetres ha estat completament
-      reorganitzada en seccions lògiques (Energia, Humitat, Inhibició, Cinemàtica)
-      per a una anàlisi més clara i professional.
+    Versió Definitiva i COMPLETA v66.0 (Amb CAPE del Mapa).
+    - Afegeix el "CAPE Mapa" a la fila principal. Aquest valor només apareix
+      a la pestanya d'Anàlisi Comarcal.
     """
     TOOLTIPS = {
-        'MLCAPE': "Mixed-Layer CAPE: Energia disponible.", 'LI': "Lifted Index: Indicador d'inestabilitat a 500 hPa.",
-        'CONV_PUNTUAL': "Convergència (+): Disparador. Divergència (-): Estabilitzador.", 'CAPE_0-3km': "Energia a nivells baixos, afavoreix rotació.",
-        'K_INDEX': "Índex de probabilitat de tempesta.", 'SBCIN': "Inhibició (tapa) des de la superfície.",
-        'PWAT': "Aigua Precipitable Total: Potencial per a pluges fortes.", 'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa: Energia termodinàmica.",
+        'MLCAPE': "Energia del sondeig local.", 'LI': "Inestabilitat a 500 hPa.",
+        'CONV_PUNTUAL': "Disparador local.", 'CAPE_0-3km': "Energia a nivells baixos, afavoreix rotació.",
+        'K_INDEX': "Probabilitat de tempesta.", 'CAPE_MAPA': "Energia real (CAPE) mesurada al focus de màxima convergència del mapa. És l'indicador més fiable del potencial de la tempesta.",
+        'SBCIN': "Inhibició (tapa) des de la superfície.", 'PWAT': "Aigua Precipitable Total: Potencial per a pluges fortes.",
+        'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa: Energia termodinàmica.",
         'LCL_Hgt': "Alçada de la base dels núvols.", 'LFC_Hgt': "Alçada on una bombolla d'aire comença a accelerar sola.",
         'EL_Hgt': "Alçada del cim de la tempesta.", 'BWD_0-6km': "Cisallament del vent. Clau per a l'organització.",
         'BWD_0-1km': "Cisallament del vent a nivells baixos.", 'T_500hPa': "Temperatura a 500 hPa.",
@@ -1753,27 +1753,15 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br><strong style="font-size: 1.6em; color: {color};">{text}</strong></div>""", unsafe_allow_html=True)
 
-    # --- INICI DE LA NOVA ESTRUCTURA PER SECCIONS ---
-    
-    # --- Secció 1: Diagnòstic Visual del Cel ---
-    analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
-    if analisi_temps_list:
-        diag = analisi_temps_list[0]; desc, veredicte = diag.get("descripcio", "Desconegut"), diag.get("veredicte", "")
-        nom_arxiu = MAPA_IMATGES_REALS.get(desc, MAPA_IMATGES_REALS["fallback"]); ruta_arxiu_imatge = os.path.join("imatges_reals", nom_arxiu)
-        b64_img = convertir_img_a_base64(ruta_arxiu_imatge)
-        st.markdown(f"""<div style="position: relative; width: 100%; height: 150px; border-radius: 10px; background-image: url('{b64_img}'); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 15px; box-shadow: inset 0 -80px 60px -30px rgba(0,0,0,0.8); margin-bottom: 10px;"><div style="color: white; text-shadow: 2px 2px 5px rgba(0,0,0,0.8);"><strong style="font-size: 1.3em;">{veredicte}</strong><br><em style="font-size: 0.9em; color: #DDDDDD;">({desc})</em></div></div>""", unsafe_allow_html=True)
-    else:
-        with st.container(border=True): st.warning("No s'ha pogut determinar el tipus de cel.")
-
-    # --- Secció 2: Energia i Inestabilitat ---
     st.markdown("##### ⚡ Energia i Inestabilitat")
-    cols_energia = st.columns(4)
+    cols_energia = st.columns(5)
     with cols_energia[0]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
     with cols_energia[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', tooltip_text=TOOLTIPS.get('LI'), precision=1, reverse_colors=True)
     with cols_energia[2]: styled_metric("3CAPE", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
-    with cols_energia[3]: styled_metric("K-Index", params.get('K_INDEX', np.nan), "", 'K_INDEX', tooltip_text=TOOLTIPS.get('K_INDEX'))
+    with cols_energia[3]:
+        styled_metric("CAPE Mapa", map_cape, "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('CAPE_MAPA'))
+    with cols_energia[4]: styled_metric("K-Index", params.get('K_INDEX', np.nan), "", 'K_INDEX', tooltip_text=TOOLTIPS.get('K_INDEX'))
 
-    # --- Secció 3: Humitat i Potencial de Precipitació ---
     st.markdown("##### 💧 Humitat i Potencial de Precipitació")
     cols_humitat = st.columns(3)
     with cols_humitat[0]: styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', tooltip_text=TOOLTIPS.get('PWAT'), precision=1)
@@ -1801,7 +1789,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     rh_b_str = f"{rh_b:.0f}%" if pd.notna(rh_b) else "---"; rh_m_str = f"{rh_m:.0f}%" if pd.notna(rh_m) else "---"; rh_a_str = f"{rh_a:.0f}%" if pd.notna(rh_a) else "---"
     st.markdown(f"""<div style="padding: 10px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;"><p style="text-align:center; font-size: 0.8em; color: #FAFAFA; margin-bottom: 8px; margin-top: -5px;">Humitat Relativa (RH %)</p><div style="display: flex; justify-content: space-around; text-align: center;"><div><span style="font-size: 0.8em; color: #A0A0B0;">Baixa</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_b)}; line-height: 1.1;">{rh_b_str}</strong></div><div><span style="font-size: 0.8em; color: #A0A0B0;">Mitjana</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_m)}; line-height: 1.1;">{rh_m_str}</strong></div><div><span style="font-size: 0.8em; color: #A0A0B0;">Alta</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_a)}; line-height: 1.1;">{rh_a_str}</strong></div></div></div>""", unsafe_allow_html=True)
 
-    # --- Secció 4: Inhibició, Disparador i Nivells Clau ---
     st.markdown("##### ⛔ Inhibició, Disparador i Nivells Clau")
     cols_nivells = st.columns(5)
     with cols_nivells[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
@@ -1815,7 +1802,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_nivells[3]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
     with cols_nivells[4]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
 
-    # --- Secció 5: Cinemàtica (Vent i Cisallament) ---
     st.markdown("##### 💨 Cinemàtica (Vent i Cisallament)")
     cols_cinematica = st.columns(3)
     with cols_cinematica[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km', tooltip_text=TOOLTIPS.get('BWD_0-6km'))
@@ -1829,7 +1815,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         el_val_str = f"{el_hgt_val:.0f}" if pd.notna(el_hgt_val) else "---"
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">CIM (EL) (m) <span title="{TOOLTIPS.get('EL_Hgt')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: {el_color}; line-height: 1.1;">{el_val_str}</strong></div>""", unsafe_allow_html=True)
 
-    # --- Secció Final: Potencial d'Amenaces Severes ---
     st.markdown("##### ⛈️ Potencial d'Amenaces Severes")
     amenaces = analitzar_amenaces_severes(params, sounding_data, nivell_conv)
     cols_amenaces = st.columns(3)
@@ -7500,139 +7485,37 @@ def ui_portal_viatges_rapids(alertes_totals, comarca_actual):
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple, alertes_totals):
     """
-    PESTANYA D'ANÀLISI COMARCAL, versió final amb totes les millores.
+    PESTANYA D'ANÀLISI COMARCAL (Versió Final i COMPLETA).
+    - Mostra el panell de paràmetres complet.
+    - Passa el valor de CAPE del focus de la tempesta a la caixa de paràmetres.
     """
-    st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
-    st.caption(timestamp_str.replace(poble_sel, comarca))
-
-    max_conv_point = None; storm_dir_to = None; distance_km = None; is_threat = False; bulleti_data = None
-    convergence_at_user = 0
+    # --- Càlcul del CAPE del Mapa ---
+    cape_del_focus = alertes_totals.get(comarca, {}).get('cape', np.nan)
     
-    with st.spinner("Analitzant focus de convergència i trajectòries..."):
-        if params_calc:
-            cape_del_focus = alertes_totals.get(comarca, {}).get('cape', 0)
-            bulleti_data = generar_bulleti_inteligent(params_calc, poble_sel, valor_conv, cape_del_focus)
-        
-        gdf_comarques = carregar_dades_geografiques()
-        if gdf_comarques is None:
-            st.error("No s'ha pogut carregar el mapa de comarques."); return
-
-        property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_comarques.columns), 'nom_comar')
-        comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
-        poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
-
-        if not comarca_shape.empty and map_data and valor_conv > 10:
-            bounds = comarca_shape.total_bounds
-            margin_lon = (bounds[2] - bounds[0]) * 0.3; margin_lat = (bounds[3] - bounds[1]) * 0.3
-            map_extent = [bounds[0] - margin_lon, bounds[2] + margin_lon, bounds[1] - margin_lat, bounds[3] + margin_lat]
-            
-            lons, lats = map_data['lons'], map_data['lats']
-            grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 150), np.linspace(map_extent[2], map_extent[3], 150))
-            grid_dewpoint = griddata((lons, lats), map_data['dewpoint_data'], (grid_lon, grid_lat), 'linear')
-            u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
-            grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-            grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-            
-            with np.errstate(invalid='ignore'):
-                dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-                convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
-                convergence[np.isnan(convergence)] = 0
-                DEWPOINT_THRESHOLD = 14 if nivell_sel >= 950 else 12
-                humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
-                effective_convergence = np.where((convergence >= 10) & humid_mask, convergence, 0)
-            
-            smoothed_convergence = gaussian_filter(effective_convergence, sigma=5.5)
-            smoothed_convergence[smoothed_convergence < 10] = 0
-
-            if poble_coords:
-                user_lon, user_lat = poble_coords['lon'], poble_coords['lat']
-                conv_at_user_val = griddata((grid_lon.flatten(), grid_lat.flatten()), smoothed_convergence.flatten(), (user_lon, user_lat), method='nearest')
-                if pd.notna(conv_at_user_val): convergence_at_user = conv_at_user_val
-
-            points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
-            gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
-            points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
-            
-            if not points_in_comarca.empty and points_in_comarca['conv'].max() > 10:
-                max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
-                px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
-                if data_tuple:
-                    sounding_data, _ = data_tuple
-                    p, u, v = sounding_data[0], sounding_data[3], sounding_data[4]
-                    if p.m.min() < 500 and p.m.max() > 700:
-                        u_700, v_700 = np.interp(700, p.m[::-1], u.m[::-1]), np.interp(700, p.m[::-1], v.m[::-1])
-                        u_500, v_500 = np.interp(500, p.m[::-1], u.m[::-1]), np.interp(500, p.m[::-1], v.m[::-1])
-                        mean_u, mean_v = (u_700 + u_500) / 2.0 * units('m/s'), (v_700 + v_500) / 2.0 * units('m/s')
-                        storm_dir_to = (mpcalc.wind_direction(mean_u, mean_v).m + 180) % 360
-                        if poble_coords and storm_dir_to is not None:
-                            distance_km = haversine_distance(user_lat, user_lon, py, px)
-                            bearing_to_user = get_bearing(py, px, user_lat, user_lon)
-                            is_threat = angular_difference(storm_dir_to, bearing_to_user) <= 45
-
-    col_mapa, col_diagnostic = st.columns([0.6, 0.4], gap="large")
-
-    with col_mapa:
-        st.markdown("##### Focus de Convergència a la Zona")
-        plt.style.use('default')
-        fig, ax = crear_mapa_base(map_extent if 'map_extent' in locals() else MAP_EXTENT_CAT)
-        ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
-        if max_conv_point is not None:
-            fill_levels = [10, 20, 30, 40, 60, 80, 100, 120]
-            cmap = plt.get_cmap('plasma'); norm = BoundaryNorm(fill_levels, ncolors=cmap.N, clip=True)
-            ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels, cmap=cmap, norm=norm, alpha=0.75, zorder=3, transform=ccrs.PlateCarree(), extend='max')
-            line_levels = [20, 40, 80]
-            contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors='black', linestyles='--', linewidths=0.8, alpha=0.7, zorder=4, transform=ccrs.PlateCarree())
-            labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
-            for label in labels: label.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
-            px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
-            path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
-            if bulleti_data and bulleti_data['nivell_risc']['text'] == "Nul":
-                circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor='grey', linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect, linestyle='--')
-                ax.add_patch(circle); ax.plot(px, py, 'x', color='grey', markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
-            else:
-                if valor_conv >= 100: indicator_color = '#9370DB'
-                elif valor_conv >= 60: indicator_color = '#DC3545'
-                elif valor_conv >= 40: indicator_color = '#FD7E14'
-                elif valor_conv >= 20: indicator_color = '#28A745'
-                else: indicator_color = '#6495ED'
-                circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
-                ax.add_patch(circle)
-                ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
-                if storm_dir_to is not None:
-                    dir_rad = np.deg2rad(90 - storm_dir_to); length = 0.25
-                    end_x, end_y = px + length * np.cos(dir_rad), py + length * np.sin(dir_rad)
-                    ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
-        if poble_coords:
-            ax.text(poble_coords['lon'], poble_coords['lat'], '( Tú )\n▼', transform=ccrs.PlateCarree(), fontsize=10, fontweight='bold', color='black', ha='center', va='bottom', zorder=14, path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')])
-        ax.set_title(f"Focus de Convergència a {comarca}", weight='bold', fontsize=12)
-        st.pyplot(fig, use_container_width=True); plt.close(fig)
-
-    with col_diagnostic:
-        if bulleti_data:
-            ui_bulleti_inteligent(bulleti_data)
+    # --- Dibuix de la Interfície ---
+    col_esquerra, col_dreta = st.columns([0.45, 0.55], gap="large")
+    
+    with col_esquerra:
+        # Mostrem el panell de paràmetres complet, passant el nou valor
+        # Assegurem que data_tuple[0] existeix abans de cridar
+        if data_tuple and data_tuple[0]:
+            ui_caixa_parametres_sondeig(data_tuple[0], params_calc, nivell_sel, hora_sel_str, poble_sel, map_cape=cape_del_focus)
         else:
-            st.warning("No hi ha prou dades per generar el butlletí d'alertes.")
+            st.warning("No hi ha dades de sondeig per mostrar el panell de paràmetres.")
 
-        if distance_km is not None:
-            if distance_km <= 5:
-                amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "A sobre!", "#DC3545", "⚠️", f"El focus principal és a menys de 5 km. La tempesta es formarà pràcticament sobre la teva posició."
-            elif is_threat:
-                amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "S'apropa!", "#FD7E14", "🎯", f"El focus principal a {distance_km:.0f} km es desplaça en la teva direcció. La tempesta podria arribar en les properes hores."
-            elif convergence_at_user >= 10:
-                amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "Sota Influència", "#ffc107", "👀", "Estàs dins d'una zona amb ascendències, però no al nucli principal. Podrien formar-se torres convectives a la teva àrea."
-            else:
-                amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "Fora de Risc", "#28A745", "✅", f"El focus a {distance_km:.0f} km no és una amenaça directa i estàs fora de la seva àrea d'influència."
-            
-            st.markdown(f"""
-            <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444; margin-top:10px;">
-                 <span style="font-size: 1.2em; color: #FAFAFA;">{amenaça_emoji} Amenaça Directa: <strong style="color:{amenaça_color}">{amenaça_titol}</strong></span>
-                 <p style="font-size:0.95em; color:#a0a0b0; margin-top:10px; text-align: left;">{amenaça_text}</p>
-            </div>
-            """, unsafe_allow_html=True)
+    with col_dreta:
+        st.markdown("##### Anàlisi de la Zona i Trajectòria Prevista")
+        
+        # Generació del Butlletí Intel·ligent
+        if params_calc:
+            bulleti_data = generar_bulleti_inteligent(params_calc, poble_sel, valor_conv, cape_del_focus)
+            ui_bulleti_inteligent(bulleti_data)
 
-        st.caption(f"Aquesta anàlisi es basa en el sondeig de {poble_sel}.")
-        crear_llegenda_direccionalitat()
+        # Portal de viatges ràpids a altres zones
         ui_portal_viatges_rapids(alertes_totals, comarca)
+        
+        # Llegenda del mapa de focus
+        crear_llegenda_direccionalitat()
         
         
         
