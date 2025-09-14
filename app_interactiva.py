@@ -1758,12 +1758,13 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva (v44.0).
-    - Reemplaça SBCAPE/MUCAPE per MLCAPE, ECAPE i 3CAPE per a una anàlisi més professional.
+    Versió Definitiva v45.0 (Modificada per l'usuari).
+    - **CANVI PRINCIPAL**: El DCAPE es mostra a la secció principal en lloc de l'ECAPE per a
+      prioritzar l'anàlisi del risc d'esclafits. L'ECAPE es mou a la secció avançada.
     """
     TOOLTIPS = {
         'MLCAPE': "Mixed-Layer CAPE: Energia disponible per a una parcel·la d'aire mitjana en els 100hPa inferiors. Molt robust.",
-        'ECAPE': "Effective CAPE: Energia disponible per a la parcel·la més inestable. Considerat el millor predictor de la força dels corrents ascendents.",
+        'DCAPE': "Downdraft CAPE: Potencial energètic per a corrents descendents severs (esclafits). Valors > 1000 J/kg són perillosos.",
         'CAPE_0-3km': "Low-Level CAPE: Energia concentrada en els 3 km inferiors. Valors alts (>150 J/kg) afavoreixen la rotació a nivells baixos i el risc de tornados.",
         'CONV_PUNTUAL': "Mesura com l'aire s'ajunta en un punt, forçant l'ascens. És el 'disparador' principal.",
         'SBCIN': "Energia d'Inhibició Convectiva (CIN) des de la superfície...",
@@ -1776,7 +1777,8 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         'T_500hPa': "Temperatura a 500 hPa...",
         'PUNTUACIO_TEMPESTA': "Índex global que combina ingredients...",
         'AMENACA_CALAMARSA': "Potencial de calamarsa gran...",
-        'AMENACA_LLAMPS': "Potencial d'activitat elèctrica..."
+        'AMENACA_LLAMPS': "Potencial d'activitat elèctrica...",
+        'ECAPE': "Effective CAPE: Energia disponible per a la parcel·la més inestable. Considerat el millor predictor de la força dels corrents ascendents."
     }
     
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
@@ -1803,10 +1805,12 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_fila1[0]:
         styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
     with cols_fila1[1]:
-        styled_metric("ECAPE", params.get('ECAPE', np.nan), "J/kg", 'ECAPE', tooltip_text=TOOLTIPS.get('ECAPE'))
+        # <<<--- CANVI REALITZAT AQUÍ: DCAPE ARA ÉS UN PARÀMETRE PRINCIPAL ---
+        styled_metric("DCAPE", params.get('DCAPE', np.nan), "J/kg", 'DCAPE', tooltip_text=TOOLTIPS.get('DCAPE'))
     with cols_fila1[2]:
         styled_metric("3CAPE", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
 
+    # ... (El bloc del "Tipus de Cel Previst" no canvia) ...
     with st.container(border=True):
         st.markdown('<p style="text-align:center; font-size: 0.9em; color: #FAFAFA; margin-bottom: 8px;">Tipus de Cel Previst</p>', unsafe_allow_html=True)
         analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
@@ -1821,6 +1825,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
                 if i < len(analisi_temps_list) - 1: st.markdown("<hr style='margin: 8px 0; border-color: #444;'>", unsafe_allow_html=True)
         else: st.warning("No s'ha pogut determinar el tipus de cel.")
 
+    # ... (La resta de files de paràmetres principals no canvien) ...
     cols_fila2 = st.columns(4)
     with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols_fila2[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
@@ -1833,6 +1838,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_fila3[2]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km', tooltip_text=TOOLTIPS.get('BWD_0-1km'))
     with cols_fila3[3]: styled_metric("T 500hPa", params.get('T_500hPa', np.nan), "°C", 'T_500hPa', precision=1, tooltip_text=TOOLTIPS.get('T_500hPa'))
 
+    # ... (La secció "Potencial d'Amenaces Severes" no canvia) ...
     st.markdown("##### Potencial d'Amenaces Severes")
     amenaces = analitzar_amenaces_especifiques(params)
     puntuacio_resultat = calcular_puntuacio_tempesta(sounding_data, params, nivell_conv)
@@ -1842,7 +1848,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_amenaces[1]: styled_qualitative("Índex de Potencial", f"{puntuacio_resultat['score']} / 10", puntuacio_resultat['color'], tooltip_text=TOOLTIPS.get('PUNTUACIO_TEMPESTA'))
     with cols_amenaces[2]: styled_qualitative("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], tooltip_text=TOOLTIPS.get('AMENACA_LLAMPS'))
     
-    # --- BLOC DE PARÀMETRES AVANÇATS (SEMPRE VISIBLE) ---
+    # --- BLOC DE PARÀMETRES AVANÇATS (AMB ECAPE EN LLOC DE DCAPE) ---
     st.divider()
     st.markdown("##### Paràmetres Avançats")
 
@@ -1854,7 +1860,9 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
 
     st.markdown("###### Termodinàmica Detallada")
     c4, c5, c6 = st.columns(3)
-    with c4: styled_metric("DCAPE", params.get('DCAPE'), "J/kg", 'DCAPE', tooltip_text="Downdraft CAPE...")
+    with c4:
+        # <<<--- CANVI REALITZAT AQUÍ: ECAPE ARA ESTÀ A LA SECCIÓ AVANÇADA ---
+        styled_metric("ECAPE", params.get('ECAPE', np.nan), "J/kg", 'ECAPE', tooltip_text=TOOLTIPS.get('ECAPE'))
     with c5: styled_metric("K Index", params.get('K_INDEX'), "", 'K_INDEX', tooltip_text="Potencial de tempestes...")
     with c6: styled_metric("Total Totals", params.get('TOTAL_TOTALS'), "", 'TOTAL_TOTALS', tooltip_text="Índex de severitat...")
     
@@ -1872,6 +1880,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with c12: styled_metric("Eff. Inflow Base", params.get('EFF_INFLOW_BOTTOM'), "hPa", 'EFF_INFLOW_BOTTOM', tooltip_text="Base de la capa d'aire...")
     with c13: styled_metric("Eff. Inflow Top", params.get('EFF_INFLOW_TOP'), "hPa", 'EFF_INFLOW_TOP', tooltip_text="Sostre de la capa d'aire...")
     with c14: styled_metric("SWEAT Index", params.get('SWEAT_INDEX'), "", 'SWEAT_INDEX', tooltip_text="Índex de risc de temps sever...")
+        
         
         
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
