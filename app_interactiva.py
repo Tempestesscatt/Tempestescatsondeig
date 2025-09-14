@@ -44,9 +44,10 @@ from folium.plugins import HeatMap
 import geojsoncontour
 from matplotlib.patches import Polygon
 from matplotlib.patches import Polygon, Wedge
-from matplotlib.patches import Polygon, Wedge, Circle # Afegeix Circle aquí
-from typing import List, Tuple, Dict, Any  # <-- IMPORTACIÓ CORREGIDA
+from matplotlib.patches import Polygon, Wedge, Circle
+from typing import List, Tuple, Dict, Any  
 import matplotlib.lines as mlines  
+import scipy.ndimage as ndi
 
 
 
@@ -3263,8 +3264,9 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                                      nivell: int, timestamp_str: str, map_extent: List[float],
                                      cape_min_filter: int, cape_max_filter: int, convergence_min_filter: int) -> plt.Figure:
     """
-    VERSIÓ 26.0 (FILTRES AVANÇATS): Genera un mapa amb filtres personalitzables
-    per a l'anàlisi de la convergència en funció de diferents llindars de CAPE.
+    VERSIÓ 27.0 (MARCADORS ADAPTATIUS): Genera un mapa que detecta cada focus
+    de convergència individual i hi dibuixa un marcador de mida variable
+    en funció de la mida de la zona.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3289,21 +3291,19 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     cbar_cape.set_label("CAPE (J/kg) - 'Combustible'")
     cbar_cape.ax.tick_params(labelsize=8)
 
-    # --- 3. CÀLCUL I FILTRATGE DE CONVERGÈNCIA (AMB FILTRES DINÀMICS) ---
+    # --- 3. CÀLCUL I FILTRATGE DE CONVERGÈNCIA ---
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
     
     dewpoint_thresh = MAP_CONFIG['thresholds']['dewpoint_low_level'] if nivell >= 950 else MAP_CONFIG['thresholds']['dewpoint_mid_level']
     humid_mask = grid_dewpoint >= dewpoint_thresh
-    
     cape_mask = (grid_cape >= cape_min_filter) & (grid_cape <= cape_max_filter)
     effective_convergence = np.where((convergence >= convergence_min_filter) & humid_mask & cape_mask, convergence, 0)
-
     smoothed_convergence = gaussian_filter(effective_convergence, sigma=MAP_CONFIG['convergence']['sigma_filter'])
     smoothed_convergence[smoothed_convergence < convergence_min_filter] = 0
 
-    # --- 4. DIBUIX DE LA CONVERGÈNCIA ---
+    # --- 4. DIBUIX DE LA CONVERGÈNCIA I ELS MARCADORS ADAPTATIUS ---
     if np.any(smoothed_convergence > 0):
         cfg_conv = MAP_CONFIG['convergence']
         all_levels = sorted(list(set(lvl for style in cfg_conv['styles'].values() for lvl in style['levels'])))
@@ -3311,33 +3311,42 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
         for i in range(len(all_levels) - 1):
             mid_point = (all_levels[i] + all_levels[i+1]) / 2; color_found = False
             for style in cfg_conv['styles'].values():
-                if style['levels'][0] <= mid_point < style['levels'][-1] + 1:
+                if style['levels'][0] <= mid_point < style['levels'][-1] + 10:
                     all_colors.append(style['color']); color_found = True; break
             if not color_found: all_colors.append((0,0,0,0))
         cmap_fill = ListedColormap(all_colors); norm_fill = BoundaryNorm(all_levels, ncolors=cmap_fill.N)
-
-        ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=all_levels, cmap=cmap_fill, norm=norm_fill,
-                    alpha=0.3, zorder=3, transform=ccrs.PlateCarree())
+        ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=all_levels, cmap=cmap_fill, norm=norm_fill, alpha=0.3, zorder=3, transform=ccrs.PlateCarree())
 
         for category_name, style in cfg_conv['styles'].items():
             line_style = '--' if category_name == 'Comuna' else '-'
-            ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=style['levels'], colors='black', 
-                       linewidths=style['width'], linestyles=line_style, zorder=4, transform=ccrs.PlateCarree())
+            ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=style['levels'], colors='black', linewidths=style['width'], linestyles=line_style, zorder=4, transform=ccrs.PlateCarree())
         
-        max_conv_value = np.max(smoothed_convergence)
-        if max_conv_value > 0:
-            max_idx = np.unravel_index(np.argmax(smoothed_convergence), smoothed_convergence.shape)
+        # --- NOU BLOC: DIBUIXAR MARCADORS ADAPTATIUS PER A CADA FOCUS ---
+        labeled_array, num_features = ndi.label(smoothed_convergence > convergence_min_filter)
+        for i in range(1, num_features + 1):
+            blob_mask = (labeled_array == i)
+            max_conv_in_blob = smoothed_convergence[blob_mask].max()
+            
+            temp_grid = np.where(blob_mask, smoothed_convergence, 0)
+            max_idx = np.unravel_index(np.argmax(temp_grid), temp_grid.shape)
             max_lon, max_lat = grid_lon[max_idx], grid_lat[max_idx]
+            
+            blob_area = np.sum(blob_mask)
+            if blob_area < 200: marker_scale = 0.6
+            elif blob_area < 800: marker_scale = 0.8
+            else: marker_scale = 1.0
+
             marker_color = '#FFFFFF'
             for style in cfg_conv['styles'].values():
-                if style['levels'][0] <= max_conv_value < style['levels'][-1] + 10:
+                if style['levels'][0] <= max_conv_in_blob < style['levels'][-1] + 10:
                     marker_color = style['color']; break
-            ax.plot(max_lon, max_lat, 's', color=marker_color, markersize=8, markeredgecolor='black', 
-                    markeredgewidth=1.5, transform=ccrs.PlateCarree(), zorder=13)
-            line_len = 0.08; line_width = 2.5
-            ax.plot([max_lon - line_len, max_lon - 0.015], [max_lat, max_lat], color='black', linewidth=line_width, 
+
+            ax.plot(max_lon, max_lat, 's', color=marker_color, markersize=8 * marker_scale, markeredgecolor='black', 
+                    markeredgewidth=1.5 * marker_scale, transform=ccrs.PlateCarree(), zorder=13)
+            line_len = 0.08 * marker_scale; line_width = 2.5 * marker_scale
+            ax.plot([max_lon - line_len, max_lon - 0.015 * marker_scale], [max_lat, max_lat], color='black', linewidth=line_width, 
                     transform=ccrs.PlateCarree(), zorder=12, solid_capstyle='butt')
-            ax.plot([max_lon + 0.015, max_lon + line_len], [max_lat, max_lat], color='black', linewidth=line_width, 
+            ax.plot([max_lon + 0.015 * marker_scale, max_lon + line_len], [max_lat, max_lat], color='black', linewidth=line_width, 
                     transform=ccrs.PlateCarree(), zorder=12, solid_capstyle='butt')
 
     # --- 5. LLEGENDA, STREAMLINES, TÍTOL I ETIQUETES ---
