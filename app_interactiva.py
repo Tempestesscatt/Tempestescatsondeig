@@ -3259,13 +3259,15 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 
 
+
 def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_data: np.ndarray, 
                                      dir_data: np.ndarray, dewpoint_data: np.ndarray, cape_data: np.ndarray, 
                                      nivell: int, timestamp_str: str, map_extent: List[float],
                                      cape_min_filter: int, cape_max_filter: int, convergence_min_filter: int) -> plt.Figure:
     """
-    VERSIÓ 28.0 (LÒGICA DE COLOR ROBUSTA): Corregit el problema del marcador
-    blanc per a valors de convergència superiors al màxim definit.
+    VERSIÓ 29.0 (FINAL): Afegeix una categoria "Fluixa" amb línies blanques
+    puntejades i mostra els marcadors d'intensitat només a partir de la
+    categoria "Comuna" per a un mapa més net i professional.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3305,59 +3307,68 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     # --- 4. DIBUIX DE LA CONVERGÈNCIA I ELS MARCADORS ADAPTATIUS ---
     if np.any(smoothed_convergence > 0):
         cfg_conv = MAP_CONFIG['convergence']
-        all_levels = sorted(list(set(lvl for style in cfg_conv['styles'].values() for lvl in style['levels'])))
-        all_colors = []
-        for i in range(len(all_levels) - 1):
-            mid_point = (all_levels[i] + all_levels[i+1]) / 2; color_found = False
-            for style in cfg_conv['styles'].values():
-                if style['levels'][0] <= mid_point < style['levels'][-1] + 10:
-                    all_colors.append(style['color']); color_found = True; break
-            if not color_found: all_colors.append((0,0,0,0))
-        cmap_fill = ListedColormap(all_colors); norm_fill = BoundaryNorm(all_levels, ncolors=cmap_fill.N)
-        ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=all_levels, cmap=cmap_fill, norm=norm_fill, alpha=0.3, zorder=3, transform=ccrs.PlateCarree())
-
-        for category_name, style in cfg_conv['styles'].items():
-            line_style = '--' if category_name == 'Comuna' else '-'
-            ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=style['levels'], colors='black', linewidths=style['width'], linestyles=line_style, zorder=4, transform=ccrs.PlateCarree())
         
-        labeled_array, num_features = ndi.label(smoothed_convergence > convergence_min_filter)
+        # Dibuixem les línies de contorn
+        for category_name, style in cfg_conv['styles'].items():
+            if category_name == 'Fluixa': line_style = ':'
+            elif category_name == 'Comuna': line_style = '--'
+            else: line_style = '-'
+            
+            ax.contour(grid_lon, grid_lat, smoothed_convergence, 
+                       levels=style['levels'], 
+                       colors=style['color'] if category_name == 'Fluixa' else 'black', 
+                       linewidths=style['width'], 
+                       linestyles=line_style, 
+                       zorder=4,
+                       transform=ccrs.PlateCarree())
+        
+        # Dibuixem els marcadors només per a les categories rellevants
+        labeled_array, num_features = ndi.label(smoothed_convergence >= 10) # Comencem a buscar a partir de 10
         for i in range(1, num_features + 1):
             blob_mask = (labeled_array == i)
             max_conv_in_blob = smoothed_convergence[blob_mask].max()
             
-            temp_grid = np.where(blob_mask, smoothed_convergence, 0)
-            max_idx = np.unravel_index(np.argmax(temp_grid), temp_grid.shape)
-            max_lon, max_lat = grid_lon[max_idx], grid_lat[max_idx]
-            
-            blob_area = np.sum(blob_mask)
-            if blob_area < 200: marker_scale = 0.6
-            elif blob_area < 800: marker_scale = 0.8
-            else: marker_scale = 1.0
-
-            # <<<--- LÒGICA DE COLOR CORREGIDA I ROBUSTA ---
-            marker_color = '#6c757d' # Color per defecte si no troba res (gris)
-            # Iterem en ordre invers (del més fort al més feble)
-            for style in reversed(list(cfg_conv['styles'].values())):
+            # Comprovem a quina categoria pertany el focus
+            category_of_blob = None
+            marker_color = '#FFFFFF'
+            for name, style in reversed(list(cfg_conv['styles'].items())):
                 if max_conv_in_blob >= style['levels'][0]:
+                    category_of_blob = name
                     marker_color = style['color']
-                    break # Trobem el primer que compleix i parem
-            # --- FI DE LA CORRECCIÓ ---
-
-            ax.plot(max_lon, max_lat, 's', color=marker_color, markersize=8 * marker_scale, markeredgecolor='black', 
-                    markeredgewidth=1.5 * marker_scale, transform=ccrs.PlateCarree(), zorder=13)
-            line_len = 0.08 * marker_scale; line_width = 2.5 * marker_scale
-            ax.plot([max_lon - line_len, max_lon - 0.015 * marker_scale], [max_lat, max_lat], color='black', linewidth=line_width, 
-                    transform=ccrs.PlateCarree(), zorder=12, solid_capstyle='butt')
-            ax.plot([max_lon + 0.015 * marker_scale, max_lon + line_len], [max_lat, max_lat], color='black', linewidth=line_width, 
-                    transform=ccrs.PlateCarree(), zorder=12, solid_capstyle='butt')
+                    break
+            
+            # <<<--- NOU FILTRE: Només dibuixem si la categoria NO és "Fluixa" ---
+            if category_of_blob and category_of_blob != 'Fluixa':
+                temp_grid = np.where(blob_mask, smoothed_convergence, 0)
+                max_idx = np.unravel_index(np.argmax(temp_grid), temp_grid.shape)
+                max_lon, max_lat = grid_lon[max_idx], grid_lat[max_idx]
+                
+                blob_area = np.sum(blob_mask)
+                marker_scale = 0.6 if blob_area < 200 else (0.8 if blob_area < 800 else 1.0)
+                
+                ax.plot(max_lon, max_lat, 's', color=marker_color, markersize=8 * marker_scale, markeredgecolor='black', 
+                        markeredgewidth=1.5 * marker_scale, transform=ccrs.PlateCarree(), zorder=13)
+                line_len = 0.08 * marker_scale; line_width = 2.5 * marker_scale
+                ax.plot([max_lon - line_len, max_lon - 0.015 * marker_scale], [max_lat, max_lat], color='black', linewidth=line_width, 
+                        transform=ccrs.PlateCarree(), zorder=12, solid_capstyle='butt')
+                ax.plot([max_lon + 0.015 * marker_scale, max_lon + line_len], [max_lat, max_lat], color='black', linewidth=line_width, 
+                        transform=ccrs.PlateCarree(), zorder=12, solid_capstyle='butt')
 
     # --- 5. LLEGENDA, STREAMLINES, TÍTOL I ETIQUETES ---
     legend_handles = []
     for label, style in MAP_CONFIG['convergence']['styles'].items():
-        line_style = '--' if label == 'Comuna' else '-'
-        handle = mlines.Line2D([], [], color='black', marker='s', markerfacecolor=style['color'],
-                               markersize=10, linestyle=line_style, linewidth=2, label=label)
+        if label == 'Fluixa': line_style = ':'
+        elif label == 'Comuna': line_style = '--'
+        else: line_style = '-'
+        handle = mlines.Line2D([], [], color=style['color'] if label == 'Fluixa' else 'black', 
+                               marker='s' if label != 'Fluixa' else 'None', 
+                               markerfacecolor=style['color'],
+                               markersize=10 if label != 'Fluixa' else 0, 
+                               linestyle=line_style, 
+                               linewidth=2, 
+                               label=label)
         legend_handles.append(handle)
+        
     ax.legend(handles=legend_handles, title="Convergència", loc='lower right', 
               fontsize=9, title_fontsize=11, frameon=True, framealpha=0.9, facecolor='white')
 
