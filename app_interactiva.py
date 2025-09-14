@@ -2220,17 +2220,24 @@ def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp
 
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None):
     """
-    Versió Final i Neta: Els paràmetres addicionals ja no es mostren aquí,
-    sinó que estan integrats a la caixa de paràmetres principal.
+    Versió Final i Corregida.
+    - **CORRECCIÓ DE BUG**: Passa correctament el perfil de Bulb Humit (Twb) a la funció
+      crear_skewt, solucionant el TypeError.
     """
+
     if data_tuple:
         sounding_data, params_calculats = data_tuple
-        p, T, Td, u, v, heights, prof = sounding_data
+        
+        # <<<--- LÍNIA CORREGIDA: Ara desempaquetem 8 valors, incloent Twb ---
+        p, T, Td, u, v, heights, prof, Twb = sounding_data
         
         col1, col2 = st.columns(2, gap="large")
         with col1:
             zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 800 hPa)")
-            fig_skewt = crear_skewt(p, T, Td, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=zoom_capa_baixa)
+            
+            # <<<--- LÍNIA CORREGIDA: La crida a crear_skewt ara inclou Twb ---
+            fig_skewt = crear_skewt(p, T, Td, Twb, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=zoom_capa_baixa)
+            
             st.pyplot(fig_skewt, use_container_width=True)
             plt.close(fig_skewt)
             with st.container(border=True):
@@ -2263,8 +2270,6 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
             html_code = f"""<div style="position: relative; width: 100%; height: 410px; border-radius: 10px; overflow: hidden;"><iframe src="{radar_url}" width="100%" height="410" frameborder="0" style="border:0;"></iframe><div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div></div>"""
             st.components.v1.html(html_code, height=410)
             
-            # La crida a la funció de paràmetres addicionals s'ha eliminat d'aquí.
-
     else:
         st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 
