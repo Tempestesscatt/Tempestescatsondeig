@@ -2233,36 +2233,60 @@ def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp
     with col3: st.markdown(crear_dial_vent_animat("700 hPa", dir_700, spd_700), unsafe_allow_html=True)
 
 
-# -*- coding: utf-8 -*-
-
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None):
     """
-    PESTANYA D'ANÀLISI VERTICAL.
-    - MOSTRA EL PANELL DE PARÀMETRES COMPLET: Aquesta és ara la vista principal
-      per a analitzar en detall tots els paràmetres del sondeig.
+    Versió Final i Corregida.
+    - **CORRECCIÓ DE BUG**: Passa correctament el perfil de Bulb Humit (Twb) a la funció
+      crear_skewt, solucionant el TypeError.
     """
-    sounding_data, params_calculats = data_tuple
-    p, T, Td, u, v, heights, prof, Twb = sounding_data
-    
-    col1, col2 = st.columns(2, gap="large")
-    
-    with col1:
-        # Mostrem el panell de paràmetres aquí
-        st.markdown("### Paràmetres del Sondeig Vertical")
-        ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual, poble_sel)
+
+    if data_tuple:
+        sounding_data, params_calculats = data_tuple
         
-    with col2:
-        # I els gràfics a la dreta
-        st.markdown("### Diagrama Skew-T / Log-P")
-        zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 800 hPa)")
-        fig_skewt = crear_skewt(p, T, Td, Twb, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=zoom_capa_baixa)
-        st.pyplot(fig_skewt, use_container_width=True)
-        plt.close(fig_skewt)
+        # <<<--- LÍNIA CORREGIDA: Ara desempaquetem 8 valors, incloent Twb ---
+        p, T, Td, u, v, heights, prof, Twb = sounding_data
         
-        st.markdown("### Hodògraf")
-        fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf - {poble_sel}", timestamp_str)
-        st.pyplot(fig_hodo, use_container_width=True)
-        plt.close(fig_hodo)
+        col1, col2 = st.columns(2, gap="large")
+        with col1:
+            zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 800 hPa)")
+            
+            # <<<--- LÍNIA CORREGIDA: La crida a crear_skewt ara inclou Twb ---
+            fig_skewt = crear_skewt(p, T, Td, Twb, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=zoom_capa_baixa)
+            
+            st.pyplot(fig_skewt, use_container_width=True)
+            plt.close(fig_skewt)
+            with st.container(border=True):
+                ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual, poble_sel, avis_proximitat)
+
+        with col2:
+            fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf Avançat - {poble_sel}", timestamp_str)
+            st.pyplot(fig_hodo, use_container_width=True)
+            plt.close(fig_hodo)
+
+            if avis_proximitat and isinstance(avis_proximitat, dict):
+                st.warning(f"⚠️ **AVÍS DE PROXIMITAT:** {avis_proximitat['message']}")
+                if avis_proximitat['target_city'] == poble_sel:
+                    st.button("📍 Ja ets a la millor zona convergent d'anàlisi, mira si hi ha MU/SBCAPE! I poc MU/SBCIN!",
+                              help="El punt d'anàlisi més proper a l'amenaça és la localitat que ja estàs consultant.",
+                              use_container_width=True,
+                              disabled=True)
+                else:
+                    tooltip_text = f"Viatjar a {avis_proximitat['target_city']}, el punt d'anàlisi més proper al nucli de convergència (Força: {avis_proximitat['conv_value']:.0f})."
+                    st.button("🛰️ Analitzar Zona d'Amenaça", 
+                              help=tooltip_text, 
+                              use_container_width=True, 
+                              type="primary",
+                              on_click=canviar_poble_analitzat,
+                              args=(avis_proximitat['target_city'],)
+                             )
+            
+            st.markdown("##### Radar de Precipitació en Temps Real")
+            radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
+            html_code = f"""<div style="position: relative; width: 100%; height: 410px; border-radius: 10px; overflow: hidden;"><iframe src="{radar_url}" width="100%" height="410" frameborder="0" style="border:0;"></iframe><div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div></div>"""
+            st.components.v1.html(html_code, height=410)
+            
+    else:
+        st.warning("No hi ha dades de sondeig disponibles per a la selecció actual.")
 
 
 
