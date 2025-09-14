@@ -1579,10 +1579,10 @@ def analitzar_estructura_tempesta(params):
 
 def analitzar_amenaces_especifiques(params):
     """
-    Sistema d'Anàlisi d'Amenaces v5.0 (Lògica Operativa Europea).
-    - **CANVI PRINCIPAL**: La lògica per a predir la calamarsa ha estat completament
-      reemplaçada per un sistema basat en l'alçada del Wet Bulb Zero (WBZ_HGT),
-      seguint criteris operatius utilitzats en la predicció a Europa.
+    Sistema d'Anàlisi d'Amenaces v6.0 (Lògica Experta de Calamarsa).
+    - **CANVI RADICAL**: La predicció de calamarsa ara utilitza una lògica experta basada
+      en la interacció entre MUCAPE (energia), WBZ_HGT (potencial de fusió) i
+      BWD_0-6km (organització de la tempesta), seguint criteris operatius de la NOAA.
     """
     resultats = {
         'calamarsa': {'text': 'Nul·la', 'color': '#808080'},
@@ -1593,6 +1593,7 @@ def analitzar_amenaces_especifiques(params):
     # --- 1. EXTRACCIÓ DE PARÀMETRES ---
     mucape = params.get('MUCAPE', 0) or 0
     wbz_hgt = params.get('WBZ_HGT', 5000) or 5000
+    bwd_6km = params.get('BWD_0-6km', 0) or 0
     li = params.get('LI', 5) or 5
     el_hgt = params.get('EL_Hgt', 0) or 0
     lr_0_3km = params.get('LR_0-3km', 0) or 0
@@ -1607,26 +1608,40 @@ def analitzar_amenaces_especifiques(params):
     if convergencia >= 30 and cin > -100: factor_realitzacio = 1.0
     elif convergencia >= 15 and cin > -50: factor_realitzacio = 0.7
     elif cin > -20: factor_realitzacio = 0.4
-    if mucape < 500: # Llindar mínim de CAPE per a considerar qualsevol amenaça
+    
+    # Condició de veto: si no hi ha prou energia, no hi haurà cap amenaça severa.
+    if mucape < 800:
         return resultats
 
-    # --- 3. ANÀLISI D'AMENACES AMB NOVA LÒGICA DE CALAMARSA ---
+    # --- 3. NOVA LÒGICA DE PREDICCIÓ DE CALAMARSA ---
+    # Aquesta lògica s'aplica només si hi ha prou energia (MUCAPE > 800 J/kg)
 
-    # --- Calamarsa Gran (>2cm) amb Lògica WBZ ---
     if pd.notna(wbz_hgt):
-        # Primer, comprovem si la tempesta té prou energia per a produir calamarsa
-        if mucape > 1000: # Cal una CAPE significativa per a crear calamarsa gran
-            if wbz_hgt < 1800:
-                resultats['calamarsa'] = {'text': 'Molt Alta', 'color': '#dc3545'}
-            elif wbz_hgt < 2400: # S'ha ajustat el llindar a 2.4km per a 'Alta'
-                resultats['calamarsa'] = {'text': 'Alta', 'color': '#fd7e14'}
-            elif wbz_hgt < 3000:
-                resultats['calamarsa'] = {'text': 'Moderada', 'color': '#ffc107'}
-            else: # Si WBZ > 3.0 km, la fusió és molt probable
-                resultats['calamarsa'] = {'text': 'Baixa (Fusió)', 'color': '#2ca02c'}
-    # Si no hi ha CAPE suficient, es queda com a 'Nul·la'
+        # CAS 1: POTENCIAL MOLT ALT (La "recepta perfecta" per a calamarsa severa)
+        # Energia extrema + Organització (supercèl·lula) + WBZ a la zona òptima.
+        if mucape > 2000 and bwd_6km >= 40 and (2100 <= wbz_hgt < 3000):
+            resultats['calamarsa'] = {'text': 'Molt Alta', 'color': '#dc3545'}
+        
+        # CAS 2: POTENCIAL ALT
+        # Molta energia + WBZ a la zona favorable (una mica més ampli).
+        elif mucape > 1500 and (1800 <= wbz_hgt < 3200):
+            resultats['calamarsa'] = {'text': 'Alta', 'color': '#fd7e14'}
 
-    # --- Activitat Elèctrica (Llamps) - La lògica no canvia ---
+        # CAS 3: POTENCIAL MODERAT
+        # Energia suficient + WBZ en un rang acceptable (abans que la fusió sigui dominant).
+        elif mucape > 1000 and wbz_hgt < 3300:
+            resultats['calamarsa'] = {'text': 'Moderada', 'color': '#ffc107'}
+        
+        # CAS 4: POTENCIAL BAIX
+        # Hi ha energia, però les condicions del WBZ són marginals (o massa baix o massa alt).
+        # Això indica calamarsa petita o que es fondrà en gran part.
+        else:
+            resultats['calamarsa'] = {'text': 'Baixa (Cond. Marginals)', 'color': '#2ca02c'}
+
+    # --- 4. ANÀLISI D'ALTRES AMENACES (Llamps i Esclafits) ---
+    # Aquestes lògiques es mantenen, però modulades pel factor de realització.
+    
+    # Activitat Elèctrica (Llamps)
     potencial_llamps_teoric = 0
     if li < -7 or (li < -5 and el_hgt > 12000): potencial_llamps_teoric = 4
     elif li < -4 or (li < -2 and el_hgt > 10000): potencial_llamps_teoric = 3
@@ -1638,12 +1653,13 @@ def analitzar_amenaces_especifiques(params):
     elif potencial_llamps_real >= 1.5: resultats['llamps'] = {'text': 'Moderada', 'color': '#ffc107'}
     elif potencial_llamps_real >= 0.5: resultats['llamps'] = {'text': 'Baixa', 'color': '#2ca02c'}
 
-    # --- Esclafits - La lògica no canvia ---
+    # Esclafits
     if lr_0_3km > 8.0 and pwat < 35: resultats['esclafits'] = {'text': 'Alta', 'color': '#fd7e14'}
     elif lr_0_3km > 7.0 and pwat < 40: resultats['esclafits'] = {'text': 'Moderada', 'color': '#ffc107'}
     elif lr_0_3km > 6.5: resultats['esclafits'] = {'text': 'Baixa', 'color': '#2ca02c'}
         
     return resultats
+    
 
 def analitzar_component_maritima(sounding_data, poble_sel):
     """
