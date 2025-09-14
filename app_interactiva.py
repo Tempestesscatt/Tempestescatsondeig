@@ -1804,9 +1804,9 @@ MAPA_IMATGES_REALS = {
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva v60.0 (Visualització per Colors).
-    - **CANVI PRINCIPAL**: Afegeix colors dinàmics a EL, T 500hPa i als valors d'Humitat
-      Relativa per a una interpretació visual immediata de les condicions.
+    Versió Definitiva v60.1 (Sense Duplicats).
+    - **CORRECCIÓ**: S'ha eliminat el paràmetre duplicat "CIM (EL)". Ara només es mostra
+      la versió correcta amb la lògica de colors dinàmics.
     """
     TOOLTIPS = {
         'MLCAPE': "Mixed-Layer CAPE: Energia disponible.",
@@ -1828,7 +1828,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         'AMENACA_LLAMPS': "Potencial d'activitat elèctrica."
     }
     
-    # ... (La funció styled_metric i styled_qualitative no canvien) ...
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
         color = "#FFFFFF"; val_str = "---"
         is_numeric = isinstance(value, (int, float, np.number))
@@ -1847,7 +1846,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
 
     st.markdown("##### Paràmetres del Sondeig")
     
-    # --- FILA 1 (sense canvis) ---
     cols_fila1 = st.columns(5)
     with cols_fila1[0]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
     with cols_fila1[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', tooltip_text=TOOLTIPS.get('LI'), precision=1, reverse_colors=True)
@@ -1860,7 +1858,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_fila1[3]: styled_metric("3CAPE", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
     with cols_fila1[4]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
     
-    # --- BLOC D'IMATGE (sense canvis) ---
     analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
     if analisi_temps_list:
         diag = analisi_temps_list[0]; desc, veredicte = diag.get("descripcio", "Desconegut"), diag.get("veredicte", "")
@@ -1870,7 +1867,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     else:
         with st.container(border=True): st.warning("No s'ha pogut determinar el tipus de cel.")
 
-    # --- FILA 2 (sense canvis) ---
     cols_fila2 = st.columns(5)
     with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols_fila2[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
@@ -1881,7 +1877,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_fila2[3]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
     with cols_fila2[4]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
         
-    # --- FILA 3 (AMB COLORS DINÀMICS PER A EL i T500) ---
     cols_fila3 = st.columns(4)
     with cols_fila3[0]:
         el_hgt_val = params.get('EL_Hgt', np.nan)
@@ -1890,17 +1885,8 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
             if el_hgt_val > 12000: el_color = "#DC3545" # Vermell (Molt Alt)
             elif el_hgt_val > 9000: el_color = "#FD7E14" # Taronja (Alt)
             elif el_hgt_val > 6000: el_color = "#FFC107" # Groc (Moderat)
-        styled_metric("CIM (EL)", el_hgt_val, "m", "EL_Hgt_color", tooltip_text=TOOLTIPS.get('EL_Hgt')) # Es passa un nom de clau fals per a que no interfereixi
-        # Aquesta part és un petit "hack": com styled_metric no pot canviar el color directament, el sobreescrivim amb CSS
-        if el_color != "#FFFFFF":
-            st.markdown(f"<style>[data-testid='stMetricValue']:has(div[style*='color: #FFFFFF;']) {{ color: {el_color} !important; }}</style>", unsafe_allow_html=True)
-            # Aquesta solució no és ideal, anem a crear un styled_metric personalitzat per a aquests casos.
-            # Millor solució: passar el color com a paràmetre.
-            # Com que no vull canviar la funció, faré un bloc HTML personalitzat.
-        
         el_val_str = f"{el_hgt_val:.0f}" if pd.notna(el_hgt_val) else "---"
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">CIM (EL) (m) <span title="{TOOLTIPS.get('EL_Hgt')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: {el_color}; line-height: 1.1;">{el_val_str}</strong></div>""", unsafe_allow_html=True)
-
     with cols_fila3[1]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km', tooltip_text=TOOLTIPS.get('BWD_0-6km'))
     with cols_fila3[2]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km', tooltip_text=TOOLTIPS.get('BWD_0-1km'))
     with cols_fila3[3]:
@@ -1913,13 +1899,10 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         t500_val_str = f"{t500_val:.1f}" if pd.notna(t500_val) else "---"
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">T 500hPa (°C) <span title="{TOOLTIPS.get('T_500hPa')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: {t500_color}; line-height: 1.1;">{t500_val_str}</strong></div>""", unsafe_allow_html=True)
 
-
-    # --- BLOC DE HUMITAT RELATIVA AMB COLORS DINÀMICS ---
     rh_capes = params.get('RH_CAPES', {})
     rh_b = rh_capes.get('baixa', np.nan)
     rh_m = rh_capes.get('mitjana', np.nan)
     rh_a = rh_capes.get('alta', np.nan)
-    
     def get_rh_color(rh_value):
         if not pd.notna(rh_value): return "#FFFFFF"
         if rh_value > 85: return "#0047AB"  # Blau marí (Molt Humit)
@@ -1927,32 +1910,11 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         if rh_value > 50: return "#28A745"  # Verd (Medi)
         if rh_value > 30: return "#FFC107"  # Groc (Sec)
         return "#FFDAB9"  # Color carn (Molt Sec)
-        
     rh_b_str = f"{rh_b:.0f}%" if pd.notna(rh_b) else "---"
     rh_m_str = f"{rh_m:.0f}%" if pd.notna(rh_m) else "---"
     rh_a_str = f"{rh_a:.0f}%" if pd.notna(rh_a) else "---"
+    st.markdown(f"""<div style="padding: 10px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;"><p style="text-align:center; font-size: 0.8em; color: #FAFAFA; margin-bottom: 8px; margin-top: -5px;">Humitat Relativa (RH %)</p><div style="display: flex; justify-content: space-around; text-align: center;"><div><span style="font-size: 0.8em; color: #A0A0B0;">Baixa</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_b)}; line-height: 1.1;">{rh_b_str}</strong></div><div><span style="font-size: 0.8em; color: #A0A0B0;">Mitjana</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_m)}; line-height: 1.1;">{rh_m_str}</strong></div><div><span style="font-size: 0.8em; color: #A0A0B0;">Alta</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_a)}; line-height: 1.1;">{rh_a_str}</strong></div></div></div>""", unsafe_allow_html=True)
     
-    st.markdown(f"""
-    <div style="padding: 10px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
-        <p style="text-align:center; font-size: 0.8em; color: #FAFAFA; margin-bottom: 8px; margin-top: -5px;">Humitat Relativa (RH %)</p>
-        <div style="display: flex; justify-content: space-around; text-align: center;">
-            <div>
-                <span style="font-size: 0.8em; color: #A0A0B0;">Baixa</span>
-                <strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_b)}; line-height: 1.1;">{rh_b_str}</strong>
-            </div>
-            <div>
-                <span style="font-size: 0.8em; color: #A0A0B0;">Mitjana</span>
-                <strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_m)}; line-height: 1.1;">{rh_m_str}</strong>
-            </div>
-            <div>
-                <span style="font-size: 0.8em; color: #A0A0B0;">Alta</span>
-                <strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_a)}; line-height: 1.1;">{rh_a_str}</strong>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # --- BLOC D'AMENACES (sense canvis) ---
     st.markdown("##### Potencial d'Amenaces Severes")
     amenaces = analitzar_amenaces_especifiques(params)
     puntuacio_resultat = calcular_puntuacio_tempesta(sounding_data, params, nivell_conv)
