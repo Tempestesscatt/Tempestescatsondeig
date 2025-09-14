@@ -1717,24 +1717,36 @@ MAPA_IMATGES_REALS = {
     "fallback": "fallback.jpg"
 }
 
+# -*- coding: utf-8 -*-
+
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva v61.0 (Amenaces Dinàmiques).
-    - **CANVI PRINCIPAL**: La secció d'amenaces ara es genera dinàmicament a partir de la nova
-      funció 'analitzar_amenaces_severes', mostrant el tipus de precipitació més rellevant.
+    Versió Definitiva v62.0 (Priorització de PWAT).
+    - **CANVI PRINCIPAL**: S'ha mogut el PWAT (Aigua Precipitable) a una posició
+      principal per a una avaluació més ràpida del potencial de pluja. El MUCIN
+      passa a una posició secundària.
     """
-    # ... (TOOLTIPS i funcions styled_metric/styled_qualitative no canvien) ...
     TOOLTIPS = {
-        'MLCAPE': "Mixed-Layer CAPE: Energia disponible.", 'LI': "Lifted Index: Indicador d'inestabilitat a 500 hPa.",
-        'CONV_PUNTUAL': "Convergència (+): Disparador. Divergència (-): Estabilitzador.", 'CAPE_0-3km': "Low-Level CAPE: Energia a nivells baixos, afavoreix rotació.",
-        'MUCAPE': "Most Unstable CAPE: Màxim potencial energètic.", 'SBCIN': "Inhibició (tapa) des de la superfície.",
-        'MUCIN': "La 'tapa' més feble de l'atmosfera.", 'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa: Mesura combinada de temperatura i humitat.",
-        'LCL_Hgt': "Alçada de la base dels núvols.", 'LFC_Hgt': "Alçada on una bombolla d'aire comença a accelerar sola.",
-        'EL_Hgt': "Alçada del cim de la tempesta (Equilibrium Level).", 'BWD_0-6km': "Cisallament del vent entre superfície i 6 km. Clau per a l'organització.",
-        'BWD_0-1km': "Cisallament del vent a nivells baixos.", 'T_500hPa': "Temperatura a 500 hPa.",
-        'PUNTUACIO_TEMPESTA': "Índex global de potencial de tempesta.", 'AMENACA_CALAMARSA': "Potencial de calamarsa gran (>2cm).",
+        'MLCAPE': "Mixed-Layer CAPE: Energia disponible.",
+        'LI': "Lifted Index: Indicador d'inestabilitat a 500 hPa.",
+        'CONV_PUNTUAL': "Convergència (+): Disparador. Divergència (-): Estabilitzador.",
+        'CAPE_0-3km': "Low-Level CAPE: Energia a nivells baixos, afavoreix rotació.",
+        'MUCAPE': "Most Unstable CAPE: Màxim potencial energètic.",
+        'SBCIN': "Inhibició (tapa) des de la superfície.",
+        'PWAT': "Aigua Precipitable Total: Quantitat total de vapor d'aigua a la columna atmosfèrica. Valors alts (>35mm) indiquen potencial per a pluges molt fortes.",
+        'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa: Mesura combinada de temperatura i humitat.",
+        'LCL_Hgt': "Alçada de la base dels núvols.",
+        'LFC_Hgt': "Alçada on una bombolla d'aire comença a accelerar sola.",
+        'EL_Hgt': "Alçada del cim de la tempesta.",
+        'BWD_0-6km': "Cisallament del vent. Clau per a l'organització.",
+        'BWD_0-1km': "Cisallament del vent a nivells baixos.",
+        'T_500hPa': "Temperatura a 500 hPa.",
+        'MUCIN': "La 'tapa' més feble de l'atmosfera.",
+        'PUNTUACIO_TEMPESTA': "Índex global de potencial de tempesta.",
+        'AMENACA_CALAMARSA': "Potencial de calamarsa gran (>2cm).",
         'AMENACA_LLAMPS': "Potencial d'activitat elèctrica."
     }
+    
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
         color = "#FFFFFF"; val_str = "---"
         is_numeric = isinstance(value, (int, float, np.number))
@@ -1746,12 +1758,13 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
             val_str = f"{value:.{precision}f}"
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit}){tooltip_html}</span><strong style="font-size: 1.6em; color: {color}; line-height: 1.1;">{val_str}</strong></div>""", unsafe_allow_html=True)
+
     def styled_qualitative(label, text, color, tooltip_text=""):
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br><strong style="font-size: 1.6em; color: {color};">{text}</strong></div>""", unsafe_allow_html=True)
 
-    # --- La part superior de la funció no canvia ---
     st.markdown("##### Paràmetres del Sondeig")
+    
     cols_fila1 = st.columns(5)
     with cols_fila1[0]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
     with cols_fila1[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', tooltip_text=TOOLTIPS.get('LI'), precision=1, reverse_colors=True)
@@ -1763,6 +1776,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         else: styled_metric("Convergència", np.nan, "unitats", "CONV_PUNTUAL")
     with cols_fila1[3]: styled_metric("3CAPE", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
     with cols_fila1[4]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
+    
     analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
     if analisi_temps_list:
         diag = analisi_temps_list[0]; desc, veredicte = diag.get("descripcio", "Desconegut"), diag.get("veredicte", "")
@@ -1771,19 +1785,22 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         st.markdown(f"""<div style="position: relative; width: 100%; height: 150px; border-radius: 10px; background-image: url('{b64_img}'); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 15px; box-shadow: inset 0 -80px 60px -30px rgba(0,0,0,0.8); margin-bottom: 10px;"><div style="color: white; text-shadow: 2px 2px 5px rgba(0,0,0,0.8);"><strong style="font-size: 1.3em;">{veredicte}</strong><br><em style="font-size: 0.9em; color: #DDDDDD;">({desc})</em></div></div>""", unsafe_allow_html=True)
     else:
         with st.container(border=True): st.warning("No s'ha pogut determinar el tipus de cel.")
+
+    # <<<--- FILA 2 MODIFICADA AMB PWAT ---
     cols_fila2 = st.columns(5)
     with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
-    with cols_fila2[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
+    with cols_fila2[1]: styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', tooltip_text=TOOLTIPS.get('PWAT'), precision=1)
     with cols_fila2[2]:
         theta_e_k = params.get('THETAE_850hPa', np.nan)
         theta_e_c = theta_e_k - 273.15 if pd.notna(theta_e_k) else np.nan
         styled_metric("Theta-E 850", theta_e_c, "°C", 'THETAE_850hPa', tooltip_text=TOOLTIPS.get('THETAE_850hPa'), precision=1)
     with cols_fila2[3]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
     with cols_fila2[4]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
-    cols_fila3 = st.columns(4)
+        
+    # <<<--- FILA 3 MODIFICADA AMB MUCIN ---
+    cols_fila3 = st.columns(5)
     with cols_fila3[0]:
-        el_hgt_val = params.get('EL_Hgt', np.nan)
-        el_color = "#FFFFFF";
+        el_hgt_val = params.get('EL_Hgt', np.nan); el_color = "#FFFFFF"
         if pd.notna(el_hgt_val):
             if el_hgt_val > 12000: el_color = "#DC3545"
             elif el_hgt_val > 9000: el_color = "#FD7E14"
@@ -1793,31 +1810,28 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_fila3[1]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km', tooltip_text=TOOLTIPS.get('BWD_0-6km'))
     with cols_fila3[2]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km', tooltip_text=TOOLTIPS.get('BWD_0-1km'))
     with cols_fila3[3]:
-        t500_val = params.get('T_500hPa', np.nan)
-        t500_color = "#FFFFFF"
+        t500_val = params.get('T_500hPa', np.nan); t500_color = "#FFFFFF"
         if pd.notna(t500_val):
             if t500_val < -12: t500_color = "#0D6EFD"
             elif t500_val < -5: t500_color = "#6C757D"
             else: t500_color = "#FD7E14"
         t500_val_str = f"{t500_val:.1f}" if pd.notna(t500_val) else "---"
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">T 500hPa (°C) <span title="{TOOLTIPS.get('T_500hPa')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: {t500_color}; line-height: 1.1;">{t500_val_str}</strong></div>""", unsafe_allow_html=True)
+    with cols_fila3[4]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
+
     rh_capes = params.get('RH_CAPES', {}); rh_b = rh_capes.get('baixa', np.nan); rh_m = rh_capes.get('mitjana', np.nan); rh_a = rh_capes.get('alta', np.nan)
     def get_rh_color(rh_value):
         if not pd.notna(rh_value): return "#FFFFFF"
-        if rh_value > 85: return "#0047AB"
-        if rh_value > 70: return "#0D6EFD"
-        if rh_value > 50: return "#28A745"
-        if rh_value > 30: return "#FFC107"
+        if rh_value > 85: return "#0047AB";
+        if rh_value > 70: return "#0D6EFD";
+        if rh_value > 50: return "#28A745";
+        if rh_value > 30: return "#FFC107";
         return "#FFDAB9"
     rh_b_str = f"{rh_b:.0f}%" if pd.notna(rh_b) else "---"; rh_m_str = f"{rh_m:.0f}%" if pd.notna(rh_m) else "---"; rh_a_str = f"{rh_a:.0f}%" if pd.notna(rh_a) else "---"
     st.markdown(f"""<div style="padding: 10px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;"><p style="text-align:center; font-size: 0.8em; color: #FAFAFA; margin-bottom: 8px; margin-top: -5px;">Humitat Relativa (RH %)</p><div style="display: flex; justify-content: space-around; text-align: center;"><div><span style="font-size: 0.8em; color: #A0A0B0;">Baixa</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_b)}; line-height: 1.1;">{rh_b_str}</strong></div><div><span style="font-size: 0.8em; color: #A0A0B0;">Mitjana</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_m)}; line-height: 1.1;">{rh_m_str}</strong></div><div><span style="font-size: 0.8em; color: #A0A0B0;">Alta</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_a)}; line-height: 1.1;">{rh_a_str}</strong></div></div></div>""", unsafe_allow_html=True)
     
-    # --- BLOC D'AMENACES AMB LA NOVA LÒGICA ---
     st.markdown("##### Potencial d'Amenaces Severes")
-    
-    # Crida a la nova funció que retorna totes les amenaces en un diccionari
     amenaces = analitzar_amenaces_severes(params, sounding_data, nivell_conv)
-    
     cols_amenaces = st.columns(3)
     with cols_amenaces[0]:
         precip_data = amenaces['precipitacio']
