@@ -2237,32 +2237,44 @@ def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp
 
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None):
     """
-    PESTANYA D'ANÀLISI VERTICAL.
-    - MOSTRA EL PANELL DE PARÀMETRES COMPLET: Aquesta és ara la vista principal
-      per a analitzar en detall tots els paràmetres del sondeig.
+    PESTANYA D'ANÀLISI VERTICAL (Versió amb disseny equilibrat).
+    - **NOU DISSENY**: Mostra el panell de paràmetres a l'esquerra. A la dreta,
+      el Skew-T i l'Hodògraf un al costat de l'altre. A sota, el radar
+      ocupa tot l'ample.
     """
     sounding_data, params_calculats = data_tuple
     p, T, Td, u, v, heights, prof, Twb = sounding_data
     
-    col1, col2 = st.columns(2, gap="large")
-    
-    with col1:
-        # Mostrem el panell de paràmetres aquí
-        st.markdown("### Paràmetres del Sondeig Vertical")
+    # --- Estructura Principal: Columna Esquerra (Paràmetres) i Dreta (Gràfics) ---
+    col_parametres, col_grafics = st.columns([0.4, 0.6], gap="large")
+
+    with col_parametres:
+        # A la columna esquerra només hi va el panell de paràmetres
         ui_caixa_parametres_sondeig(sounding_data, params_calculats, nivell_conv, hora_actual, poble_sel)
+
+    with col_grafics:
+        # La columna dreta conté els dos gràfics en sub-columnes
+        sub_col_skewt, sub_col_hodo = st.columns(2)
         
-    with col2:
-        # I els gràfics a la dreta
-        st.markdown("### Diagrama Skew-T / Log-P")
-        zoom_capa_baixa = st.checkbox("🔍 Zoom a la Capa Baixa (Superfície - 800 hPa)")
-        fig_skewt = crear_skewt(p, T, Td, Twb, u, v, prof, params_calculats, f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=zoom_capa_baixa)
-        st.pyplot(fig_skewt, use_container_width=True)
-        plt.close(fig_skewt)
-        
-        st.markdown("### Hodògraf")
-        fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf - {poble_sel}", timestamp_str)
-        st.pyplot(fig_hodo, use_container_width=True)
-        plt.close(fig_hodo)
+        with sub_col_skewt:
+            st.markdown("###### Diagrama Skew-T / Log-P")
+            zoom_capa_baixa = st.checkbox("🔍 Zoom Capa Baixa")
+            fig_skewt = crear_skewt(p, T, Td, Twb, u, v, prof, params_calculats, f"Sondeig - {poble_sel}", timestamp_str.split('|')[-1].strip(), zoom_capa_baixa=zoom_capa_baixa)
+            st.pyplot(fig_skewt, use_container_width=True)
+            plt.close(fig_skewt)
+            
+        with sub_col_hodo:
+            st.markdown("###### Hodògraf")
+            fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf - {poble_sel}", timestamp_str.split('|')[-1].strip())
+            st.pyplot(fig_hodo, use_container_width=True)
+            plt.close(fig_hodo)
+
+    # --- Radar de Precipitació (Ocupa tot l'ample a sota) ---
+    st.divider()
+    st.markdown("##### Radar de Precipitació en Temps Real")
+    radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
+    html_code = f"""<div style="border-radius: 10px; overflow: hidden;"><iframe src="{radar_url}" width="100%" height="450" frameborder="0" style="border:0;"></iframe></div>"""
+    st.components.v1.html(html_code, height=460)
 
 
 
@@ -6935,11 +6947,11 @@ def tornar_al_mapa_general():
 
 
 
+# -*- coding: utf-8 -*-
+
 def run_catalunya_app():
     """
-    Versió Definitiva i Polida v2.2.
-    - **CORRECCIÓ DE BUG**: Soluciona l'error que feia que la 'Convergència' aparegués sense
-      dades ('---'). Ara es calcula abans i es passa correctament a totes les funcions.
+    Versió Definitiva i Polida v2.3 (A Prova d'Errors).
     """
     # --- PAS 1: CAPÇALERA I INICIALITZACIÓ D'ESTAT ---
     ui_capcalera_selectors(None, zona_activa="catalunya")
@@ -6965,7 +6977,6 @@ def run_catalunya_app():
 
     # --- PAS 3: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # --- VISTA D'ANÀLISI DETALLADA D'UNA LOCALITAT ---
         poble_sel = st.session_state.poble_sel
         st.success(f"### Anàlisi per a: {poble_sel}")
         col_nav1, col_nav2 = st.columns(2)
@@ -6973,23 +6984,15 @@ def run_catalunya_app():
         with col_nav2: st.button("🗺️ Tornar al Mapa General", on_click=tornar_al_mapa_general, use_container_width=True)
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
         
-        with st.spinner(f"Carregant dades del sondeig i mapa per a {poble_sel}..."):
+        with st.spinner(f"Carregant dades d'anàlisi per a {poble_sel}..."):
             lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
             data_tuple, final_index, error_msg_sounding = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
-            map_data_conv, error_msg_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
 
         if error_msg_sounding or not data_tuple:
-            st.error(f"No s'ha pogut carregar el sondeig: {error_msg_sounding if error_msg_sounding else 'Dades no disponibles.'}")
+            st.error(f"Error en carregar les dades del sondeig per a {poble_sel} a les {hora_sel_str}.")
+            st.error(f"Motiu: {error_msg_sounding if error_msg_sounding else 'Les dades no estan disponibles per a aquesta hora.'}")
+            st.info("Si us plau, selecciona una altra hora o una altra localitat.")
             return
-            
-        params_calculats = data_tuple[1]
-        # <<<--- LÍNIA CLAU DE LA CORRECCIÓ ---
-        # Calculem la convergència i l'afegim al diccionari de paràmetres ABANS de passar-lo a cap altra funció.
-        if not error_msg_map and map_data_conv:
-            conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
-            if pd.notna(conv_puntual):
-                params_calculats[f'CONV_{nivell_sel}hPa'] = conv_puntual
-        # --- FI DE LA CORRECCIÓ ---
 
         if final_index is not None and final_index != hourly_index_sel:
             adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
@@ -6999,6 +7002,15 @@ def run_catalunya_app():
         menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi de Mapes", "Simulació de Núvol"]
         menu_icons = ["fullscreen", "graph-up-arrow", "map", "cloud-upload"]
         active_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key=f'option_menu_{poble_sel}')
+
+        params_calculats = data_tuple[1]
+        
+        with st.spinner("Calculant convergència a nivell de mapa..."):
+            map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
+        if map_data_conv:
+            conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+            if pd.notna(conv_puntual):
+                params_calculats[f'CONV_{nivell_sel}hPa'] = conv_puntual
         
         if active_tab == "Anàlisi Comarcal":
             with st.spinner("Carregant anàlisi comarcal completa..."):
