@@ -1575,90 +1575,83 @@ def analitzar_estructura_tempesta(params):
     return resultats
 
 
-# -*- coding: utf-8 -*-
-
-def analitzar_amenaces_especifiques(params):
+def analitzar_amenaces_severes(params, sounding_data, nivell_conv):
     """
-    Sistema d'Anàlisi d'Amenaces v6.0 (Lògica Experta de Calamarsa).
-    - **CANVI RADICAL**: La predicció de calamarsa ara utilitza una lògica experta basada
-      en la interacció entre MUCAPE (energia), WBZ_HGT (potencial de fusió) i
-      BWD_0-6km (organització de la tempesta), seguint criteris operatius de la NOAA.
+    Sistema d'Anàlisi d'Amenaces v7.0 (Diagnòstic de Precipitació Detallat).
+    - **CANVI RADICAL**: Avalua un ampli espectre de tipus de precipitació i mostra el
+      més significatiu, des de plugims fins a calamarsa enorme.
+    - Manté l'anàlisi de l'índex de potencial i l'activitat elèctrica.
     """
+    # --- 1. Inicialització dels resultats per a les 3 caixes ---
     resultats = {
-        'calamarsa': {'text': 'Nul·la', 'color': '#808080'},
-        'esclafits': {'text': 'Nul·la', 'color': '#808080'},
-        'llamps': {'text': 'Nul·la', 'color': '#808080'}
+        'precipitacio': {'label': 'Precipitació Principal', 'text': 'Nul·la', 'color': '#808080'},
+        'potencial': {'label': 'Índex de Potencial', 'text': '0 / 10', 'color': '#808080'},
+        'electricitat': {'label': 'Activitat Elèctrica', 'text': 'Nul·la', 'color': '#808080'}
     }
 
-    # --- 1. EXTRACCIÓ DE PARÀMETRES ---
+    # --- 2. Extracció de tots els paràmetres necessaris ---
+    mlcape = params.get('MLCAPE', 0) or 0
     mucape = params.get('MUCAPE', 0) or 0
     wbz_hgt = params.get('WBZ_HGT', 5000) or 5000
     bwd_6km = params.get('BWD_0-6km', 0) or 0
+    pwat = params.get('PWAT', 0) or 0
+    lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
+    rh_baixa = params.get('RH_CAPES', {}).get('baixa', 0)
+    t500 = params.get('T_500hPa', 0) or 0
     li = params.get('LI', 5) or 5
     el_hgt = params.get('EL_Hgt', 0) or 0
-    lr_0_3km = params.get('LR_0-3km', 0) or 0
-    pwat = params.get('PWAT', 100) or 100
     conv_key = next((k for k in params if k.startswith('CONV_')), None)
     raw_conv_value = params.get(conv_key, 0)
     convergencia = raw_conv_value if isinstance(raw_conv_value, (int, float, np.number)) else 0
     cin = min(params.get('SBCIN', 0), params.get('MUCIN', 0)) or 0
-
-    # --- 2. AVALUACIÓ DEL POTENCIAL DE DISPAR (Factor de Realització) ---
+    
+    # --- 3. Càlcul de Potencial i Electricitat (es mantenen) ---
+    puntuacio_resultat = calcular_puntuacio_tempesta(sounding_data, params, nivell_conv)
+    resultats['potencial'] = {
+        'label': 'Índex de Potencial',
+        'text': f"{puntuacio_resultat['score']} / 10",
+        'color': puntuacio_resultat['color']
+    }
+    
     factor_realitzacio = 0.0
     if convergencia >= 30 and cin > -100: factor_realitzacio = 1.0
     elif convergencia >= 15 and cin > -50: factor_realitzacio = 0.7
     elif cin > -20: factor_realitzacio = 0.4
     
-    # Condició de veto: si no hi ha prou energia, no hi haurà cap amenaça severa.
-    if mucape < 800:
-        return resultats
-
-    # --- 3. NOVA LÒGICA DE PREDICCIÓ DE CALAMARSA ---
-    # Aquesta lògica s'aplica només si hi ha prou energia (MUCAPE > 800 J/kg)
-
-    if pd.notna(wbz_hgt):
-        # CAS 1: POTENCIAL MOLT ALT (La "recepta perfecta" per a calamarsa severa)
-        # Energia extrema + Organització (supercèl·lula) + WBZ a la zona òptima.
-        if mucape > 2000 and bwd_6km >= 40 and (2100 <= wbz_hgt < 3000):
-            resultats['calamarsa'] = {'text': 'Molt Alta', 'color': '#dc3545'}
-        
-        # CAS 2: POTENCIAL ALT
-        # Molta energia + WBZ a la zona favorable (una mica més ampli).
-        elif mucape > 1500 and (1800 <= wbz_hgt < 3200):
-            resultats['calamarsa'] = {'text': 'Alta', 'color': '#fd7e14'}
-
-        # CAS 3: POTENCIAL MODERAT
-        # Energia suficient + WBZ en un rang acceptable (abans que la fusió sigui dominant).
-        elif mucape > 1000 and wbz_hgt < 3300:
-            resultats['calamarsa'] = {'text': 'Moderada', 'color': '#ffc107'}
-        
-        # CAS 4: POTENCIAL BAIX
-        # Hi ha energia, però les condicions del WBZ són marginals (o massa baix o massa alt).
-        # Això indica calamarsa petita o que es fondrà en gran part.
-        else:
-            resultats['calamarsa'] = {'text': 'Baixa (Cond. Marginals)', 'color': '#2ca02c'}
-
-    # --- 4. ANÀLISI D'ALTRES AMENACES (Llamps i Esclafits) ---
-    # Aquestes lògiques es mantenen, però modulades pel factor de realització.
-    
-    # Activitat Elèctrica (Llamps)
     potencial_llamps_teoric = 0
     if li < -7 or (li < -5 and el_hgt > 12000): potencial_llamps_teoric = 4
     elif li < -4 or (li < -2 and el_hgt > 10000): potencial_llamps_teoric = 3
     elif li < -1: potencial_llamps_teoric = 2
     elif mucape > 150: potencial_llamps_teoric = 1
     potencial_llamps_real = potencial_llamps_teoric * factor_realitzacio
-    if potencial_llamps_real >= 3.5: resultats['llamps'] = {'text': 'Extrema', 'color': '#dc3545'}
-    elif potencial_llamps_real >= 2.5: resultats['llamps'] = {'text': 'Alta', 'color': '#fd7e14'}
-    elif potencial_llamps_real >= 1.5: resultats['llamps'] = {'text': 'Moderada', 'color': '#ffc107'}
-    elif potencial_llamps_real >= 0.5: resultats['llamps'] = {'text': 'Baixa', 'color': '#2ca02c'}
+    if potencial_llamps_real >= 3.5: resultats['electricitat'] = {'label': 'Activitat Elèctrica', 'text': 'Extrema', 'color': '#dc3545'}
+    elif potencial_llamps_real >= 2.5: resultats['electricitat'] = {'label': 'Activitat Elèctrica', 'text': 'Alta', 'color': '#fd7e14'}
+    elif potencial_llamps_real >= 1.5: resultats['electricitat'] = {'label': 'Activitat Elèctrica', 'text': 'Moderada', 'color': '#ffc107'}
+    elif potencial_llamps_real >= 0.5: resultats['electricitat'] = {'label': 'Activitat Elèctrica', 'text': 'Baixa', 'color': '#2ca02c'}
 
-    # Esclafits
-    if lr_0_3km > 8.0 and pwat < 35: resultats['esclafits'] = {'text': 'Alta', 'color': '#fd7e14'}
-    elif lr_0_3km > 7.0 and pwat < 40: resultats['esclafits'] = {'text': 'Moderada', 'color': '#ffc107'}
-    elif lr_0_3km > 6.5: resultats['esclafits'] = {'text': 'Baixa', 'color': '#2ca02c'}
-        
+    # --- 4. Lògica Jeràrquica per a la Precipitació Principal ---
+    # Comença per l'amenaça més severa i va baixant. El primer que es compleix és el que es mostra.
+    
+    if pwat < 15 and rh_baixa < 60:
+        return resultats # Atmosfera massa seca, retorna els valors per defecte.
+
+    if mucape > 3500 and bwd_6km >= 40 and (2100 <= wbz_hgt < 3000):
+        resultats['precipitacio'] = {'label': 'Calamarsa Enorme (>5cm)', 'text': 'Extrem', 'color': '#9370DB'}
+    elif mucape > 2000 and bwd_6km >= 35 and (1800 <= wbz_hgt < 3200):
+        resultats['precipitacio'] = {'label': 'Calamarsa Gran (>2cm)', 'text': 'Molt Alta', 'color': '#dc3545'}
+    elif mucape > 1500 and wbz_hgt < 3300:
+        resultats['precipitacio'] = {'label': 'Calamarsa Normal', 'text': 'Alta', 'color': '#fd7e14'}
+    elif pwat > 40 and mucape > 1000:
+        resultats['precipitacio'] = {'label': 'Pluja Torrencial', 'text': 'Alta', 'color': '#0D6EFD'}
+    elif pwat > 30 and mucape > 500:
+        resultats['precipitacio'] = {'label': 'Pluja Forta', 'text': 'Moderada', 'color': '#28A745'}
+    elif 50 < mlcape < 500 and t500 < -10:
+        resultats['precipitacio'] = {'label': 'Calamarsa Rodona (Graupel)', 'text': 'Baixa', 'color': '#6C757D'}
+    elif lcl_hgt < 400 and mlcape < 100:
+        resultats['precipitacio'] = {'label': 'Plugims', 'text': 'Febla', 'color': '#adb5bd'}
+
     return resultats
+    
     
 
 def analitzar_component_maritima(sounding_data, poble_sel):
@@ -1791,30 +1784,22 @@ MAPA_IMATGES_REALS = {
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva v60.1 (Sense Duplicats).
-    - **CORRECCIÓ**: S'ha eliminat el paràmetre duplicat "CIM (EL)". Ara només es mostra
-      la versió correcta amb la lògica de colors dinàmics.
+    Versió Definitiva v61.0 (Amenaces Dinàmiques).
+    - **CANVI PRINCIPAL**: La secció d'amenaces ara es genera dinàmicament a partir de la nova
+      funció 'analitzar_amenaces_severes', mostrant el tipus de precipitació més rellevant.
     """
+    # ... (TOOLTIPS i funcions styled_metric/styled_qualitative no canvien) ...
     TOOLTIPS = {
-        'MLCAPE': "Mixed-Layer CAPE: Energia disponible.",
-        'LI': "Lifted Index: Indicador d'inestabilitat a 500 hPa.",
-        'CONV_PUNTUAL': "Convergència (+): Disparador. Divergència (-): Estabilitzador.",
-        'CAPE_0-3km': "Low-Level CAPE: Energia a nivells baixos, afavoreix rotació.",
-        'MUCAPE': "Most Unstable CAPE: Màxim potencial energètic.",
-        'SBCIN': "Inhibició (tapa) des de la superfície.",
-        'MUCIN': "La 'tapa' més feble de l'atmosfera.",
-        'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa: Mesura combinada de temperatura i humitat. Valors alts (>70°C) indiquen una massa d'aire molt energètica i càlida.",
-        'LCL_Hgt': "Alçada de la base dels núvols.",
-        'LFC_Hgt': "Alçada on una bombolla d'aire comença a accelerar sola.",
-        'EL_Hgt': "Alçada del cim de la tempesta (Equilibrium Level). Cims més alts indiquen tempestes més potents.",
-        'BWD_0-6km': "Cisallament del vent entre superfície i 6 km. Clau per a l'organització.",
-        'BWD_0-1km': "Cisallament del vent a nivells baixos.",
-        'T_500hPa': "Temperatura a 500 hPa. Valors molt negatius (< -12°C) indiquen aire fred en alçada, la qual cosa afavoreix la inestabilitat i la calamarsa.",
-        'PUNTUACIO_TEMPESTA': "Índex global de potencial de tempesta.",
-        'AMENACA_CALAMARSA': "Potencial de calamarsa gran (>2cm).",
+        'MLCAPE': "Mixed-Layer CAPE: Energia disponible.", 'LI': "Lifted Index: Indicador d'inestabilitat a 500 hPa.",
+        'CONV_PUNTUAL': "Convergència (+): Disparador. Divergència (-): Estabilitzador.", 'CAPE_0-3km': "Low-Level CAPE: Energia a nivells baixos, afavoreix rotació.",
+        'MUCAPE': "Most Unstable CAPE: Màxim potencial energètic.", 'SBCIN': "Inhibició (tapa) des de la superfície.",
+        'MUCIN': "La 'tapa' més feble de l'atmosfera.", 'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa: Mesura combinada de temperatura i humitat.",
+        'LCL_Hgt': "Alçada de la base dels núvols.", 'LFC_Hgt': "Alçada on una bombolla d'aire comença a accelerar sola.",
+        'EL_Hgt': "Alçada del cim de la tempesta (Equilibrium Level).", 'BWD_0-6km': "Cisallament del vent entre superfície i 6 km. Clau per a l'organització.",
+        'BWD_0-1km': "Cisallament del vent a nivells baixos.", 'T_500hPa': "Temperatura a 500 hPa.",
+        'PUNTUACIO_TEMPESTA': "Índex global de potencial de tempesta.", 'AMENACA_CALAMARSA': "Potencial de calamarsa gran (>2cm).",
         'AMENACA_LLAMPS': "Potencial d'activitat elèctrica."
     }
-    
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
         color = "#FFFFFF"; val_str = "---"
         is_numeric = isinstance(value, (int, float, np.number))
@@ -1826,13 +1811,12 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
             val_str = f"{value:.{precision}f}"
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit}){tooltip_html}</span><strong style="font-size: 1.6em; color: {color}; line-height: 1.1;">{val_str}</strong></div>""", unsafe_allow_html=True)
-
     def styled_qualitative(label, text, color, tooltip_text=""):
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br><strong style="font-size: 1.6em; color: {color};">{text}</strong></div>""", unsafe_allow_html=True)
 
+    # --- La part superior de la funció no canvia ---
     st.markdown("##### Paràmetres del Sondeig")
-    
     cols_fila1 = st.columns(5)
     with cols_fila1[0]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
     with cols_fila1[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', tooltip_text=TOOLTIPS.get('LI'), precision=1, reverse_colors=True)
@@ -1844,7 +1828,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         else: styled_metric("Convergència", np.nan, "unitats", "CONV_PUNTUAL")
     with cols_fila1[3]: styled_metric("3CAPE", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
     with cols_fila1[4]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
-    
     analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
     if analisi_temps_list:
         diag = analisi_temps_list[0]; desc, veredicte = diag.get("descripcio", "Desconegut"), diag.get("veredicte", "")
@@ -1853,7 +1836,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         st.markdown(f"""<div style="position: relative; width: 100%; height: 150px; border-radius: 10px; background-image: url('{b64_img}'); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 15px; box-shadow: inset 0 -80px 60px -30px rgba(0,0,0,0.8); margin-bottom: 10px;"><div style="color: white; text-shadow: 2px 2px 5px rgba(0,0,0,0.8);"><strong style="font-size: 1.3em;">{veredicte}</strong><br><em style="font-size: 0.9em; color: #DDDDDD;">({desc})</em></div></div>""", unsafe_allow_html=True)
     else:
         with st.container(border=True): st.warning("No s'ha pogut determinar el tipus de cel.")
-
     cols_fila2 = st.columns(5)
     with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols_fila2[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
@@ -1863,54 +1845,55 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         styled_metric("Theta-E 850", theta_e_c, "°C", 'THETAE_850hPa', tooltip_text=TOOLTIPS.get('THETAE_850hPa'), precision=1)
     with cols_fila2[3]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
     with cols_fila2[4]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
-        
     cols_fila3 = st.columns(4)
     with cols_fila3[0]:
         el_hgt_val = params.get('EL_Hgt', np.nan)
-        el_color = "#FFFFFF" # Color per defecte
+        el_color = "#FFFFFF";
         if pd.notna(el_hgt_val):
-            if el_hgt_val > 12000: el_color = "#DC3545" # Vermell (Molt Alt)
-            elif el_hgt_val > 9000: el_color = "#FD7E14" # Taronja (Alt)
-            elif el_hgt_val > 6000: el_color = "#FFC107" # Groc (Moderat)
+            if el_hgt_val > 12000: el_color = "#DC3545"
+            elif el_hgt_val > 9000: el_color = "#FD7E14"
+            elif el_hgt_val > 6000: el_color = "#FFC107"
         el_val_str = f"{el_hgt_val:.0f}" if pd.notna(el_hgt_val) else "---"
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">CIM (EL) (m) <span title="{TOOLTIPS.get('EL_Hgt')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: {el_color}; line-height: 1.1;">{el_val_str}</strong></div>""", unsafe_allow_html=True)
     with cols_fila3[1]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km', tooltip_text=TOOLTIPS.get('BWD_0-6km'))
     with cols_fila3[2]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km', tooltip_text=TOOLTIPS.get('BWD_0-1km'))
     with cols_fila3[3]:
         t500_val = params.get('T_500hPa', np.nan)
-        t500_color = "#FFFFFF" # Color per defecte (temperat)
+        t500_color = "#FFFFFF"
         if pd.notna(t500_val):
-            if t500_val < -12: t500_color = "#0D6EFD" # Blau (Fred)
-            elif t500_val < -5: t500_color = "#6C757D" # Gris (Normal)
-            else: t500_color = "#FD7E14" # Taronja (Càlid)
+            if t500_val < -12: t500_color = "#0D6EFD"
+            elif t500_val < -5: t500_color = "#6C757D"
+            else: t500_color = "#FD7E14"
         t500_val_str = f"{t500_val:.1f}" if pd.notna(t500_val) else "---"
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">T 500hPa (°C) <span title="{TOOLTIPS.get('T_500hPa')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: {t500_color}; line-height: 1.1;">{t500_val_str}</strong></div>""", unsafe_allow_html=True)
-
-    rh_capes = params.get('RH_CAPES', {})
-    rh_b = rh_capes.get('baixa', np.nan)
-    rh_m = rh_capes.get('mitjana', np.nan)
-    rh_a = rh_capes.get('alta', np.nan)
+    rh_capes = params.get('RH_CAPES', {}); rh_b = rh_capes.get('baixa', np.nan); rh_m = rh_capes.get('mitjana', np.nan); rh_a = rh_capes.get('alta', np.nan)
     def get_rh_color(rh_value):
         if not pd.notna(rh_value): return "#FFFFFF"
-        if rh_value > 85: return "#0047AB"  # Blau marí (Molt Humit)
-        if rh_value > 70: return "#0D6EFD"  # Blau (Humit)
-        if rh_value > 50: return "#28A745"  # Verd (Medi)
-        if rh_value > 30: return "#FFC107"  # Groc (Sec)
-        return "#FFDAB9"  # Color carn (Molt Sec)
-    rh_b_str = f"{rh_b:.0f}%" if pd.notna(rh_b) else "---"
-    rh_m_str = f"{rh_m:.0f}%" if pd.notna(rh_m) else "---"
-    rh_a_str = f"{rh_a:.0f}%" if pd.notna(rh_a) else "---"
+        if rh_value > 85: return "#0047AB"
+        if rh_value > 70: return "#0D6EFD"
+        if rh_value > 50: return "#28A745"
+        if rh_value > 30: return "#FFC107"
+        return "#FFDAB9"
+    rh_b_str = f"{rh_b:.0f}%" if pd.notna(rh_b) else "---"; rh_m_str = f"{rh_m:.0f}%" if pd.notna(rh_m) else "---"; rh_a_str = f"{rh_a:.0f}%" if pd.notna(rh_a) else "---"
     st.markdown(f"""<div style="padding: 10px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;"><p style="text-align:center; font-size: 0.8em; color: #FAFAFA; margin-bottom: 8px; margin-top: -5px;">Humitat Relativa (RH %)</p><div style="display: flex; justify-content: space-around; text-align: center;"><div><span style="font-size: 0.8em; color: #A0A0B0;">Baixa</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_b)}; line-height: 1.1;">{rh_b_str}</strong></div><div><span style="font-size: 0.8em; color: #A0A0B0;">Mitjana</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_m)}; line-height: 1.1;">{rh_m_str}</strong></div><div><span style="font-size: 0.8em; color: #A0A0B0;">Alta</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_a)}; line-height: 1.1;">{rh_a_str}</strong></div></div></div>""", unsafe_allow_html=True)
     
+    # --- BLOC D'AMENACES AMB LA NOVA LÒGICA ---
     st.markdown("##### Potencial d'Amenaces Severes")
-    amenaces = analitzar_amenaces_especifiques(params)
-    puntuacio_resultat = calcular_puntuacio_tempesta(sounding_data, params, nivell_conv)
+    
+    # Crida a la nova funció que retorna totes les amenaces en un diccionari
+    amenaces = analitzar_amenaces_severes(params, sounding_data, nivell_conv)
     
     cols_amenaces = st.columns(3)
-    with cols_amenaces[0]: styled_qualitative("Calamarsa Gran (>2cm)", amenaces['calamarsa']['text'], amenaces['calamarsa']['color'], tooltip_text=TOOLTIPS.get('AMENACA_CALAMARSA'))
-    with cols_amenaces[1]: styled_qualitative("Índex de Potencial", f"{puntuacio_resultat['score']} / 10", puntuacio_resultat['color'], tooltip_text=TOOLTIPS.get('PUNTUACIO_TEMPESTA'))
-    with cols_amenaces[2]: styled_qualitative("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], tooltip_text=TOOLTIPS.get('AMENACA_LLAMPS'))
-    
+    with cols_amenaces[0]:
+        precip_data = amenaces['precipitacio']
+        styled_qualitative(precip_data['label'], precip_data['text'], precip_data['color'])
+    with cols_amenaces[1]:
+        potencial_data = amenaces['potencial']
+        styled_qualitative(potencial_data['label'], potencial_data['text'], potencial_data['color'])
+    with cols_amenaces[2]:
+        electricitat_data = amenaces['electricitat']
+        styled_qualitative(electricitat_data['label'], electricitat_data['text'], electricitat_data['color'])
+        
         
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
     """
