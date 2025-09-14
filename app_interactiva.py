@@ -832,7 +832,7 @@ def calcular_mlcape_robusta(p, T, Td):
         return 0.0, 0.0
 
 
-def processar_dades_sondeig_impecable(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
+def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
     Versió Definitiva i Impecable v10.0. Aquesta funció processa les dades brutes d'un sondeig
     per calcular un conjunt complet de paràmetres de temps sever de manera extremadament robusta.
