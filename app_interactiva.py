@@ -840,14 +840,11 @@ def calcular_mlcape_robusta(p, T, Td):
         return 0.0, 0.0
 
 
-# -*- coding: utf-8 -*-
-
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i COMPLETA v18.0 (Càlcul Blindat).
-    - **CORRECCIÓ DE BUG**: El càlcul del 'Total Totals Index' s'ha blindat. Ara comprova
-      explícitament si les dades a 850 hPa i 500 hPa són vàlides abans d'intentar
-      el càlcul, evitant l'error '---' en perfils de muntanya o incomplets.
+    Versió Definitiva i COMPLETA v19.0 (Amb K-Index).
+    - **CANVI PRINCIPAL**: S'ha eliminat el càlcul del 'Total Totals Index' i s'ha
+      substituït pel càlcul del 'K-Index', seguint la teva petició.
     """
     # --- 1. PREPARACIÓ I VALIDACIÓ DE DADES ---
     if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
@@ -906,24 +903,18 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         else: params_calc['WBZ_HGT'] = np.nan
     except Exception: params_calc['WBZ_HGT'] = np.nan
 
-    # <<<--- CÀLCUL DEL TOTAL TOTALS INDEX (VERSIÓ BLINDADA) ---
+    # <<<--- NOU BLOC: CÀLCUL DEL K-INDEX ---
     try:
-        # 1. Comprova si els nivells de 850 i 500 hPa existeixen al perfil
         if p.min().m < 500 and p.max().m > 850:
-            p_levels_for_tt = np.array([850, 500]) * units.hPa
-            T_for_tt = np.interp(p_levels_for_tt.m, p.m[::-1], T.m[::-1]) * units.degC
-            Td_for_tt = np.interp(p_levels_for_tt.m, p.m[::-1], Td.m[::-1]) * units.degC
-            
-            # 2. Comprova que la interpolació no hagi donat valors nuls
-            if not np.isnan(T_for_tt).any() and not np.isnan(Td_for_tt).any():
-                params_calc['TOTAL_TOTALS'] = float(mpcalc.total_totals_index(T_for_tt, Td_for_tt).m)
-            else:
-                params_calc['TOTAL_TOTALS'] = np.nan # La interpolació ha fallat
-        else:
-            params_calc['TOTAL_TOTALS'] = np.nan # Els nivells no existeixen
-    except Exception:
-        params_calc['TOTAL_TOTALS'] = np.nan
-    # <<<--- FI DEL BLOC BLINDAT ---
+            p_levels_for_k = np.array([850, 700, 500]) * units.hPa
+            T_for_k = np.interp(p_levels_for_k.m, p.m[::-1], T.m[::-1]) * units.degC
+            Td_for_k = np.interp(p_levels_for_k.m, p.m[::-1], Td.m[::-1]) * units.degC
+            if not np.isnan(T_for_k).any() and not np.isnan(Td_for_k).any():
+                params_calc['K_INDEX'] = float(mpcalc.k_index(T_for_k, Td_for_k).m)
+            else: params_calc['K_INDEX'] = np.nan
+        else: params_calc['K_INDEX'] = np.nan
+    except Exception: params_calc['K_INDEX'] = np.nan
+    # <<<--- FI DEL NOU BLOC ---
 
     # --- 4. CÀLCULS CINEMÀTICS ---
     try:
@@ -954,6 +945,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     # --- 6. RETORN DE LES DADES PROCESSADES ---
     processed_tuple = (p, T, Td, u, v, heights, main_prof, wb_profile)
     return (processed_tuple, params_calc), None
+    
 
 
 
@@ -1724,16 +1716,15 @@ MAPA_IMATGES_REALS = {
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva v63.0 (Amb Total Totals Index).
-    - **CANVI PRINCIPAL**: El Total Totals Index substitueix el MUCAPE a la fila superior
-      per a oferir un diagnòstic de severitat més clàssic i directe.
+    Versió Definitiva v64.0 (Amb K-Index).
+    - **CANVI PRINCIPAL**: El K-Index substitueix el Total Totals a la fila superior.
     """
     TOOLTIPS = {
         'MLCAPE': "Mixed-Layer CAPE: Energia disponible.",
         'LI': "Lifted Index: Indicador d'inestabilitat a 500 hPa.",
         'CONV_PUNTUAL': "Convergència (+): Disparador. Divergència (-): Estabilitzador.",
         'CAPE_0-3km': "Low-Level CAPE: Energia a nivells baixos, afavoreix rotació.",
-        'TOTAL_TOTALS': "Índex clàssic de severitat que combina la inestabilitat vertical (VT) i la humitat a nivells baixos (CT). Valors > 50 indiquen alt potencial de temps sever.",
+        'K_INDEX': "Índex de probabilitat de tempesta. >25 indica probabilitat moderada, >35 indica tempestes nombroses. No mesura la severitat.",
         'SBCIN': "Inhibició (tapa) des de la superfície.",
         'PWAT': "Aigua Precipitable Total: Potencial per a pluges fortes.",
         'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa: Energia termodinàmica.",
@@ -1767,7 +1758,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
 
     st.markdown("##### Paràmetres del Sondeig")
     
-    # <<<--- FILA 1 MODIFICADA AMB TOTAL TOTALS ---
+    # <<<--- FILA 1 MODIFICADA AMB K-INDEX ---
     cols_fila1 = st.columns(5)
     with cols_fila1[0]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
     with cols_fila1[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', tooltip_text=TOOLTIPS.get('LI'), precision=1, reverse_colors=True)
@@ -1778,8 +1769,9 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
             else: st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">Divergència (unitats) <span title="{TOOLTIPS.get('CONV_PUNTUAL')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: #6495ED; line-height: 1.1;">{conv_value:.1f}</strong></div>""", unsafe_allow_html=True)
         else: styled_metric("Convergència", np.nan, "unitats", "CONV_PUNTUAL")
     with cols_fila1[3]: styled_metric("3CAPE", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
-    with cols_fila1[4]: styled_metric("Totals", params.get('TOTAL_TOTALS', np.nan), "", 'TOTAL_TOTALS', tooltip_text=TOOLTIPS.get('TOTAL_TOTALS'))
+    with cols_fila1[4]: styled_metric("K-Index", params.get('K_INDEX', np.nan), "", 'K_INDEX', tooltip_text=TOOLTIPS.get('K_INDEX'))
 
+    # ... (La resta de la funció no canvia) ...
     analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
     if analisi_temps_list:
         diag = analisi_temps_list[0]; desc, veredicte = diag.get("descripcio", "Desconegut"), diag.get("veredicte", "")
@@ -1788,7 +1780,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         st.markdown(f"""<div style="position: relative; width: 100%; height: 150px; border-radius: 10px; background-image: url('{b64_img}'); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 15px; box-shadow: inset 0 -80px 60px -30px rgba(0,0,0,0.8); margin-bottom: 10px;"><div style="color: white; text-shadow: 2px 2px 5px rgba(0,0,0,0.8);"><strong style="font-size: 1.3em;">{veredicte}</strong><br><em style="font-size: 0.9em; color: #DDDDDD;">({desc})</em></div></div>""", unsafe_allow_html=True)
     else:
         with st.container(border=True): st.warning("No s'ha pogut determinar el tipus de cel.")
-
     cols_fila2 = st.columns(5)
     with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols_fila2[1]: styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', tooltip_text=TOOLTIPS.get('PWAT'), precision=1)
@@ -1798,7 +1789,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         styled_metric("Theta-E 850", theta_e_c, "°C", 'THETAE_850hPa', tooltip_text=TOOLTIPS.get('THETAE_850hPa'), precision=1)
     with cols_fila2[3]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
     with cols_fila2[4]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
-        
     cols_fila3 = st.columns(5)
     with cols_fila3[0]:
         el_hgt_val = params.get('EL_Hgt', np.nan); el_color = "#FFFFFF"
@@ -1819,7 +1809,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         t500_val_str = f"{t500_val:.1f}" if pd.notna(t500_val) else "---"
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">T 500hPa (°C) <span title="{TOOLTIPS.get('T_500hPa')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: {t500_color}; line-height: 1.1;">{t500_val_str}</strong></div>""", unsafe_allow_html=True)
     with cols_fila3[4]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
-
     rh_capes = params.get('RH_CAPES', {}); rh_b = rh_capes.get('baixa', np.nan); rh_m = rh_capes.get('mitjana', np.nan); rh_a = rh_capes.get('alta', np.nan)
     def get_rh_color(rh_value):
         if not pd.notna(rh_value): return "#FFFFFF"
