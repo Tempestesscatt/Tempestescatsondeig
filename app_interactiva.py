@@ -818,6 +818,7 @@ def calcular_mlcape_robusta(p, T, Td):
         else:
             p_layer, T_layer, Td_layer = p[mask], T[mask], Td[mask]
             theta_mixed = np.mean(mpcalc.potential_temperature(p_layer, T_layer))
+            # Corregit: Utilitzar dewpoint per a la ratio de barreja
             mixing_ratio_mixed = np.mean(mpcalc.mixing_ratio_from_dewpoint(p_layer, Td_layer))
             
             T_mixed = mpcalc.temperature_from_potential_temperature(p_sfc, theta_mixed)
@@ -829,13 +830,11 @@ def calcular_mlcape_robusta(p, T, Td):
         return float(mlcape.m), float(mlcin.m)
     except Exception:
         return 0.0, 0.0
-        
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Antifràgil v7.1: Utilitza blocs try-except individuals
-    i retorna 0.0 en lloc de NaN si un càlcul de CAPE falla, per a una
-    visualització més neta.
+    Versió Definitiva v9.0: Estructura de càlcul simplificada i robusta per a
+    garantir la coherència entre dades visuals i numèriques.
     """
     # --- 1. PREPARACIÓ I NETEJA DE DADES ---
     if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
@@ -847,19 +846,26 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     if len(p) < 3: return None, "No hi ha prou dades vàlides."
     sort_idx = np.argsort(p.m)[::-1]
     p, T, Td, u, v, heights = p[sort_idx], T[sort_idx], Td[sort_idx], u[sort_idx], v[sort_idx], heights[sort_idx]
-    params_calc = {}; heights_agl = heights - heights[0]
-
+    
+    params_calc = {}
+    heights_agl = heights - heights[0]
+    
     # --- 2. CÀLCULS BASE I PERFILS DE PARCEL·LA ---
     with parcel_lock:
-        sfc_prof, ml_prof = None, None
-        try: sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
-        except Exception: return None, "Error crític al calcular el perfil de superfície."
-        try: _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
-        except Exception: ml_prof = None
+        sfc_prof, ml_prof, main_prof = None, None, None
+        try:
+            sfc_prof = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC')
+        except Exception:
+            return None, "Error crític al calcular el perfil de superfície."
+        
+        try:
+            _, _, _, ml_prof = mpcalc.mixed_parcel(p, T, Td, depth=100 * units.hPa)
+        except Exception:
+            ml_prof = sfc_prof
+            
         main_prof = ml_prof if ml_prof is not None else sfc_prof
 
         # --- 3. CÀLCULS ROBUSTS I AÏLLATS ---
-        
         try: 
             rh = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
             params_calc['RH_CAPES'] = {'baixa': np.mean(rh[(p.m <= 1000) & (p.m > 850)]), 'mitjana': np.mean(rh[(p.m <= 850) & (p.m > 500)]), 'alta': np.mean(rh[(p.m <= 500) & (p.m > 250)])}
@@ -867,20 +873,14 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         try: params_calc['PWAT'] = float(mpcalc.precipitable_water(p, Td).to('mm').m)
         except Exception: params_calc['PWAT'] = np.nan
 
-        # <<<--- CANVI PRINCIPAL AQUÍ: En cas d'error, s'assigna 0.0 ---
         try:
             sbcape, sbcin = mpcalc.cape_cin(p, T, Td, sfc_prof); params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m)
             params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if sbcape.m > 0 else 0.0
         except Exception: params_calc.update({'SBCAPE': 0.0, 'SBCIN': 0.0, 'MAX_UPDRAFT': 0.0})
 
-        try:
-            mlcape, mlcin = mpcalc.cape_cin(p, T, Td, ml_prof); params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
-        except Exception: params_calc.update({'MLCAPE': 0.0, 'MLCIN': 0.0})
+        mlcape_val, mlcin_val = calcular_mlcape_robusta(p, T, Td)
+        params_calc['MLCAPE'], params_calc['MLCIN'] = mlcape_val, mlcin_val
         
-        try:
-            mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td); params_calc['MUCAPE'] = float(mucape.m); params_calc['MUCIN'] = float(mucin.m)
-        except Exception: params_calc.update({'MUCAPE': 0.0, 'MUCIN': 0.0})
-
         try:
             ecape, _ = mpcalc.effective_cape_cin(p, T, Td); params_calc['ECAPE'] = float(ecape.m)
         except Exception: params_calc['ECAPE'] = 0.0
@@ -889,9 +889,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
             idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
             cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], main_prof[:idx_3km+1]); params_calc['CAPE_0-3km'] = float(cape_0_3.m)
         except Exception: params_calc['CAPE_0-3km'] = 0.0
-        # --- FI DEL CANVI ---
 
-        # La resta de paràmetres es mantenen amb NaN, ja que un valor de 0 no tindria sentit (p.ex. LFC a 0 metres)
         try: params_calc['LI'] = float(mpcalc.lifted_index(p, T, main_prof).m)
         except Exception: params_calc['LI'] = np.nan
         try:
@@ -921,7 +919,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                     srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.meter, storm_u=u_storm, storm_v=v_storm)[0]; params_calc[f'SRH_{name}'] = float(srh.m)
             except Exception: params_calc.update({'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
         
-    return ((p, T, Td, u, v, heights, sfc_prof), params_calc), None
+    return ((p, T, Td, u, v, heights, main_prof), params_calc), None
            
 
 
