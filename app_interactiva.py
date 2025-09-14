@@ -109,7 +109,26 @@ MAP_CONFIG = {
 }
 
 
-# -*- coding: utf-8 -*-
+
+@st.cache_data
+def convertir_img_a_base64(ruta_arxiu):
+    """
+    Llegeix un arxiu d'imatge local i el converteix a format Base64
+    per a ser incrustat directament en HTML.
+    """
+    try:
+        with open(ruta_arxiu, "rb") as f:
+            contingut = base64.b64encode(f.read()).decode("utf-8")
+        return f"data:image/jpeg;base64,{contingut}"
+    except FileNotFoundError:
+        # Si no troba la imatge, intenta carregar una imatge de fallback
+        try:
+            with open("imatges_reals/fallback.jpg", "rb") as f:
+                contingut = base64.b64encode(f.read()).decode("utf-8")
+            return f"data:image/jpeg;base64,{contingut}"
+        except FileNotFoundError:
+            return "" # Si ni tan sols troba el fallback, retorna una cadena buida
+            
 
 # AFEGEIX AQUEST NOU DICCIONARI AL TEU CODI
 NUVOL_FOTO_BASE64 = {
@@ -1750,12 +1769,13 @@ def image_to_base64(file_path):
         return f"data:image/jpeg;base64,{encoded_string}"
 
 
+# -*- coding: utf-8 -*-
+
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva v52.0 (Panell d'Expert).
-    - **CANVI PRINCIPAL**: S'afegeix la Convergència/Divergència a la fila principal, que ara conté
-      5 paràmetres clau per a un diagnòstic complet i immediat de la situació convectiva.
-    - El rètol canvia dinàmicament entre 'Convergència' i 'Divergència'.
+    Versió Definitiva v52.0 (Càrrega des de Repositori).
+    - **CANVI PRINCIPAL**: Ja no depèn d'un diccionari Base64. Ara carrega les imatges
+      directament des de la carpeta 'imatges_reals' mitjançant una funció auxiliar.
     """
     TOOLTIPS = {
         'MLCAPE': "Mixed-Layer CAPE: Energia disponible per a una parcel·la d'aire mitjana en els 100hPa inferiors. Molt representatiu de les condicions reals.",
@@ -1794,41 +1814,42 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br><strong style="font-size: 1.6em; color: {color};">{text}</strong></div>""", unsafe_allow_html=True)
 
-    # --- SECCIÓ DE PARÀMETRES PRINCIPALS ---
     st.markdown("##### Paràmetres del Sondeig")
     
-    # <<<--- CANVI A 5 COLUMNES PER AL PANELL D'EXPERT COMPLET ---
     cols_fila1 = st.columns(5)
     with cols_fila1[0]:
         styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
     with cols_fila1[1]:
         styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', tooltip_text=TOOLTIPS.get('LI'), precision=1, reverse_colors=True)
     with cols_fila1[2]:
-        # --- NOU BLOC PER A LA CONVERGÈNCIA / DIVERGÈNCIA ---
         conv_key = f'CONV_{nivell_conv}hPa'
         conv_value = params.get(conv_key, np.nan)
         if pd.notna(conv_value):
             if conv_value >= 0:
                 styled_metric("Convergència", conv_value, "unitats", "CONV_PUNTUAL", tooltip_text=TOOLTIPS.get('CONV_PUNTUAL'), precision=1)
             else:
-                # Si és divergència, fem un bloc personalitzat amb color blau
                 st.markdown(f"""
                 <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
                     <span style="font-size: 0.8em; color: #FAFAFA;">Divergència (unitats) <span title="{TOOLTIPS.get('CONV_PUNTUAL')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span>
                     <strong style="font-size: 1.6em; color: #6495ED; line-height: 1.1;">{conv_value:.1f}</strong>
                 </div>""", unsafe_allow_html=True)
         else:
-             styled_metric("Convergència", np.nan, "unitats", "CONV_PUNTUAL") # Mostra '---' si no hi ha dades
+             styled_metric("Convergència", np.nan, "unitats", "CONV_PUNTUAL")
     with cols_fila1[3]:
         styled_metric("3CAPE", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
     with cols_fila1[4]:
         styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
 
+    # --- BLOC VISUAL AMB FOTO DE FONS (ARA CARREGADA DES D'ARXIU) ---
     analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
     if analisi_temps_list:
         diag = analisi_temps_list[0]
         desc, veredicte = diag.get("descripcio", "Desconegut"), diag.get("veredicte", "")
-        b64_img = NUVOL_FOTO_BASE64.get(desc, NUVOL_FOTO_BASE64.get("fallback", ""))
+        
+        # Construeix la ruta a l'arxiu i el converteix
+        ruta_arxiu_imatge = f"imatges_reals/{desc}.jpg"
+        b64_img = convertir_img_a_base64(ruta_arxiu_imatge)
+
         st.markdown(f"""
         <div style="
             position: relative; width: 100%; height: 180px; border-radius: 10px;
@@ -1846,6 +1867,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         with st.container(border=True):
             st.warning("No s'ha pogut determinar el tipus de cel.")
 
+    # ... La resta de la funció (files 2 i 3 de paràmetres, amenaces, etc.) no canvia ...
     cols_fila2 = st.columns(4)
     with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols_fila2[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
