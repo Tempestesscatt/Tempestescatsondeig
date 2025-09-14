@@ -1758,10 +1758,10 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva v49.0 (Panell d'Energia Complet).
-    - **CANVI PRINCIPAL**: La fila superior s'amplia a 4 columnes per mostrar el panell complet
-      d'energia i inestabilitat: MLCAPE, LI, 3CAPE i MUCAPE.
-    - Interfície neta i directa sense paràmetres secundaris.
+    Versió Definitiva v50.0 (Visualització Millorada).
+    - **CANVI PRINCIPAL**: La secció "Tipus de Cel Previst" ara mostra una imatge gran i centrada
+      del tipus de núvol, amb el text a sota, per a una interpretació més directa i visual.
+    - Manté el panell d'energia de 4 paràmetres a la part superior.
     """
     TOOLTIPS = {
         'MLCAPE': "Mixed-Layer CAPE: Energia disponible per a una parcel·la d'aire mitjana en els 100hPa inferiors. Molt representatiu de les condicions reals.",
@@ -1802,7 +1802,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     # --- SECCIÓ DE PARÀMETRES PRINCIPALS ---
     st.markdown("##### Paràmetres del Sondeig")
     
-    # <<<--- CANVI A 4 COLUMNES PER AL PANELL D'ENERGIA COMPLET ---
     cols_fila1 = st.columns(4)
     with cols_fila1[0]:
         styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
@@ -1813,19 +1812,30 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_fila1[3]:
         styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
 
+    # <<<--- NOU BLOC VISUAL PER AL TIPUS DE CEL ---
     with st.container(border=True):
         st.markdown('<p style="text-align:center; font-size: 0.9em; color: #FAFAFA; margin-bottom: 8px;">Tipus de Cel Previst</p>', unsafe_allow_html=True)
         analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
+        
         if analisi_temps_list:
-            for i, diag in enumerate(analisi_temps_list):
-                desc, veredicte = diag.get("descripcio", "Desconegut"), diag.get("veredicte", "")
-                b64_img = NUVOL_ICON_BASE64.get(desc, NUVOL_ICON_BASE64["fallback"])
-                img_col, text_col = st.columns([0.2, 0.8], gap="medium", vertical_alignment="center")
-                with img_col: st.image(b64_img, width=50)
-                with text_col:
-                    st.markdown(f'<div style="line-height: 1.3;"><strong style="font-size: 1.05em; color: #FFFFFF;">{veredicte}</strong><br><span style="font-size: 0.85em; color: #A0A0B0; font-style: italic;">({desc})</span></div>', unsafe_allow_html=True)
-                if i < len(analisi_temps_list) - 1: st.markdown("<hr style='margin: 8px 0; border-color: #444;'>", unsafe_allow_html=True)
-        else: st.warning("No s'ha pogut determinar el tipus de cel.")
+            # Mostrem només el diagnòstic principal per a més claredat
+            diag = analisi_temps_list[0]
+            desc = diag.get("descripcio", "Desconegut")
+            veredicte = diag.get("veredicte", "")
+            b64_img = NUVOL_ICON_BASE64.get(desc, NUVOL_ICON_BASE64["fallback"])
+
+            # Usem HTML per a un control total sobre l'estil i la disposició centrada
+            st.markdown(f"""
+            <div style="text-align: center; padding: 10px 0;">
+                <img src="{b64_img}" alt="{desc}" style="width: 120px; height: auto; margin-bottom: 10px;">
+                <strong style="display: block; font-size: 1.1em; color: #FFFFFF;">{veredicte}</strong>
+                <em style="font-size: 0.9em; color: #A0A0B0;">({desc})</em>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        else:
+            st.warning("No s'ha pogut determinar el tipus de cel.")
+    # <<<--- FI DEL NOU BLOC VISUAL ---
 
     cols_fila2 = st.columns(4)
     with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
@@ -1847,7 +1857,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_amenaces[0]: styled_qualitative("Calamarsa Gran (>2cm)", amenaces['calamarsa']['text'], amenaces['calamarsa']['color'], tooltip_text=TOOLTIPS.get('AMENACA_CALAMARSA'))
     with cols_amenaces[1]: styled_qualitative("Índex de Potencial", f"{puntuacio_resultat['score']} / 10", puntuacio_resultat['color'], tooltip_text=TOOLTIPS.get('PUNTUACIO_TEMPESTA'))
     with cols_amenaces[2]: styled_qualitative("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], tooltip_text=TOOLTIPS.get('AMENACA_LLAMPS'))
-        
         
         
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
