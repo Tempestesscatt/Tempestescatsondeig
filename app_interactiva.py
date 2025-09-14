@@ -8507,23 +8507,22 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Expert v60.0 (Algoritme de Decisió Holístic).
-    - **LÒGICA COMPLETAMENT NOVA**: Utilitza un sistema de puntuació i regles jeràrquiques
-      que integren CAPE, CIN, LFC, Convergència, Cisallament i Humitat per a un
-      diagnòstic extremadament precís del tipus de temps més probable.
+    Sistema de Diagnòstic Expert v61.0 (Lògica de Disparador Prioritari).
+    - **CORRECCIÓ DE LÒGICA**: Aquest algorisme ara avalua PRIMER si les condicions de
+      dispar són favorables (CIN feble, LFC baix, Convergència present) abans
+      d'analitzar l'energia (CAPE). Això evita diagnòstics de tempesta "optimistes"
+      quan en realitat l'atmosfera està tapada o no té mecanismes d'ascens.
     """
-    
-    # --- 1. Extracció i Neteja de Totes les Variables Clau ---
+    # --- 1. Extracció de Totes les Variables Clau ---
     mlcape = params.get('MLCAPE', 0) or 0
     sbcape = params.get('SBCAPE', 0) or 0
-    cape = max(mlcape, sbcape) # Usem la CAPE més representativa
+    cape = max(mlcape, sbcape)
     
     sbcin = params.get('SBCIN', 0) or 0
     mucin = params.get('MUCIN', 0) or 0
-    cin = min(sbcin, mucin) # Considerem la "tapa" més forta
+    cin = min(sbcin, mucin)
 
     lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
-    lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     
     rh_capes = params.get('RH_CAPES', {})
@@ -8533,17 +8532,15 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
-    pwat = params.get('PWAT', 0) or 0
 
-    # --- 2. Algoritme de Decisió Jeràrquic ---
+    # --- 2. AVALUACIÓ PRIORITÀRIA DEL DISPARADOR I LA INHIBICIÓ ---
+    # Si no hi ha un mecanisme de dispar clar, la CAPE és irrellevant.
+    condicions_de_dispar_favorables = (cin > -50 and lfc_hgt < 2000 and conv > 10)
 
-    # -- PAS A: AVALUACIÓ DEL POTENCIAL DE DISPAR --
-    # Un "disparador" efectiu requereix poca inhibició i una força ascendent.
-    # L'alçada del LFC és crucial: un LFC molt alt pot impedir la convecció encara que el CIN sigui baix.
-    potencial_dispar = (cin > -75) and (lfc_hgt < 2500) and (conv > 8)
+    # --- 3. DIAGNÒSTIC BASAT EN LA LÒGICA JERÀRQUICA ---
 
-    # -- PAS B: DIAGNÒSTIC DE TEMPS SEVER (Té la màxima prioritat) --
-    if potencial_dispar and cape > 500:
+    if condicions_de_dispar_favorables:
+        # Si el disparador és actiu, mirem l'energia (CAPE) i el cisallament.
         if cape > 2000 and bwd_6km > 35:
             return [{'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Condicions explosives per a tempestes severes."}]
         if cape > 800 and bwd_6km > 25:
@@ -8552,36 +8549,27 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
             return [{'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Tempestes aïllades però molt potents."}]
         if cape > 500:
             return [{'descripcio': "Tempesta Comuna", 'veredicte': "Condicions per a tempestes d'estiu, amb xàfecs."}]
+        # Si hi ha disparador però poca energia, es formaran cúmuls de creixement.
+        if cape > 200:
+            return [{'descripcio': "Cúmuls de creixement", 'veredicte': "Núvols amb desenvolupament vertical, possibles xàfecs."}]
 
-    # -- PAS C: DIAGNÒSTIC DE NUVOLOSITAT NO SEVERA (si no hi ha tempesta) --
+    # --- 4. SI NO HI HA DISPARADOR, ANALITZEM NUVOLOSITAT ESTRATIFORME ---
+    # Aquesta part només s'executa si la secció de tempestes no ha retornat res.
     diagnostics = []
-
-    # C.1: Anàlisi de Capes Baixes (la més complexa)
+    
     if rh_baixa >= 70:
-        if potencial_dispar and 250 < cape <= 500:
-            diagnostics.append({'descripcio': "Cúmuls de creixement", 'veredicte': "Núvols amb desenvolupament vertical, possibles xàfecs."})
-        elif 100 <= cape < 250 and lcl_hgt < 1800:
-            diagnostics.append({'descripcio': "Cúmuls mediocris", 'veredicte': "Cúmuls amb creixement limitat."})
-        elif cape < 100:
-             diagnostics.append({'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos i cel cobert."})
-    elif rh_baixa > 60 and 50 <= cape < 150:
-         diagnostics.append({'descripcio': "Cúmuls de bon temps", 'veredicte': "Cel amb petits cúmuls decoratius."})
-
-    # C.2: Anàlisi de Capes Mitjanes
-    if rh_mitjana >= 60:
-        # Si ja hem diagnosticat Estratus a sota, és més probable que sigui un Nimbostratus
-        if any(d['descripcio'] == "Estratus (Boira alta - Cel tancat)" for d in diagnostics) and pwat > 25:
-            # Substituïm el diagnòstic d'Estratus pel de Nimbostratus
-            diagnostics = [d for d in diagnostics if d['descripcio'] != "Estratus (Boira alta - Cel tancat)"]
-            diagnostics.insert(0, {'descripcio': "Nimbostratus (Pluja Contínua)", 'veredicte': "Cel cobert amb pluja generalitzada."})
+        if 50 <= cape < 200:
+            diagnostics.append({'descripcio': "Cúmuls mediocris", 'veredicte': "Núvols baixos amb cert desenvolupament."})
         else:
-            diagnostics.append({'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Presència de núvols a nivells mitjans."})
+            diagnostics.append({'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos i cel cobert."})
 
-    # C.3: Anàlisi de Capes Altes
+    if rh_mitjana >= 60:
+        diagnostics.append({'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Presència de núvols a nivells mitjans."})
+
     if rh_alta >= 50:
         diagnostics.append({'descripcio': "Vels de Cirrus (Molt Alts)", 'veredicte': "Presència de núvols alts de tipus cirrus."})
     
-    # -- PAS D: GESTIÓ FINAL --
+    # --- 5. GESTIÓ FINAL ---
     if not diagnostics:
         return [{'descripcio': "Cel Serè", 'veredicte': "Temps estable i sec."}]
             
