@@ -8503,18 +8503,27 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 # -*- coding: utf-8 -*-
 
+# -*- coding: utf-8 -*-
+
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Expert v52.0 (Anàlisi Exhaustiva).
-    - **CORRECCIÓ FINAL**: S'ha eliminat la limitació del nombre de diagnòstics. Ara la funció
-      retornarà TOTS els tipus de núvols detectats a les diferents capes atmosfèriques,
-      oferint un retrat complet de la situació.
+    Sistema de Diagnòstic Expert v60.0 (Algoritme de Decisió Holístic).
+    - **LÒGICA COMPLETAMENT NOVA**: Utilitza un sistema de puntuació i regles jeràrquiques
+      que integren CAPE, CIN, LFC, Convergència, Cisallament i Humitat per a un
+      diagnòstic extremadament precís del tipus de temps més probable.
     """
-    diagnostics = []
     
-    # --- Extracció Robusta de Tots els Paràmetres ---
+    # --- 1. Extracció i Neteja de Totes les Variables Clau ---
     mlcape = params.get('MLCAPE', 0) or 0
+    sbcape = params.get('SBCAPE', 0) or 0
+    cape = max(mlcape, sbcape) # Usem la CAPE més representativa
+    
+    sbcin = params.get('SBCIN', 0) or 0
     mucin = params.get('MUCIN', 0) or 0
+    cin = min(sbcin, mucin) # Considerem la "tapa" més forta
+
+    lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
+    lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     
     rh_capes = params.get('RH_CAPES', {})
@@ -8524,42 +8533,58 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
+    pwat = params.get('PWAT', 0) or 0
 
-    # --- PAS 1: COMPROVACIÓ PRIORITÀRIA DE POTENCIAL DE TEMPESTA (EXCLOENT) ---
-    # Si es detecta una tempesta, aquest és l'únic diagnòstic vàlid.
-    if mucin > -150 and conv > 5 and mlcape > 400:
-        if mlcape > 2000 and bwd_6km > 35:
+    # --- 2. Algoritme de Decisió Jeràrquic ---
+
+    # -- PAS A: AVALUACIÓ DEL POTENCIAL DE DISPAR --
+    # Un "disparador" efectiu requereix poca inhibició i una força ascendent.
+    # L'alçada del LFC és crucial: un LFC molt alt pot impedir la convecció encara que el CIN sigui baix.
+    potencial_dispar = (cin > -75) and (lfc_hgt < 2500) and (conv > 8)
+
+    # -- PAS B: DIAGNÒSTIC DE TEMPS SEVER (Té la màxima prioritat) --
+    if potencial_dispar and cape > 500:
+        if cape > 2000 and bwd_6km > 35:
             return [{'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Condicions explosives per a tempestes severes."}]
-        if mlcape > 800 and bwd_6km > 25:
+        if cape > 800 and bwd_6km > 25:
             return [{'descripcio': "Tempestes Organitzades", 'veredicte': "Potencial per a sistemes de tempestes organitzats."}]
-        if mlcape > 1500 and bwd_6km < 20:
+        if cape > 1500 and bwd_6km < 20:
             return [{'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Tempestes aïllades però molt potents."}]
-        return [{'descripcio': "Cúmuls de creixement", 'veredicte': "Núvols amb fort desenvolupament vertical."}]
-    
-    # --- PAS 2: ANÀLISI ADDITIVA DE NUVOLOSITAT PER CAPES (si no hi ha tempesta) ---
-    # Aquesta secció pot afegir múltiples diagnòstics a la llista.
-    
-    # -- ANÀLISI DE CAPES BAIXES --
+        if cape > 500:
+            return [{'descripcio': "Tempesta Comuna", 'veredicte': "Condicions per a tempestes d'estiu, amb xàfecs."}]
+
+    # -- PAS C: DIAGNÒSTIC DE NUVOLOSITAT NO SEVERA (si no hi ha tempesta) --
+    diagnostics = []
+
+    # C.1: Anàlisi de Capes Baixes (la més complexa)
     if rh_baixa >= 70:
-        if mlcape >= 100:
-            diagnostics.append({'descripcio': "Cúmuls mediocris", 'veredicte': "Núvols baixos amb cert desenvolupament."})
-        else:
-            diagnostics.append({'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos i cel cobert."})
+        if potencial_dispar and 250 < cape <= 500:
+            diagnostics.append({'descripcio': "Cúmuls de creixement", 'veredicte': "Núvols amb desenvolupament vertical, possibles xàfecs."})
+        elif 100 <= cape < 250 and lcl_hgt < 1800:
+            diagnostics.append({'descripcio': "Cúmuls mediocris", 'veredicte': "Cúmuls amb creixement limitat."})
+        elif cape < 100:
+             diagnostics.append({'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos i cel cobert."})
+    elif rh_baixa > 60 and 50 <= cape < 150:
+         diagnostics.append({'descripcio': "Cúmuls de bon temps", 'veredicte': "Cel amb petits cúmuls decoratius."})
 
-    # -- ANÀLISI DE CAPES MITJANES --
+    # C.2: Anàlisi de Capes Mitjanes
     if rh_mitjana >= 60:
-        diagnostics.append({'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Presència de núvols a nivells mitjans."})
+        # Si ja hem diagnosticat Estratus a sota, és més probable que sigui un Nimbostratus
+        if any(d['descripcio'] == "Estratus (Boira alta - Cel tancat)" for d in diagnostics) and pwat > 25:
+            # Substituïm el diagnòstic d'Estratus pel de Nimbostratus
+            diagnostics = [d for d in diagnostics if d['descripcio'] != "Estratus (Boira alta - Cel tancat)"]
+            diagnostics.insert(0, {'descripcio': "Nimbostratus (Pluja Contínua)", 'veredicte': "Cel cobert amb pluja generalitzada."})
+        else:
+            diagnostics.append({'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Presència de núvols a nivells mitjans."})
 
-    # -- ANÀLISI DE CAPES ALTES --
+    # C.3: Anàlisi de Capes Altes
     if rh_alta >= 50:
         diagnostics.append({'descripcio': "Vels de Cirrus (Molt Alts)", 'veredicte': "Presència de núvols alts de tipus cirrus."})
     
-    # --- PAS 3: GESTIÓ FINAL ---
-    # Si, després de totes les comprovacions, la llista continua buida, el cel està serè.
+    # -- PAS D: GESTIÓ FINAL --
     if not diagnostics:
-        diagnostics.append({ 'descripcio': "Cel Serè", 'veredicte': "Temps estable i sec." })
+        return [{'descripcio': "Cel Serè", 'veredicte': "Temps estable i sec."}]
             
-    # Retorna la llista COMPLETA de diagnòstics trobats.
     return diagnostics
     
 if __name__ == "__main__":
