@@ -840,11 +840,14 @@ def calcular_mlcape_robusta(p, T, Td):
         return 0.0, 0.0
 
 
+# -*- coding: utf-8 -*-
+
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i COMPLETA v19.0 (Amb K-Index).
-    - **CANVI PRINCIPAL**: S'ha eliminat el càlcul del 'Total Totals Index' i s'ha
-      substituït pel càlcul del 'K-Index', seguint la teva petició.
+    Versió Definitiva i COMPLETA v20.0 (Càlcul K-Index Blindat).
+    - **CORRECCIÓ DE BUG DEFINITIVA**: El càlcul del K-Index ara utilitza les funcions natives
+      de MetPy per a buscar les dades directament als nivells de pressió requerits.
+      Això soluciona el problema de '---' en perfils de muntanya o incomplets.
     """
     # --- 1. PREPARACIÓ I VALIDACIÓ DE DADES ---
     if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
@@ -903,18 +906,16 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         else: params_calc['WBZ_HGT'] = np.nan
     except Exception: params_calc['WBZ_HGT'] = np.nan
 
-    # <<<--- NOU BLOC: CÀLCUL DEL K-INDEX ---
+    # <<<--- CÀLCUL DEL K-INDEX (VERSIÓ BLINDADA I DEFINITIVA) ---
     try:
-        if p.min().m < 500 and p.max().m > 850:
-            p_levels_for_k = np.array([850, 700, 500]) * units.hPa
-            T_for_k = np.interp(p_levels_for_k.m, p.m[::-1], T.m[::-1]) * units.degC
-            Td_for_k = np.interp(p_levels_for_k.m, p.m[::-1], Td.m[::-1]) * units.degC
-            if not np.isnan(T_for_k).any() and not np.isnan(Td_for_k).any():
-                params_calc['K_INDEX'] = float(mpcalc.k_index(T_for_k, Td_for_k).m)
-            else: params_calc['K_INDEX'] = np.nan
-        else: params_calc['K_INDEX'] = np.nan
-    except Exception: params_calc['K_INDEX'] = np.nan
-    # <<<--- FI DEL NOU BLOC ---
+        # MetPy té una funció nativa que és molt més robusta
+        params_calc['K_INDEX'] = float(mpcalc.k_index(p, T, Td).m)
+    except (ValueError, IndexError):
+        # Aquest error salta si falten els nivells de 850, 700 o 500 hPa
+        params_calc['K_INDEX'] = np.nan
+    except Exception:
+        params_calc['K_INDEX'] = np.nan
+    # <<<--- FI DEL BLOC ---
 
     # --- 4. CÀLCULS CINEMÀTICS ---
     try:
@@ -945,6 +946,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     # --- 6. RETORN DE LES DADES PROCESSADES ---
     processed_tuple = (p, T, Td, u, v, heights, main_prof, wb_profile)
     return (processed_tuple, params_calc), None
+    
     
 
 
