@@ -1718,30 +1718,22 @@ MAPA_IMATGES_REALS = {
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva v64.0 (Amb K-Index).
-    - **CANVI PRINCIPAL**: El K-Index substitueix el Total Totals a la fila superior.
+    Versió Definitiva v65.0 (Reorganització per Seccions).
+    - **CANVI PRINCIPAL**: La disposició dels paràmetres ha estat completament
+      reorganitzada en seccions lògiques (Energia, Humitat, Inhibició, Cinemàtica)
+      per a una anàlisi més clara i professional.
     """
     TOOLTIPS = {
-        'MLCAPE': "Mixed-Layer CAPE: Energia disponible.",
-        'LI': "Lifted Index: Indicador d'inestabilitat a 500 hPa.",
-        'CONV_PUNTUAL': "Convergència (+): Disparador. Divergència (-): Estabilitzador.",
-        'CAPE_0-3km': "Low-Level CAPE: Energia a nivells baixos, afavoreix rotació.",
-        'K_INDEX': "Índex de probabilitat de tempesta. >25 indica probabilitat moderada, >35 indica tempestes nombroses. No mesura la severitat.",
-        'SBCIN': "Inhibició (tapa) des de la superfície.",
-        'PWAT': "Aigua Precipitable Total: Potencial per a pluges fortes.",
-        'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa: Energia termodinàmica.",
-        'LCL_Hgt': "Alçada de la base dels núvols.",
-        'LFC_Hgt': "Alçada on una bombolla d'aire comença a accelerar sola.",
-        'EL_Hgt': "Alçada del cim de la tempesta.",
-        'BWD_0-6km': "Cisallament del vent. Clau per a l'organització.",
-        'BWD_0-1km': "Cisallament del vent a nivells baixos.",
-        'T_500hPa': "Temperatura a 500 hPa.",
-        'MUCIN': "La 'tapa' més feble de l'atmosfera.",
-        'PUNTUACIO_TEMPESTA': "Índex global de potencial de tempesta.",
-        'AMENACA_CALAMARSA': "Potencial de calamarsa gran (>2cm).",
-        'AMENACA_LLAMPS': "Potencial d'activitat elèctrica."
+        'MLCAPE': "Mixed-Layer CAPE: Energia disponible.", 'LI': "Lifted Index: Indicador d'inestabilitat a 500 hPa.",
+        'CONV_PUNTUAL': "Convergència (+): Disparador. Divergència (-): Estabilitzador.", 'CAPE_0-3km': "Energia a nivells baixos, afavoreix rotació.",
+        'K_INDEX': "Índex de probabilitat de tempesta.", 'SBCIN': "Inhibició (tapa) des de la superfície.",
+        'PWAT': "Aigua Precipitable Total: Potencial per a pluges fortes.", 'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa: Energia termodinàmica.",
+        'LCL_Hgt': "Alçada de la base dels núvols.", 'LFC_Hgt': "Alçada on una bombolla d'aire comença a accelerar sola.",
+        'EL_Hgt': "Alçada del cim de la tempesta.", 'BWD_0-6km': "Cisallament del vent. Clau per a l'organització.",
+        'BWD_0-1km': "Cisallament del vent a nivells baixos.", 'T_500hPa': "Temperatura a 500 hPa.",
+        'MUCIN': "La 'tapa' més feble de l'atmosfera.", 'PUNTUACIO_TEMPESTA': "Índex global de potencial de tempesta.",
+        'AMENACA_CALAMARSA': "Potencial de calamarsa gran (>2cm).", 'AMENACA_LLAMPS': "Potencial d'activitat elèctrica."
     }
-    
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
         color = "#FFFFFF"; val_str = "---"
         is_numeric = isinstance(value, (int, float, np.number))
@@ -1753,56 +1745,23 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
             val_str = f"{value:.{precision}f}"
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit}){tooltip_html}</span><strong style="font-size: 1.6em; color: {color}; line-height: 1.1;">{val_str}</strong></div>""", unsafe_allow_html=True)
-
     def styled_qualitative(label, text, color, tooltip_text=""):
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br><strong style="font-size: 1.6em; color: {color};">{text}</strong></div>""", unsafe_allow_html=True)
 
-    st.markdown("##### Paràmetres del Sondeig")
+    # --- INICI DE LA NOVA ESTRUCTURA ---
     
-    # <<<--- FILA 1 MODIFICADA AMB K-INDEX ---
-    cols_fila1 = st.columns(5)
-    with cols_fila1[0]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
-    with cols_fila1[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', tooltip_text=TOOLTIPS.get('LI'), precision=1, reverse_colors=True)
-    with cols_fila1[2]:
-        conv_key = f'CONV_{nivell_conv}hPa'; conv_value = params.get(conv_key, np.nan)
-        if pd.notna(conv_value):
-            if conv_value >= 0: styled_metric("Convergència", conv_value, "unitats", "CONV_PUNTUAL", tooltip_text=TOOLTIPS.get('CONV_PUNTUAL'), precision=1)
-            else: st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">Divergència (unitats) <span title="{TOOLTIPS.get('CONV_PUNTUAL')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: #6495ED; line-height: 1.1;">{conv_value:.1f}</strong></div>""", unsafe_allow_html=True)
-        else: styled_metric("Convergència", np.nan, "unitats", "CONV_PUNTUAL")
-    with cols_fila1[3]: styled_metric("3CAPE", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
-    with cols_fila1[4]: styled_metric("K-Index", params.get('K_INDEX', np.nan), "", 'K_INDEX', tooltip_text=TOOLTIPS.get('K_INDEX'))
+    st.markdown("##### ⚡ Energia i Inestabilitat")
+    cols_energia = st.columns(4)
+    with cols_energia[0]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
+    with cols_energia[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', tooltip_text=TOOLTIPS.get('LI'), precision=1, reverse_colors=True)
+    with cols_energia[2]: styled_metric("3CAPE", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
+    with cols_energia[3]: styled_metric("K-Index", params.get('K_INDEX', np.nan), "", 'K_INDEX', tooltip_text=TOOLTIPS.get('K_INDEX'))
 
-    # ... (La resta de la funció no canvia) ...
-    analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
-    if analisi_temps_list:
-        diag = analisi_temps_list[0]; desc, veredicte = diag.get("descripcio", "Desconegut"), diag.get("veredicte", "")
-        nom_arxiu = MAPA_IMATGES_REALS.get(desc, MAPA_IMATGES_REALS["fallback"]); ruta_arxiu_imatge = os.path.join("imatges_reals", nom_arxiu)
-        b64_img = convertir_img_a_base64(ruta_arxiu_imatge)
-        st.markdown(f"""<div style="position: relative; width: 100%; height: 150px; border-radius: 10px; background-image: url('{b64_img}'); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 15px; box-shadow: inset 0 -80px 60px -30px rgba(0,0,0,0.8); margin-bottom: 10px;"><div style="color: white; text-shadow: 2px 2px 5px rgba(0,0,0,0.8);"><strong style="font-size: 1.3em;">{veredicte}</strong><br><em style="font-size: 0.9em; color: #DDDDDD;">({desc})</em></div></div>""", unsafe_allow_html=True)
-    else:
-        with st.container(border=True): st.warning("No s'ha pogut determinar el tipus de cel.")
-    cols_fila2 = st.columns(5)
-    with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
-    with cols_fila2[1]: styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', tooltip_text=TOOLTIPS.get('PWAT'), precision=1)
-    with cols_fila2[2]:
-        theta_e_k = params.get('THETAE_850hPa', np.nan)
-        theta_e_c = theta_e_k - 273.15 if pd.notna(theta_e_k) else np.nan
-        styled_metric("Theta-E 850", theta_e_c, "°C", 'THETAE_850hPa', tooltip_text=TOOLTIPS.get('THETAE_850hPa'), precision=1)
-    with cols_fila2[3]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
-    with cols_fila2[4]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
-    cols_fila3 = st.columns(5)
-    with cols_fila3[0]:
-        el_hgt_val = params.get('EL_Hgt', np.nan); el_color = "#FFFFFF"
-        if pd.notna(el_hgt_val):
-            if el_hgt_val > 12000: el_color = "#DC3545"
-            elif el_hgt_val > 9000: el_color = "#FD7E14"
-            elif el_hgt_val > 6000: el_color = "#FFC107"
-        el_val_str = f"{el_hgt_val:.0f}" if pd.notna(el_hgt_val) else "---"
-        st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">CIM (EL) (m) <span title="{TOOLTIPS.get('EL_Hgt')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: {el_color}; line-height: 1.1;">{el_val_str}</strong></div>""", unsafe_allow_html=True)
-    with cols_fila3[1]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km', tooltip_text=TOOLTIPS.get('BWD_0-6km'))
-    with cols_fila3[2]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km', tooltip_text=TOOLTIPS.get('BWD_0-1km'))
-    with cols_fila3[3]:
+    st.markdown("##### 💧 Humitat i Potencial de Precipitació")
+    cols_humitat = st.columns(3)
+    with cols_humitat[0]: styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', tooltip_text=TOOLTIPS.get('PWAT'), precision=1)
+    with cols_humitat[1]:
         t500_val = params.get('T_500hPa', np.nan); t500_color = "#FFFFFF"
         if pd.notna(t500_val):
             if t500_val < -12: t500_color = "#0D6EFD"
@@ -1810,7 +1769,11 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
             else: t500_color = "#FD7E14"
         t500_val_str = f"{t500_val:.1f}" if pd.notna(t500_val) else "---"
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">T 500hPa (°C) <span title="{TOOLTIPS.get('T_500hPa')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: {t500_color}; line-height: 1.1;">{t500_val_str}</strong></div>""", unsafe_allow_html=True)
-    with cols_fila3[4]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
+    with cols_humitat[2]:
+        theta_e_k = params.get('THETAE_850hPa', np.nan)
+        theta_e_c = theta_e_k - 273.15 if pd.notna(theta_e_k) else np.nan
+        styled_metric("Theta-E 850", theta_e_c, "°C", 'THETAE_850hPa', tooltip_text=TOOLTIPS.get('THETAE_850hPa'), precision=1)
+    
     rh_capes = params.get('RH_CAPES', {}); rh_b = rh_capes.get('baixa', np.nan); rh_m = rh_capes.get('mitjana', np.nan); rh_a = rh_capes.get('alta', np.nan)
     def get_rh_color(rh_value):
         if not pd.notna(rh_value): return "#FFFFFF"
@@ -1821,8 +1784,34 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         return "#FFDAB9"
     rh_b_str = f"{rh_b:.0f}%" if pd.notna(rh_b) else "---"; rh_m_str = f"{rh_m:.0f}%" if pd.notna(rh_m) else "---"; rh_a_str = f"{rh_a:.0f}%" if pd.notna(rh_a) else "---"
     st.markdown(f"""<div style="padding: 10px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;"><p style="text-align:center; font-size: 0.8em; color: #FAFAFA; margin-bottom: 8px; margin-top: -5px;">Humitat Relativa (RH %)</p><div style="display: flex; justify-content: space-around; text-align: center;"><div><span style="font-size: 0.8em; color: #A0A0B0;">Baixa</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_b)}; line-height: 1.1;">{rh_b_str}</strong></div><div><span style="font-size: 0.8em; color: #A0A0B0;">Mitjana</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_m)}; line-height: 1.1;">{rh_m_str}</strong></div><div><span style="font-size: 0.8em; color: #A0A0B0;">Alta</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_a)}; line-height: 1.1;">{rh_a_str}</strong></div></div></div>""", unsafe_allow_html=True)
-    
-    st.markdown("##### Potencial d'Amenaces Severes")
+
+    st.markdown("##### ⛔ Inhibició, Disparador i Nivells Clau")
+    cols_nivells = st.columns(5)
+    with cols_nivells[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
+    with cols_nivells[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
+    with cols_nivells[2]:
+        conv_key = f'CONV_{nivell_conv}hPa'; conv_value = params.get(conv_key, np.nan)
+        if pd.notna(conv_value):
+            if conv_value >= 0: styled_metric("Convergència", conv_value, "unitats", "CONV_PUNTUAL", tooltip_text=TOOLTIPS.get('CONV_PUNTUAL'), precision=1)
+            else: st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">Divergència (unitats) <span title="{TOOLTIPS.get('CONV_PUNTUAL')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: #6495ED; line-height: 1.1;">{conv_value:.1f}</strong></div>""", unsafe_allow_html=True)
+        else: styled_metric("Convergència", np.nan, "unitats", "CONV_PUNTUAL")
+    with cols_nivells[3]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
+    with cols_nivells[4]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
+
+    st.markdown("##### 💨 Cinemàtica (Vent i Cisallament)")
+    cols_cinematica = st.columns(3)
+    with cols_cinematica[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km', tooltip_text=TOOLTIPS.get('BWD_0-6km'))
+    with cols_cinematica[1]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km', tooltip_text=TOOLTIPS.get('BWD_0-1km'))
+    with cols_cinematica[2]:
+        el_hgt_val = params.get('EL_Hgt', np.nan); el_color = "#FFFFFF"
+        if pd.notna(el_hgt_val):
+            if el_hgt_val > 12000: el_color = "#DC3545"
+            elif el_hgt_val > 9000: el_color = "#FD7E14"
+            elif el_hgt_val > 6000: el_color = "#FFC107"
+        el_val_str = f"{el_hgt_val:.0f}" if pd.notna(el_hgt_val) else "---"
+        st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">CIM (EL) (m) <span title="{TOOLTIPS.get('EL_Hgt')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: {el_color}; line-height: 1.1;">{el_val_str}</strong></div>""", unsafe_allow_html=True)
+
+    st.markdown("##### ⛈️ Potencial d'Amenaces Severes")
     amenaces = analitzar_amenaces_severes(params, sounding_data, nivell_conv)
     cols_amenaces = st.columns(3)
     with cols_amenaces[0]:
