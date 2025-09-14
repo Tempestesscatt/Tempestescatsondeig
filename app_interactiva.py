@@ -6955,18 +6955,16 @@ def tornar_al_mapa_general():
 
 def run_catalunya_app():
     """
-    Versió Definitiva, Completa i Polida v2.1.
-    - Inclou la crida a la funció 'ui_pestanya_simulacio_nuvol' que faltava.
-    - GESTIÓ D'ESTAT ROBUSTA: Soluciona el bug de selecció que es resetejava sola.
-    - FEEDBACK CONSTANT: Afegeix spinners a totes les operacions de càrrega.
+    Versió Definitiva i Polida v2.2.
+    - **CORRECCIÓ DE BUG**: Soluciona l'error que feia que la 'Convergència' aparegués sense
+      dades ('---'). Ara es calcula abans i es passa correctament a totes les funcions.
     """
-    # --- Capçalera i Inicialització d'Estat ---
+    # --- PAS 1: CAPÇALERA I INICIALITZACIÓ D'ESTAT ---
     ui_capcalera_selectors(None, zona_activa="catalunya")
-    
     if 'selected_area' not in st.session_state: st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
     if 'poble_sel' not in st.session_state: st.session_state.poble_sel = "--- Selecciona una localitat ---"
     
-    # --- Selectors Globals i Càlcul de Temps ---
+    # --- PAS 2: SELECTORS GLOBALS I CÀLCUL DE TEMPS ---
     with st.container(border=True):
         col_dia, col_hora, col_nivell = st.columns(3)
         with col_dia:
@@ -6976,35 +6974,40 @@ def run_catalunya_app():
             hora_sel_str = st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector", index=datetime.now(TIMEZONE_CAT).hour)
         with col_nivell:
             nivell_sel = st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
-    
     st.caption("ℹ️ Dades del model AROME 2.5km. L'aplicació es refresca cada 10 minuts.")
-    
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     hora_num = int(hora_sel_str.split(':')[0])
     local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_num))
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
 
-    # --- Lògica Principal: Vista Detallada o Vista de Mapa ---
-    
+    # --- PAS 3: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
         # --- VISTA D'ANÀLISI DETALLADA D'UNA LOCALITAT ---
         poble_sel = st.session_state.poble_sel
         st.success(f"### Anàlisi per a: {poble_sel}")
-        
         col_nav1, col_nav2 = st.columns(2)
         with col_nav1: st.button("⬅️ Tornar a la Comarca", on_click=tornar_a_seleccio_comarca, use_container_width=True)
         with col_nav2: st.button("🗺️ Tornar al Mapa General", on_click=tornar_al_mapa_general, use_container_width=True)
-            
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
         
-        with st.spinner(f"Carregant dades del sondeig AROME per a {poble_sel}..."):
+        with st.spinner(f"Carregant dades del sondeig i mapa per a {poble_sel}..."):
             lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
-            data_tuple, final_index, error_msg = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+            data_tuple, final_index, error_msg_sounding = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+            map_data_conv, error_msg_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
 
-        if error_msg or not data_tuple:
-            st.error(f"No s'ha pogut carregar el sondeig: {error_msg if error_msg else 'Dades no disponibles.'}")
+        if error_msg_sounding or not data_tuple:
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg_sounding if error_msg_sounding else 'Dades no disponibles.'}")
             return
+            
+        params_calculats = data_tuple[1]
+        # <<<--- LÍNIA CLAU DE LA CORRECCIÓ ---
+        # Calculem la convergència i l'afegim al diccionari de paràmetres ABANS de passar-lo a cap altra funció.
+        if not error_msg_map and map_data_conv:
+            conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+            if pd.notna(conv_puntual):
+                params_calculats[f'CONV_{nivell_sel}hPa'] = conv_puntual
+        # --- FI DE LA CORRECCIÓ ---
 
         if final_index is not None and final_index != hourly_index_sel:
             adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
@@ -7014,17 +7017,13 @@ def run_catalunya_app():
         menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi de Mapes", "Simulació de Núvol"]
         menu_icons = ["fullscreen", "graph-up-arrow", "map", "cloud-upload"]
         active_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key=f'option_menu_{poble_sel}')
-
-        params_calculats = data_tuple[1]
         
         if active_tab == "Anàlisi Comarcal":
             with st.spinner("Carregant anàlisi comarcal completa..."):
                 alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
-                map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
             comarca_actual = get_comarca_for_poble(poble_sel)
             if comarca_actual:
                 valor_conv_comarcal = alertes_totals.get(comarca_actual, {}).get('conv', 0)
-                if map_data_conv: params_calculats[f'CONV_{nivell_sel}hPa'] = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
                 ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calculats, hora_sel_str, data_tuple, alertes_totals)
         
         elif active_tab == "Anàlisi Vertical":
