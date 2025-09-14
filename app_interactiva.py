@@ -8594,22 +8594,19 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Expert v50.0 - Anàlisi Multinivell d'Alta Sensibilitat.
-    - **LÒGICA REFINADA**: Analitza les capes atmosfèriques de manera independent.
-    - **SENSIBILITAT A LA HUMITAT**: Utilitza RH i LCL de manera detallada per a un diagnòstic precís
-      dels tipus de núvols, incloent-hi diferents formes de cúmuls i núvols alts.
-    - **DIAGNÒSTIC MÚLTIPLE**: Pot identificar i retornar múltiples capes de núvols si les condicions
-      són complexes, excepte en casos de patrons meteorològics dominants.
+    Sistema de Diagnòstic Expert v51.0 (Basat en Llindars d'Humitat).
+    - **LÒGICA CENTRAL**: Diagnostica la nuvolositat estratiforme basant-se estrictament en els
+      llindars d'Humitat Relativa (RH) per a cada capa (Baixa ≥ 70%, Mitjana ≥ 60%, Alta ≥ 50%).
+    - **PRIORITAT CONVECTIVA**: L'anàlisi de la humitat només es realitza si es descarta prèviament
+      la formació de tempestes significatives.
+    - **DIAGNÒSTIC MÚLTIPLE**: Pot retornar diagnòstics per a múltiples capes de núvols simultàniament.
     """
     diagnostics = []
     
     # --- Extracció Robusta de Tots els Paràmetres ---
     mlcape = params.get('MLCAPE', 0) or 0
-    mucape = params.get('MUCAPE', 0) or 0
     mucin = params.get('MUCIN', 0) or 0
     bwd_6km = params.get('BWD_0-6km', 0) or 0
-    pwat = params.get('PWAT', 0) or 0
-    lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
     
     rh_capes = params.get('RH_CAPES', {})
     rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
@@ -8618,62 +8615,44 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
-    wspd_500hpa = params.get('WSPD_500hPa', 0) or 0 # Paràmetre hipotètic, a implementar
-    wspd_10m = params.get('WSPD_10m', 0) or 0 # Paràmetre hipotètic, a implementar
 
-    # --- PAS 1: DETECCIÓ DE PATRONS DOMINANTS I EXCLOENTS ---
-    # Si es troba un d'aquests, l'anàlisi s'atura i només retorna aquest resultat.
-
-    # 1.1: Potencial Convectiu Sever
-    if mucin > -150 and conv > 5:
+    # --- PAS 1: COMPROVACIÓ PRIORITÀRIA DE POTENCIAL DE TEMPESTA ---
+    # Si hi ha condicions de tempesta, aquest diagnòstic té preferència sobre la resta.
+    if mucin > -150 and conv > 5 and mlcape > 400: # Llindar de mlcape a 400 per a tempestes
         if mlcape > 2000 and bwd_6km > 35:
             return [{'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Condicions explosives per a tempestes severes."}]
         if mlcape > 800 and bwd_6km > 25:
             return [{'descripcio': "Tempestes Organitzades", 'veredicte': "Potencial per a sistemes de tempestes organitzats."}]
         if mlcape > 1500 and bwd_6km < 20:
-            return [{'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Tempestes aïllades però molt potents, risc de calamarsa."}]
-        if mlcape > 500:
-            return [{'descripcio': "Tempesta Comuna", 'veredicte': "Condicions per a tempestes d'estiu, amb xàfecs."}]
+            return [{'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Tempestes aïllades però molt potents."}]
+        # Si no compleix les condicions de severitat, però hi ha energia, són cúmuls de gran evolució
+        return [{'descripcio': "Cúmuls de creixement", 'veredicte': "Núvols amb fort desenvolupament vertical."}]
     
-    # 1.2: Pluja Contínua (Nimbostratus)
-    if mlcape < 200 and lcl_hgt < 500 and rh_baixa > 85 and rh_mitjana > 80 and pwat > 25:
-        return [{'descripcio': "Nimbostratus (Pluja Contínua)", 'veredicte': "Cel cobert amb pluja generalitzada i persistent."}]
-
-    # --- PAS 2: ANÀLISI DETALLADA PER CAPES (si no s'ha trobat un patró dominant) ---
-
-    # -- ANÀLISI DE CAPES ALTES (> 5500m) --
-    if rh_alta > 60 and mucape > 50 and mucin < -75:
-        diagnostics.append({'descripcio': "Cirrus Castellanus", 'veredicte': "Inestabilitat a nivells alts, possible precursor de tempestes."})
-    elif rh_alta > 80:
-        diagnostics.append({'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Humitat a nivells alts, cel d'aspecte lletós."})
-    elif rh_alta > 55:
-        diagnostics.append({'descripcio': "Vels de Cirrus (Molt Alts)", 'veredicte': "Humitat a les capes més altes formant vels de gel."})
-
-    # -- ANÀLISI DE CAPES MITJANES (2000m - 5500m) --
-    if rh_mitjana > 85 and mlcape < 100:
-        diagnostics.append({'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Cel cobert per núvols mitjans."})
+    # --- PAS 2: ANÀLISI DE NUVOLOSITAT ESTRATIFORME PER CAPES (si no hi ha tempesta) ---
     
-    # -- ANÀLISI DE CAPES BAIXES (< 2000m) --
-    # Aquesta secció és la més detallada per la humitat
-    if lcl_hgt < 300 and mlcape < 200:
-        diagnostics.append({'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Núvols baixos persistents, cel cobert i humit."})
-    else:
-        if mlcape > 250 and conv > 8 and lcl_hgt < 1200:
-            diagnostics.append({'descripcio': "Cúmuls de creixement", 'veredicte': "Núvols amb desenvolupament vertical, possibles xàfecs."})
-        elif 100 <= mlcape < 250 and lcl_hgt < 1800:
-            diagnostics.append({'descripcio': "Cúmuls mediocris", 'veredicte': "Cúmuls amb creixement limitat per una capa estable."})
-        elif rh_baixa > 65 and 50 <= mlcape < 150 and lcl_hgt < 2000:
-            diagnostics.append({'descripcio': "Cúmuls de bon temps", 'veredicte': "Cel amb petits cúmuls decoratius."})
-        elif rh_baixa > 60 and mlcape < 100 and wspd_10m > 20:
-             diagnostics.append({'descripcio': "Fractocúmuls", 'veredicte': "Fragments de núvols baixos per vent i humitat."})
+    # -- ANÀLISI DE CAPES BAIXES --
+    if rh_baixa >= 70:
+        # Si hi ha una mica d'inestabilitat, seran cúmuls; si no, seran estratus.
+        if mlcape >= 100:
+            diagnostics.append({'descripcio': "Cúmuls mediocris", 'veredicte': "Núvols baixos amb cert desenvolupament."})
+        else:
+            diagnostics.append({'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos i cel cobert."})
 
+    # -- ANÀLISI DE CAPES MITJANES --
+    if rh_mitjana >= 60:
+        diagnostics.append({'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Presència de núvols a nivells mitjans."})
+
+    # -- ANÀLISI DE CAPES ALTES --
+    if rh_alta >= 50:
+        diagnostics.append({'descripcio': "Vels de Cirrus (Molt Alts)", 'veredicte': "Presència de núvols alts de tipus cirrus."})
+    
     # --- PAS 3: GESTIÓ FINAL ---
-    # Si després de totes les anàlisis no s'ha trobat res, el cel està serè.
+    # Si, després de totes les comprovacions, no s'ha afegit cap diagnòstic, el cel està serè.
     if not diagnostics:
         diagnostics.append({ 'descripcio': "Cel Serè", 'veredicte': "Temps estable i sec." })
             
-    # Retorna fins a un màxim de 2 diagnòstics per a no saturar la interfície.
-    return diagnostics[:2]
+    # Retorna fins a un màxim de 3 diagnòstics per a mostrar un cel complex si cal.
+    return diagnostics[:3]
     
 if __name__ == "__main__":
     main()
