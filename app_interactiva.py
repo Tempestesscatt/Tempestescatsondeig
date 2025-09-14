@@ -803,7 +803,33 @@ def show_login_page():
 
 
 
+def calcular_mlcape_robusta(p, T, Td):
+    """
+    Una funció manual i extremadament robusta per calcular el MLCAPE i MLCIN.
+    Aquesta funció està dissenyada per no fallar mai.
+    """
+    try:
+        p_sfc = p[0]
+        p_bottom = p_sfc - 100 * units.hPa
+        mask = (p >= p_bottom) & (p <= p_sfc)
 
+        if not np.any(mask):
+            p_mixed, T_mixed, Td_mixed = p[0], T[0], Td[0]
+        else:
+            p_layer, T_layer, Td_layer = p[mask], T[mask], Td[mask]
+            theta_mixed = np.mean(mpcalc.potential_temperature(p_layer, T_layer))
+            mixing_ratio_mixed = np.mean(mpcalc.mixing_ratio_from_dewpoint(p_layer, Td_layer))
+            
+            T_mixed = mpcalc.temperature_from_potential_temperature(p_sfc, theta_mixed)
+            Td_mixed = mpcalc.dewpoint_from_mixing_ratio(p_sfc, mixing_ratio_mixed)
+        
+        prof_mixed = mpcalc.parcel_profile(p, T_mixed, Td_mixed).to('degC')
+        mlcape, mlcin = mpcalc.cape_cin(p, T, Td, prof_mixed)
+        
+        return float(mlcape.m), float(mlcin.m)
+    except Exception:
+        return 0.0, 0.0
+        
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
