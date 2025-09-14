@@ -2400,6 +2400,7 @@ def ui_explicacio_convergencia():
     """
     Crea una secció explicativa visualment atractiva sobre els dos tipus
     principals de convergència, utilitzant un disseny de targetes.
+    Versió corregida per a evitar l'error 'TokenError'.
     """
     st.divider()
     st.markdown("##### Com Interpretar els Nuclis de Convergència")
@@ -2441,35 +2442,41 @@ def ui_explicacio_convergencia():
 
     col1, col2 = st.columns(2)
 
-    with col1:
-        st.markdown("""
-        <div class="explanation-card">
-            <div class="explanation-title">
-                <span class="explanation-icon">💥</span>
-                Convergència Frontal (Xoc)
-            </div>
-            <div class="explanation-text">
-                Passa quan <strong>dues masses d'aire de direccions diferents xoquen</strong>. L'aire no pot anar cap als costats i es veu forçat a ascendir bruscament.
-                <br><br>
-                <strong>Al mapa:</strong> Busca línies on les <i>streamlines</i> (línies de vent) es troben de cara, com en un "xoc de trens". Són mecanismes de dispar molt eficients i solen generar tempestes organitzades.
-            </div>
+    # Text per a la primera targeta (Convergència Frontal)
+    text_card_1 = """
+    <div class="explanation-card">
+        <div class="explanation-title">
+            <span class="explanation-icon">💥</span>
+            Convergència Frontal (Xoc)
         </div>
-        """, unsafe_allow_html=True)
+        <div class="explanation-text">
+            Passa quan <strong>dues masses d'aire de direccions diferents xoquen</strong>. L'aire no pot anar cap als costats i es veu forçat a ascendir bruscament.
+            <br><br>
+            <strong>Al mapa:</strong> Busca línies on les <i>streamlines</i> (línies de vent) es troben de cara. Són mecanismes de dispar molt eficients i solen generar tempestes organitzades.
+        </div>
+    </div>
+    """
+
+    # Text per a la segona targeta (Convergència per Acumulació)
+    text_card_2 = """
+    <div class="explanation-card">
+        <div class="explanation-title">
+            <span class="explanation-icon">⛰️</span>
+            Convergència per Acumulació
+        </div>
+        <div class="explanation-text">
+            Ocorre quan el vent es troba amb un <strong>obstacle (com una muntanya) o es desaccelera</strong>, fent que l'aire "s'amuntegui". L'única sortida per a aquesta acumulació de massa és cap amunt.
+            <br><br>
+            <strong>Al mapa:</strong> Busca zones on les <i>streamlines</i> s'ajunten i la velocitat del vent disminueix. És com un "embús a l'autopista".
+        </div>
+    </div>
+    """
+    
+    with col1:
+        st.markdown(text_card_1, unsafe_allow_html=True)
 
     with col2:
-        st.markdown("""
-        <div class="explanation-card">
-            <div class="explanation-title">
-                <span class="explanation-icon">⛰️</span>
-                Convergència per Acumulació
-            </div>
-            <div class="explanation-text">
-                Ocorre quan el vent es troba amb un <strong>obstacle (com una muntanya) o es desaccelera</strong>, fent que l'aire "s'amuntegui". L'única sortida per a aquesta acumulació de massa és cap amunt.
-                <br><br>
-                <strong>Al mapa:</strong> Busca zones on les <i>streamlines</i> s'ajunten i la velocitat del vent (color de fons) disminueix. És com un "embús a l'autopista": els cotxes s'acumulen i s'aturen.
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(text_card_2, unsafe_allow_html=True)
 
 
 @st.cache_data(ttl=3600)
