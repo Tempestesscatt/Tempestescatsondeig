@@ -840,17 +840,11 @@ def calcular_mlcape_robusta(p, T, Td):
         return 0.0, 0.0
 
 
-# -*- coding: utf-8 -*-
-
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i COMPLETA v12.0.
-    - **CANVI CLAU**: S'han ajustat els rangs de càlcul de la Humitat Relativa per
-      capes seguint especificacions tècniques precises.
-      - Baixa: 1000 - 850 hPa
-      - Mitjana: 850 - 400 hPa
-      - Alta: 400 - 100 hPa
-    - Aquesta versió està completa, sense omissions per brevetat.
+    Versió Definitiva i COMPLETA v13.0.
+    - **CORRECCIÓ FINAL**: S'ha eliminat definitivament la paraula 'dimensionless' del càlcul
+      de la Humitat Relativa (RH%), convertint el valor a un número simple (float) abans de guardar-lo.
     """
     # --- 1. PREPARACIÓ I VALIDACIÓ DE DADES ---
     if len(p_profile) < 4:
@@ -949,13 +943,13 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     except Exception:
         params_calc['THETAE_850hPa'] = np.nan
 
-    # --- CÀLCUL DE RH% AMB ELS RANGS AJUSTATS ---
+    # --- CÀLCUL DE RH% AMB LA CORRECCIÓ FINAL ---
     try: 
         rh = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
         params_calc['RH_CAPES'] = {
-            'baixa': np.mean(rh[(p.m <= 1000) & (p.m > 850)]),
-            'mitjana': np.mean(rh[(p.m <= 850) & (p.m > 400)]),
-            'alta': np.mean(rh[(p.m <= 400) & (p.m >= 100)])
+            'baixa': float(np.mean(rh[(p.m <= 1000) & (p.m > 850)]).m), # <<<--- LÍNIA CORREGIDA
+            'mitjana': float(np.mean(rh[(p.m <= 850) & (p.m > 400)]).m), # <<<--- LÍNIA CORREGIDA
+            'alta': float(np.mean(rh[(p.m <= 400) & (p.m >= 100)]).m)     # <<<--- LÍNIA CORREGIDA
         }
     except Exception:
         params_calc['RH_CAPES'] = {'baixa': np.nan, 'mitjana': np.nan, 'alta': np.nan}
