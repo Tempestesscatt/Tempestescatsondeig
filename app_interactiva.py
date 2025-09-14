@@ -68,16 +68,18 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
 
+
 MAP_CONFIG = {
     # <<<--- CANVI PRINCIPAL AQUÍ: Nova paleta de colors professional per al CAPE ---
     'cape': {
         'colors': [
-            '#2E8B57', '#3CB371', '#66CDAA', '#00FF7F', '#ADFF2F', '#FFFF00',
-            '#FFD700', '#FFA500', '#FF8C00', '#FF4500', '#FF0000', '#DC143C',
-            '#C71585', '#9932CC', '#8A2BE2'
+            '#006400', '#228B22', '#55AE3A', '#7DC83A', '#A6D839', '#D0E738',
+            '#FFFF00', '#FFD700', '#FFA500', '#FF8C00', '#FF6347', '#FF0000',
+            '#DC143C', '#C71585', '#FF1493', '#FF00FF', '#DA70D6', '#EE82EE',
+            '#DA70D6', '#D8BFD8', '#E6E6FA', '#FFF0F5'
         ],
-        'levels': [0, 250, 500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000, 3400, 3800, 4001],
-        'cbar_ticks': [0, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000],
+        'levels': [0, 20, 40, 100, 200, 300, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000, 2200, 2400, 2800, 3200, 3600, 4000, 4500, 5001],
+        'cbar_ticks': [0, 400, 1000, 1600, 2400, 3200, 4000, 5000],
         'alpha': 0.75
     },
     # --- FI DEL CANVI ---
@@ -104,7 +106,6 @@ MAP_CONFIG = {
         'dewpoint_mid_level': 12,
     }
 }
-
 
 
 NUVOL_ICON_BASE64 = {
