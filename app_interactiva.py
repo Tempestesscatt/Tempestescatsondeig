@@ -6962,9 +6962,12 @@ def tornar_al_mapa_general():
 
 def run_catalunya_app():
     """
-    Versió Definitiva i Polida v2.3 (A Prova d'Errors).
+    Versió Definitiva i Polida v2.4 (Convergència Universal).
+    - **MILLORA CLAU**: El valor de la convergència puntual ara es calcula i es mostra
+      correctament a TOTES les pestanyes de la vista detallada, incloent-hi
+      l'"Anàlisi Vertical", utilitzant les dades del mapa per al punt exacte del sondeig.
     """
-    # --- PAS 1: CAPÇALERA I INICIALITZACIÓ D'ESTAT ---
+    # --- PAS 1: CAPÇALERA I INICIALITZACIó D'ESTAT ---
     ui_capcalera_selectors(None, zona_activa="catalunya")
     if 'selected_area' not in st.session_state: st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
     if 'poble_sel' not in st.session_state: st.session_state.poble_sel = "--- Selecciona una localitat ---"
@@ -6998,12 +7001,22 @@ def run_catalunya_app():
         with st.spinner(f"Carregant dades d'anàlisi per a {poble_sel}..."):
             lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
             data_tuple, final_index, error_msg_sounding = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+            map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
 
         if error_msg_sounding or not data_tuple:
-            st.error(f"Error en carregar les dades del sondeig per a {poble_sel} a les {hora_sel_str}.")
-            st.error(f"Motiu: {error_msg_sounding if error_msg_sounding else 'Les dades no estan disponibles per a aquesta hora.'}")
+            st.error(f"Error en carregar les dades del sondeig per a {poble_sel} a les {hora_sel_str}.\nMotiu: {error_msg_sounding if error_msg_sounding else 'Dades no disponibles.'}")
             st.info("Si us plau, selecciona una altra hora o una altra localitat.")
             return
+
+        params_calculats = data_tuple[1]
+        
+        # <<<--- LÒGICA DE CONVERGÈNCIA CENTRALITZADA ---
+        # Calculem la convergència aquí perquè estigui disponible per a totes les pestanyes.
+        if map_data_conv:
+            conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+            if pd.notna(conv_puntual):
+                params_calculats[f'CONV_{nivell_sel}hPa'] = conv_puntual
+        # <<<--- FI DE LA LÒGICA CENTRALITZADA ---
 
         if final_index is not None and final_index != hourly_index_sel:
             adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
@@ -7013,15 +7026,6 @@ def run_catalunya_app():
         menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi de Mapes", "Simulació de Núvol"]
         menu_icons = ["fullscreen", "graph-up-arrow", "map", "cloud-upload"]
         active_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key=f'option_menu_{poble_sel}')
-
-        params_calculats = data_tuple[1]
-        
-        with st.spinner("Calculant convergència a nivell de mapa..."):
-            map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
-        if map_data_conv:
-            conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
-            if pd.notna(conv_puntual):
-                params_calculats[f'CONV_{nivell_sel}hPa'] = conv_puntual
         
         if active_tab == "Anàlisi Comarcal":
             with st.spinner("Carregant anàlisi comarcal completa..."):
