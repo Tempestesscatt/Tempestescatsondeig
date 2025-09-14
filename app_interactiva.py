@@ -5968,6 +5968,45 @@ def run_est_peninsula_app():
             st.info("Fes clic en una província del mapa per veure'n les localitats.", icon="👆")
 
 
+
+
+
+
+def ui_pestanya_simulacio_nuvol(params_calculats, timestamp_str, poble_sel):
+    """Mostra la pestanya de Simulació de Núvol amb les animacions."""
+    st.markdown(f"#### Simulació del Cicle de Vida per a {poble_sel}")
+    st.caption(timestamp_str)
+    
+    if 'regenerate_key' not in st.session_state: 
+        st.session_state.regenerate_key = 0
+    if st.button("🔄 Regenerar Totes les Animacions"): 
+        forcar_regeneracio_animacio()
+        
+    with st.spinner("Generant simulacions visuals del cicle de vida..."):
+        # Convertim el diccionari a un tuple per a que la funció cachejada funcioni
+        params_tuple = tuple(sorted(params_calculats.items()))
+        gifs = generar_animacions_professionals(params_tuple, timestamp_str, st.session_state.regenerate_key)
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown("<h5 style='text-align: center;'>1. Iniciació</h5>", unsafe_allow_html=True)
+        if gifs['iniciacio']: st.image(gifs['iniciacio'])
+        else: st.info("Condicions estables, no hi ha iniciació.")
+    with col2:
+        st.markdown("<h5 style='text-align: center;'>2. Maduresa</h5>", unsafe_allow_html=True)
+        if gifs['maduresa']: st.image(gifs['maduresa'])
+        else: st.info("La tempesta no arriba a la fase de maduresa.")
+    with col3:
+        st.markdown("<h5 style='text-align: center;'>3. Dissipació</h5>", unsafe_allow_html=True)
+        if gifs['dissipacio']: st.image(gifs['dissipacio'])
+        else: st.info("Sense fase de dissipació.")
+        
+    st.divider()
+    nivell_conv_per_defecte = 925 # Usem un nivell estàndard per a la guia
+    ui_guia_tall_vertical(params_calculats, nivell_conv_per_defecte)
+    
+
+
 def ui_pestanya_analisi_provincial(provincia, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple):
     """
     PESTANYA D'ANÀLISI PROVINCIAL. Utilitza el mapa de províncies de la península
