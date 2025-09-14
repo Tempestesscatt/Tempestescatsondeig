@@ -1808,9 +1808,10 @@ MAPA_IMATGES_REALS = {
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva i COMPLETA v57.0 (Panell d'Expert Complet).
-    - Afegeix Theta-E a 850 hPa i la Humitat Relativa per capes a la interfície.
-    - Aquesta versió està completa, sense omissions per brevetat.
+    Versió Definitiva v58.0 (Ajustos Finals d'Expert).
+    - **CANVI 1**: Theta-E es mostra en Graus Celsius (°C).
+    - **CANVI 2**: La Humitat Relativa per capes (Baixa, Mitjana, Alta) té un bloc propi i separat.
+    - **CANVI 3**: S'ha netejat el format de la Humitat Relativa per a mostrar només el percentatge.
     """
     TOOLTIPS = {
         'MLCAPE': "Mixed-Layer CAPE: Energia disponible.",
@@ -1820,7 +1821,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         'MUCAPE': "Most Unstable CAPE: Màxim potencial energètic.",
         'SBCIN': "Inhibició (tapa) des de la superfície.",
         'MUCIN': "La 'tapa' més feble de l'atmosfera.",
-        'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa: Mesura combinada de temperatura i humitat. Valors alts (>340K) indiquen una massa d'aire molt energètica.",
+        'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa: Mesura combinada de temperatura i humitat. Valors alts (>70°C) indiquen una massa d'aire molt energètica i càlida, potencialment d'origen saharià.",
         'LCL_Hgt': "Alçada de la base dels núvols.",
         'LFC_Hgt': "Alçada on una bombolla d'aire comença a accelerar sola.",
         'EL_Hgt': "Alçada del cim de la tempesta (Equilibrium Level).",
@@ -1874,34 +1875,45 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     cols_fila2 = st.columns(5)
     with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols_fila2[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
-    with cols_fila2[2]: styled_metric("Theta-E 850", params.get('THETAE_850hPa', np.nan), "K", 'THETAE_850hPa', tooltip_text=TOOLTIPS.get('THETAE_850hPa'), precision=1)
+    with cols_fila2[2]:
+        # Conversió de Theta-E a Celsius per a la visualització
+        theta_e_k = params.get('THETAE_850hPa', np.nan)
+        theta_e_c = theta_e_k - 273.15 if pd.notna(theta_e_k) else np.nan
+        styled_metric("Theta-E 850", theta_e_c, "°C", 'THETAE_850hPa', tooltip_text=TOOLTIPS.get('THETAE_850hPa'), precision=1)
     with cols_fila2[3]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
     with cols_fila2[4]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
         
     cols_fila3 = st.columns(4)
-    with cols_fila3[0]:
-        el_hgt = params.get('EL_Hgt', np.nan)
-        rh_capes = params.get('RH_CAPES', {})
-        rh_b = rh_capes.get('baixa', np.nan)
-        rh_m = rh_capes.get('mitjana', np.nan)
-        rh_a = rh_capes.get('alta', np.nan)
-        el_val_str = f"{el_hgt:.0f}" if pd.notna(el_hgt) else "---"
-        rh_b_str = f"{rh_b:.0f}%" if pd.notna(rh_b) else "--"
-        rh_m_str = f"{rh_m:.0f}%" if pd.notna(rh_m) else "--"
-        rh_a_str = f"{rh_a:.0f}%" if pd.notna(rh_a) else "--"
-        st.markdown(f"""
-        <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
-            <span style="font-size: 0.8em; color: #FAFAFA;">CIM (EL) (m) <span title="{TOOLTIPS.get('EL_Hgt')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span>
-            <strong style="font-size: 1.6em; color: #FFFFFF; line-height: 1.1;">{el_val_str}</strong>
-            <div style="font-size: 0.7em; color: #a0a0b0; line-height: 1;">
-                RH% (B/M/A): <b>{rh_b_str}</b> / <b>{rh_m_str}</b> / <b>{rh_a_str}</b>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+    with cols_fila3[0]: styled_metric("CIM (EL)", params.get('EL_Hgt', np.nan), "m", 'EL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('EL_Hgt'))
     with cols_fila3[1]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km', tooltip_text=TOOLTIPS.get('BWD_0-6km'))
     with cols_fila3[2]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km', tooltip_text=TOOLTIPS.get('BWD_0-1km'))
     with cols_fila3[3]: styled_metric("T 500hPa", params.get('T_500hPa', np.nan), "°C", 'T_500hPa', precision=1, tooltip_text=TOOLTIPS.get('T_500hPa'))
 
+    # --- NOU BLOC INDEPENDENT PER A LA HUMITAT RELATIVA ---
+    rh_capes = params.get('RH_CAPES', {})
+    rh_b = rh_capes.get('baixa', np.nan)
+    rh_m = rh_capes.get('mitjana', np.nan)
+    rh_a = rh_capes.get('alta', np.nan)
+    rh_b_str = f"{rh_b:.0f}%" if pd.notna(rh_b) else "---"
+    rh_m_str = f"{rh_m:.0f}%" if pd.notna(rh_m) else "---"
+    rh_a_str = f"{rh_a:.0f}%" if pd.notna(rh_a) else "---"
+    st.markdown(f"""
+    <div style="display: flex; justify-content: space-around; text-align: center; padding: 12px 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
+        <div>
+            <span style="font-size: 0.8em; color: #FAFAFA;">RH Baixa</span>
+            <strong style="display: block; font-size: 1.6em; color: #FFFFFF;">{rh_b_str}</strong>
+        </div>
+        <div>
+            <span style="font-size: 0.8em; color: #FAFAFA;">RH Mitjana</span>
+            <strong style="display: block; font-size: 1.6em; color: #FFFFFF;">{rh_m_str}</strong>
+        </div>
+        <div>
+            <span style="font-size: 0.8em; color: #FAFAFA;">RH Alta</span>
+            <strong style="display: block; font-size: 1.6em; color: #FFFFFF;">{rh_a_str}</strong>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.markdown("##### Potencial d'Amenaces Severes")
     amenaces = analitzar_amenaces_especifiques(params)
     puntuacio_resultat = calcular_puntuacio_tempesta(sounding_data, params, nivell_conv)
