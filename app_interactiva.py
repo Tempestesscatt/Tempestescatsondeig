@@ -1733,15 +1733,38 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
     
 
 
-# -*- coding: utf-8 -*-
-import os # Assegura't que 'os' estigui importat a la part superior del teu script
+
+
+MAPA_IMATGES_REALS = {
+    # Tempestes i Temps Sever
+    "Potencial de Supercèl·lula": "Potencial de Supercèl·lula.jpg",
+    "Tempestes Organitzades": "Tempestes Organitzades.jpg",
+    "Tempesta Aïllada (Molt energètica)": "Tempesta Aïllada (Molt energètica).jpg",
+    "Tempesta Comuna": "Tempesta Comuna.jpg",
+    "Nimbostratus (Pluja Contínua)": "Nimbostratus (Pluja Contínua).jpg",
+    
+    # Núvols Comuns i Altres Fenòmens
+    "Cúmuls de creixement": "Cúmuls de creixement.jpg",
+    "Cúmuls mediocris": "Cúmuls mediocris.jpg",
+    "Cúmuls de bon temps": "Cúmuls de bon temps.jpg",
+    "Estratus (Boira alta - Cel tancat)": "Estratus (Boira alta - Cel tancat).jpg", # Nom corregit
+    "Fractocúmuls": "Fractocúmuls.jpg",
+    "Altostratus - Altocúmulus": "Altostratus - Altocúmulus.jpg", # Nom corregit
+    "Cirrus Castellanus": "Cirrus Castellanus.jpg",
+    "Cirrostratus (Cel blanquinós)": "Cirrostratus (Cel blanquinós).jpg",
+    "Vels de Cirrus (Molt Alts)": "Vels de Cirrus (Molt Alts).jpg",
+    "Altocúmulus Lenticular": "Altocúmulus Lenticular.jpg",
+    "Cel Serè": "Cel Serè.jpg",
+    
+    # Imatge per defecte
+    "fallback": "fallback.jpg"
+}
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva v53.0 (Càrrega Directa d'Arxius).
-    - **CANVI PRINCIPAL**: Aquesta versió utilitza st.image() per carregar les fotos directament
-      des de la carpeta 'imatges_reals', eliminant completament la necessitat de Base64.
-    - El disseny mostra la imatge i el text a sota, de manera neta i directa.
+    Versió Definitiva v54.0 (Amb Diccionari Propi).
+    - **CANVI PRINCIPAL**: Aquesta funció ara utilitza el diccionari MAPA_IMATGES_REALS per a
+      trobar el nom de l'arxiu d'imatge, fent el codi més modular i fàcil de mantenir.
     """
     TOOLTIPS = {
         'MLCAPE': "Mixed-Layer CAPE: Energia disponible per a una parcel·la d'aire mitjana en els 100hPa inferiors. Molt representatiu de les condicions reals.",
@@ -1794,11 +1817,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
             if conv_value >= 0:
                 styled_metric("Convergència", conv_value, "unitats", "CONV_PUNTUAL", tooltip_text=TOOLTIPS.get('CONV_PUNTUAL'), precision=1)
             else:
-                st.markdown(f"""
-                <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
-                    <span style="font-size: 0.8em; color: #FAFAFA;">Divergència (unitats) <span title="{TOOLTIPS.get('CONV_PUNTUAL')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span>
-                    <strong style="font-size: 1.6em; color: #6495ED; line-height: 1.1;">{conv_value:.1f}</strong>
-                </div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">Divergència (unitats) <span title="{TOOLTIPS.get('CONV_PUNTUAL')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: #6495ED; line-height: 1.1;">{conv_value:.1f}</strong></div>""", unsafe_allow_html=True)
         else:
              styled_metric("Convergència", np.nan, "unitats", "CONV_PUNTUAL")
     with cols_fila1[3]:
@@ -1806,26 +1825,32 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_fila1[4]:
         styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
 
-    # --- BLOC VISUAL AMB st.image() ---
+    # --- BLOC VISUAL AMB st.image() i el nou DICCIONARI ---
     with st.container(border=True):
         analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
         if analisi_temps_list:
             diag = analisi_temps_list[0]
             desc, veredicte = diag.get("descripcio", "Desconegut"), diag.get("veredicte", "")
             
-            # Construeix la ruta a l'arxiu
-            ruta_arxiu_imatge = f"imatges_reals/{desc}.jpg"
-            ruta_fallback = "imatges_reals/fallback.jpg"
-
-            # Comprova si l'arxiu existeix i el mostra, sinó mostra el fallback
+            # <<<--- AQUÍ ESTÀ LA NOVA LÒGICA ---
+            # 1. Busca el nom de l'arxiu al nou diccionari
+            nom_arxiu = MAPA_IMATGES_REALS.get(desc, MAPA_IMATGES_REALS["fallback"])
+            
+            # 2. Construeix la ruta completa a l'arxiu
+            ruta_arxiu_imatge = os.path.join("imatges_reals", nom_arxiu)
+            
+            # 3. Comprova si l'arxiu existeix i el mostra
             if os.path.exists(ruta_arxiu_imatge):
                 st.image(ruta_arxiu_imatge, use_container_width=True)
-            elif os.path.exists(ruta_fallback):
-                st.image(ruta_fallback, use_container_width=True)
+            else:
+                # Si no troba l'arxiu específic, mostra el de fallback
+                ruta_fallback = os.path.join("imatges_reals", MAPA_IMATGES_REALS["fallback"])
+                if os.path.exists(ruta_fallback):
+                    st.image(ruta_fallback, use_container_width=True)
             
-            # Mostra el text a sota de la imatge
+            # 4. Mostra el text a sota de la imatge
             st.markdown(f"""
-            <div style="text-align: center; margin-top: 10px;">
+            <div style="text-align: center; margin-top: 10px; padding-bottom: 10px;">
                 <strong style="font-size: 1.1em; color: #FFFFFF;">{veredicte}</strong><br>
                 <em style="font-size: 0.9em; color: #A0A0B0;">({desc})</em>
             </div>
@@ -1833,6 +1858,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         else:
             st.warning("No s'ha pogut determinar el tipus de cel.")
 
+    # ... La resta de la funció no canvia ...
     cols_fila2 = st.columns(4)
     with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols_fila2[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
