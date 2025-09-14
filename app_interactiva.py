@@ -2237,10 +2237,11 @@ def ui_pestanya_analisis_vents(data_tuple, poble_sel, hora_actual_str, timestamp
 
 def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actual, timestamp_str, avis_proximitat=None):
     """
-    PESTANYA D'ANÀLISI VERTICAL (Versió amb disseny equilibrat).
-    - **NOU DISSENY**: Mostra el panell de paràmetres a l'esquerra. A la dreta,
-      el Skew-T i l'Hodògraf un al costat de l'altre. A sota, el radar
-      ocupa tot l'ample.
+    PESTANYA D'ANÀLISI VERTICAL (Versió amb Disseny Simètric i Radar Bloquejat).
+    - **DISSENY SIMÈTRIC**: S'utilitzen contenidors per a forçar que el Skew-T i l'Hodògraf
+      tinguin la mateixa alçada, creant una disposició visualment equilibrada.
+    - **RADAR CONGELAT**: S'ha afegit una capa HTML transparent sobre el radar per a
+      bloquejar qualsevol interacció de l'usuari (zoom, moviment).
     """
     sounding_data, params_calculats = data_tuple
     p, T, Td, u, v, heights, prof, Twb = sounding_data
@@ -2257,23 +2258,33 @@ def ui_pestanya_vertical(data_tuple, poble_sel, lat, lon, nivell_conv, hora_actu
         sub_col_skewt, sub_col_hodo = st.columns(2)
         
         with sub_col_skewt:
-            st.markdown("###### Diagrama Skew-T / Log-P")
-            zoom_capa_baixa = st.checkbox("🔍 Zoom Capa Baixa")
-            fig_skewt = crear_skewt(p, T, Td, Twb, u, v, prof, params_calculats, f"Sondeig - {poble_sel}", timestamp_str.split('|')[-1].strip(), zoom_capa_baixa=zoom_capa_baixa)
-            st.pyplot(fig_skewt, use_container_width=True)
-            plt.close(fig_skewt)
+            with st.container(border=True): # Contenidor per alinear
+                st.markdown("###### Diagrama Skew-T / Log-P")
+                zoom_capa_baixa = st.checkbox("🔍 Zoom Capa Baixa", key="zoom_skewt_vertical")
+                fig_skewt = crear_skewt(p, T, Td, Twb, u, v, prof, params_calculats, f"Sondeig - {poble_sel}", timestamp_str.split('|')[-1].strip(), zoom_capa_baixa=zoom_capa_baixa)
+                st.pyplot(fig_skewt, use_container_width=True)
+                plt.close(fig_skewt)
             
         with sub_col_hodo:
-            st.markdown("###### Hodògraf")
-            fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf - {poble_sel}", timestamp_str.split('|')[-1].strip())
-            st.pyplot(fig_hodo, use_container_width=True)
-            plt.close(fig_hodo)
+            with st.container(border=True): # Contenidor per alinear
+                st.markdown("###### Hodògraf")
+                fig_hodo = crear_hodograf_avancat(p, u, v, heights, params_calculats, f"Hodògraf - {poble_sel}", timestamp_str.split('|')[-1].strip())
+                st.pyplot(fig_hodo, use_container_width=True)
+                plt.close(fig_hodo)
 
-    # --- Radar de Precipitació (Ocupa tot l'ample a sota) ---
+    # --- Radar de Precipitació (Ocupa tot l'ample a sota i està bloquejat) ---
     st.divider()
     st.markdown("##### Radar de Precipitació en Temps Real")
     radar_url = f"https://www.rainviewer.com/map.html?loc={lat},{lon},10&oCS=1&c=3&o=83&lm=0&layer=radar&sm=1&sn=1&ts=2&play=1"
-    html_code = f"""<div style="border-radius: 10px; overflow: hidden;"><iframe src="{radar_url}" width="100%" height="450" frameborder="0" style="border:0;"></iframe></div>"""
+    
+    # <<<--- LÒGICA PER A "CONGELAR" EL RADAR ---
+    # Creem un contenidor relatiu i posem una capa transparent per sobre de l'iframe.
+    html_code = f"""
+    <div style="position: relative; width: 100%; height: 450px; border-radius: 10px; overflow: hidden;">
+        <iframe src="{radar_url}" width="100%" height="450" frameborder="0" style="border:0;"></iframe>
+        <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; cursor: default;"></div>
+    </div>
+    """
     st.components.v1.html(html_code, height=460)
 
 
