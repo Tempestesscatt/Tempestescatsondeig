@@ -844,11 +844,9 @@ def calcular_mlcape_robusta(p, T, Td):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva, Completa i Impecable v16.0.
-    - **RESTAURACIÓ**: S'ha restaurat el càlcul del moviment de la tempesta (Bunkers
-      Right/Left Movers i Vent Mitjà), que s'havia perdut en versions anteriors.
-    - Inclou totes les millores prèvies (WBZ, Theta-E, RH per capes, etc.).
-    - Aquesta funció està completa i no omet cap detall.
+    Versió Definitiva i COMPLETA v17.0.
+    - **NOU CÀLCUL**: Afegeix el càlcul del 'Total Totals Index' per a que es pugui
+      mostrar correctament a la interfície d'usuari.
     """
     # --- 1. PREPARACIÓ I VALIDACIÓ DE DADES ---
     if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
@@ -900,8 +898,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     wb_profile = np.full_like(p.m, np.nan) * units.degC
     try:
         wb_profile = mpcalc.wet_bulb_temperature(p, T, Td)
-        wb_profile_clean = wb_profile[~np.isnan(wb_profile)].m
-        heights_agl_clean = heights_agl[~np.isnan(wb_profile)].m
+        wb_profile_clean = wb_profile[~np.isnan(wb_profile)].m; heights_agl_clean = heights_agl[~np.isnan(wb_profile)].m
         if wb_profile_clean.min() < 0 < wb_profile_clean.max():
             sort_indices = np.argsort(wb_profile_clean)
             wbz_height = np.interp(0, wb_profile_clean[sort_indices], heights_agl_clean[sort_indices])
@@ -910,28 +907,28 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         else: params_calc['WBZ_HGT'] = np.nan
     except Exception: params_calc['WBZ_HGT'] = np.nan
 
+    # <<<--- BLOC AFEGIT: CÀLCUL DEL TOTAL TOTALS INDEX ---
+    try:
+        # Aquesta funció necessita les dades a 850 hPa i 500 hPa
+        p_levels_for_tt = np.array([850, 500]) * units.hPa
+        T_for_tt = np.interp(p_levels_for_tt.m, p.m[::-1], T.m[::-1]) * units.degC
+        Td_for_tt = np.interp(p_levels_for_tt.m, p.m[::-1], Td.m[::-1]) * units.degC
+        params_calc['TOTAL_TOTALS'] = float(mpcalc.total_totals_index(T_for_tt, Td_for_tt).m)
+    except Exception:
+        params_calc['TOTAL_TOTALS'] = np.nan
+    # <<<--- FI DEL BLOC AFEGIT ---
+
     # --- 4. CÀLCULS CINEMÀTICS (VENT) ---
     try:
         for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]: bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter); params_calc[f'BWD_{name}'] = float(mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m)
     except Exception: params_calc.update({'BWD_0-1km': np.nan, 'BWD_0-6km': np.nan})
-
-    # <<<--- BLOC RESTAURAT: MOVIMENT DE LA TEMPESTA I HELICITAT ---
     try:
         rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
-        # Guardem els valors per a l'hodògraf
-        params_calc['RM'] = (float(rm[0].m), float(rm[1].m))
-        params_calc['LM'] = (float(lm[0].m), float(lm[1].m))
-        params_calc['Mean_Wind'] = (float(mean_wind[0].m), float(mean_wind[1].m))
-        
-        # Utilitzem el moviment de la tempesta per a calcular la helicitat
+        params_calc['RM'] = (float(rm[0].m), float(rm[1].m)); params_calc['LM'] = (float(lm[0].m), float(lm[1].m)); params_calc['Mean_Wind'] = (float(mean_wind[0].m), float(mean_wind[1].m))
         u_storm, v_storm = rm[0], rm[1]
-        for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]:
-            srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.meter, storm_u=u_storm, storm_v=v_storm)[0]
-            params_calc[f'SRH_{name}'] = float(srh.m)
-    except Exception:
-        params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan), 'Mean_Wind': (np.nan, np.nan), 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
-    # <<<--- FI DEL BLOC RESTAURAT ---
-
+        for name, depth_m in [('0-1km', 1000), ('0-3km', 3000)]: srh = mpcalc.storm_relative_helicity(heights, u, v, depth=depth_m * units.meter, storm_u=u_storm, storm_v=v_storm)[0]; params_calc[f'SRH_{name}'] = float(srh.m)
+    except Exception: params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan), 'Mean_Wind': (np.nan, np.nan), 'SRH_0-1km': np.nan, 'SRH_0-3km': np.nan})
+    
     # --- 5. ÍNDEXS COMPOSTOS DE TEMPS SEVER ---
     try: params_calc['DCAPE'] = float(mpcalc.dcape(p, T, Td)[0].m)
     except Exception: params_calc['DCAPE'] = 0.0
@@ -950,7 +947,6 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     # --- 6. RETORN DE LES DADES PROCESSADES ---
     processed_tuple = (p, T, Td, u, v, heights, main_prof, wb_profile)
     return (processed_tuple, params_calc), None
-
 
 
 
