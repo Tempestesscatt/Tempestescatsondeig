@@ -6959,11 +6959,14 @@ def tornar_al_mapa_general():
 
 
 
+# -*- coding: utf-8 -*-
+
 def run_catalunya_app():
     """
-    Versió Definitiva i Polida v2.2.
-    - **CORRECCIÓ DE BUG**: Soluciona l'error que feia que la 'Convergència' aparegués sense
-      dades ('---'). Ara es calcula abans i es passa correctament a totes les funcions.
+    Versió Definitiva i Polida v2.3 (A Prova d'Errors).
+    - **BLINDATGE TOTAL**: Ara comprova si les dades del sondeig s'han carregat correctament.
+      Si hi ha un error, mostra un missatge clar i atura l'execució de la pestanya,
+      evitant errors en cascada i interfícies corruptes.
     """
     # --- PAS 1: CAPÇALERA I INICIALITZACIÓ D'ESTAT ---
     ui_capcalera_selectors(None, zona_activa="catalunya")
@@ -6997,23 +7000,17 @@ def run_catalunya_app():
         with col_nav2: st.button("🗺️ Tornar al Mapa General", on_click=tornar_al_mapa_general, use_container_width=True)
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
         
-        with st.spinner(f"Carregant dades del sondeig i mapa per a {poble_sel}..."):
+        with st.spinner(f"Carregant dades d'anàlisi per a {poble_sel}..."):
             lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
             data_tuple, final_index, error_msg_sounding = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
-            map_data_conv, error_msg_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
 
+        # <<<--- BLOC DE BLINDATGE PRINCIPAL ---
         if error_msg_sounding or not data_tuple:
-            st.error(f"No s'ha pogut carregar el sondeig: {error_msg_sounding if error_msg_sounding else 'Dades no disponibles.'}")
-            return
-            
-        params_calculats = data_tuple[1]
-        # <<<--- LÍNIA CLAU DE LA CORRECCIÓ ---
-        # Calculem la convergència i l'afegim al diccionari de paràmetres ABANS de passar-lo a cap altra funció.
-        if not error_msg_map and map_data_conv:
-            conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
-            if pd.notna(conv_puntual):
-                params_calculats[f'CONV_{nivell_sel}hPa'] = conv_puntual
-        # --- FI DE LA CORRECCIÓ ---
+            st.error(f"Error en carregar les dades del sondeig per a {poble_sel} a les {hora_sel_str}.")
+            st.error(f"Motiu: {error_msg_sounding if error_msg_sounding else 'Les dades no estan disponibles per a aquesta hora.'}")
+            st.info("Si us plau, selecciona una altra hora o una altra localitat.")
+            return # Atura l'execució aquí per a evitar la fallada en cascada
+        # <<<--- FI DEL BLOC DE BLINDATGE ---
 
         if final_index is not None and final_index != hourly_index_sel:
             adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
@@ -7023,6 +7020,16 @@ def run_catalunya_app():
         menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi de Mapes", "Simulació de Núvol"]
         menu_icons = ["fullscreen", "graph-up-arrow", "map", "cloud-upload"]
         active_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key=f'option_menu_{poble_sel}')
+
+        params_calculats = data_tuple[1]
+        
+        # Càlcul de convergència (necessari per a múltiples pestanyes)
+        with st.spinner("Calculant convergència a nivell de mapa..."):
+            map_data_conv, _ = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
+        if map_data_conv:
+            conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+            if pd.notna(conv_puntual):
+                params_calculats[f'CONV_{nivell_sel}hPa'] = conv_puntual
         
         if active_tab == "Anàlisi Comarcal":
             with st.spinner("Carregant anàlisi comarcal completa..."):
@@ -7043,6 +7050,7 @@ def run_catalunya_app():
             
     else: 
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
+        # Aquesta part no canvia
         st.session_state.setdefault('show_comarca_labels', True)
         st.session_state.setdefault('alert_filter_level_cape', 'Tots')
 
