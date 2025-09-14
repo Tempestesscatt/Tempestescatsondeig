@@ -3257,14 +3257,14 @@ def ui_pestanya_mapes_italia(hourly_index_sel, timestamp_str, nivell_sel):
 
 
 
+
 def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_data: np.ndarray, 
                                      dir_data: np.ndarray, dewpoint_data: np.ndarray, cape_data: np.ndarray, 
-                                     nivell: int, timestamp_str: str, 
-                                     map_extent: List[float]) -> plt.Figure:
+                                     nivell: int, timestamp_str: str, map_extent: List[float],
+                                     cape_min_filter: int, cape_max_filter: int, convergence_min_filter: int) -> plt.Figure:
     """
-    VERSIÓ 25.0 (NETEJA FINAL): Versió final del mapa que elimina el text de
-    "Convergència Màxima" per a una interfície més neta, mantenint el
-    marcador visual en el punt més intens.
+    VERSIÓ 26.0 (FILTRES AVANÇATS): Genera un mapa amb filtres personalitzables
+    per a l'anàlisi de la convergència en funció de diferents llindars de CAPE.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3289,19 +3289,21 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     cbar_cape.set_label("CAPE (J/kg) - 'Combustible'")
     cbar_cape.ax.tick_params(labelsize=8)
 
-    # --- 3. CÀLCUL I FILTRATGE DE CONVERGÈNCIA ---
-    cfg_thresh = MAP_CONFIG['thresholds']
+    # --- 3. CÀLCUL I FILTRATGE DE CONVERGÈNCIA (AMB FILTRES DINÀMICS) ---
     with np.errstate(invalid='ignore'):
         dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
         convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
-    dewpoint_thresh = cfg_thresh['dewpoint_low_level'] if nivell >= 950 else cfg_thresh['dewpoint_mid_level']
+    
+    dewpoint_thresh = MAP_CONFIG['thresholds']['dewpoint_low_level'] if nivell >= 950 else MAP_CONFIG['thresholds']['dewpoint_mid_level']
     humid_mask = grid_dewpoint >= dewpoint_thresh
-    cape_mask = (grid_cape >= cfg_thresh['cape_min']) & (grid_cape <= cfg_thresh['cape_max'])
-    effective_convergence = np.where((convergence >= cfg_thresh['convergence_min']) & humid_mask & cape_mask, convergence, 0)
-    smoothed_convergence = gaussian_filter(effective_convergence, sigma=MAP_CONFIG['convergence']['sigma_filter'])
-    smoothed_convergence[smoothed_convergence < cfg_thresh['convergence_min']] = 0
+    
+    cape_mask = (grid_cape >= cape_min_filter) & (grid_cape <= cape_max_filter)
+    effective_convergence = np.where((convergence >= convergence_min_filter) & humid_mask & cape_mask, convergence, 0)
 
-    # --- 4. DIBUIX DE LA CONVERGÈNCIA I EL MARCADOR MÀXIM ---
+    smoothed_convergence = gaussian_filter(effective_convergence, sigma=MAP_CONFIG['convergence']['sigma_filter'])
+    smoothed_convergence[smoothed_convergence < convergence_min_filter] = 0
+
+    # --- 4. DIBUIX DE LA CONVERGÈNCIA ---
     if np.any(smoothed_convergence > 0):
         cfg_conv = MAP_CONFIG['convergence']
         all_levels = sorted(list(set(lvl for style in cfg_conv['styles'].values() for lvl in style['levels'])))
@@ -3338,7 +3340,7 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
             ax.plot([max_lon + 0.015, max_lon + line_len], [max_lat, max_lat], color='black', linewidth=line_width, 
                     transform=ccrs.PlateCarree(), zorder=12, solid_capstyle='butt')
 
-    # --- 5. LLEGENDA PER A LA CONVERGÈNCIA ---
+    # --- 5. LLEGENDA, STREAMLINES, TÍTOL I ETIQUETES ---
     legend_handles = []
     for label, style in MAP_CONFIG['convergence']['styles'].items():
         line_style = '--' if label == 'Comuna' else '-'
@@ -3348,7 +3350,6 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     ax.legend(handles=legend_handles, title="Convergència", loc='lower right', 
               fontsize=9, title_fontsize=11, frameon=True, framealpha=0.9, facecolor='white')
 
-    # --- 6. STREAMLINES, TÍTOL I ETIQUETES ---
     cfg_stream = MAP_CONFIG['streamlines']
     ax.streamplot(grid_lon, grid_lat, grid_u, grid_v, color=cfg_stream['color'], 
                   linewidth=cfg_stream['linewidth'], density=cfg_stream['density'], 
@@ -5240,28 +5241,49 @@ def direccio_moviment(des_de_graus):
     return cap_on_va
 
 
+
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     """
-    Gestiona la interfície de la pestanya "Anàlisi de Mapes" per a Catalunya,
-    incloent els selectors de capa i zoom.
+    Gestiona la interfície de la pestanya "Anàlisi de Mapes" per a Catalunya.
     """
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
     
-    col_capa, col_zoom = st.columns(2)
-    with col_capa:
-        mapa_sel = st.selectbox("Selecciona la capa del mapa:", 
-                               ["Anàlisi de Vent i Convergència", "Anàlisi d'Advecció (Fronts)", "Vent a 700hPa", "Vent a 300hPa"], 
-                               key="map_cat")
+    mapa_sel = st.selectbox("Selecciona la capa del mapa:", 
+                           ["Anàlisi de Vent i Convergència", "Anàlisi d'Advecció (Fronts)", "Vent a 700hPa", "Vent a 300hPa"], 
+                           key="map_cat")
+    
+    col_zoom, col_filtre = st.columns(2)
     with col_zoom: 
         zoom_sel = st.selectbox("Nivell de Zoom:", 
                                options=list(MAP_ZOOM_LEVELS_CAT.keys()), 
                                key="zoom_cat")
     
+    if "Convergència" in mapa_sel:
+        FILTRES_CAPE = {
+            "Detectar totes les convergències amb CAPE (>100)": 100,
+            "Detectar convergències amb CAPE Significatiu (>500)": 500,
+            "Detectar convergències amb Alt CAPE (>1000)": 1000,
+            "Detectar convergències amb Molt de CAPE (>2000)": 2000
+        }
+        with col_filtre:
+            filtre_sel = st.selectbox("Filtre de CAPE per a la Convergència:", options=list(FILTRES_CAPE.keys()), key="cape_filter_cat")
+    
     selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
     
-    with st.spinner(f"Carregant i generant mapa... (només la primera vegada)"):
+    with st.spinner(f"Carregant i generant mapa..."):
         if "Convergència" in mapa_sel:
-            fig = generar_mapa_cachejat_cat(hourly_index_sel, nivell_sel, timestamp_str, tuple(selected_extent))
+            cape_min_seleccionat = FILTRES_CAPE[filtre_sel]
+            
+            fig = generar_mapa_cachejat_cat(
+                hourly_index=hourly_index_sel, 
+                nivell=nivell_sel, 
+                timestamp_str=timestamp_str, 
+                map_extent_tuple=tuple(selected_extent),
+                cape_min_filter=cape_min_seleccionat,
+                cape_max_filter=6000,
+                convergence_min_filter=1
+            )
+            
             if fig is None:
                 st.error(f"Error en carregar les dades per al mapa de convergència.")
             else:
@@ -6245,11 +6267,12 @@ def preparar_dades_mapa_cachejat(alertes_tuple, selected_area_str, show_labels):
     return {"gdf": gdf.to_json(), "property_name": property_name, "styles": styles_dict, "markers": markers_data}
 
 
+
 @st.cache_resource(ttl=1800, show_spinner=False)
-def generar_mapa_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple):
+def generar_mapa_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tuple, cape_min_filter, cape_max_filter, convergence_min_filter):
     """
     Funció generadora que crea i desa a la memòria cau el mapa de convergència.
-    Ara també passa les dades de CAPE a la funció de dibuix.
+    Ara accepta els paràmetres de filtre.
     """
     map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
     if error or not map_data:
@@ -6261,10 +6284,13 @@ def generar_mapa_cachejat_cat(hourly_index, nivell, timestamp_str, map_extent_tu
         map_data['lons'], map_data['lats'], 
         map_data['speed_data'], map_data['dir_data'], 
         map_data['dewpoint_data'],
-        map_data['cape_data'],  # <-- Passem el nou paràmetre CAPE
+        map_data['cape_data'],
         nivell, 
         timestamp_str, 
-        map_extent_list
+        map_extent_list,
+        cape_min_filter,
+        cape_max_filter,
+        convergence_min_filter
     )
     return fig
 
