@@ -844,9 +844,9 @@ def calcular_mlcape_robusta(p, T, Td):
 
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i Antifràgil v5.3.
-    Soluciona l'error del moviment de la tempesta capturant el vent mitjà
-    directament del càlcul de Bunkers per garantir la coherència.
+    Versió Definitiva i Antifràgil v6.0.
+    Calcula de forma robusta tots els paràmetres necessaris, incloent
+    MLCAPE, ECAPE i CAPE 0-3km (3CAPE).
     """
     # --- 1. PREPARACIÓ I NETEJA DE DADES ---
     if len(p_profile) < 4: return None, "Perfil atmosfèric massa curt."
@@ -870,33 +870,60 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
         main_prof = ml_prof if ml_prof is not None else sfc_prof
 
         # --- 3. CÀLCULS ROBUSTS I AÏLLATS ---
-        # (Aquí va tota la secció de càlculs de PWAT, LI, T_500hPa, CAPE, etc. que ja tenies)
+        
         try: 
             rh = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
             params_calc['RH_CAPES'] = {'baixa': np.mean(rh[(p.m <= 1000) & (p.m > 850)]), 'mitjana': np.mean(rh[(p.m <= 850) & (p.m > 500)]), 'alta': np.mean(rh[(p.m <= 500) & (p.m > 250)])}
         except: params_calc['RH_CAPES'] = {'baixa': np.nan, 'mitjana': np.nan, 'alta': np.nan}
+        
         try: params_calc['PWAT'] = float(mpcalc.precipitable_water(p, Td).to('mm').m)
         except: params_calc['PWAT'] = np.nan
+        
         try:
             _, fl_h = mpcalc.freezing_level(p, T, heights); params_calc['FREEZING_LVL_HGT'] = float(fl_h[0].to('m').m)
         except: params_calc['FREEZING_LVL_HGT'] = np.nan
+        
         try:
             p_numeric = p.m; T_numeric = T.m
             if len(p_numeric) >= 2 and p_numeric.min() <= 500 <= p_numeric.max():
                 params_calc['T_500hPa'] = float(np.interp(500, p_numeric[::-1], T_numeric[::-1]))
             else: params_calc['T_500hPa'] = np.nan
         except: params_calc['T_500hPa'] = np.nan
+
+        # <<<--- BLOC DE CÀLCUL DE CAPE MILLORAT ---
         if sfc_prof is not None:
             try:
                 sbcape, sbcin = mpcalc.cape_cin(p, T, Td, sfc_prof)
                 params_calc['SBCAPE'] = float(sbcape.m); params_calc['SBCIN'] = float(sbcin.m)
                 params_calc['MAX_UPDRAFT'] = np.sqrt(2 * float(sbcape.m)) if sbcape.m > 0 else 0.0
             except: params_calc.update({'SBCAPE': np.nan, 'SBCIN': np.nan, 'MAX_UPDRAFT': np.nan})
+        
         if ml_prof is not None:
             try:
-                mlcape, mlcin = mpcalc.cape_cin(p, T, Td, ml_prof); params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
+                mlcape, mlcin = mpcalc.cape_cin(p, T, Td, ml_prof)
+                params_calc['MLCAPE'] = float(mlcape.m); params_calc['MLCIN'] = float(mlcin.m)
             except: params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
         else: params_calc.update({'MLCAPE': np.nan, 'MLCIN': np.nan})
+
+        try:
+            mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td)
+            params_calc['MUCAPE'] = float(mucape.m); params_calc['MUCIN'] = float(mucin.m)
+        except: params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
+
+        try:
+            ecape, _ = mpcalc.effective_cape_cin(p, T, Td)
+            params_calc['ECAPE'] = float(ecape.m)
+        except:
+            params_calc['ECAPE'] = np.nan
+
+        if main_prof is not None:
+            try:
+                idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
+                cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], main_prof[:idx_3km+1])
+                params_calc['CAPE_0-3km'] = float(cape_0_3.m)
+            except: params_calc['CAPE_0-3km'] = np.nan
+        # --- FI DEL BLOC DE CAPE ---
+
         if main_prof is not None:
             try: params_calc['LI'] = float(mpcalc.lifted_index(p, T, main_prof).m)
             except: params_calc['LI'] = np.nan
@@ -908,36 +935,23 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
                 el_p, _ = mpcalc.el(p, T, Td, main_prof); params_calc['EL_p'] = float(el_p.m)
                 params_calc['EL_Hgt'] = float(np.interp(el_p.m, p.m[::-1], heights_agl.m[::-1]))
             except: params_calc.update({'EL_p': np.nan, 'EL_Hgt': np.nan})
-            try:
-                idx_3km = np.argmin(np.abs(heights_agl.m - 3000))
-                cape_0_3, _ = mpcalc.cape_cin(p[:idx_3km+1], T[:idx_3km+1], Td[:idx_3km+1], main_prof[:idx_3km+1]); params_calc['CAPE_0-3km'] = float(cape_0_3.m)
-            except: params_calc['CAPE_0-3km'] = np.nan
-        try:
-            mucape, mucin = mpcalc.most_unstable_cape_cin(p, T, Td); params_calc['MUCAPE'] = float(mucape.m); params_calc['MUCIN'] = float(mucin.m)
-        except: params_calc.update({'MUCAPE': np.nan, 'MUCIN': np.nan})
+        
         try:
             lcl_p, _ = mpcalc.lcl(p[0], T[0], Td[0]); params_calc['LCL_p'] = float(lcl_p.m); params_calc['LCL_Hgt'] = float(np.interp(lcl_p.m, p.m[::-1], heights_agl.m[::-1]))
         except: params_calc.update({'LCL_p': np.nan, 'LCL_Hgt': np.nan})
+        
         try:
             for name, depth_m in [('0-1km', 1000), ('0-6km', 6000)]:
                 bwd_u, bwd_v = mpcalc.bulk_shear(p, u, v, height=heights, depth=depth_m * units.meter); params_calc[f'BWD_{name}'] = float(mpcalc.wind_speed(bwd_u, bwd_v).to('kt').m)
         except: params_calc.update({'BWD_0-1km': np.nan, 'BWD_0-6km': np.nan})
         
-        # *** LÒGICA DE MOVIMENT DE TEMPESTA CORREGIDA ***
         try:
-            # Aquesta funció retorna el moviment dret, esquerre I el vent mitjà.
-            # Ara capturem els tres resultats correctament.
             rm, lm, mean_wind = mpcalc.bunkers_storm_motion(p, u, v, heights)
             params_calc['RM'] = (float(rm[0].m), float(rm[1].m))
             params_calc['LM'] = (float(lm[0].m), float(lm[1].m))
             params_calc['Mean_Wind'] = (float(mean_wind[0].m), float(mean_wind[1].m))
         except Exception:
-            # Si el càlcul falla, assegurem que tots tres siguin N/A.
-            params_calc.update({
-                'RM': (np.nan, np.nan),
-                'LM': (np.nan, np.nan),
-                'Mean_Wind': (np.nan, np.nan)
-            })
+            params_calc.update({'RM': (np.nan, np.nan), 'LM': (np.nan, np.nan), 'Mean_Wind': (np.nan, np.nan)})
 
         if params_calc.get('RM') and not np.isnan(params_calc['RM'][0]):
             u_storm, v_storm = params_calc['RM'][0] * units('m/s'), params_calc['RM'][1] * units('m/s')
@@ -1727,10 +1741,26 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva (v43.2).
-    - Afegeix el paràmetre SWEAT Index per omplir l'espai final i completar la secció de paràmetres avançats.
+    Versió Definitiva (v44.0).
+    - Reemplaça SBCAPE/MUCAPE per MLCAPE, ECAPE i 3CAPE per a una anàlisi més professional.
     """
-    TOOLTIPS = { 'SBCAPE': "Energia Potencial Convectiva Disponible (CAPE) des de la superfície...", 'MUCAPE': "El valor màxim de CAPE a l'atmosfera...", 'CONV_PUNTUAL': "Mesura com l'aire s'ajunta en un punt...", 'SBCIN': "Energia d'Inhibició Convectiva (CIN) des de la superfície...", 'MUCIN': "La 'tapa' més feble de l'atmosfera...", 'LI': "Índex d'Elevació...", 'PWAT': "Aigua Precipitable Total...", 'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació...", 'LFC_Hgt': "Alçada del Nivell de Convecció Lliure...", 'EL_Hgt': "Alçada del Nivell d'Equilibri...", 'BWD_0-6km': "Cisallament del vent entre la superfície i 6 km...", 'BWD_0-1km': "Cisallament del vent a nivells baixos...", 'T_500hPa': "Temperatura a 500 hPa...", 'PUNTUACIO_TEMPESTA': "Índex global que combina ingredients...", 'AMENACA_CALAMARSA': "Potencial de calamarsa gran...", 'AMENACA_LLAMPS': "Potencial d'activitat elèctrica..." }
+    TOOLTIPS = {
+        'MLCAPE': "Mixed-Layer CAPE: Energia disponible per a una parcel·la d'aire mitjana en els 100hPa inferiors. Molt robust.",
+        'ECAPE': "Effective CAPE: Energia disponible per a la parcel·la més inestable. Considerat el millor predictor de la força dels corrents ascendents.",
+        'CAPE_0-3km': "Low-Level CAPE: Energia concentrada en els 3 km inferiors. Valors alts (>150 J/kg) afavoreixen la rotació a nivells baixos i el risc de tornados.",
+        'CONV_PUNTUAL': "Mesura com l'aire s'ajunta en un punt, forçant l'ascens. És el 'disparador' principal.",
+        'SBCIN': "Energia d'Inhibició Convectiva (CIN) des de la superfície...",
+        'MUCIN': "La 'tapa' més feble de l'atmosfera...",
+        'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació...",
+        'LFC_Hgt': "Alçada del Nivell de Convecció Lliure...",
+        'EL_Hgt': "Alçada del Nivell d'Equilibri...",
+        'BWD_0-6km': "Cisallament del vent entre la superfície i 6 km...",
+        'BWD_0-1km': "Cisallament del vent a nivells baixos...",
+        'T_500hPa': "Temperatura a 500 hPa...",
+        'PUNTUACIO_TEMPESTA': "Índex global que combina ingredients...",
+        'AMENACA_CALAMARSA': "Potencial de calamarsa gran...",
+        'AMENACA_LLAMPS': "Potencial d'activitat elèctrica..."
+    }
     
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
         color = "#FFFFFF"; val_str = "---"
@@ -1753,11 +1783,12 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     # --- SECCIÓ DE PARÀMETRES PRINCIPALS ---
     st.markdown("##### Paràmetres del Sondeig")
     cols_fila1 = st.columns(3)
-    with cols_fila1[0]: styled_metric("SBCAPE", params.get('SBCAPE', np.nan), "J/kg", 'SBCAPE', tooltip_text=TOOLTIPS.get('SBCAPE'))
-    with cols_fila1[1]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
-    with cols_fila1[2]: 
-        conv_key = f'CONV_{nivell_conv}hPa'
-        styled_metric("Convergència Puntual", params.get(conv_key, np.nan), "10⁻⁵ s⁻¹", 'CONV_PUNTUAL', precision=1, tooltip_text=TOOLTIPS.get('CONV_PUNTUAL'))
+    with cols_fila1[0]:
+        styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
+    with cols_fila1[1]:
+        styled_metric("ECAPE", params.get('ECAPE', np.nan), "J/kg", 'ECAPE', tooltip_text=TOOLTIPS.get('ECAPE'))
+    with cols_fila1[2]:
+        styled_metric("3CAPE", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
 
     with st.container(border=True):
         st.markdown('<p style="text-align:center; font-size: 0.9em; color: #FAFAFA; margin-bottom: 8px;">Tipus de Cel Previst</p>', unsafe_allow_html=True)
@@ -1800,31 +1831,30 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
 
     st.markdown("###### Índexs Compostos Severs")
     c1, c2, c3 = st.columns(3)
-    with c1: styled_metric("SCP", params.get('SCP'), "", 'SCP', tooltip_text="Supercell Composite Parameter. Potencial per a supercèl·lules. >1 és significatiu.", precision=1)
-    with c2: styled_metric("STP (CIN)", params.get('STP_CIN'), "", 'STP_CIN', tooltip_text="Significant Tornado Parameter. Potencial per a tornados significatius (EF2+). >1 és significatiu.", precision=1)
-    with c3: styled_metric("SHIP", params.get('SHIP'), "", 'SHIP', tooltip_text="Significant Hail Parameter. Potencial per a calamarsa severa (>5cm). >1 és significatiu.", precision=1)
+    with c1: styled_metric("SCP", params.get('SCP'), "", 'SCP', tooltip_text="Supercell Composite Parameter...", precision=1)
+    with c2: styled_metric("STP (CIN)", params.get('STP_CIN'), "", 'STP_CIN', tooltip_text="Significant Tornado Parameter...", precision=1)
+    with c3: styled_metric("SHIP", params.get('SHIP'), "", 'SHIP', tooltip_text="Significant Hail Parameter...", precision=1)
 
     st.markdown("###### Termodinàmica Detallada")
     c4, c5, c6 = st.columns(3)
-    with c4: styled_metric("DCAPE", params.get('DCAPE'), "J/kg", 'DCAPE', tooltip_text="Downdraft CAPE. Potencial per a ràfegues de vent descendents severes.")
-    with c5: styled_metric("K Index", params.get('K_INDEX'), "", 'K_INDEX', tooltip_text="Potencial de tempestes per massa d'aire. >35 indica alt potencial.")
-    with c6: styled_metric("Total Totals", params.get('TOTAL_TOTALS'), "", 'TOTAL_TOTALS', tooltip_text="Índex de severitat. >50 indica potencial per a tempestes fortes.")
+    with c4: styled_metric("DCAPE", params.get('DCAPE'), "J/kg", 'DCAPE', tooltip_text="Downdraft CAPE...")
+    with c5: styled_metric("K Index", params.get('K_INDEX'), "", 'K_INDEX', tooltip_text="Potencial de tempestes...")
+    with c6: styled_metric("Total Totals", params.get('TOTAL_TOTALS'), "", 'TOTAL_TOTALS', tooltip_text="Índex de severitat...")
     
     c7, c8, c9 = st.columns(3)
-    with c7: styled_metric("LR 0-3km", params.get('LR_0-3km'), "°C/km", 'LR_0-3km', tooltip_text="Refredament amb l'altura a capes baixes. >7.5°C/km és molt inestable.", precision=1)
-    with c8: styled_metric("LR 700-500", params.get('LR_700-500hPa'), "°C/km", 'LR_700-500hPa', tooltip_text="Inestabilitat a nivells mitjans. >7°C/km afavoreix la calamarsa.", precision=1)
-    with c9: styled_metric("Showalter", params.get('SHOWALTER_INDEX'), "", 'SHOWALTER_INDEX', reverse_colors=True, tooltip_text="Mesura d'inestabilitat. Valors negatius indiquen potencial de tempesta.")
+    with c7: styled_metric("LR 0-3km", params.get('LR_0-3km'), "°C/km", 'LR_0-3km', tooltip_text="Refredament amb l'altura...", precision=1)
+    with c8: styled_metric("LR 700-500", params.get('LR_700-500hPa'), "°C/km", 'LR_700-500hPa', tooltip_text="Inestabilitat a nivells mitjans...", precision=1)
+    with c9: styled_metric("Showalter", params.get('SHOWALTER_INDEX'), "", 'SHOWALTER_INDEX', reverse_colors=True, tooltip_text="Mesura d'inestabilitat...")
 
     st.markdown("###### Cinemàtica i Índexs Addicionals")
     c10, c11 = st.columns(2)
-    with c10: styled_metric("Effective SRH", params.get('ESRH'), "m²/s²", 'ESRH', tooltip_text="Helicitat relativa a la tempesta a la capa efectiva. >150 m²/s² afavoreix supercèl·lules.")
-    with c11: styled_metric("Effective Shear", params.get('EBWD'), "nusos", 'EBWD', tooltip_text="Cisallament del vent a la capa efectiva. >40 nusos afavoreix supercèl·lules.")
+    with c10: styled_metric("Effective SRH", params.get('ESRH'), "m²/s²", 'ESRH', tooltip_text="Helicitat relativa a la tempesta...")
+    with c11: styled_metric("Effective Shear", params.get('EBWD'), "nusos", 'EBWD', tooltip_text="Cisallament del vent...")
     
     c12, c13, c14 = st.columns(3)
-    with c12: styled_metric("Eff. Inflow Base", params.get('EFF_INFLOW_BOTTOM'), "hPa", 'EFF_INFLOW_BOTTOM', tooltip_text="Base de la capa d'aire que alimenta la tempesta.")
-    with c13: styled_metric("Eff. Inflow Top", params.get('EFF_INFLOW_TOP'), "hPa", 'EFF_INFLOW_TOP', tooltip_text="Sostre de la capa d'aire que alimenta la tempesta.")
-    # --- NOU PARÀMETRE AFEGIT PER OMPLIR L'ESPAI ---
-    with c14: styled_metric("SWEAT Index", params.get('SWEAT_INDEX'), "", 'SWEAT_INDEX', tooltip_text="Índex de risc de temps sever. >300 indica potencial sever.")
+    with c12: styled_metric("Eff. Inflow Base", params.get('EFF_INFLOW_BOTTOM'), "hPa", 'EFF_INFLOW_BOTTOM', tooltip_text="Base de la capa d'aire...")
+    with c13: styled_metric("Eff. Inflow Top", params.get('EFF_INFLOW_TOP'), "hPa", 'EFF_INFLOW_TOP', tooltip_text="Sostre de la capa d'aire...")
+    with c14: styled_metric("SWEAT Index", params.get('SWEAT_INDEX'), "", 'SWEAT_INDEX', tooltip_text="Índex de risc de temps sever...")
         
         
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
