@@ -840,11 +840,14 @@ def calcular_mlcape_robusta(p, T, Td):
         return 0.0, 0.0
 
 
+# -*- coding: utf-8 -*-
+
 def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile):
     """
-    Versió Definitiva i COMPLETA v13.0.
-    - **CORRECCIÓ FINAL**: S'ha eliminat definitivament la paraula 'dimensionless' del càlcul
-      de la Humitat Relativa (RH%), convertint el valor a un número simple (float) abans de guardar-lo.
+    Versió Definitiva i COMPLETA v14.0.
+    - **NOU CÀLCUL CLAU**: Calcula l'alçada del "Wet Bulb Zero" (WBZ_HGT), un paràmetre
+      fonamental per a la predicció de calamarsa severa.
+    - Aquesta versió està completa, sense omissions per brevetat.
     """
     # --- 1. PREPARACIÓ I VALIDACIÓ DE DADES ---
     if len(p_profile) < 4:
@@ -933,7 +936,7 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
 
     try: params_calc['T_500hPa'] = float(np.interp(500, p.m[::-1], T.m[::-1]))
     except Exception: params_calc['T_500hPa'] = np.nan
-
+    
     try:
         p_850 = 850 * units.hPa
         T_850 = np.interp(p_850.m, p.m[::-1], T.m[::-1]) * units.degC
@@ -943,16 +946,30 @@ def processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profi
     except Exception:
         params_calc['THETAE_850hPa'] = np.nan
 
-    # --- CÀLCUL DE RH% AMB LA CORRECCIÓ FINAL ---
     try: 
         rh = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
         params_calc['RH_CAPES'] = {
-            'baixa': float(np.mean(rh[(p.m <= 1000) & (p.m > 850)]).m), # <<<--- LÍNIA CORREGIDA
-            'mitjana': float(np.mean(rh[(p.m <= 850) & (p.m > 400)]).m), # <<<--- LÍNIA CORREGIDA
-            'alta': float(np.mean(rh[(p.m <= 400) & (p.m >= 100)]).m)     # <<<--- LÍNIA CORREGIDA
+            'baixa': float(np.mean(rh[(p.m <= 1000) & (p.m > 850)]).m),
+            'mitjana': float(np.mean(rh[(p.m <= 850) & (p.m > 400)]).m),
+            'alta': float(np.mean(rh[(p.m <= 400) & (p.m >= 100)]).m)
         }
     except Exception:
         params_calc['RH_CAPES'] = {'baixa': np.nan, 'mitjana': np.nan, 'alta': np.nan}
+
+    try:
+        wb_profile = mpcalc.wet_bulb_temperature(p, T, Td)
+        wb_profile_clean = wb_profile[~np.isnan(wb_profile)].m
+        heights_agl_clean = heights_agl[~np.isnan(wb_profile)].m
+        if wb_profile_clean.min() < 0 < wb_profile_clean.max():
+            sort_indices = np.argsort(wb_profile_clean)
+            wbz_height = np.interp(0, wb_profile_clean[sort_indices], heights_agl_clean[sort_indices])
+            params_calc['WBZ_HGT'] = float(wbz_height)
+        elif wb_profile_clean.max() < 0:
+            params_calc['WBZ_HGT'] = 0.0
+        else:
+            params_calc['WBZ_HGT'] = np.nan
+    except Exception:
+        params_calc['WBZ_HGT'] = np.nan
 
     # --- 4. CÀLCULS CINEMÀTICS (VENT) ---
     try:
@@ -1579,11 +1596,13 @@ def analitzar_estructura_tempesta(params):
 
     return resultats
 
+
 def analitzar_amenaces_especifiques(params):
     """
-    Sistema d'Anàlisi d'Amenaces v3.0.
-    Ajusta el potencial teòric de calamarsa i activitat elèctrica basant-se en
-    la probabilitat que la tempesta es formi (Balanç Convergència vs. CIN).
+    Sistema d'Anàlisi d'Amenaces v4.0 (Amb Wet Bulb Zero).
+    - **CANVI PRINCIPAL**: La lògica per a predir la calamarsa ha estat completament
+      reemplaçada per un sistema basat en MUCAPE i l'alçada del Wet Bulb Zero (WBZ_HGT),
+      la qual cosa ofereix una predicció molt més precisa del potencial real.
     """
     resultats = {
         'calamarsa': {'text': 'Nul·la', 'color': '#808080'},
@@ -1592,84 +1611,57 @@ def analitzar_amenaces_especifiques(params):
     }
 
     # --- 1. EXTRACCIÓ DE PARÀMETRES ---
-    updraft = params.get('MAX_UPDRAFT', 0) or 0
-    isozero = params.get('FREEZING_LVL_HGT', 5000) or 5000
+    mucape = params.get('MUCAPE', 0) or 0
+    wbz_hgt = params.get('WBZ_HGT', 5000) or 5000 # Si no hi ha dada, suposem un valor alt i no favorable
     li = params.get('LI', 5) or 5
     el_hgt = params.get('EL_Hgt', 0) or 0
     lr_0_3km = params.get('LR_0-3km', 0) or 0
     pwat = params.get('PWAT', 100) or 100
-    mucape = params.get('MUCAPE', 0) or 0
-
-    # Paràmetres per al balanç del disparador
     conv_key = next((k for k in params if k.startswith('CONV_')), None)
-    
-    # --- BLOC DE DEFENSA ANTI-ERRORS (CORRECCIÓ) ---
-    # S'assegura que 'convergencia' sigui sempre un número abans de qualsevol comparació.
     raw_conv_value = params.get(conv_key, 0)
     convergencia = raw_conv_value if isinstance(raw_conv_value, (int, float, np.number)) else 0
-    
     cin = min(params.get('SBCIN', 0), params.get('MUCIN', 0)) or 0
 
-    # --- 2. AVALUACIÓ DEL POTENCIAL DE DISPAR ---
-    # Definim un factor de realització (de 0 a 1)
+    # --- 2. AVALUACIÓ DEL POTENCIAL DE DISPAR (Factor de Realització) ---
     factor_realitzacio = 0.0
-    # Aquesta línia ara és segura gràcies a la comprovació anterior
-    if convergencia >= 30 and cin > -100:
-        factor_realitzacio = 1.0  # Disparador molt probable
-    elif convergencia >= 15 and cin > -50:
-        factor_realitzacio = 0.7  # Disparador probable
-    elif cin > -20:
-        factor_realitzacio = 0.4  # Disparador possible (sense tapa)
+    if convergencia >= 30 and cin > -100: factor_realitzacio = 1.0
+    elif convergencia >= 15 and cin > -50: factor_realitzacio = 0.7
+    elif cin > -20: factor_realitzacio = 0.4
+    if mucape < 300: return resultats
 
-    # Si no hi ha CAPE, no hi ha amenaça, independentment del disparador
-    if mucape < 300:
-        return resultats
+    # --- 3. ANÀLISI D'AMENACES AMB NOVA LÒGICA DE CALAMARSA ---
 
-    # --- 3. ANÀLISI D'AMENACES AMB AJUSTAMENT ---
+    # --- Calamarsa Gran (>2cm) amb WBZ ---
+    potencial_calamarsa_teoric = 0 # Escala de 0 a 4
+    if mucape > 800: # Llindar mínim d'energia
+        if mucape > 3000 and wbz_hgt < 2800: potencial_calamarsa_teoric = 4 # Molt Alt (Energia extrema i fusió lenta)
+        elif mucape > 2000 and wbz_hgt < 3200: potencial_calamarsa_teoric = 3 # Alt
+        elif mucape > 1000 and wbz_hgt < 3500: potencial_calamarsa_teoric = 2 # Moderat
+        else: potencial_calamarsa_teoric = 1 # Baix
 
-    # --- Calamarsa Gran (>2cm) ---
-    potencial_calamarsa_teoric = 0
-    if updraft > 55 or (updraft > 45 and isozero < 3500): potencial_calamarsa_teoric = 4 # Molt Alt
-    elif updraft > 40 or (updraft > 30 and isozero < 3800): potencial_calamarsa_teoric = 3 # Alt
-    elif updraft > 25: potencial_calamarsa_teoric = 2 # Moderat
-    elif updraft > 15: potencial_calamarsa_teoric = 1 # Baix
-
-    # Ajustem el potencial teòric amb el factor de realització
     potencial_calamarsa_real = potencial_calamarsa_teoric * factor_realitzacio
-    if potencial_calamarsa_real >= 3.5:
-        resultats['calamarsa'] = {'text': 'Molt Alta', 'color': '#dc3545'}
-    elif potencial_calamarsa_real >= 2.5:
-        resultats['calamarsa'] = {'text': 'Alta', 'color': '#fd7e14'}
-    elif potencial_calamarsa_real >= 1.5:
-        resultats['calamarsa'] = {'text': 'Moderada', 'color': '#ffc107'}
-    elif potencial_calamarsa_real >= 0.5:
-        resultats['calamarsa'] = {'text': 'Baixa', 'color': '#2ca02c'}
+    if potencial_calamarsa_real >= 3.5: resultats['calamarsa'] = {'text': 'Molt Alta', 'color': '#dc3545'}
+    elif potencial_calamarsa_real >= 2.5: resultats['calamarsa'] = {'text': 'Alta', 'color': '#fd7e14'}
+    elif potencial_calamarsa_real >= 1.5: resultats['calamarsa'] = {'text': 'Moderada', 'color': '#ffc107'}
+    elif potencial_calamarsa_real >= 0.5: resultats['calamarsa'] = {'text': 'Baixa', 'color': '#2ca02c'}
+    else: resultats['calamarsa'] = {'text': 'Nul·la', 'color': '#808080'}
 
     # --- Activitat Elèctrica (Llamps) ---
     potencial_llamps_teoric = 0
-    if li < -7 or (li < -5 and el_hgt > 12000): potencial_llamps_teoric = 4 # Extrema
-    elif li < -4 or (li < -2 and el_hgt > 10000): potencial_llamps_teoric = 3 # Alta
-    elif li < -1: potencial_llamps_teoric = 2 # Moderada
-    elif mucape > 150: potencial_llamps_teoric = 1 # Baixa
-
-    # Ajustem el potencial teòric
+    if li < -7 or (li < -5 and el_hgt > 12000): potencial_llamps_teoric = 4
+    elif li < -4 or (li < -2 and el_hgt > 10000): potencial_llamps_teoric = 3
+    elif li < -1: potencial_llamps_teoric = 2
+    elif mucape > 150: potencial_llamps_teoric = 1
     potencial_llamps_real = potencial_llamps_teoric * factor_realitzacio
-    if potencial_llamps_real >= 3.5:
-        resultats['llamps'] = {'text': 'Extrema', 'color': '#dc3545'}
-    elif potencial_llamps_real >= 2.5:
-        resultats['llamps'] = {'text': 'Alta', 'color': '#fd7e14'}
-    elif potencial_llamps_real >= 1.5:
-        resultats['llamps'] = {'text': 'Moderada', 'color': '#ffc107'}
-    elif potencial_llamps_real >= 0.5:
-        resultats['llamps'] = {'text': 'Baixa', 'color': '#2ca02c'}
+    if potencial_llamps_real >= 3.5: resultats['llamps'] = {'text': 'Extrema', 'color': '#dc3545'}
+    elif potencial_llamps_real >= 2.5: resultats['llamps'] = {'text': 'Alta', 'color': '#fd7e14'}
+    elif potencial_llamps_real >= 1.5: resultats['llamps'] = {'text': 'Moderada', 'color': '#ffc107'}
+    elif potencial_llamps_real >= 0.5: resultats['llamps'] = {'text': 'Baixa', 'color': '#2ca02c'}
 
-    # --- Esclafits (Aquesta amenaça es manté igual, ja que no depèn tant del CAPE) ---
-    if lr_0_3km > 8.0 and pwat < 35:
-        resultats['esclafits'] = {'text': 'Alta', 'color': '#fd7e14'}
-    elif lr_0_3km > 7.0 and pwat < 40:
-        resultats['esclafits'] = {'text': 'Moderada', 'color': '#ffc107'}
-    elif lr_0_3km > 6.5:
-        resultats['esclafits'] = {'text': 'Baixa', 'color': '#2ca02c'}
+    # --- Esclafits ---
+    if lr_0_3km > 8.0 and pwat < 35: resultats['esclafits'] = {'text': 'Alta', 'color': '#fd7e14'}
+    elif lr_0_3km > 7.0 and pwat < 40: resultats['esclafits'] = {'text': 'Moderada', 'color': '#ffc107'}
+    elif lr_0_3km > 6.5: resultats['esclafits'] = {'text': 'Baixa', 'color': '#2ca02c'}
         
     return resultats
 
