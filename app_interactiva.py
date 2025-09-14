@@ -7459,111 +7459,38 @@ def ui_portal_viatges_rapids(alertes_totals, comarca_actual):
                                   
                   
 
-# -*- coding: utf-8 -*-
-
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple, alertes_totals):
     """
-    PESTANYA D'ANÀLISI COMARCAL (Versió Final amb Mapa).
-    - **CANVI PRINCIPAL**: Aquesta vista ara mostra un mapa d'alta resolució centrat
-      a la comarca, amb el focus de convergència i la trajectòria prevista de la tempesta.
-    - El panell de paràmetres ja no es mostra aquí, sinó a "Anàlisi Vertical".
+    PESTANYA D'ANÀLISI COMARCAL (Versió Final i COMPLETA).
+    - Mostra el panell de paràmetres complet.
+    - Passa el valor de CAPE del focus de la tempesta a la caixa de paràmetres.
     """
-    st.markdown(f"#### Anàlisi de la Zona i Trajectòria Prevista per a: {comarca}")
-    st.caption(timestamp_str.replace(poble_sel, comarca))
+    # --- Càlcul del CAPE del Mapa ---
+    cape_del_focus = alertes_totals.get(comarca, {}).get('cape', np.nan)
+    
+    # --- Dibuix de la Interfície ---
+    col_esquerra, col_dreta = st.columns([0.45, 0.55], gap="large")
+    
+    with col_esquerra:
+        # Mostrem el panell de paràmetres complet, passant el nou valor
+        # Assegurem que data_tuple[0] existeix abans de cridar
+        if data_tuple and data_tuple[0]:
+            ui_caixa_parametres_sondeig(data_tuple[0], params_calc, nivell_sel, hora_sel_str, poble_sel, map_cape=cape_del_focus)
+        else:
+            st.warning("No hi ha dades de sondeig per mostrar el panell de paràmetres.")
 
-    col_mapa, col_diagnostic = st.columns([0.6, 0.4], gap="large")
-
-    with col_mapa:
-        with st.spinner("Generant mapa d'alta resolució de la comarca..."):
-            # Carreguem les geometries de les comarques
-            gdf_comarques = carregar_dades_geografiques()
-            if gdf_comarques is None: 
-                st.error("No s'ha pogut carregar el mapa de comarques.")
-                return
-
-            property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_comarques.columns), 'nom_comar')
-            comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
-            
-            if comarca_shape.empty: 
-                st.error(f"No s'ha trobat la geometria per a '{comarca}'.")
-                return
-            
-            # Calculem l'extensió del mapa per a fer zoom a la comarca
-            bounds = comarca_shape.total_bounds
-            margin_lon = (bounds[2] - bounds[0]) * 0.3; margin_lat = (bounds[3] - bounds[1]) * 0.3
-            map_extent = [bounds[0] - margin_lon, bounds[2] + margin_lon, bounds[1] - margin_lat, bounds[3] + margin_lat]
-            
-            # Creem el mapa base
-            fig, ax = crear_mapa_base(map_extent)
-            ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
-
-            # Dibuixem el focus de convergència si existeix
-            if map_data and valor_conv > 15:
-                # ... (Aquí aniria tota la lògica per a dibuixar la convergència i la fletxa de direcció)
-                # Aquesta part és complexa, per a simplificar la peguem directament aquí:
-                lons, lats = map_data['lons'], map_data['lats']
-                grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 150), np.linspace(map_extent[2], map_extent[3], 150))
-                grid_dewpoint = griddata((lons, lats), map_data['dewpoint_data'], (grid_lon, grid_lat), 'linear')
-                u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
-                grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-                grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-                
-                with np.errstate(invalid='ignore'):
-                    dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-                    convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
-                    convergence[np.isnan(convergence)] = 0
-                    DEWPOINT_THRESHOLD = 14 if nivell_sel >= 950 else 12
-                    humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
-                    effective_convergence = np.where((convergence >= 15) & humid_mask, convergence, 0)
-                smoothed_convergence = gaussian_filter(effective_convergence, sigma=3.5)
-                smoothed_convergence[smoothed_convergence < 15] = 0
-
-                if np.any(smoothed_convergence > 0):
-                    fill_levels = [20, 30, 40, 60, 80, 100, 120]
-                    cmap = plt.get_cmap('plasma'); norm = BoundaryNorm(fill_levels, ncolors=cmap.N, clip=True)
-                    ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels, cmap=cmap, norm=norm, alpha=0.75, zorder=3, transform=ccrs.PlateCarree(), extend='max')
-                
-                points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
-                gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
-                points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
-                
-                if not points_in_comarca.empty and points_in_comarca['conv'].max() > 15:
-                    max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
-                    px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
-                    
-                    if data_tuple and data_tuple[0]:
-                        if valor_conv >= 100: indicator_color = '#9370DB'
-                        elif valor_conv >= 60: indicator_color = '#DC3545'
-                        elif valor_conv >= 40: indicator_color = '#FD7E14'
-                        else: indicator_color = '#28A745'
-                        path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
-                        circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
-                        ax.add_patch(circle)
-                        ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
-                        
-                        try:
-                            _, p_calc = data_tuple
-                            rm_mov = p_calc.get('RM')
-                            if rm_mov and not pd.isna(rm_mov[0]):
-                                u_storm, v_storm = rm_mov[0] * units('m/s'), rm_mov[1] * units('m/s')
-                                storm_dir_to = (mpcalc.wind_direction(u_storm, v_storm).m + 180) % 360
-                                dir_rad = np.deg2rad(90 - storm_dir_to); length = 0.25
-                                end_x, end_y = px + length * np.cos(dir_rad), py + length * np.sin(dir_rad)
-                                ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
-                        except Exception: pass
-            
-            poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
-            if poble_coords:
-                ax.text(poble_coords['lon'], poble_coords['lat'], '( Tú )\n▼', transform=ccrs.PlateCarree(), fontsize=10, fontweight='bold', color='black', ha='center', va='bottom', zorder=14, path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')])
-
-            st.pyplot(fig, use_container_width=True); plt.close(fig)
-
-    with col_diagnostic:
-        cape_del_focus = alertes_totals.get(comarca, {}).get('cape', np.nan)
+    with col_dreta:
+        st.markdown("##### Anàlisi de la Zona i Trajectòria Prevista")
+        
+        # Generació del Butlletí Intel·ligent
         if params_calc:
             bulleti_data = generar_bulleti_inteligent(params_calc, poble_sel, valor_conv, cape_del_focus)
             ui_bulleti_inteligent(bulleti_data)
+
+        # Portal de viatges ràpids a altres zones
         ui_portal_viatges_rapids(alertes_totals, comarca)
+        
+        # Llegenda del mapa de focus
         crear_llegenda_direccionalitat()
         
         
