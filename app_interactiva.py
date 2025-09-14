@@ -1756,19 +1756,17 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
     
 
 
-# -*- coding: utf-8 -*-
-
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva v47.0 (Ajust Final).
-    - **CANVI PRINCIPAL**: El Lifted Index (LI) es mostra a la secció principal en lloc del DCAPE
-      per a oferir una visió ràpida i directa de la inestabilitat atmosfèrica.
-    - S'ha eliminat la secció de paràmetres avançats per a una interfície més neta.
+    Versió Definitiva v48.0 (Disseny Final).
+    - **CANVI PRINCIPAL**: La fila superior de paràmetres ara mostra MLCAPE, LI i MUCAPE,
+      creant un panell de diagnòstic d'inestabilitat ràpid i molt potent.
+    - Interfície neta sense paràmetres avançats.
     """
     TOOLTIPS = {
-        'MLCAPE': "Mixed-Layer CAPE: Energia disponible per a una parcel·la d'aire mitjana en els 100hPa inferiors. Molt robust.",
+        'MLCAPE': "Mixed-Layer CAPE: Energia disponible per a una parcel·la d'aire mitjana en els 100hPa inferiors. Molt representatiu de les condicions reals.",
         'LI': "Lifted Index: Mesura la inestabilitat a 500 hPa. Valors negatius indiquen un fort potencial per a tempestes. Com més negatiu, més inestable.",
-        'CAPE_0-3km': "Low-Level CAPE: Energia concentrada en els 3 km inferiors. Valors alts (>150 J/kg) afavoreixen la rotació a nivells baixos i el risc de tornados.",
+        'MUCAPE': "Most Unstable CAPE: L'energia màxima disponible a l'atmosfera, calculada des del nivell més inestable. Indica el potencial explosiu màxim.",
         'SBCIN': "Energia d'Inhibició Convectiva (CIN) des de la superfície...",
         'MUCIN': "La 'tapa' més feble de l'atmosfera...",
         'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació...",
@@ -1806,11 +1804,10 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_fila1[0]:
         styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
     with cols_fila1[1]:
-        # <<<--- CANVI REALITZAT AQUÍ: LI ARA ÉS UN PARÀMETRE PRINCIPAL ---
-        # Noteu el reverse_colors=True per a què els valors negatius siguin vermells.
         styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', tooltip_text=TOOLTIPS.get('LI'), precision=1, reverse_colors=True)
     with cols_fila1[2]:
-        styled_metric("3CAPE", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
+        # <<<--- CANVI FINAL REALITZAT AQUÍ: MUCAPE AL COSTAT DE LI ---
+        styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
 
     with st.container(border=True):
         st.markdown('<p style="text-align:center; font-size: 0.9em; color: #FAFAFA; margin-bottom: 8px;">Tipus de Cel Previst</p>', unsafe_allow_html=True)
@@ -1822,7 +1819,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
                 img_col, text_col = st.columns([0.2, 0.8], gap="medium", vertical_alignment="center")
                 with img_col: st.image(b64_img, width=50)
                 with text_col:
-                    st.markdown(f'<div style="line-height: 1.3;"><strong style="font-size: 1.05em; color: #FFFFFF;">{veredicte}</strong><br><span style="font-size: 0.85em; color: #A0A0B0; font-style: italic;">({desc})</span></div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="line-height: 1.3;"><strong style="font-size: 1.05em; color: #FFFFFF;">{veredicte}</strong><br><span style="font-size: 0.85em; color: #A0A0A0; font-style: italic;">({desc})</span></div>', unsafe_allow_html=True)
                 if i < len(analisi_temps_list) - 1: st.markdown("<hr style='margin: 8px 0; border-color: #444;'>", unsafe_allow_html=True)
         else: st.warning("No s'ha pogut determinar el tipus de cel.")
 
