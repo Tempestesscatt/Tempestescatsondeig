@@ -1810,10 +1810,9 @@ MAPA_IMATGES_REALS = {
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva v58.0 (Ajustos Finals d'Expert).
-    - **CANVI 1**: Theta-E es mostra en Graus Celsius (°C).
-    - **CANVI 2**: La Humitat Relativa per capes (Baixa, Mitjana, Alta) té un bloc propi i separat.
-    - **CANVI 3**: S'ha netejat el format de la Humitat Relativa per a mostrar només el percentatge.
+    Versió Definitiva v59.0 (Neteja Final d'Interfície).
+    - **CANVI PRINCIPAL**: El bloc de Humitat Relativa ha estat redissenyat per a ser més net,
+      amb un títol clar "Humitat Relativa (RH %)" i sense text redundant.
     """
     TOOLTIPS = {
         'MLCAPE': "Mixed-Layer CAPE: Energia disponible.",
@@ -1823,7 +1822,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         'MUCAPE': "Most Unstable CAPE: Màxim potencial energètic.",
         'SBCIN': "Inhibició (tapa) des de la superfície.",
         'MUCIN': "La 'tapa' més feble de l'atmosfera.",
-        'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa: Mesura combinada de temperatura i humitat. Valors alts (>70°C) indiquen una massa d'aire molt energètica i càlida, potencialment d'origen saharià.",
+        'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa: Mesura combinada de temperatura i humitat. Valors alts (>70°C) indiquen una massa d'aire molt energètica i càlida.",
         'LCL_Hgt': "Alçada de la base dels núvols.",
         'LFC_Hgt': "Alçada on una bombolla d'aire comença a accelerar sola.",
         'EL_Hgt': "Alçada del cim de la tempesta (Equilibrium Level).",
@@ -1878,7 +1877,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols_fila2[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
     with cols_fila2[2]:
-        # Conversió de Theta-E a Celsius per a la visualització
         theta_e_k = params.get('THETAE_850hPa', np.nan)
         theta_e_c = theta_e_k - 273.15 if pd.notna(theta_e_k) else np.nan
         styled_metric("Theta-E 850", theta_e_c, "°C", 'THETAE_850hPa', tooltip_text=TOOLTIPS.get('THETAE_850hPa'), precision=1)
@@ -1891,7 +1889,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_fila3[2]: styled_metric("BWD 0-1km", params.get('BWD_0-1km', np.nan), "nusos", 'BWD_0-1km', tooltip_text=TOOLTIPS.get('BWD_0-1km'))
     with cols_fila3[3]: styled_metric("T 500hPa", params.get('T_500hPa', np.nan), "°C", 'T_500hPa', precision=1, tooltip_text=TOOLTIPS.get('T_500hPa'))
 
-    # --- NOU BLOC INDEPENDENT PER A LA HUMITAT RELATIVA ---
+    # --- BLOC DE HUMITAT RELATIVA REDISSENYAT ---
     rh_capes = params.get('RH_CAPES', {})
     rh_b = rh_capes.get('baixa', np.nan)
     rh_m = rh_capes.get('mitjana', np.nan)
@@ -1900,18 +1898,21 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     rh_m_str = f"{rh_m:.0f}%" if pd.notna(rh_m) else "---"
     rh_a_str = f"{rh_a:.0f}%" if pd.notna(rh_a) else "---"
     st.markdown(f"""
-    <div style="display: flex; justify-content: space-around; text-align: center; padding: 12px 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
-        <div>
-            <span style="font-size: 0.8em; color: #FAFAFA;">RH Baixa</span>
-            <strong style="display: block; font-size: 1.6em; color: #FFFFFF;">{rh_b_str}</strong>
-        </div>
-        <div>
-            <span style="font-size: 0.8em; color: #FAFAFA;">RH Mitjana</span>
-            <strong style="display: block; font-size: 1.6em; color: #FFFFFF;">{rh_m_str}</strong>
-        </div>
-        <div>
-            <span style="font-size: 0.8em; color: #FAFAFA;">RH Alta</span>
-            <strong style="display: block; font-size: 1.6em; color: #FFFFFF;">{rh_a_str}</strong>
+    <div style="padding: 10px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;">
+        <p style="text-align:center; font-size: 0.8em; color: #FAFAFA; margin-bottom: 8px; margin-top: -5px;">Humitat Relativa (RH %)</p>
+        <div style="display: flex; justify-content: space-around; text-align: center;">
+            <div>
+                <span style="font-size: 0.8em; color: #A0A0B0;">Baixa</span>
+                <strong style="display: block; font-size: 1.6em; color: #FFFFFF; line-height: 1.1;">{rh_b_str}</strong>
+            </div>
+            <div>
+                <span style="font-size: 0.8em; color: #A0A0B0;">Mitjana</span>
+                <strong style="display: block; font-size: 1.6em; color: #FFFFFF; line-height: 1.1;">{rh_m_str}</strong>
+            </div>
+            <div>
+                <span style="font-size: 0.8em; color: #A0A0B0;">Alta</span>
+                <strong style="display: block; font-size: 1.6em; color: #FFFFFF; line-height: 1.1;">{rh_a_str}</strong>
+            </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
