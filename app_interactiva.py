@@ -3264,9 +3264,8 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
                                      nivell: int, timestamp_str: str, map_extent: List[float],
                                      cape_min_filter: int, cape_max_filter: int, convergence_min_filter: int) -> plt.Figure:
     """
-    VERSIÓ 27.0 (MARCADORS ADAPTATIUS): Genera un mapa que detecta cada focus
-    de convergència individual i hi dibuixa un marcador de mida variable
-    en funció de la mida de la zona.
+    VERSIÓ 28.0 (LÒGICA DE COLOR ROBUSTA): Corregit el problema del marcador
+    blanc per a valors de convergència superiors al màxim definit.
     """
     plt.style.use('default')
     fig, ax = crear_mapa_base(map_extent)
@@ -3321,7 +3320,6 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
             line_style = '--' if category_name == 'Comuna' else '-'
             ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=style['levels'], colors='black', linewidths=style['width'], linestyles=line_style, zorder=4, transform=ccrs.PlateCarree())
         
-        # --- NOU BLOC: DIBUIXAR MARCADORS ADAPTATIUS PER A CADA FOCUS ---
         labeled_array, num_features = ndi.label(smoothed_convergence > convergence_min_filter)
         for i in range(1, num_features + 1):
             blob_mask = (labeled_array == i)
@@ -3336,10 +3334,14 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
             elif blob_area < 800: marker_scale = 0.8
             else: marker_scale = 1.0
 
-            marker_color = '#FFFFFF'
-            for style in cfg_conv['styles'].values():
-                if style['levels'][0] <= max_conv_in_blob < style['levels'][-1] + 10:
-                    marker_color = style['color']; break
+            # <<<--- LÒGICA DE COLOR CORREGIDA I ROBUSTA ---
+            marker_color = '#6c757d' # Color per defecte si no troba res (gris)
+            # Iterem en ordre invers (del més fort al més feble)
+            for style in reversed(list(cfg_conv['styles'].values())):
+                if max_conv_in_blob >= style['levels'][0]:
+                    marker_color = style['color']
+                    break # Trobem el primer que compleix i parem
+            # --- FI DE LA CORRECCIÓ ---
 
             ax.plot(max_lon, max_lat, 's', color=marker_color, markersize=8 * marker_scale, markeredgecolor='black', 
                     markeredgewidth=1.5 * marker_scale, transform=ccrs.PlateCarree(), zorder=13)
@@ -3369,7 +3371,6 @@ def crear_mapa_forecast_combinat_cat(lons: np.ndarray, lats: np.ndarray, speed_d
     afegir_etiquetes_ciutats(ax, map_extent)
     
     return fig
-
 
     
     
