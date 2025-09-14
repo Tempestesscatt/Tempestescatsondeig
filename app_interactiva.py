@@ -8594,12 +8594,10 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Expert v51.0 (Basat en Llindars d'Humitat).
-    - **LÒGICA CENTRAL**: Diagnostica la nuvolositat estratiforme basant-se estrictament en els
-      llindars d'Humitat Relativa (RH) per a cada capa (Baixa ≥ 70%, Mitjana ≥ 60%, Alta ≥ 50%).
-    - **PRIORITAT CONVECTIVA**: L'anàlisi de la humitat només es realitza si es descarta prèviament
-      la formació de tempestes significatives.
-    - **DIAGNÒSTIC MÚLTIPLE**: Pot retornar diagnòstics per a múltiples capes de núvols simultàniament.
+    Sistema de Diagnòstic Expert v52.0 (Anàlisi Exhaustiva).
+    - **CORRECCIÓ FINAL**: S'ha eliminat la limitació del nombre de diagnòstics. Ara la funció
+      retornarà TOTS els tipus de núvols detectats a les diferents capes atmosfèriques,
+      oferint un retrat complet de la situació.
     """
     diagnostics = []
     
@@ -8616,23 +8614,22 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
 
-    # --- PAS 1: COMPROVACIÓ PRIORITÀRIA DE POTENCIAL DE TEMPESTA ---
-    # Si hi ha condicions de tempesta, aquest diagnòstic té preferència sobre la resta.
-    if mucin > -150 and conv > 5 and mlcape > 400: # Llindar de mlcape a 400 per a tempestes
+    # --- PAS 1: COMPROVACIÓ PRIORITÀRIA DE POTENCIAL DE TEMPESTA (EXCLOENT) ---
+    # Si es detecta una tempesta, aquest és l'únic diagnòstic vàlid.
+    if mucin > -150 and conv > 5 and mlcape > 400:
         if mlcape > 2000 and bwd_6km > 35:
             return [{'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Condicions explosives per a tempestes severes."}]
         if mlcape > 800 and bwd_6km > 25:
             return [{'descripcio': "Tempestes Organitzades", 'veredicte': "Potencial per a sistemes de tempestes organitzats."}]
         if mlcape > 1500 and bwd_6km < 20:
             return [{'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Tempestes aïllades però molt potents."}]
-        # Si no compleix les condicions de severitat, però hi ha energia, són cúmuls de gran evolució
         return [{'descripcio': "Cúmuls de creixement", 'veredicte': "Núvols amb fort desenvolupament vertical."}]
     
-    # --- PAS 2: ANÀLISI DE NUVOLOSITAT ESTRATIFORME PER CAPES (si no hi ha tempesta) ---
+    # --- PAS 2: ANÀLISI ADDITIVA DE NUVOLOSITAT PER CAPES (si no hi ha tempesta) ---
+    # Aquesta secció pot afegir múltiples diagnòstics a la llista.
     
     # -- ANÀLISI DE CAPES BAIXES --
     if rh_baixa >= 70:
-        # Si hi ha una mica d'inestabilitat, seran cúmuls; si no, seran estratus.
         if mlcape >= 100:
             diagnostics.append({'descripcio': "Cúmuls mediocris", 'veredicte': "Núvols baixos amb cert desenvolupament."})
         else:
@@ -8647,12 +8644,12 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
         diagnostics.append({'descripcio': "Vels de Cirrus (Molt Alts)", 'veredicte': "Presència de núvols alts de tipus cirrus."})
     
     # --- PAS 3: GESTIÓ FINAL ---
-    # Si, després de totes les comprovacions, no s'ha afegit cap diagnòstic, el cel està serè.
+    # Si, després de totes les comprovacions, la llista continua buida, el cel està serè.
     if not diagnostics:
         diagnostics.append({ 'descripcio': "Cel Serè", 'veredicte': "Temps estable i sec." })
             
-    # Retorna fins a un màxim de 3 diagnòstics per a mostrar un cel complex si cal.
-    return diagnostics[:3]
+    # Retorna la llista COMPLETA de diagnòstics trobats.
+    return diagnostics
     
 if __name__ == "__main__":
     main()
