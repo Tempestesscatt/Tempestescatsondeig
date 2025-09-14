@@ -69,6 +69,37 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
 
+@st.cache_data
+def convertir_img_a_base64(ruta_arxiu_relativa):
+    """
+    Versió Robusta v2.0. Converteix una imatge a Base64 utilitzant una ruta absoluta
+    per a garantir que sempre trobi l'arxiu, independentment d'on s'executi l'script.
+    """
+    try:
+        # Aquesta és la part clau: construeix la ruta completa a l'arxiu
+        directori_actual = os.path.dirname(__file__)
+        ruta_absoluta = os.path.join(directori_actual, ruta_arxiu_relativa)
+
+        with open(ruta_absoluta, "rb") as f:
+            contingut = base64.b64encode(f.read()).decode("utf-8")
+        return f"data:image/jpeg;base64,{contingut}"
+    except FileNotFoundError:
+        # Si falla, intenta trobar el 'fallback' de la mateixa manera robusta
+        try:
+            ruta_fallback = os.path.join(directori_actual, "imatges_reals/fallback.jpg")
+            with open(ruta_fallback, "rb") as f:
+                contingut = base64.b64encode(f.read()).decode("utf-8")
+            return f"data:image/jpeg;base64,{contingut}"
+        except FileNotFoundError:
+            # Si ni tan sols el fallback existeix, imprimeix un error útil a la consola
+            print(f"ALERTA: No s'ha trobat l'arxiu d'imatge a '{ruta_absoluta}' ni el fallback.")
+            return ""
+    except Exception as e:
+        print(f"S'ha produït un error inesperat en carregar la imatge: {e}")
+        return ""
+        
+
+
 
 MAP_CONFIG = {
     # <<<--- CANVI PRINCIPAL AQUÍ: Nova paleta de colors professional per al CAPE ---
