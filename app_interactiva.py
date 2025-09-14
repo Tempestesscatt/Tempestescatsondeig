@@ -1756,18 +1756,21 @@ def analitzar_regims_de_vent_cat(sounding_data, params_calc, hora_del_sondeig):
     
 
 
+# -*- coding: utf-8 -*-
+
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva v50.0 (Visualització Millorada).
-    - **CANVI PRINCIPAL**: La secció "Tipus de Cel Previst" ara mostra una imatge gran i centrada
-      del tipus de núvol, amb el text a sota, per a una interpretació més directa i visual.
-    - Manté el panell d'energia de 4 paràmetres a la part superior.
+    Versió Definitiva v52.0 (Panell d'Expert).
+    - **CANVI PRINCIPAL**: S'afegeix la Convergència/Divergència a la fila principal, que ara conté
+      5 paràmetres clau per a un diagnòstic complet i immediat de la situació convectiva.
+    - El rètol canvia dinàmicament entre 'Convergència' i 'Divergència'.
     """
     TOOLTIPS = {
         'MLCAPE': "Mixed-Layer CAPE: Energia disponible per a una parcel·la d'aire mitjana en els 100hPa inferiors. Molt representatiu de les condicions reals.",
         'LI': "Lifted Index: Mesura la inestabilitat a 500 hPa. Valors negatius indiquen un fort potencial per a tempestes. Com més negatiu, més inestable.",
+        'CONV_PUNTUAL': "Convergència (+): El vent s'ajunta, forçant l'aire a pujar (disparador). Divergència (-): El vent se separa, forçant l'aire a baixar (estabilitzador).",
         'CAPE_0-3km': "Low-Level CAPE: Energia concentrada en els 3 km inferiors. Valors alts (>150 J/kg) afavoreixen la rotació a nivells baixos i el risc de tornados.",
-        'MUCAPE': "Most Unstable CAPE: L'energia màxima disponible a l'atmosfera, calculada des del nivell més inestable. Indica el potencial explosiu màxim.",
+        'MUCAPE': "Most Unstable CAPE: L'energia màxima disponible a l'atmosfera. Indica el potencial explosiu màxim.",
         'SBCIN': "Energia d'Inhibició Convectiva (CIN) des de la superfície...",
         'MUCIN': "La 'tapa' més feble de l'atmosfera...",
         'LCL_Hgt': "Alçada del Nivell de Condensació per Elevació...",
@@ -1802,40 +1805,54 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     # --- SECCIÓ DE PARÀMETRES PRINCIPALS ---
     st.markdown("##### Paràmetres del Sondeig")
     
-    cols_fila1 = st.columns(4)
+    # <<<--- CANVI A 5 COLUMNES PER AL PANELL D'EXPERT COMPLET ---
+    cols_fila1 = st.columns(5)
     with cols_fila1[0]:
         styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
     with cols_fila1[1]:
         styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', tooltip_text=TOOLTIPS.get('LI'), precision=1, reverse_colors=True)
     with cols_fila1[2]:
-        styled_metric("3CAPE", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
+        # --- NOU BLOC PER A LA CONVERGÈNCIA / DIVERGÈNCIA ---
+        conv_key = f'CONV_{nivell_conv}hPa'
+        conv_value = params.get(conv_key, np.nan)
+        if pd.notna(conv_value):
+            if conv_value >= 0:
+                styled_metric("Convergència", conv_value, "unitats", "CONV_PUNTUAL", tooltip_text=TOOLTIPS.get('CONV_PUNTUAL'), precision=1)
+            else:
+                # Si és divergència, fem un bloc personalitzat amb color blau
+                st.markdown(f"""
+                <div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;">
+                    <span style="font-size: 0.8em; color: #FAFAFA;">Divergència (unitats) <span title="{TOOLTIPS.get('CONV_PUNTUAL')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span>
+                    <strong style="font-size: 1.6em; color: #6495ED; line-height: 1.1;">{conv_value:.1f}</strong>
+                </div>""", unsafe_allow_html=True)
+        else:
+             styled_metric("Convergència", np.nan, "unitats", "CONV_PUNTUAL") # Mostra '---' si no hi ha dades
     with cols_fila1[3]:
+        styled_metric("3CAPE", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
+    with cols_fila1[4]:
         styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
 
-    # <<<--- NOU BLOC VISUAL PER AL TIPUS DE CEL ---
-    with st.container(border=True):
-        st.markdown('<p style="text-align:center; font-size: 0.9em; color: #FAFAFA; margin-bottom: 8px;">Tipus de Cel Previst</p>', unsafe_allow_html=True)
-        analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
-        
-        if analisi_temps_list:
-            # Mostrem només el diagnòstic principal per a més claredat
-            diag = analisi_temps_list[0]
-            desc = diag.get("descripcio", "Desconegut")
-            veredicte = diag.get("veredicte", "")
-            b64_img = NUVOL_ICON_BASE64.get(desc, NUVOL_ICON_BASE64["fallback"])
-
-            # Usem HTML per a un control total sobre l'estil i la disposició centrada
-            st.markdown(f"""
-            <div style="text-align: center; padding: 10px 0;">
-                <img src="{b64_img}" alt="{desc}" style="width: 120px; height: auto; margin-bottom: 10px;">
-                <strong style="display: block; font-size: 1.1em; color: #FFFFFF;">{veredicte}</strong>
-                <em style="font-size: 0.9em; color: #A0A0B0;">({desc})</em>
+    analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
+    if analisi_temps_list:
+        diag = analisi_temps_list[0]
+        desc, veredicte = diag.get("descripcio", "Desconegut"), diag.get("veredicte", "")
+        b64_img = NUVOL_FOTO_BASE64.get(desc, NUVOL_FOTO_BASE64.get("fallback", ""))
+        st.markdown(f"""
+        <div style="
+            position: relative; width: 100%; height: 180px; border-radius: 10px;
+            background-image: url('{b64_img}'); background-size: cover; background-position: center;
+            display: flex; align-items: flex-end; padding: 15px;
+            box-shadow: inset 0 -80px 60px -30px rgba(0,0,0,0.8); margin-bottom: 10px;
+        ">
+            <div style="color: white; text-shadow: 2px 2px 5px rgba(0,0,0,0.8);">
+                <strong style="font-size: 1.3em;">{veredicte}</strong><br>
+                <em style="font-size: 0.9em; color: #DDDDDD;">({desc})</em>
             </div>
-            """, unsafe_allow_html=True)
-            
-        else:
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        with st.container(border=True):
             st.warning("No s'ha pogut determinar el tipus de cel.")
-    # <<<--- FI DEL NOU BLOC VISUAL ---
 
     cols_fila2 = st.columns(4)
     with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
@@ -1857,7 +1874,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_amenaces[0]: styled_qualitative("Calamarsa Gran (>2cm)", amenaces['calamarsa']['text'], amenaces['calamarsa']['color'], tooltip_text=TOOLTIPS.get('AMENACA_CALAMARSA'))
     with cols_amenaces[1]: styled_qualitative("Índex de Potencial", f"{puntuacio_resultat['score']} / 10", puntuacio_resultat['color'], tooltip_text=TOOLTIPS.get('PUNTUACIO_TEMPESTA'))
     with cols_amenaces[2]: styled_qualitative("Activitat Elèctrica", amenaces['llamps']['text'], amenaces['llamps']['color'], tooltip_text=TOOLTIPS.get('AMENACA_LLAMPS'))
-        
+    
         
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
     """
