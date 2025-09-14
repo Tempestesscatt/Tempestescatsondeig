@@ -6909,7 +6909,7 @@ def tornar_al_mapa_general():
 def run_catalunya_app():
     """
     Funció principal que gestiona tota la lògica i la interfície per a la zona de Catalunya.
-    Versió final i completa.
+    Versió final amb correcció del bug de persistència de la selecció de comarca.
     """
     # --- PAS 1: CAPÇALERA I NAVEGACIÓ GLOBAL ---
     st.markdown('<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | Catalunya</h1>', unsafe_allow_html=True)
@@ -6983,6 +6983,12 @@ def run_catalunya_app():
             menu_title=None, options=menu_options, icons=menu_icons, menu_icon="cast", 
             orientation="horizontal", key=f'option_menu_{poble_sel}'
         )
+        
+        # <<<--- CORRECCIÓ DEL BUG DE NAVEGACIÓ ---
+        # Si la pestanya activa no és la comarcal, ens assegurem que la selecció de comarca es netegi
+        if active_tab != "Anàlisi Comarcal" and st.session_state.selected_area and "---" not in st.session_state.selected_area:
+            st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
+        # --- FI DE LA CORRECCIÓ ---
         
         with st.spinner(f"Carregant dades d'anàlisi per a {poble_sel}..."):
             lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
@@ -7095,6 +7101,7 @@ def run_catalunya_app():
                 st.rerun()
         else:
             st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
+            
 
 
 
