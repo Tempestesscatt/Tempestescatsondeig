@@ -1721,20 +1721,19 @@ MAPA_IMATGES_REALS = {
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva v62.0 (Priorització de PWAT).
-    - **CANVI PRINCIPAL**: S'ha mogut el PWAT (Aigua Precipitable) a una posició
-      principal per a una avaluació més ràpida del potencial de pluja. El MUCIN
-      passa a una posició secundària.
+    Versió Definitiva v63.0 (Amb Total Totals Index).
+    - **CANVI PRINCIPAL**: El Total Totals Index substitueix el MUCAPE a la fila superior
+      per a oferir un diagnòstic de severitat més clàssic i directe.
     """
     TOOLTIPS = {
         'MLCAPE': "Mixed-Layer CAPE: Energia disponible.",
         'LI': "Lifted Index: Indicador d'inestabilitat a 500 hPa.",
         'CONV_PUNTUAL': "Convergència (+): Disparador. Divergència (-): Estabilitzador.",
         'CAPE_0-3km': "Low-Level CAPE: Energia a nivells baixos, afavoreix rotació.",
-        'MUCAPE': "Most Unstable CAPE: Màxim potencial energètic.",
+        'TOTAL_TOTALS': "Índex clàssic de severitat que combina la inestabilitat vertical (VT) i la humitat a nivells baixos (CT). Valors > 50 indiquen alt potencial de temps sever.",
         'SBCIN': "Inhibició (tapa) des de la superfície.",
-        'PWAT': "Aigua Precipitable Total: Quantitat total de vapor d'aigua a la columna atmosfèrica. Valors alts (>35mm) indiquen potencial per a pluges molt fortes.",
-        'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa: Mesura combinada de temperatura i humitat.",
+        'PWAT': "Aigua Precipitable Total: Potencial per a pluges fortes.",
+        'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa: Energia termodinàmica.",
         'LCL_Hgt': "Alçada de la base dels núvols.",
         'LFC_Hgt': "Alçada on una bombolla d'aire comença a accelerar sola.",
         'EL_Hgt': "Alçada del cim de la tempesta.",
@@ -1765,6 +1764,7 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
 
     st.markdown("##### Paràmetres del Sondeig")
     
+    # <<<--- FILA 1 MODIFICADA AMB TOTAL TOTALS ---
     cols_fila1 = st.columns(5)
     with cols_fila1[0]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
     with cols_fila1[1]: styled_metric("LI", params.get('LI', np.nan), "°C", 'LI', tooltip_text=TOOLTIPS.get('LI'), precision=1, reverse_colors=True)
@@ -1775,8 +1775,8 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
             else: st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">Divergència (unitats) <span title="{TOOLTIPS.get('CONV_PUNTUAL')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: #6495ED; line-height: 1.1;">{conv_value:.1f}</strong></div>""", unsafe_allow_html=True)
         else: styled_metric("Convergència", np.nan, "unitats", "CONV_PUNTUAL")
     with cols_fila1[3]: styled_metric("3CAPE", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
-    with cols_fila1[4]: styled_metric("MUCAPE", params.get('MUCAPE', np.nan), "J/kg", 'MUCAPE', tooltip_text=TOOLTIPS.get('MUCAPE'))
-    
+    with cols_fila1[4]: styled_metric("Totals", params.get('TOTAL_TOTALS', np.nan), "", 'TOTAL_TOTALS', tooltip_text=TOOLTIPS.get('TOTAL_TOTALS'))
+
     analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
     if analisi_temps_list:
         diag = analisi_temps_list[0]; desc, veredicte = diag.get("descripcio", "Desconegut"), diag.get("veredicte", "")
@@ -1786,7 +1786,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     else:
         with st.container(border=True): st.warning("No s'ha pogut determinar el tipus de cel.")
 
-    # <<<--- FILA 2 MODIFICADA AMB PWAT ---
     cols_fila2 = st.columns(5)
     with cols_fila2[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols_fila2[1]: styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', tooltip_text=TOOLTIPS.get('PWAT'), precision=1)
@@ -1797,7 +1796,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_fila2[3]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
     with cols_fila2[4]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
         
-    # <<<--- FILA 3 MODIFICADA AMB MUCIN ---
     cols_fila3 = st.columns(5)
     with cols_fila3[0]:
         el_hgt_val = params.get('EL_Hgt', np.nan); el_color = "#FFFFFF"
