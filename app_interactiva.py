@@ -4049,22 +4049,26 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index, show_labels):
 
     # Paràmetres base del mapa
     map_params = {
-        "location": [41.83, 1.87], "zoom_start": 8,
+        "location": [41.83, 1.87], 
+        
+        # ===== LÍNIA MODIFICADA AQUÍ (VISTA GENERAL) =====
+        "zoom_start": 7,  # Hem canviat de 8 a 7 per allunyar el mapa
+        # ===============================================
+
         "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
         "attr": "Tiles &copy; Esri &mdash; and the GIS User Community",
+        "scrollWheelZoom": False,
+        "dragging": False,
+        "zoom_control": False,
+        "doubleClickZoom": False,
+        "max_bounds": [[40.4, 0.0], [42.9, 3.5]], 
         
-        # ===== LÍNIES MODIFICADES AQUÍ =====
-        "scrollWheelZoom": False,  # Desactiva el zoom amb la roda del ratolí
-        "dragging": False,         # Desactiva l'arrossegament del mapa
-        "zoom_control": False,     # Amaga els botons de zoom (+/-)
-        "doubleClickZoom": False,  # Desactiva el zoom amb doble clic
-        # ====================================
-
-        "max_bounds": [[40.4, 0.0], [42.9, 3.5]], "min_zoom": 8, "max_zoom": 8 # Fixem el zoom al nivell 8
+        # ===== LÍNIA MODIFICADA AQUÍ (VISTA GENERAL) =====
+        "min_zoom": 7, "max_zoom": 7 # Fixem el zoom al nou nivell 7
+        # ===============================================
     }
 
     # Si hi ha una zona seleccionada, fem zoom i congelem el mapa
-    # NOTA: Aquesta part ara només canvia la vista inicial, però l'usuari no podrà moure-la
     if selected_area_str and "---" not in selected_area_str:
         gdf_temp = gpd.read_file(map_data["gdf"])
         cleaned_selected_area = selected_area_str.strip().replace('.', '')
@@ -4072,9 +4076,17 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index, show_labels):
         if not zona_shape.empty:
             centroid = zona_shape.geometry.centroid.iloc[0]
             map_params.update({
-                "location": [centroid.y, centroid.x], "zoom_start": 10,
+                "location": [centroid.y, centroid.x], 
+
+                # ===== LÍNIA MODIFICADA AQUÍ (VISTA COMARCA) =====
+                "zoom_start": 9, # Hem canviat de 10 a 9 per allunyar una mica la vista de comarca
+                # =================================================
+
                 "max_bounds": [[zona_shape.total_bounds[1], zona_shape.total_bounds[0]], [zona_shape.total_bounds[3], zona_shape.total_bounds[2]]],
-                "min_zoom": 10, "max_zoom": 10 # Fixem també el zoom per a la vista de comarca
+
+                # ===== LÍNIA MODIFICADA AQUÍ (VISTA COMARCA) =====
+                "min_zoom": 9, "max_zoom": 9 # Fixem el zoom al nou nivell 9
+                # =================================================
             })
 
     m = folium.Map(**map_params)
