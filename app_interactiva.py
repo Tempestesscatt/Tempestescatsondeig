@@ -7034,13 +7034,10 @@ def run_catalunya_app():
             return
             
         params_calculats = data_tuple[1]
-        # <<<--- LÍNIA CLAU DE LA CORRECCIÓ ---
-        # Calculem la convergència i l'afegim al diccionari de paràmetres ABANS de passar-lo a cap altra funció.
         if not error_msg_map and map_data_conv:
             conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
             if pd.notna(conv_puntual):
                 params_calculats[f'CONV_{nivell_sel}hPa'] = conv_puntual
-        # --- FI DE LA CORRECCIÓ ---
 
         if final_index is not None and final_index != hourly_index_sel:
             adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
@@ -7087,6 +7084,8 @@ def run_catalunya_app():
         alertes_filtrades = {zona: data for zona, data in alertes_totals.items() if data['cape'] >= llindar_cape_sel}
         
         with st.spinner("Dibuixant mapa interactiu..."):
+            # Aquesta és la crida a la funció que has modificat.
+            # Aquesta funció `run_catalunya_app` s'assegura que es cridi correctament.
             map_output = ui_mapa_display_personalitzat(alertes_per_zona=alertes_filtrades, hourly_index=hourly_index_sel, show_labels=st.session_state.show_comarca_labels)
         
         ui_llegenda_mapa_principal()
