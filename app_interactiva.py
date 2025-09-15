@@ -4035,10 +4035,8 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index, show_labels):
     
     selected_area_str = st.session_state.get('selected_area')
     
-    # Convertim el diccionari a un tuple ordenat per a que funcioni amb la cache
     alertes_tuple = tuple(sorted(alertes_per_zona.items(), key=lambda item: str(item[0])))
     
-    # Cridem la funció que prepara les dades (aquesta funció està cachejada)
     map_data = preparar_dades_mapa_cachejat(
         alertes_tuple=alertes_tuple, 
         selected_area_str=selected_area_str, 
@@ -4054,11 +4052,19 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index, show_labels):
         "location": [41.83, 1.87], "zoom_start": 8,
         "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
         "attr": "Tiles &copy; Esri &mdash; and the GIS User Community",
-        "scrollWheelZoom": True, "dragging": True, "zoom_control": True, "doubleClickZoom": True,
-        "max_bounds": [[40.4, 0.0], [42.9, 3.5]], "min_zoom": 8, "max_zoom": 12
+        
+        # ===== LÍNIES MODIFICADES AQUÍ =====
+        "scrollWheelZoom": False,  # Desactiva el zoom amb la roda del ratolí
+        "dragging": False,         # Desactiva l'arrossegament del mapa
+        "zoom_control": False,     # Amaga els botons de zoom (+/-)
+        "doubleClickZoom": False,  # Desactiva el zoom amb doble clic
+        # ====================================
+
+        "max_bounds": [[40.4, 0.0], [42.9, 3.5]], "min_zoom": 8, "max_zoom": 8 # Fixem el zoom al nivell 8
     }
 
     # Si hi ha una zona seleccionada, fem zoom i congelem el mapa
+    # NOTA: Aquesta part ara només canvia la vista inicial, però l'usuari no podrà moure-la
     if selected_area_str and "---" not in selected_area_str:
         gdf_temp = gpd.read_file(map_data["gdf"])
         cleaned_selected_area = selected_area_str.strip().replace('.', '')
@@ -4067,14 +4073,12 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index, show_labels):
             centroid = zona_shape.geometry.centroid.iloc[0]
             map_params.update({
                 "location": [centroid.y, centroid.x], "zoom_start": 10,
-                "scrollWheelZoom": False, "dragging": False, "zoom_control": False, "doubleClickZoom": False,
-                "max_bounds": [[zona_shape.total_bounds[1], zona_shape.total_bounds[0]], [zona_shape.total_bounds[3], zona_shape.total_bounds[2]]]
+                "max_bounds": [[zona_shape.total_bounds[1], zona_shape.total_bounds[0]], [zona_shape.total_bounds[3], zona_shape.total_bounds[2]]],
+                "min_zoom": 10, "max_zoom": 10 # Fixem també el zoom per a la vista de comarca
             })
 
-    # Creem l'objecte del mapa
     m = folium.Map(**map_params)
 
-    # Funció per definir l'estil de cada zona (color, opacitat, etc.)
     def style_function(feature):
         nom_feature_raw = feature.get('properties', {}).get(map_data["property_name"])
         style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
@@ -4086,21 +4090,18 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index, show_labels):
                 style.update({'fillColor': '#007bff', 'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.5})
         return style
 
-    # Afegim les zones geogràfiques (comarques) al mapa
     folium.GeoJson(
         map_data["gdf"], style_function=style_function,
         highlight_function=lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5},
         tooltip=folium.GeoJsonTooltip(fields=[map_data["property_name"]], aliases=['Zona:'])
     ).add_to(m)
 
-    # Afegim els marcadors de text (etiquetes) si estan activats
     for marker in map_data["markers"]:
         icon = folium.DivIcon(html=marker['icon_html'])
         folium.Marker(location=marker['location'], icon=icon, tooltip=marker['tooltip']).add_to(m)
     
-    # ===== LÍNIA MODIFICADA AQUÍ =====
-    # He canviat el valor de 'height' de 450 a 650 per fer el mapa més alt.
     return st_folium(m, width="100%", height=650, returned_objects=['last_object_clicked_tooltip'])
+
 
     
 @st.cache_data(show_spinner="Carregant geometries municipals...")
