@@ -6999,7 +6999,7 @@ def tornar_al_mapa_general():
 def generar_bulleti_automatic_catalunya(alertes_totals, hora_str):
     """
     Analitza totes les alertes comarcals i genera un butlletí de risc estructurat,
-    seguint els llindars de CAPE especificats per l'expert.
+    seguint els llindars de CAPE especificats per l'expert. VERSIÓ FINAL AMB MICRO-CAPE.
     """
     if not alertes_totals:
         max_cape = 0
@@ -7069,15 +7069,25 @@ def generar_bulleti_automatic_catalunya(alertes_totals, hora_str):
         resum_general = "L'atmosfera presenta un grau d'inestabilitat baix. Es podrien formar alguns xàfecs dispersos, generalment de curta durada i poca intensitat."
         fenomens = ["Ruixats i xàfecs dispersos.", "Alguna tronada aïllada."]
         recomanacio = "Situació sense risc destacable. No cal prendre precaucions especials."
-    else: # max_cape <= 500
-        nivell_risc = {"text": "Molt Baix / Sense Risc", "color": "#6c757d"}
-        titol = "Situació Estable"
-        resum_general = "L'energia a l'atmosfera és insuficient per al desenvolupament de tempestes. S'esperen condicions de temps estable."
-        fenomens = ["Intervals de núvols i clarianes.", "Precipitació molt poc probable."]
+    
+    # ===== NOU BLOC AFEGIT AQUÍ per a CAPE entre 20 i 100 =====
+    elif max_cape >= 20:
+        nivell_risc = {"text": "Molt Baix", "color": "#adb5bd"} # Un color gris clar
+        titol = "Possibles Cúmuls Convectius"
+        resum_general = "L'atmosfera presenta una energia mínima (CAPE màxim de **{} J/kg**). Això pot ser suficient per a la formació de núvols de tipus cúmul o estratocúmul amb un desenvolupament vertical molt limitat.".format(int(max_cape))
+        fenomens = ["Cúmuls de bon temps (cumulus humilis).", "Possibles gotellades o ruixats molt febles i aïllats."]
+        recomanacio = "Temps estable. No es requereixen precaucions."
+    # ==========================================================
+
+    else: # max_cape < 20
+        nivell_risc = {"text": "Sense Risc", "color": "#6c757d"}
+        titol = "Situació Plenament Estable"
+        resum_general = "L'energia a l'atmosfera és pràcticament inexistent, impedint el desenvolupament de qualsevol tipus de convecció."
+        fenomens = ["Cel poc ennuvolat o serè."]
         recomanacio = "No es requereixen precaucions."
         
     hora_num = int(hora_str.split(':')[0])
-    if 13 <= hora_num < 17: cronologia = "El període de màxim risc s'espera entre la tarda i el vespre (15:00h - 21:00h)."
+    if 13 <= hora_num < 17: cronologia = "El període de màxima activitat s'espera entre la tarda i el vespre (15:00h - 21:00h)."
     elif hora_num >= 17: cronologia = "El període de màxim risc està en curs i es pot allargar fins a la matinada."
     else: cronologia = "La inestabilitat anirà en augment, amb el període de màxim risc concentrat a la tarda."
 
@@ -7086,7 +7096,6 @@ def generar_bulleti_automatic_catalunya(alertes_totals, hora_str):
         "zones_afectades": {k: v for k, v in zones_per_risc.items() if v},
         "fenomens_previstos": fenomens, "cronologia": cronologia, "recomanacio": recomanacio
     }
-
 
 
 def ui_bulleti_automatic(bulleti_data):
