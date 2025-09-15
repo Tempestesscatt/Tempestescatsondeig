@@ -8509,19 +8509,19 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Expert v65.0 (Veredictes Qualitatius i Lògica Completa).
-    - **VERSIÓ FINAL**: Combina la lògica de diagnòstic detallada i precisa amb
-      veredictes qualitatius nets, sense mostrar els valors numèrics bruts,
-      aconseguint el millor dels dos mons.
+    Sistema de Diagnòstic Expert v66.0 (Basat Estrictament en Humitat Relativa).
+    - **LÒGICA CENTRAL**: Diagnostica la nuvolositat estratiforme basant-se exclusivament
+      en els llindars d'Humitat Relativa (RH) per a cada capa:
+      Baixa (≥70%), Mitjana (≥60%), i Alta (≥50%).
+    - **EXHAUSTIU**: Retorna un diagnòstic per a cada capa que compleixi el seu llindar.
+    - La lògica convectiva es manté com a prioritat per a evitar conflictes.
     """
-    # --- 1. Extracció Completa de Paràmetres ---
-    mlcape = params.get('MLCAPE', 0) or 0
-    sbcape = params.get('SBCAPE', 0) or 0
-    cape = max(mlcape, sbcape)
+    diagnostics = []
     
+    # --- Extracció de Paràmetres ---
+    mlcape = params.get('MLCAPE', 0) or 0
     cin = min(params.get('SBCIN', 0), params.get('MUCIN', 0)) or 0
     lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
-    lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     
     rh_capes = params.get('RH_CAPES', {})
@@ -8531,50 +8531,37 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
-    pwat = params.get('PWAT', 0) or 0
 
-    # --- 2. AVALUACIÓ PRIORITÀRIA DEL DISPARADOR I LA INHIBICIÓ ---
+    # --- PAS 1: COMPROVACIÓ PRIORITÀRIA DE POTENCIAL DE TEMPESTA (EXCLOENT) ---
     condicions_de_dispar_favorables = (cin > -75 and lfc_hgt < 2500 and conv > 10)
-
-    # --- 3. DIAGNÒSTIC BASAT EN LA LÒGICA JERÀRQUICA ---
-    if condicions_de_dispar_favorables:
-        if cape > 2000 and bwd_6km > 35:
-            return [{'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Entorn explosiu. Disparador actiu, energia extrema i cisallament organitzat."}]
-        if cape > 800 and bwd_6km > 25:
-            return [{'descripcio': "Tempestes Organitzades", 'veredicte': "Potencial per a la formació de sistemes multicel·lulars o línies de tempestes."}]
-        if cape > 1500 and bwd_6km < 20:
-            return [{'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Alta inestabilitat però poca organització. Risc de tempestes d'impuls aïllades."}]
-        if cape > 500:
-            return [{'descripcio': "Tempesta Comuna", 'veredicte': "Condicions favorables per a xàfecs i tronades d'evolució diürna."}]
-        if cape > 200:
-            return [{'descripcio': "Cúmuls de creixement", 'veredicte': "Inici de convecció amb creixement vertical i possibles ruixats."}]
-
-    # --- 4. SI NO HI HA DISPARADOR, ANALITZEM NUVOLOSITAT ESTRATIFORME ---
-    diagnostics = []
+    if condicions_de_dispar_favorables and mlcape > 400:
+        if mlcape > 2000 and bwd_6km > 35:
+            return [{'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Entorn explosiu per a tempestes severes organitzades."}]
+        if mlcape > 800 and bwd_6km > 25:
+            return [{'descripcio': "Tempestes Organitzades", 'veredicte': "Potencial per a la formació de sistemes multicel·lulars."}]
+        # Si hi ha disparador i energia, però no compleix els criteris de severitat, és creixement
+        return [{'descripcio': "Cúmuls de creixement", 'veredicte': "Inici de convecció amb creixement vertical."}]
     
-    # B.1: Anàlisi de Capes Baixes (amb el veto LFC)
+    # --- PAS 2: ANÀLISI DE NUVOLOSITAT PER CAPES (BASAT EN RH%) ---
+    # Aquesta secció s'executa si no hi ha un patró de tempesta dominant.
+    
+    # -- ANÀLISI DE CAPES BAIXES --
     if rh_baixa >= 70:
-        if cape < 50:
-            diagnostics.append({'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos per alta humitat i estabilitat."})
-        elif lfc_hgt < 2000:
-            if 50 <= cape < 200:
-                diagnostics.append({'descripcio': "Cúmuls mediocris", 'veredicte': "Núvols baixos amb creixement vertical limitat."})
-    
-    if rh_baixa > 60 and 50 <= cape < 150 and lfc_hgt < 2000:
-         diagnostics.append({'descripcio': "Cúmuls de bon temps", 'veredicte': "Cel amb petits cúmuls decoratius, sense risc."})
-
-    # B.2: Anàlisi de Capes Mitjanes i Altes (són additives)
-    if rh_mitjana >= 60:
-        if any(d['descripcio'] == "Estratus (Boira alta - Cel tancat)" for d in diagnostics) and pwat > 25:
-            diagnostics = [d for d in diagnostics if d['descripcio'] != "Estratus (Boira alta - Cel tancat)"]
-            diagnostics.insert(0, {'descripcio': "Nimbostratus (Pluja Contínua)", 'veredicte': "Cel cobert amb pluja generalitzada."})
+        # Aquí diferenciem entre Estratus (estable) i Cúmuls (una mica inestable)
+        if mlcape >= 50 and lfc_hgt < 2000:
+            diagnostics.append({'descripcio': "Cúmuls mediocris", 'veredicte': "Núvols baixos amb cert desenvolupament."})
         else:
-            diagnostics.append({'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Presència de núvols a nivells mitjans."})
-    
+            diagnostics.append({'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos i cel cobert."})
+
+    # -- ANÀLISI DE CAPES MITJANES --
+    if rh_mitjana >= 60:
+        diagnostics.append({'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Presència de núvols a nivells mitjans."})
+
+    # -- ANÀLISI DE CAPES ALTES --
     if rh_alta >= 50:
         diagnostics.append({'descripcio': "Vels de Cirrus (Molt Alts)", 'veredicte': "Presència de núvols alts de tipus cirrus."})
     
-    # --- 5. GESTIÓ FINAL ---
+    # --- PAS 3: GESTIÓ FINAL ---
     if not diagnostics:
         return [{'descripcio': "Cel Serè", 'veredicte': "Atmosfera estable i seca, sense nuvolositat."}]
             
