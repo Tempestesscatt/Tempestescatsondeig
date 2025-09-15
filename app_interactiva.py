@@ -6996,7 +6996,104 @@ def tornar_al_mapa_general():
     st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
 
 
+def generar_bulleti_automatic_catalunya(alertes_totals):
+    """
+    Analitza totes les alertes comarcals i genera un butlletí de risc estructurat
+    per a tot el territori català.
+    """
+    if not alertes_totals:
+        return {
+            "nivell_risc": {"text": "Molt Baix", "color": "#28a745"},
+            "titol": "Situació de Calma Atmosfèrica",
+            "resum": "No es preveuen fenòmens de temps sever significatius a Catalunya. Les condicions són estables.",
+            "fenomens_previstos": ["Cel poc ennuvolat o serè en general."],
+            "zones_destacades": []
+        }
 
+    # Trobar la comarca amb el risc més alt (basat en CAPE) i classificar les altres
+    max_cape = 0
+    comarca_max_cape = ""
+    zones_per_risc = {"ALT": [], "MODERAT": [], "BAIX": []}
+
+    for comarca, data in alertes_totals.items():
+        cape = data.get('cape', 0)
+        if cape > max_cape:
+            max_cape = cape
+            comarca_max_cape = comarca
+        
+        if cape >= 2000: zones_per_risc["ALT"].append(comarca)
+        elif cape >= 1000: zones_per_risc["MODERAT"].append(comarca)
+        elif cape >= 500: zones_per_risc["BAIX"].append(comarca)
+
+    # Determinar el nivell de risc general
+    if max_cape >= 2500:
+        nivell_risc = {"text": "Molt Alt", "color": "#DC3545"}
+        titol = "RISC MOLT ALT per TEMPESTES SEVERES"
+    elif max_cape >= 1500:
+        nivell_risc = {"text": "Alt", "color": "#FD7E14"}
+        titol = "RISC ALT per TEMPESTES FORTES"
+    elif max_cape >= 800:
+        nivell_risc = {"text": "Moderat", "color": "#FFC107"}
+        titol = "RISC MODERAT per XÀFECS I TRONADES"
+    else:
+        nivell_risc = {"text": "Baix", "color": "#28a745"}
+        titol = "RISC BAIX per RUIXATS DISPERSOS"
+
+    # Generar el text del resum
+    resum = f"El focus de major risc se situa a la zona de **{comarca_max_cape}**, on el potencial d'energia (CAPE) arriba als **{int(max_cape)} J/kg**. "
+    if zones_per_risc["ALT"]:
+        resum += f"Les comarques amb major probabilitat de temps sever són: **{', '.join(zones_per_risc['ALT'])}**."
+    elif zones_per_risc["MODERAT"]:
+        resum += f"Altres zones com **{', '.join(zones_per_risc['MODERAT'])}** també podrien registrar tempestes fortes."
+
+    # Generar la llista de fenòmens probables
+    fenomens = []
+    if max_cape >= 1000:
+        fenomens.append("Fortes ratxes de vent (>80 km/h)")
+        fenomens.append("Xàfecs localment molt forts o torrencials (aiguats).")
+    if max_cape >= 1500:
+        fenomens.append("Calamarsa o pedra de mida superior a 2 cm.")
+    if max_cape >= 2500:
+        fenomens.append("Possible formació de fenòmens de temps violent (esclafits, supercèl·lules).")
+    
+    if not fenomens and max_cape >= 500:
+        fenomens.append("Ruixats i tempestes localment moderades.")
+
+    return {
+        "nivell_risc": nivell_risc,
+        "titol": titol,
+        "resum": resum,
+        "fenomens_previstos": fenomens,
+        "zones_destacades": zones_per_risc["ALT"] + zones_per_risc["MODERAT"]
+    }
+
+
+
+
+def ui_bulleti_automatic(bulleti_data):
+    """
+    Mostra el butlletí generat per l'algoritme amb un format professional.
+    """
+    st.markdown("---") # Separador visual
+    with st.container(border=True):
+        st.markdown("##### ⚡ Butlletí Automàtic d'Alertes per a Catalunya")
+        
+        # Capçalera amb el nivell de risc general
+        st.markdown(f"""
+        <div style="padding: 10px; background-color: {bulleti_data['nivell_risc']['color']}; border-radius: 5px; text-align: center; margin-bottom: 15px;">
+            <h4 style="color: white; margin: 0; text-shadow: 1px 1px 2px black;">Nivell de Risc: {bulleti_data['nivell_risc']['text']}</h4>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Títol i resum de la situació
+        st.subheader(bulleti_data['titol'])
+        st.markdown(bulleti_data['resum'])
+
+        # Llista dels fenòmens esperats
+        if bulleti_data['fenomens_previstos']:
+            st.markdown("**Fenòmens més probables:**")
+            for fenomen in bulleti_data['fenomens_previstos']:
+                st.markdown(f"- {fenomen}")
 
 
 def run_catalunya_app():
@@ -7100,6 +7197,12 @@ def run_catalunya_app():
             map_output = ui_mapa_display_personalitzat(alertes_per_zona=alertes_filtrades, hourly_index=hourly_index_sel, show_labels=st.session_state.show_comarca_labels)
         
         ui_llegenda_mapa_principal()
+        
+        # ===== NOU BLOC AFEGIT AQUÍ =====
+        # Generem i mostrem el butlletí automàtic basat en TOTES les alertes
+        bulleti_data = generar_bulleti_automatic_catalunya(alertes_totals)
+        ui_bulleti_automatic(bulleti_data)
+        # ===============================
         
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
