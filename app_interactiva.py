@@ -4023,27 +4023,33 @@ def carregar_dades_geografiques():
         st.error(f"S'ha produït un error en carregar l'arxiu de mapa '{file_to_load}': {e}")
         return None
 
+
+
+
+
 def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index, show_labels):
     """
-    Funció de VISUALITZACIÓ. Ara rep 'show_labels' com un paràmetre directe.
+    Funció de VISUALITZACIÓ que mostra el mapa interactiu de Folium.
     """
     st.markdown("#### Mapa de Situació")
     
-    selected_area_str = st.session_state.get('selected_area_peninsula') or st.session_state.get('selected_area')
-
-    alertes_tuple = tuple(sorted((k, float(v)) for k, v in alertes_per_zona.items()))
+    selected_area_str = st.session_state.get('selected_area')
     
+    # Convertim el diccionari a un tuple ordenat per a que funcioni amb la cache
+    alertes_tuple = tuple(sorted(alertes_per_zona.items(), key=lambda item: str(item[0])))
+    
+    # Cridem la funció que prepara les dades (aquesta funció està cachejada)
     map_data = preparar_dades_mapa_cachejat(
-        alertes_tuple, 
-        selected_area_str, 
-        hourly_index, 
-        show_labels  # <-- Ara utilitza el paràmetre rebut
+        alertes_tuple=alertes_tuple, 
+        selected_area_str=selected_area_str, 
+        show_labels=show_labels
     )
     
     if not map_data:
         st.error("No s'han pogut generar les dades per al mapa.")
         return None
 
+    # Paràmetres base del mapa
     map_params = {
         "location": [41.83, 1.87], "zoom_start": 8,
         "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
@@ -4052,6 +4058,7 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index, show_labels):
         "max_bounds": [[40.4, 0.0], [42.9, 3.5]], "min_zoom": 8, "max_zoom": 12
     }
 
+    # Si hi ha una zona seleccionada, fem zoom i congelem el mapa
     if selected_area_str and "---" not in selected_area_str:
         gdf_temp = gpd.read_file(map_data["gdf"])
         cleaned_selected_area = selected_area_str.strip().replace('.', '')
@@ -4064,8 +4071,10 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index, show_labels):
                 "max_bounds": [[zona_shape.total_bounds[1], zona_shape.total_bounds[0]], [zona_shape.total_bounds[3], zona_shape.total_bounds[2]]]
             })
 
+    # Creem l'objecte del mapa
     m = folium.Map(**map_params)
 
+    # Funció per definir l'estil de cada zona (color, opacitat, etc.)
     def style_function(feature):
         nom_feature_raw = feature.get('properties', {}).get(map_data["property_name"])
         style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
@@ -4077,17 +4086,22 @@ def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index, show_labels):
                 style.update({'fillColor': '#007bff', 'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.5})
         return style
 
+    # Afegim les zones geogràfiques (comarques) al mapa
     folium.GeoJson(
         map_data["gdf"], style_function=style_function,
         highlight_function=lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5},
         tooltip=folium.GeoJsonTooltip(fields=[map_data["property_name"]], aliases=['Zona:'])
     ).add_to(m)
 
+    # Afegim els marcadors de text (etiquetes) si estan activats
     for marker in map_data["markers"]:
         icon = folium.DivIcon(html=marker['icon_html'])
         folium.Marker(location=marker['location'], icon=icon, tooltip=marker['tooltip']).add_to(m)
     
-    return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
+    # ===== LÍNIA MODIFICADA AQUÍ =====
+    # He canviat el valor de 'height' de 450 a 650 per fer el mapa més alt.
+    return st_folium(m, width="100%", height=650, returned_objects=['last_object_clicked_tooltip'])
+
     
 @st.cache_data(show_spinner="Carregant geometries municipals...")
 def carregar_dades_municipis():
@@ -7823,69 +7837,7 @@ def generar_mapa_folium_catalunya(alertes_per_zona, selected_area_str):
     return m
     
 
-def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index, show_labels):
-    """
-    Funció de VISUALITZACIÓ que mostra el mapa interactiu de Folium.
-    """
-    st.markdown("#### Mapa de Situació")
-    selected_area_str = st.session_state.get('selected_area')
-    
-    alertes_tuple = tuple(sorted(alertes_per_zona.items(), key=lambda item: str(item[0])))
-    
-    map_data = preparar_dades_mapa_cachejat(
-        alertes_tuple=alertes_tuple, 
-        selected_area_str=selected_area_str, 
-        show_labels=show_labels
-    )
-    
-    if not map_data:
-        st.error("No s'han pogut generar les dades per al mapa.")
-        return None
 
-    map_params = {
-        "location": [41.83, 1.87], "zoom_start": 8,
-        "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-        "attr": "Tiles &copy; Esri &mdash; and the GIS User Community",
-        "scrollWheelZoom": True, "dragging": True, "zoom_control": True, "doubleClickZoom": True,
-        "max_bounds": [[40.4, 0.0], [42.9, 3.5]], "min_zoom": 8, "max_zoom": 12
-    }
-
-    if selected_area_str and "---" not in selected_area_str:
-        gdf_temp = gpd.read_file(map_data["gdf"])
-        cleaned_selected_area = selected_area_str.strip().replace('.', '')
-        zona_shape = gdf_temp[gdf_temp[map_data["property_name"]].str.strip().replace('.', '') == cleaned_selected_area]
-        if not zona_shape.empty:
-            centroid = zona_shape.geometry.centroid.iloc[0]
-            map_params.update({
-                "location": [centroid.y, centroid.x], "zoom_start": 10,
-                "scrollWheelZoom": False, "dragging": False, "zoom_control": False, "doubleClickZoom": False,
-                "max_bounds": [[zona_shape.total_bounds[1], zona_shape.total_bounds[0]], [zona_shape.total_bounds[3], zona_shape.total_bounds[2]]]
-            })
-
-    m = folium.Map(**map_params)
-
-    def style_function(feature):
-        nom_feature_raw = feature.get('properties', {}).get(map_data["property_name"])
-        style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
-        if nom_feature_raw:
-            nom_feature = nom_feature_raw.strip().replace('.', '')
-            style = map_data["styles"].get(nom_feature, style)
-            cleaned_selected_area = selected_area_str.strip().replace('.', '') if selected_area_str else ''
-            if nom_feature == cleaned_selected_area:
-                style.update({'fillColor': '#007bff', 'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.5})
-        return style
-
-    folium.GeoJson(
-        map_data["gdf"], style_function=style_function,
-        highlight_function=lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5},
-        tooltip=folium.GeoJsonTooltip(fields=[map_data["property_name"]], aliases=['Zona:'])
-    ).add_to(m)
-
-    for marker in map_data["markers"]:
-        icon = folium.DivIcon(html=marker['icon_html'])
-        folium.Marker(location=marker['location'], icon=icon, tooltip=marker['tooltip']).add_to(m)
-    
-    return st_folium(m, width="100%", height=450, returned_objects=['last_object_clicked_tooltip'])
 
 
 def tornar_a_seleccio_comarca():
