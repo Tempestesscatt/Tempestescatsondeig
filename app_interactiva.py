@@ -6996,24 +6996,27 @@ def tornar_al_mapa_general():
     st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
 
 
-def generar_bulleti_automatic_catalunya(alertes_totals):
+def generar_bulleti_automatic_catalunya(alertes_totals, hora_str):
     """
-    Analitza totes les alertes comarcals i genera un butlletí de risc estructurat
-    per a tot el territori català.
+    Analitza totes les alertes comarcals i genera un butlletí de risc estructurat,
+    detallat i amb un to d'alerta per a la població.
     """
     if not alertes_totals:
         return {
             "nivell_risc": {"text": "Molt Baix", "color": "#28a745"},
             "titol": "Situació de Calma Atmosfèrica",
-            "resum": "No es preveuen fenòmens de temps sever significatius a Catalunya. Les condicions són estables.",
+            "resum_general": "No es preveu el desenvolupament de fenòmens meteorològics de risc a Catalunya durant les properes hores. Les condicions generals seran estables.",
+            "zones_afectades": {},
             "fenomens_previstos": ["Cel poc ennuvolat o serè en general."],
-            "zones_destacades": []
+            "cronologia": "Sense canvis significatius previstos.",
+            "recomanacio": "No es requereixen precaucions especials."
         }
 
-    # Trobar la comarca amb el risc més alt (basat en CAPE) i classificar les altres
+    # --- 1. Classificació exhaustiva de totes les comarques amb risc ---
     max_cape = 0
     comarca_max_cape = ""
-    zones_per_risc = {"ALT": [], "MODERAT": [], "BAIX": []}
+    zones_per_risc = {"ALT (CAPE > 2000)": [], "MODERAT (CAPE > 1000)": [], "BAIX (CAPE > 500)": []}
+    comarques_pirineu = ["Val d'Aran", "Pallars Sobirà", "Alta Ribagorça", "Pallars Jussà", "Alt Urgell", "Cerdanya", "Ripollès", "Garrotxa", "Berguedà", "Solsonès"]
 
     for comarca, data in alertes_totals.items():
         cape = data.get('cape', 0)
@@ -7021,50 +7024,53 @@ def generar_bulleti_automatic_catalunya(alertes_totals):
             max_cape = cape
             comarca_max_cape = comarca
         
-        if cape >= 2000: zones_per_risc["ALT"].append(comarca)
-        elif cape >= 1000: zones_per_risc["MODERAT"].append(comarca)
-        elif cape >= 500: zones_per_risc["BAIX"].append(comarca)
+        if cape >= 2000: zones_per_risc["ALT (CAPE > 2000)"].append(comarca)
+        elif cape >= 1000: zones_per_risc["MODERAT (CAPE > 1000)"].append(comarca)
+        elif cape >= 500: zones_per_risc["BAIX (CAPE > 500)"].append(comarca)
 
-    # Determinar el nivell de risc general
+    # --- 2. Determinació del Nivell de Risc General ---
     if max_cape >= 2500:
-        nivell_risc = {"text": "Molt Alt", "color": "#DC3545"}
-        titol = "RISC MOLT ALT per TEMPESTES SEVERES"
+        nivell_risc = {"text": "Molt Alt (ALERTA VERMELLA)", "color": "#DC3545"}
+        titol = "RISC MOLT ALT per TEMPS VIOLENT"
     elif max_cape >= 1500:
-        nivell_risc = {"text": "Alt", "color": "#FD7E14"}
-        titol = "RISC ALT per TEMPESTES FORTES"
+        nivell_risc = {"text": "Alt (ALERTA TARONJA)", "color": "#FD7E14"}
+        titol = "RISC ALT per TEMPESTES SEVERES"
     elif max_cape >= 800:
-        nivell_risc = {"text": "Moderat", "color": "#FFC107"}
-        titol = "RISC MODERAT per XÀFECS I TRONADES"
+        nivell_risc = {"text": "Moderat (AVÍS GROC)", "color": "#FFC107"}
+        titol = "RISC MODERAT per TEMPESTES FORTES"
     else:
         nivell_risc = {"text": "Baix", "color": "#28a745"}
-        titol = "RISC BAIX per RUIXATS DISPERSOS"
+        titol = "RISC BAIX per XÀFECS I TRONADES"
 
-    # Generar el text del resum
-    resum = f"El focus de major risc se situa a la zona de **{comarca_max_cape}**, on el potencial d'energia (CAPE) arriba als **{int(max_cape)} J/kg**. "
-    if zones_per_risc["ALT"]:
-        resum += f"Les comarques amb major probabilitat de temps sever són: **{', '.join(zones_per_risc['ALT'])}**."
-    elif zones_per_risc["MODERAT"]:
-        resum += f"Altres zones com **{', '.join(zones_per_risc['MODERAT'])}** també podrien registrar tempestes fortes."
-
-    # Generar la llista de fenòmens probables
-    fenomens = []
-    if max_cape >= 1000:
-        fenomens.append("Fortes ratxes de vent (>80 km/h)")
-        fenomens.append("Xàfecs localment molt forts o torrencials (aiguats).")
-    if max_cape >= 1500:
-        fenomens.append("Calamarsa o pedra de mida superior a 2 cm.")
-    if max_cape >= 2500:
-        fenomens.append("Possible formació de fenòmens de temps violent (esclafits, supercèl·lules).")
+    # --- 3. Generació del Resum General Intel·ligent ---
+    comptador_pirineu = sum(1 for c in zones_per_risc["ALT (CAPE > 2000)"] if c in comarques_pirineu)
     
-    if not fenomens and max_cape >= 500:
-        fenomens.append("Ruixats i tempestes localment moderades.")
+    resum_general = f"S'espera una tarda de notable inestabilitat a Catalunya. El focus de major severitat se situa a la zona de **{comarca_max_cape}**, amb un potencial energètic excepcional de **{int(max_cape)} J/kg**. "
+    if len(zones_per_risc["ALT (CAPE > 2000)"]) > 0 and comptador_pirineu / len(zones_per_risc["ALT (CAPE > 2000)"]) > 0.5:
+        resum_general += "Les tempestes més violentes s'iniciaran a zones del Pirineu i Prepirineu, amb potencial d'avançar cap a la Catalunya Central i zones de la plana durant la tarda."
+    else:
+        resum_general += "Es preveu que les tempestes afectin diverses àrees del territori, amb especial atenció a les comarques de l'interior i prelitoral."
+
+    # --- 4. Generació de Fenòmens i Cronologia ---
+    fenomens = ["Activitat elèctrica freqüent i abundant."]
+    if max_cape >= 800: fenomens.append("Xàfecs localment forts (>20 mm en 30 minuts).")
+    if max_cape >= 1200: fenomens.append("Ratxes de vent molt fortes (>90 km/h) associades a les tempestes.")
+    if max_cape >= 1500: fenomens.append("Alta probabilitat de calamarsa o pedra de mida superior a 2 cm.")
+    if max_cape >= 2500: fenomens.append("Risc de fenòmens de temps violent (esclafits, supercèl·lules i/o tornados).")
+
+    hora_num = int(hora_str.split(':')[0])
+    if 13 <= hora_num < 17: cronologia = "El període de màxim risc s'espera entre la tarda i el vespre (15:00h - 21:00h)."
+    elif hora_num >= 17: cronologia = "El període de màxim risc està en curs i es pot allargar fins a la matinada."
+    else: cronologia = "La inestabilitat anirà en augment, amb el període de màxim risc concentrat a la tarda."
 
     return {
         "nivell_risc": nivell_risc,
         "titol": titol,
-        "resum": resum,
+        "resum_general": resum_general,
+        "zones_afectades": {k: v for k, v in zones_per_risc.items() if v}, # Només inclou nivells amb comarques
         "fenomens_previstos": fenomens,
-        "zones_destacades": zones_per_risc["ALT"] + zones_per_risc["MODERAT"]
+        "cronologia": cronologia,
+        "recomanacio": "Es recomana a la població seguir les actualitzacions de les autoritats, evitar activitats a l'aire lliure a les zones de risc i prendre precaucions davant la possible caiguda de branques, objectes i inundacions sobtades."
     }
 
 
@@ -7072,28 +7078,44 @@ def generar_bulleti_automatic_catalunya(alertes_totals):
 
 def ui_bulleti_automatic(bulleti_data):
     """
-    Mostra el butlletí generat per l'algoritme amb un format professional.
+    Mostra el butlletí generat amb un format d'alerta complet i professional.
     """
-    st.markdown("---") # Separador visual
+    st.markdown("---")
     with st.container(border=True):
-        st.markdown("##### ⚡ Butlletí Automàtic d'Alertes per a Catalunya")
+        st.markdown("##### 📢 Butlletí d'Avisos per a Catalunya")
         
-        # Capçalera amb el nivell de risc general
         st.markdown(f"""
         <div style="padding: 10px; background-color: {bulleti_data['nivell_risc']['color']}; border-radius: 5px; text-align: center; margin-bottom: 15px;">
-            <h4 style="color: white; margin: 0; text-shadow: 1px 1px 2px black;">Nivell de Risc: {bulleti_data['nivell_risc']['text']}</h4>
+            <h4 style="color: white; margin: 0; text-shadow: 1px 1px 2px black;">Nivell de Risc General: {bulleti_data['nivell_risc']['text']}</h4>
         </div>
         """, unsafe_allow_html=True)
         
-        # Títol i resum de la situació
         st.subheader(bulleti_data['titol'])
-        st.markdown(bulleti_data['resum'])
+        
+        # Usem columnes per a una millor organització
+        col1, col2 = st.columns(2, gap="large")
+        
+        with col1:
+            st.markdown("###### 📝 Resum de la Situació General")
+            st.markdown(bulleti_data['resum_general'])
 
-        # Llista dels fenòmens esperats
-        if bulleti_data['fenomens_previstos']:
-            st.markdown("**Fenòmens més probables:**")
+            st.markdown("###### ⏰ Cronologia Prevista")
+            st.markdown(bulleti_data['cronologia'])
+
+        with col2:
+            st.markdown("###### ⛈️ Fenòmens Previstos")
             for fenomen in bulleti_data['fenomens_previstos']:
                 st.markdown(f"- {fenomen}")
+
+        # Secció desplegable per a les zones afectades
+        if bulleti_data['zones_afectades']:
+            with st.expander("🗺️ Veure totes les comarques afectades per nivell de risc"):
+                for nivell, comarques in bulleti_data['zones_afectades'].items():
+                    st.markdown(f"**{nivell}:**")
+                    st.markdown(f"`{', '.join(sorted(comarques))}`")
+        
+        st.markdown("###### ⚠️ Recomanacions")
+        st.warning(bulleti_data['recomanacio'])
 
 
 def run_catalunya_app():
@@ -7198,11 +7220,9 @@ def run_catalunya_app():
         
         ui_llegenda_mapa_principal()
         
-        # ===== NOU BLOC AFEGIT AQUÍ =====
         # Generem i mostrem el butlletí automàtic basat en TOTES les alertes
-        bulleti_data = generar_bulleti_automatic_catalunya(alertes_totals)
+        bulleti_data = generar_bulleti_automatic_catalunya(alertes_totals, hora_sel_str)
         ui_bulleti_automatic(bulleti_data)
-        # ===============================
         
         if map_output and map_output.get("last_object_clicked_tooltip"):
             raw_tooltip = map_output["last_object_clicked_tooltip"]
