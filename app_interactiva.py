@@ -4027,92 +4027,46 @@ def carregar_dades_geografiques():
 
 
 
-def ui_mapa_display_personalitzat(alertes_per_zona, hourly_index, show_labels):
+def ui_mapa_display_personalitzat(punts_heatmap, hourly_index):
     """
-    Funció de VISUALITZACIÓ que mostra el mapa interactiu de Folium.
+    Funció de VISUALITZACIÓ amb Heatmap.
     """
     st.markdown("#### Mapa de Situació")
     
-    selected_area_str = st.session_state.get('selected_area')
-    
-    alertes_tuple = tuple(sorted(alertes_per_zona.items(), key=lambda item: str(item[0])))
-    
-    map_data = preparar_dades_mapa_cachejat(
-        alertes_tuple=alertes_tuple, 
-        selected_area_str=selected_area_str, 
-        show_labels=show_labels
-    )
-    
-    if not map_data:
-        st.error("No s'han pogut generar les dades per al mapa.")
+    gdf = carregar_dades_geografiques()
+    if gdf is None:
+        st.error("No s'ha pogut generar el mapa base.")
         return None
 
-    # Paràmetres base del mapa
     map_params = {
-        "location": [41.83, 1.87], 
-        
-        # ===== LÍNIA MODIFICADA AQUÍ (VISTA GENERAL) =====
-        "zoom_start": 7,  # Hem canviat de 8 a 7 per allunyar el mapa
-        # ===============================================
-
-        "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-        "attr": "Tiles &copy; Esri &mdash; and the GIS User Community",
-        "scrollWheelZoom": False,
-        "dragging": False,
-        "zoom_control": False,
-        "doubleClickZoom": False,
-        "max_bounds": [[40.4, 0.0], [42.9, 3.5]], 
-        
-        # ===== LÍNIA MODIFICADA AQUÍ (VISTA GENERAL) =====
-        "min_zoom": 7, "max_zoom": 7 # Fixem el zoom al nou nivell 7
-        # ===============================================
+        "location": [41.83, 1.87], "zoom_start": 8, # Comencem una mica més a prop
+        "tiles": "CartoDB dark_matter", # Un fons fosc per a que el heatmap ressalti
+        "attr": "Tiles &copy; CartoDB; Data &copy; OpenStreetMap contributors",
+        "scrollWheelZoom": True, "dragging": True, "zoom_control": True
     }
-
-    # Si hi ha una zona seleccionada, fem zoom i congelem el mapa
-    if selected_area_str and "---" not in selected_area_str:
-        gdf_temp = gpd.read_file(map_data["gdf"])
-        cleaned_selected_area = selected_area_str.strip().replace('.', '')
-        zona_shape = gdf_temp[gdf_temp[map_data["property_name"]].str.strip().replace('.', '') == cleaned_selected_area]
-        if not zona_shape.empty:
-            centroid = zona_shape.geometry.centroid.iloc[0]
-            map_params.update({
-                "location": [centroid.y, centroid.x], 
-
-                # ===== LÍNIA MODIFICADA AQUÍ (VISTA COMARCA) =====
-                "zoom_start": 9, # Hem canviat de 10 a 9 per allunyar una mica la vista de comarca
-                # =================================================
-
-                "max_bounds": [[zona_shape.total_bounds[1], zona_shape.total_bounds[0]], [zona_shape.total_bounds[3], zona_shape.total_bounds[2]]],
-
-                # ===== LÍNIA MODIFICADA AQUÍ (VISTA COMARCA) =====
-                "min_zoom": 9, "max_zoom": 9 # Fixem el zoom al nou nivell 9
-                # =================================================
-            })
-
     m = folium.Map(**map_params)
 
-    def style_function(feature):
-        nom_feature_raw = feature.get('properties', {}).get(map_data["property_name"])
-        style = {'fillColor': '#6c757d', 'color': '#495057', 'weight': 1, 'fillOpacity': 0.25}
-        if nom_feature_raw:
-            nom_feature = nom_feature_raw.strip().replace('.', '')
-            style = map_data["styles"].get(nom_feature, style)
-            cleaned_selected_area = selected_area_str.strip().replace('.', '') if selected_area_str else ''
-            if nom_feature == cleaned_selected_area:
-                style.update({'fillColor': '#007bff', 'color': '#ffffff', 'weight': 3, 'fillOpacity': 0.5})
-        return style
-
+    # Dibuixem les comarques com a línies grises de fons
     folium.GeoJson(
-        map_data["gdf"], style_function=style_function,
-        highlight_function=lambda x: {'color': '#ffffff', 'weight': 3.5, 'fillOpacity': 0.5},
-        tooltip=folium.GeoJsonTooltip(fields=[map_data["property_name"]], aliases=['Zona:'])
+        gdf,
+        style_function=lambda x: {'color': '#888', 'weight': 1, 'fillOpacity': 0.0},
+        tooltip=folium.GeoJsonTooltip(fields=['nom_comar'], aliases=['Comarca:'])
     ).add_to(m)
 
-    for marker in map_data["markers"]:
-        icon = folium.DivIcon(html=marker['icon_html'])
-        folium.Marker(location=marker['location'], icon=icon, tooltip=marker['tooltip']).add_to(m)
-    
+    # Afegim la capa de Heatmap si hi ha punts calents
+    if punts_heatmap:
+        HeatMap(
+            punts_heatmap,
+            name='Focus de Tempesta',
+            min_opacity=0.2,
+            max_val=3000, # Valor de CAPE màxim per a la llegenda
+            radius=20, # Radi d'influència de cada punt
+            blur=15,
+            gradient={0.2: 'blue', 0.4: 'green', 0.7: 'yellow', 1.0: 'red'}
+        ).add_to(m)
+
     return st_folium(m, width="100%", height=650, returned_objects=['last_object_clicked_tooltip'])
+
 
 
     
@@ -4710,23 +4664,20 @@ def carregar_dades_sondeig_usa(lat, lon, hourly_index):
 
 
 @st.cache_data(ttl=1800, show_spinner="Analitzant focus de tempesta (CAPE + Convergència)...")
-def calcular_alertes_per_comarca(hourly_index, nivell):
+def calcular_punts_calents_mapa(hourly_index, nivell):
     """
-    VERSIÓ MILLORADA: Calcula les alertes basant-se en el CAPE trobat
-    al punt de MÀXIMA CONVERGÈNCIA de cada comarca.
-    Retorna un diccionari: {'Comarca': {'conv': valor, 'cape': valor}}
+    VERSIÓ PER A HEATMAP: En lloc d'agrupar per comarca, retorna una llista de punts individuals
+    on la combinació de CAPE i Convergència és significativa.
+    Retorna: [[lat, lon, pes], [lat, lon, pes], ...]
     """
     CONV_THRESHOLD = 15
+    CAPE_THRESHOLD = 300
     
     map_data, error = carregar_dades_mapa_cat(nivell, hourly_index)
-    gdf_zones = carregar_dades_geografiques()
-
-    if error or not map_data or gdf_zones is None:
-        return {}
+    if error or not map_data:
+        return []
 
     try:
-        property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf_zones.columns), 'nom_comar')
-        
         lons, lats = map_data['lons'], map_data['lats']
         grid_lon, grid_lat = np.meshgrid(np.linspace(min(lons), max(lons), 150), np.linspace(min(lats), max(lats), 150))
         
@@ -4739,36 +4690,24 @@ def calcular_alertes_per_comarca(hourly_index, nivell):
             dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
             convergence_scaled = -mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy).to('1/s').magnitude * 1e5
         
-        punts_calents_idx = np.argwhere(convergence_scaled > CONV_THRESHOLD)
-        if len(punts_calents_idx) == 0: return {}
+        # Filtrem els punts on AMBDUES condicions són rellevants
+        punts_calents_idx = np.where((convergence_scaled > CONV_THRESHOLD) & (grid_cape > CAPE_THRESHOLD))
+        
+        if len(punts_calents_idx[0]) == 0:
+            return []
             
-        punts_lats = grid_lat[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
-        punts_lons = grid_lon[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
-        conv_vals = convergence_scaled[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
-        cape_vals = grid_cape[punts_calents_idx[:, 0], punts_calents_idx[:, 1]]
+        lats_calents = grid_lat[punts_calents_idx]
+        lons_calents = grid_lon[punts_calents_idx]
+        cape_vals = grid_cape[punts_calents_idx]
         
-        gdf_punts = gpd.GeoDataFrame(
-            {'conv': conv_vals, 'cape': cape_vals}, 
-            geometry=[Point(lon, lat) for lon, lat in zip(punts_lons, punts_lats)], 
-            crs="EPSG:4326"
-        )
+        # El "pes" de cada punt al heatmap serà el seu valor de CAPE
+        punts_heatmap = [[lat, lon, cape] for lat, lon, cape in zip(lats_calents, lons_calents, cape_vals)]
         
-        punts_dins_zones = gpd.sjoin(gdf_punts, gdf_zones, how="inner", predicate="within")
-        if punts_dins_zones.empty: return {}
-
-        alertes = {}
-        for name, group in punts_dins_zones.groupby(property_name):
-            max_conv_row = group.loc[group['conv'].idxmax()]
-            alertes[name] = {
-                'conv': max_conv_row['conv'],
-                'cape': max_conv_row['cape'] if pd.notna(max_conv_row['cape']) else 0
-            }
-        
-        return alertes
+        return punts_heatmap
         
     except Exception as e:
-        print(f"Error dins de calcular_alertes_per_comarca: {e}")
-        return {}
+        print(f"Error dins de calcular_punts_calents_mapa: {e}")
+        return []
     
 
 def crear_mapa_vents_cat(lons, lats, speed_data, dir_data, nivell, timestamp_str, map_extent):
@@ -7001,133 +6940,73 @@ def tornar_al_mapa_general():
 
 def run_catalunya_app():
     """
-    Versió Definitiva i Polida v2.2.
-    - **CORRECCIÓ DE BUG**: Soluciona l'error que feia que la 'Convergència' aparegués sense
-      dades ('---'). Ara es calcula abans i es passa correctament a totes les funcions.
+    VERSIÓ AMB TIMELINE SLIDER I HEATMAP
     """
-    # --- PAS 1: CAPÇALERA I INICIALITZACIÓ D'ESTAT ---
+    # --- PAS 1: CAPÇALERA ---
     ui_capcalera_selectors(None, zona_activa="catalunya")
-    if 'selected_area' not in st.session_state: st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
-    if 'poble_sel' not in st.session_state: st.session_state.poble_sel = "--- Selecciona una localitat ---"
     
-    # --- PAS 2: SELECTORS GLOBALS I CÀLCUL DE TEMPS ---
+    # --- PAS 2: CÀLCUL DE TEMPS I CREACIÓ DEL SLIDER ---
+    now_local = datetime.now(TIMEZONE_CAT)
+    now_hour = now_local.hour
+    
+    # Creem les opcions per al slider (des de -2 hores fins a +12 hores)
+    time_offsets = list(range(-2, 13)) 
+    
+    # Funció auxiliar per crear les etiquetes del slider
+    def format_slider_label(offset, current_hour):
+        if offset == 0:
+            return f"Ara ({current_hour:02d}:00h)"
+        target_hour = (current_hour + offset) % 24
+        sign = "+" if offset > 0 else ""
+        return f"Ara {sign}{offset}h ({target_hour:02d}:00h)"
+        
+    time_labels = [format_slider_label(offset, now_hour) for offset in time_offsets]
+    
+    # El nou TIMELINE SLIDER
     with st.container(border=True):
-        col_dia, col_hora, col_nivell = st.columns(3)
-        with col_dia:
-            dies_disponibles = [(datetime.now(TIMEZONE_CAT) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)]
-            dia_sel_str = st.selectbox("Dia:", options=dies_disponibles, key="dia_selector")
-        with col_hora:
-            hora_sel_str = st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector", index=datetime.now(TIMEZONE_CAT).hour)
-        with col_nivell:
-            nivell_sel = st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
-    st.caption("ℹ️ Dades del model AROME 2.5km. L'aplicació es refresca cada 10 minuts.")
-    target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
-    hora_num = int(hora_sel_str.split(':')[0])
-    local_dt = TIMEZONE_CAT.localize(datetime.combine(target_date, datetime.min.time()).replace(hour=hora_num))
+        selected_label = st.select_slider(
+            "Evolució Temporal (arrossega per veure el pronòstic):",
+            options=time_labels,
+            value=f"Ara ({now_hour:02d}:00h)"
+        )
+    
+    # Obtenim l'hora seleccionada a partir de l'etiqueta
+    selected_offset = time_offsets[time_labels.index(selected_label)]
+    target_dt = (now_local + timedelta(hours=selected_offset)).replace(minute=0, second=0, microsecond=0)
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
-
-    # --- PAS 3: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
-    if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # --- VISTA D'ANÀLISI DETALLADA D'UNA LOCALITAT ---
-        poble_sel = st.session_state.poble_sel
-        st.success(f"### Anàlisi per a: {poble_sel}")
-        col_nav1, col_nav2 = st.columns(2)
-        with col_nav1: st.button("⬅️ Tornar a la Comarca", on_click=tornar_a_seleccio_comarca, use_container_width=True)
-        with col_nav2: st.button("🗺️ Tornar al Mapa General", on_click=tornar_al_mapa_general, use_container_width=True)
-        timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
-        
-        with st.spinner(f"Carregant dades del sondeig i mapa per a {poble_sel}..."):
-            lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
-            data_tuple, final_index, error_msg_sounding = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
-            map_data_conv, error_msg_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
-
-        if error_msg_sounding or not data_tuple:
-            st.error(f"No s'ha pogut carregar el sondeig: {error_msg_sounding if error_msg_sounding else 'Dades no disponibles.'}")
-            return
+    hourly_index_sel = int((target_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
+    
+    nivell_sel = 925 # Nivell d'anàlisi per defecte
+    st.caption(f"ℹ️ Dades del model AROME 2.5km per a les {target_dt.strftime('%H:%Mh')}. L'aplicació es refresca cada 10 minuts.")
+    
+    # --- PAS 3: CÀLCUL I VISUALITZACIÓ DEL MAPA AMB HEATMAP ---
+    
+    # Cridem la nova funció per obtenir els punts calents
+    punts_heatmap_data = calcular_punts_calents_mapa(hourly_index_sel, nivell_sel)
+    
+    # Mostrem el mapa
+    # La funció ui_mapa_display_personalitzat ara està dissenyada per rebre aquestes dades
+    ui_mapa_display_personalitzat(punts_heatmap_data, hourly_index_sel)
+    
+    # --- PAS 4: LLEGENDA I INFORMACIÓ ADDICIONAL ---
+    
+    with st.container(border=True):
+        st.markdown("##### Com Interpretar el Mapa de Situació")
+        st.info(
+            """
+            El mapa mostra els **focus de potencial de tempesta** en forma de mapa de calor. Les zones més càlides (groc a vermell) indiquen una major probabilitat i intensitat de les tempestes, basant-se en una combinació d'energia (CAPE) i mecanismes de dispar (convergència).
+            - **Blau/Verd:** Potencial baix, possibles ruixats o tempestes febles.
+            - **Groc:** Potencial moderat, tempestes més probables i organitzades.
+            - **Vermell:** Potencial alt, alt risc de tempestes severes.
             
-        params_calculats = data_tuple[1]
-        if not error_msg_map and map_data_conv:
-            conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
-            if pd.notna(conv_puntual):
-                params_calculats[f'CONV_{nivell_sel}hPa'] = conv_puntual
+            **Fes servir el selector de temps superior per veure l'evolució del risc al llarg del dia.**
+            """
+        )
+        st.info("Pots clicar en una comarca per veure'n el nom. La vista detallada per localitat s'ha mogut a altres seccions.", icon="👆")
 
-        if final_index is not None and final_index != hourly_index_sel:
-            adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
-            adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
-            st.warning(f"Avís: Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: {adjusted_local_time.strftime('%H:%Mh')}.")
-        
-        menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi de Mapes", "Simulació de Núvol"]
-        menu_icons = ["fullscreen", "graph-up-arrow", "map", "cloud-upload"]
-        active_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key=f'option_menu_{poble_sel}')
-        
-        if active_tab == "Anàlisi Comarcal":
-            with st.spinner("Carregant anàlisi comarcal completa..."):
-                alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
-            comarca_actual = get_comarca_for_poble(poble_sel)
-            if comarca_actual:
-                valor_conv_comarcal = alertes_totals.get(comarca_actual, {}).get('conv', 0)
-                ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calculats, hora_sel_str, data_tuple, alertes_totals)
-        
-        elif active_tab == "Anàlisi Vertical":
-            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
-        
-        elif active_tab == "Anàlisi de Mapes":
-            ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
-
-        elif active_tab == "Simulació de Núvol":
-            ui_pestanya_simulacio_nuvol(params_calculats, timestamp_str, poble_sel)
-            
-    else: 
-        # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
-        st.session_state.setdefault('show_comarca_labels', False)
-        st.session_state.setdefault('alert_filter_level_cape', 'Energia Baixa i superior')
-
-        with st.container(border=True):
-            st.markdown("##### Opcions de Visualització del Mapa")
-            col_filter, col_labels = st.columns(2)
-            with col_filter: st.selectbox("Filtrar per nivell d'energia (CAPE):", options=["Tots", "Energia Baixa i superior", "Energia Moderada i superior", "Energia Alta i superior", "Només Extrems"], key="alert_filter_level_cape")
-            with col_labels: st.toggle("Mostrar detalls de les zones actives", key="show_comarca_labels")
-        
-        with st.spinner("Analitzant focus de convergència a tot Catalunya..."):
-            alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
-        
-        LLINDARS_CAPE = {"Tots": 0, "Energia Baixa i superior": 500, "Energia Moderada i superior": 1000, "Energia Alta i superior": 2000, "Només Extrems": 3500}
-        llindar_cape_sel = LLINDARS_CAPE[st.session_state.alert_filter_level_cape]
-        alertes_filtrades = {zona: data for zona, data in alertes_totals.items() if data['cape'] >= llindar_cape_sel}
-        
-        with st.spinner("Dibuixant mapa interactiu..."):
-            map_output = ui_mapa_display_personalitzat(alertes_per_zona=alertes_filtrades, hourly_index=hourly_index_sel, show_labels=st.session_state.show_comarca_labels)
-        
-        ui_llegenda_mapa_principal()
-        
-        if map_output and map_output.get("last_object_clicked_tooltip"):
-            raw_tooltip = map_output["last_object_clicked_tooltip"]
-            if "Comarca:" in raw_tooltip or "Zona:" in raw_tooltip:
-                clicked_area = raw_tooltip.split(':')[-1].strip().replace('.', '')
-                if clicked_area != st.session_state.get('selected_area'):
-                    st.session_state.selected_area = clicked_area
-                    st.rerun()
-        
-        selected_area = st.session_state.get('selected_area')
-        if selected_area and "---" not in selected_area:
-            st.markdown(f"##### Selecciona una localitat a {selected_area}:")
-            gdf = carregar_dades_geografiques()
-            property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), 'nom_comar')
-            poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
-            poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
-            if poblacions_a_mostrar:
-                cols = st.columns(4)
-                for i, nom_poble in enumerate(sorted(poblacions_a_mostrar.keys())):
-                    with cols[i % 4]:
-                        st.button(nom_poble, key=f"btn_{nom_poble.replace(' ', '_')}", on_click=seleccionar_poble, args=(nom_poble,), use_container_width=True)
-            else:
-                st.warning("Aquesta zona no té localitats predefinides per a l'anàlisi.")
-            if st.button("⬅️ Veure totes les zones"):
-                st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
-                st.rerun()
-        else:
-            st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
+    # La lògica anterior per seleccionar comarques i localitats s'ha eliminat d'aquesta vista
+    # per donar tot el protagonisme al nou mapa de calor i a la línia de temps.
+    # Si vols recuperar-la, s'hauria de plantejar en un nou disseny d'interfície.
             
 
 
