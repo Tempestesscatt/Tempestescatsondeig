@@ -6996,27 +6996,23 @@ def tornar_al_mapa_general():
     st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
 
 
+
 def generar_bulleti_automatic_catalunya(alertes_totals, hora_str):
     """
     Analitza totes les alertes comarcals i genera un butlletí de risc estructurat,
-    seguint els llindars de CAPE especificats per l'expert. VERSIÓ FINAL AMB TOTES LES COMARQUES.
+    seguint els llindars de CAPE especificats per l'expert. VERSIÓ SENSE CRONOLOGIA.
     """
     if not alertes_totals:
         max_cape = 0
     else:
-        # Filtrem valors nuls abans de buscar el màxim per evitar errors
         max_cape = max(data.get('cape', 0) for data in alertes_totals.values() if data.get('cape') is not None)
 
-    # --- 1. Classificació exhaustiva de totes les comarques amb risc ---
+    # --- 1. Classificació de les comarques ---
     zones_per_risc = {
-        "RISC VERMELL (CAPE > 3000)": [],
-        "RISC TARONJA (CAPE > 2500)": [],
-        "RISC GROC FORT (CAPE > 2000)": [],
-        "RISC GROC (CAPE > 1500)": [],
-        "RISC MODERAT (CAPE > 1000)": [],
-        "SEGUIMENT (CAPE > 500)": [] # Aquesta categoria ara sempre s'avaluarà
+        "RISC VERMELL (CAPE > 3000)": [], "RISC TARONJA (CAPE > 2500)": [],
+        "RISC GROC FORT (CAPE > 2000)": [], "RISC GROC (CAPE > 1500)": [],
+        "RISC MODERAT (CAPE > 1000)": [], "SEGUIMENT (CAPE > 500)": []
     }
-    
     comarca_max_cape = ""
     cape_valor_maxim = 0
     if alertes_totals:
@@ -7026,7 +7022,6 @@ def generar_bulleti_automatic_catalunya(alertes_totals, hora_str):
                 cape_valor_maxim = cape
                 comarca_max_cape = comarca
             
-            # Omplim totes les categories
             if cape >= 3000: zones_per_risc["RISC VERMELL (CAPE > 3000)"].append(comarca)
             elif cape >= 2500: zones_per_risc["RISC TARONJA (CAPE > 2500)"].append(comarca)
             elif cape >= 2000: zones_per_risc["RISC GROC FORT (CAPE > 2000)"].append(comarca)
@@ -7034,7 +7029,7 @@ def generar_bulleti_automatic_catalunya(alertes_totals, hora_str):
             elif cape >= 1000: zones_per_risc["RISC MODERAT (CAPE > 1000)"].append(comarca)
             elif cape >= 500: zones_per_risc["SEGUIMENT (CAPE > 500)"].append(comarca)
 
-    # --- 2. Definició del Nivell de Risc General i Textos associats (es manté la lògica) ---
+    # --- 2. Definició del Nivell de Risc General i Textos associats ---
     if max_cape >= 3000:
         nivell_risc = {"text": "Molt Alt (ALERTA VERMELLA)", "color": "#B71C1C"}; titol = "Alerta Màxima per Temps Violent"
         resum_general = f"Situació extremadament perillosa. L'energia a l'atmosfera és explosiva (fins a **{int(max_cape)} J/kg** a **{comarca_max_cape}**), favorable per a la formació de supercèl·lules i fenòmens de temps violent."
@@ -7074,16 +7069,11 @@ def generar_bulleti_automatic_catalunya(alertes_totals, hora_str):
         nivell_risc = {"text": "Sense Risc", "color": "#6c757d"}; titol = "Situació Plenament Estable"
         resum_general = "L'energia a l'atmosfera és pràcticament inexistent, impedint el desenvolupament de qualsevol tipus de convecció."
         fenomens = ["Cel poc ennuvolat o serè."]; recomanacio = "No es requereixen precaucions."
-        
-    hora_num = int(hora_str.split(':')[0])
-    if 13 <= hora_num < 17: cronologia = "El període de màxima activitat s'espera entre la tarda i el vespre (15:00h - 21:00h)."
-    elif hora_num >= 17: cronologia = "El període de màxim risc està en curs i es pot allargar fins a la matinada."
-    else: cronologia = "La inestabilitat anirà en augment, amb el període de màxim risc concentrat a la tarda."
 
     return {
         "nivell_risc": nivell_risc, "titol": titol, "resum_general": resum_general,
-        "zones_afectades": {k: v for k, v in zones_per_risc.items() if v}, # Només inclou nivells amb comarques
-        "fenomens_previstos": fenomens, "cronologia": cronologia, "recomanacio": recomanacio
+        "zones_afectades": {k: v for k, v in zones_per_risc.items() if v},
+        "fenomens_previstos": fenomens, "recomanacio": recomanacio
     }
     
 
@@ -7091,7 +7081,7 @@ def generar_bulleti_automatic_catalunya(alertes_totals, hora_str):
 def ui_bulleti_automatic(bulleti_data):
     """
     Mostra el butlletí generat amb un format d'alerta complet i professional.
-    VERSIÓ FINAL SENSE DESPLEGABLE I AMB TOTS ELS NIVELLS VISIBLES.
+    VERSIÓ FINAL SENSE CRONOLOGIA.
     """
     st.markdown("---")
     with st.container(border=True):
@@ -7105,44 +7095,42 @@ def ui_bulleti_automatic(bulleti_data):
         
         st.subheader(bulleti_data['titol'])
         
-        col1, col2 = st.columns(2, gap="large")
+        # Ajustem les columnes per donar més espai al resum
+        col1, col2 = st.columns([0.6, 0.4], gap="large") 
         with col1:
             st.markdown("###### 📝 **Resum de la Situació General**")
             st.markdown(bulleti_data['resum_general'])
-
-            st.markdown("###### ⏰ **Cronologia Prevista**")
-            st.markdown(bulleti_data['cronologia'])
 
         with col2:
             st.markdown("###### ⛈️ **Fenòmens Previstos**")
             for fenomen in bulleti_data['fenomens_previstos']:
                 st.markdown(f"- {fenomen}")
 
-        # ===== SECCIÓ MODIFICADA (SENSE DESPLEGABLE I SEMPRE VISIBLE) =====
         if bulleti_data['zones_afectades']:
             st.markdown("---")
             st.markdown("###### 🗺️ **Comarques Afectades per Nivell de Risc**")
             
-            # Iterem per tots els nivells de risc i els mostrem un sota l'altre
-            for nivell, comarques in bulleti_data['zones_afectades'].items():
-                if "VERMELL" in nivell: color = "#B71C1C"
-                elif "TARONJA" in nivell: color = "#DC3545"
-                elif "GROC FORT" in nivell: color = "#FD7E14"
-                elif "GROC" in nivell: color = "#FFC107"
-                elif "MODERAT" in nivell: color = "#28a745"
-                else: color = "#6495ED"
+            nivells_amb_dades = list(bulleti_data['zones_afectades'].keys())
+            if nivells_amb_dades:
+                num_cols = min(len(nivells_amb_dades), 3)
+                cols = st.columns(num_cols)
                 
-                # Mostrem el títol del nivell de risc
-                st.markdown(f"<p style='color:{color}; font-weight:bold; margin-bottom: 2px;'>{nivell}</p>", unsafe_allow_html=True)
-                # Mostrem la llista de comarques
-                llista_comarques = ", ".join(sorted(comarques))
-                st.markdown(f"<p style='font-size:0.9em; margin-bottom: 10px;'>{llista_comarques}</p>", unsafe_allow_html=True)
-        # =================================================================
-
+                for i, nivell in enumerate(nivells_amb_dades):
+                    with cols[i % num_cols]:
+                        if "VERMELL" in nivell: color = "#B71C1C"
+                        elif "TARONJA" in nivell: color = "#DC3545"
+                        elif "GROC FORT" in nivell: color = "#FD7E14"
+                        elif "GROC" in nivell: color = "#FFC107"
+                        elif "MODERAT" in nivell: color = "#28a745"
+                        else: color = "#6495ED"
+                        
+                        st.markdown(f"<p style='color:{color}; font-weight:bold; font-size:0.9em;'>{nivell}</p>", unsafe_allow_html=True)
+                        llista_comarques = ", ".join(sorted(bulleti_data['zones_afectades'][nivell]))
+                        st.markdown(f"<p style='font-size:0.85em;'>{llista_comarques}</p>", unsafe_allow_html=True)
+        
         st.markdown("---")
         st.markdown("###### ⚠️ **Recomanacions a la Població**")
         st.warning(bulleti_data['recomanacio'])
-
 
 def run_catalunya_app():
     """
