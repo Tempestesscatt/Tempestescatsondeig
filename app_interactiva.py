@@ -8509,10 +8509,9 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Expert v63.0 (Format de Text Corregit).
-    - **CORRECCIÓ DE FORMAT**: Tots els valors numèrics que es mostren als veredictes
-      ara estan arrodonits a zero decimals per a una lectura clara i professional.
-    - Manté la lògica de disparador prioritari i el veto LFC.
+    Sistema de Diagnòstic Expert v64.0 (Veredictes Qualitatius).
+    - **MILLORA D'INTERFÍCIE**: S'han eliminat els valors numèrics dels textos de
+      diagnòstic (veredictes) per a oferir una conclusió més neta, directa i qualitativa.
     """
     # --- 1. Extracció Completa de Paràmetres ---
     mlcape = params.get('MLCAPE', 0) or 0
@@ -8521,7 +8520,6 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
     cin = min(params.get('SBCIN', 0), params.get('MUCIN', 0)) or 0
     lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
-    lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     
     rh_capes = params.get('RH_CAPES', {})
@@ -8531,52 +8529,46 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
-    pwat = params.get('PWAT', 0) or 0
-
+    
     # --- 2. AVALUACIÓ PRIORITÀRIA DEL DISPARADOR I LA INHIBICIÓ ---
     condicions_de_dispar_favorables = (cin > -75 and lfc_hgt < 2500 and conv > 10)
 
     # --- 3. DIAGNÒSTIC BASAT EN LA LÒGICA JERÀRQUICA ---
-
-    # --- PAS A: DIAGNÒSTIC DE TEMPS CONVECTIU (SI HI HA DISPARADOR) ---
     if condicions_de_dispar_favorables:
         if cape > 2000 and bwd_6km > 35:
-            return [{'descripcio': "Potencial de Supercèl·lula", 'veredicte': f"Entorn explosiu: CAPE de {cape:.0f} J/kg amb un fort cisallament de {bwd_6km:.0f} nusos."}]
+            return [{'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Entorn explosiu per a tempestes severes organitzades."}]
         if cape > 800 and bwd_6km > 25:
-            return [{'descripcio': "Tempestes Organitzades", 'veredicte': f"CAPE={cape:.0f} J/kg i shear moderat {bwd_6km:.0f} kt. Possible línia o clúster de tempestes."}]
+            return [{'descripcio': "Tempestes Organitzades", 'veredicte': "Potencial per a la formació de sistemes multicel·lulars o línies de tempestes."}]
         if cape > 1500 and bwd_6km < 20:
-            return [{'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': f"Molta energia ({cape:.0f} J/kg) però poca organització ({bwd_6km:.0f} kt). Tempestes d'impuls."}]
+            return [{'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Alta inestabilitat però poca organització. Risc de tempestes d'impuls aïllades."}]
         if cape > 500:
-            return [{'descripcio': "Tempesta Comuna", 'veredicte': f"Probables xàfecs i tronades amb CAPE de {cape:.0f} J/kg."}]
+            return [{'descripcio': "Tempesta Comuna", 'veredicte': "Condicions favorables per a xàfecs i tronades d'evolució diürna."}]
         if cape > 200:
-            return [{'descripcio': "Cúmuls de creixement", 'veredicte': "Inici de convecció amb creixement vertical per CAPE de {cape:.0f} J/kg."}]
+            return [{'descripcio': "Cúmuls de creixement", 'veredicte': "Inici de convecció amb creixement vertical i possibles ruixats aïllats."}]
 
-    # --- PAS B: DIAGNÒSTIC DE NUVOLOSITAT ESTRATIFORME ---
+    # --- 4. SI NO HI HA DISPARADOR, ANALITZEM NUVOLOSITAT ESTRATIFORME ---
     diagnostics = []
     
     if rh_baixa >= 70:
         if cape < 50:
-            diagnostics.append({'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos per alta humitat ({rh_baixa:.0f}%) i estabilitat."})
-        elif lfc_hgt < 2000:
-            if 50 <= cape < 200:
-                diagnostics.append({'descripcio': "Cúmuls mediocris", 'veredicte': "Núvols baixos amb creixement limitat per la poca energia."})
+            diagnostics.append({'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos per alta humitat i estabilitat."})
+        elif lfc_hgt < 2000 and 50 <= cape < 200:
+            diagnostics.append({'descripcio': "Cúmuls mediocris", 'veredicte': "Núvols baixos amb creixement vertical limitat."})
     
-    if rh_baixa > 60 and 50 <= cape < 150:
-        if lfc_hgt < 2000:
-             diagnostics.append({'descripcio': "Cúmuls de bon temps", 'veredicte': "Cel amb petits cúmuls, sense cap mena de risc."})
+    if rh_baixa > 60 and 50 <= cape < 150 and lfc_hgt < 2000:
+         diagnostics.append({'descripcio': "Cúmuls de bon temps", 'veredicte': "Cel amb petits cúmuls decoratius, sense cap mena de risc."})
 
     if rh_mitjana >= 60:
-        diagnostics.append({'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Presència de núvols a nivells mitjans (Humitat: {rh_mitjana:.0f}%)."})
+        diagnostics.append({'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Presència de núvols a nivells mitjans."})
     
     if rh_alta >= 50:
-        diagnostics.append({'descripcio': "Vels de Cirrus (Molt Alts)", 'veredicte': "Presència de núvols alts de tipus cirrus (Humitat: {rh_alta:.0f}%)."})
+        diagnostics.append({'descripcio': "Vels de Cirrus (Molt Alts)", 'veredicte': "Presència de núvols alts de tipus cirrus."})
     
-    # --- PAS C: GESTIÓ FINAL ---
+    # --- 5. GESTIÓ FINAL ---
     if not diagnostics:
         return [{'descripcio': "Cel Serè", 'veredicte': "Atmosfera estable i seca, sense nuvolositat."}]
             
     return diagnostics
-
     
 if __name__ == "__main__":
     main()
