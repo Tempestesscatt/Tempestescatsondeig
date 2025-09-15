@@ -7068,13 +7068,8 @@ def run_catalunya_app():
             
     else: 
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
-        
-        # ===== LÍNIA MODIFICADA AQUÍ =====
-        # Ara el valor per defecte del selector serà 'False' (desactivat)
         st.session_state.setdefault('show_comarca_labels', False)
-        # ====================================
-
-        st.session_state.setdefault('alert_filter_level_cape', 'Tots')
+        st.session_state.setdefault('alert_filter_level_cape', 'Energia Baixa i superior')
 
         with st.container(border=True):
             st.markdown("##### Opcions de Visualització del Mapa")
