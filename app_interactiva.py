@@ -1250,7 +1250,7 @@ def crear_skewt(p, T, Td, Twb, u, v, prof, params_calc, titol, timestamp_str, zo
     if prof is not None:
         valid_shade_mask = np.isfinite(p.m) & np.isfinite(T.m) & np.isfinite(prof.m)
         p_clean, T_clean, prof_clean = p[valid_shade_mask], T[valid_shade_mask], prof[valid_shade_mask]
-        skew.shade_cape(p_clean, T_clean, prof_clean, color='red', alpha=0.2)
+        skew.shade_cape(p_clean, T_clean, prof_clean, color='yellow', alpha=0.2)
         skew.shade_cin(p_clean, T_clean, prof_clean, color='gray', alpha=0.5)
         skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
 
