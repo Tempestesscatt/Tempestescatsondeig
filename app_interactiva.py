@@ -7068,7 +7068,12 @@ def run_catalunya_app():
             
     else: 
         # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
-        st.session_state.setdefault('show_comarca_labels', True)
+        
+        # ===== LÍNIA MODIFICADA AQUÍ =====
+        # Ara el valor per defecte del selector serà 'False' (desactivat)
+        st.session_state.setdefault('show_comarca_labels', False)
+        # ====================================
+
         st.session_state.setdefault('alert_filter_level_cape', 'Tots')
 
         with st.container(border=True):
@@ -7085,8 +7090,6 @@ def run_catalunya_app():
         alertes_filtrades = {zona: data for zona, data in alertes_totals.items() if data['cape'] >= llindar_cape_sel}
         
         with st.spinner("Dibuixant mapa interactiu..."):
-            # Aquesta és la crida a la funció que has modificat.
-            # Aquesta funció `run_catalunya_app` s'assegura que es cridi correctament.
             map_output = ui_mapa_display_personalitzat(alertes_per_zona=alertes_filtrades, hourly_index=hourly_index_sel, show_labels=st.session_state.show_comarca_labels)
         
         ui_llegenda_mapa_principal()
