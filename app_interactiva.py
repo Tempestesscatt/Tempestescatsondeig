@@ -1255,7 +1255,7 @@ def crear_skewt(p, T, Td, Twb, u, v, prof, params_calc, titol, timestamp_str, zo
         skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
 
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
-    skew.plot(p, Td, 'blue', lw=2.5, label='Punt de Rosada')
+    skew.plot(p, Td, 'blue', lw=2, label='Punt de Rosada')
     skew.plot(p, Twb, color='#C8A2C8', linestyle='-', lw=2, label='Bulb Humit (Twb)')
     
     skew.plot_barbs(p, u.to('kt'), v.to('kt'), y_clip_radius=0.03)
