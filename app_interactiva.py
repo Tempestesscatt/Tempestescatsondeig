@@ -1251,11 +1251,11 @@ def crear_skewt(p, T, Td, Twb, u, v, prof, params_calc, titol, timestamp_str, zo
         valid_shade_mask = np.isfinite(p.m) & np.isfinite(T.m) & np.isfinite(prof.m)
         p_clean, T_clean, prof_clean = p[valid_shade_mask], T[valid_shade_mask], prof[valid_shade_mask]
         skew.shade_cape(p_clean, T_clean, prof_clean, color='red', alpha=0.2)
-        skew.shade_cin(p_clean, T_clean, prof_clean, color='blue', alpha=0.2)
+        skew.shade_cin(p_clean, T_clean, prof_clean, color='gray', alpha=0.2)
         skew.plot(p, prof, 'k', linewidth=3, label='Trajectòria Parcel·la', path_effects=[path_effects.withStroke(linewidth=4, foreground='white')])
 
     skew.plot(p, T, 'red', lw=2.5, label='Temperatura')
-    skew.plot(p, Td, 'green', lw=2.5, label='Punt de Rosada')
+    skew.plot(p, Td, 'blue', lw=2.9, label='Punt de Rosada')
     
     # <<<--- LÍNIA AFEGIDA: Dibuixem el perfil de Bulb Humit ---
     skew.plot(p, Twb, color='#C8A2C8', linestyle='--', lw=2, label='Bulb Humit (Twb)')
