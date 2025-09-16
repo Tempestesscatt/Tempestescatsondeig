@@ -7887,9 +7887,12 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels_conv, cmap=cmap_conv, norm=norm_conv, alpha=0.75, zorder=3, transform=ccrs.PlateCarree(), extend='max')
 
         # --- NOU: DIBUIX DE LES ISOLÍNIES DE CAPE ---
-        if 'grid_cape' in locals() and np.nanmax(grid_cape) > 100:
-            cape_levels = [500, 1000, 1500, 2000, 2500, 3000]
-            cape_colors = ['#FFFF00', '#FFA500', '#FF4500', '#FF0000', '#C71585', '#FF00FF']
+        if 'grid_cape' in locals() and np.nanmax(grid_cape) > 20:
+            # Nivells des de 20 fins a 6000
+            cape_levels = [20, 100, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000]
+            # Paleta de colors expandida per a tots els nivells
+            cape_colors = ['#ADD8E6', '#90EE90', '#32CD32', '#ADFF2F', '#FFFF00', '#FFA500', 
+                           '#FF4500', '#FF0000', '#DC143C', '#FF00FF', '#9932CC', '#8A2BE2']
             
             cape_contours = ax.contour(grid_lon, grid_lat, grid_cape, 
                                        levels=cape_levels, 
@@ -7900,6 +7903,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                                        zorder=5,
                                        transform=ccrs.PlateCarree())
             
+            # Afegeix les etiquetes a les línies
             cape_labels = ax.clabel(cape_contours, inline=True, fontsize=9, fmt='%1.0f')
             for label in cape_labels:
                 label.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
