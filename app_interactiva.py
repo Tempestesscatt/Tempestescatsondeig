@@ -428,7 +428,7 @@ CIUTATS_PER_COMARCA = {
     "Ripollès": { 'Ripoll': {'lat': 42.2013, 'lon': 2.1903}, 'Camprodon': {'lat': 42.3134, 'lon': 2.3644}, 'Sant Joan de les Abadesses': {'lat': 42.2355, 'lon': 2.2858} },
     "Segarra": { 'Cervera': {'lat': 41.6709, 'lon': 1.2721}, 'Guissona': {'lat': 41.7824, 'lon': 1.2905}, 'Torà': {'lat': 41.8124, 'lon': 1.4024} },
     "Segrià": { 'Lleida': {'lat': 41.6177, 'lon': 0.6200}, 'Alcarràs': {'lat': 41.5606, 'lon': 0.5251}, 'Aitona': {'lat': 41.4883, 'lon': 0.4578} },
-    "Selva": { 'Santa Coloma de Farners': {'lat': 41.8596, 'lon': 2.6703}, 'Blanes': {'lat': 41.6748, 'lon': 2.7917}, 'Lloret de Mar': {'lat': 41.7005, 'lon': 2.8450}, 'Hostalric': {'lat': 41.7479, 'lon': 2.6360} },
+    "Selva": { 'Santa Coloma de Farners': {'lat': 41.8596, 'lon': 2.6703}, 'Blanes': {'lat': 41.6748, 'lon': 2.7917}, 'Lloret de Mar': {'lat': 41.7005, 'lon': 2.8450}, 'Hostalric': {'lat': 41.7479, 'lon': 2.6360}, 'Arbúcies': {'lat': 41.8167, 'lon': 2.5167} },
     "Solsonès": { 'Solsona': {'lat': 41.9942, 'lon': 1.5161}, 'Sant Llorenç de Morunys': {'lat': 42.1374, 'lon': 1.5900}, 'Olius': {'lat': 41.9785, 'lon': 1.5323} },
     "Tarragonès": { 'Tarragona': {'lat': 41.1189, 'lon': 1.2445}, 'Salou': {'lat': 41.0763, 'lon': 1.1417}, 'Altafulla': {'lat': 41.1417, 'lon': 1.3750} },
     "Terra Alta": { 'Gandesa': {'lat': 41.0526, 'lon': 0.4337}, 'Horta de Sant Joan': {'lat': 40.9545, 'lon': 0.3160}, 'Batea': {'lat': 41.0954, 'lon': 0.3119} },
@@ -436,6 +436,11 @@ CIUTATS_PER_COMARCA = {
     "Val d'Aran": { 'Vielha': {'lat': 42.7027, 'lon': 0.7966}, 'Bossòst': {'lat': 42.7877, 'lon': 0.6908}, 'Les': {'lat': 42.8126, 'lon': 0.7144} },
     "Vallès Occidental": { 'Sabadell': {'lat': 41.5483, 'lon': 2.1075}, 'Terrassa': {'lat': 41.5615, 'lon': 2.0084}, 'Sant Cugat del Vallès': {'lat': 41.4727, 'lon': 2.0863}, 'Rubí': {'lat': 41.4936, 'lon': 2.0323} },
     "Vallès Oriental": { 'Granollers': {'lat': 41.6083, 'lon': 2.2886}, 'Mollet del Vallès': {'lat': 41.5385, 'lon': 2.2144}, 'Sant Celoni': {'lat': 41.6903, 'lon': 2.4908}, 'Cardedeu': {'lat': 41.6403, 'lon': 2.3582} },
+    
+    # --- NOVES ZONES MARÍTIMES AFEGIDES ---
+    "Mar Nord (Girona)": { 'Punt Marítim Nord': {'lat': 42.10, 'lon': 3.60} },
+    "Mar Central (Barcelona)": { 'Punt Marítim Central': {'lat': 41.30, 'lon': 2.80} },
+    "Mar Sud (Tarragona)": { 'Punt Marítim Sud': {'lat': 40.75, 'lon': 1.50} },
 }
 
 CIUTATS_CATALUNYA = { ciutat: dades for comarca in CIUTATS_PER_COMARCA.values() for ciutat, dades in comarca.items() }
