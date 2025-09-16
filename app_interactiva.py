@@ -7763,6 +7763,7 @@ def generar_bulleti_inteligent(params_calc, poble_sel, valor_conv, cape_mapa):
         
     return {"nivell_risc": nivell_risc, "titol": titol, "resum": resum, "fenomens_previstos": fenomens}
 
+
 def viatjar_a_comarca(nom_comarca):
     """
     Callback per canviar l'anàlisi a una nova comarca directament.
@@ -8812,3 +8813,6 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
 if __name__ == "__main__":
     main()
+
+
+
