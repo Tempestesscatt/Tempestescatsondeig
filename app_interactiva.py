@@ -7750,7 +7750,7 @@ def ui_portal_viatges_rapids(alertes_totals, comarca_actual):
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple, alertes_totals):
     """
-    PESTANYA D'ANÀLISI COMARCAL, versió final amb CAPE i convergència integrats.
+    PESTANYA D'ANÀLISI COMARCAL, versió final amb CAPE com a ombrejat fi i convergència.
     """
     st.markdown(f"#### Anàlisi de Convergència i CAPE per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -7779,14 +7779,12 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             lons, lats = map_data['lons'], map_data['lats']
             grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 150), np.linspace(map_extent[2], map_extent[3], 150))
             
-            # Interpolació de totes les variables necessàries
             grid_dewpoint = griddata((lons, lats), map_data['dewpoint_data'], (grid_lon, grid_lat), 'linear')
             grid_cape = griddata((lons, lats), map_data['cape_data'], (grid_lon, grid_lat), 'linear')
             u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
             grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
             grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
             
-            # Càlcul de la convergència
             with np.errstate(invalid='ignore'):
                 dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
                 convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
@@ -7798,7 +7796,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             smoothed_convergence = gaussian_filter(effective_convergence, sigma=5.5)
             smoothed_convergence[smoothed_convergence < 10] = 0
 
-            # Càlcul de la trajectòria i amenaça (lògica existent)
             points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
             gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
             points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
@@ -7815,7 +7812,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                         mean_u, mean_v = (u_700 + u_500) / 2.0 * units('m/s'), (v_700 + v_500) / 2.0 * units('m/s')
                         storm_dir_to = (mpcalc.wind_direction(mean_u, mean_v).m + 180) % 360
 
-    # Dibuix del mapa i diagnòstic
     col_mapa, col_diagnostic = st.columns([0.6, 0.4], gap="large")
 
     with col_mapa:
@@ -7824,34 +7820,36 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         fig, ax = crear_mapa_base(map_extent if 'map_extent' in locals() else MAP_EXTENT_CAT)
         ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
         
-        # Dibuix de la convergència
-        if max_conv_point is not None:
-            fill_levels_conv = [10, 20, 30, 40, 60, 80, 100, 120]
-            cmap_conv = plt.get_cmap('plasma'); norm_conv = BoundaryNorm(fill_levels_conv, ncolors=cmap_conv.N, clip=True)
-            ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels_conv, cmap=cmap_conv, norm=norm_conv, alpha=0.75, zorder=3, transform=ccrs.PlateCarree(), extend='max')
-
-        # Dibuix de les isolínies de CAPE
+        # --- MODIFICAT: DIBUIX DEL CAPE COM A OMBREJAT FI ---
         if 'grid_cape' in locals() and np.nanmax(grid_cape) > 20:
             cape_levels = [20, 100, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000]
             cape_colors = ['#ADD8E6', '#90EE90', '#32CD32', '#ADFF2F', '#FFFF00', '#FFA500', 
                            '#FF4500', '#FF0000', '#DC143C', '#FF00FF', '#9932CC', '#8A2BE2']
+            custom_cape_cmap = ListedColormap(cape_colors)
+            norm_cape = BoundaryNorm(cape_levels, ncolors=custom_cape_cmap.N, clip=True)
+
+            ax.contourf(grid_lon, grid_lat, grid_cape,
+                        levels=cape_levels, cmap=custom_cape_cmap, norm=norm_cape,
+                        alpha=0.4, # Transparència per a un efecte subtil
+                        zorder=2,  # Per sota de la convergència
+                        transform=ccrs.PlateCarree(), extend='max')
+
+            # Afegim línies fines per definir millor les zones de CAPE
+            cape_line_contours = ax.contour(grid_lon, grid_lat, grid_cape,
+                                           levels=[500, 1000, 2000, 3000], # Nivells clau
+                                           colors='white', linewidths=0.6, alpha=0.7,
+                                           linestyles='--', zorder=5, transform=ccrs.PlateCarree())
             
-            cape_contours = ax.contour(grid_lon, grid_lat, grid_cape, 
-                                       levels=cape_levels, 
-                                       colors=cape_colors,
-                                       linewidths=1.8,
-                                       linestyles='solid',
-                                       alpha=0.9,
-                                       zorder=5,
-                                       transform=ccrs.PlateCarree())
-            
-            cape_labels = ax.clabel(cape_contours, inline=True, fontsize=9, fmt='%1.0f')
+            cape_labels = ax.clabel(cape_line_contours, inline=True, fontsize=8, fmt='%1.0f J/kg')
             for label in cape_labels:
-                label.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
-                label.set_color("white")
-        
-        # Dibuix del marcador de convergència
+                label.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')])
+        # --- FI DE LA MODIFICACIÓ ---
+
         if max_conv_point is not None:
+            fill_levels_conv = [10, 20, 30, 40, 60, 80, 100, 120]
+            cmap_conv = plt.get_cmap('coolwarm'); norm_conv = BoundaryNorm(fill_levels_conv, ncolors=cmap_conv.N, clip=True)
+            ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels_conv, cmap=cmap_conv, norm=norm_conv, alpha=0.7, zorder=3, transform=ccrs.PlateCarree(), extend='max')
+
             px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
             path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
             if bulleti_data and bulleti_data['nivell_risc']['text'] == "Nul":
