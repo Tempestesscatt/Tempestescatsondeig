@@ -5680,17 +5680,17 @@ def generar_icona_direccio(color, direccio_graus):
 def crear_llegenda_direccionalitat():
     """
     Mostra una llegenda visual i explicativa per al mapa de focus de convergència,
-    amb un estil minimalista i professional.
+    ara incloent la descripció de les isolínies de CAPE.
     """
     st.markdown("""
     <style>
         .legend-box { background-color: #2a2c34; border-radius: 10px; padding: 15px; border: 1px solid #444; margin-top: 15px; }
         .legend-title { font-size: 1.1em; font-weight: bold; color: #FAFAFA; margin-bottom: 12px; }
-        .legend-section { display: flex; align-items: center; margin-bottom: 10px; }
+        .legend-section { display: flex; align-items: center; margin-bottom: 12px; }
         .legend-icon-container { flex-shrink: 0; margin-right: 15px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; }
-        .legend-text-container { flex-grow: 1; font-size: 0.9em; color: #a0a0b0; }
+        .legend-text-container { flex-grow: 1; font-size: 0.9em; color: #a0a0b0; line-height: 1.4; }
         .legend-text-container b { color: #FFFFFF; }
-        .color-square { display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: middle; }
+        .color-square { display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: middle; border: 1px solid #555; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -5699,18 +5699,17 @@ def crear_llegenda_direccionalitat():
 
     html_llegenda = (
         f'<div class="legend-box">'
-        f'    <div class="legend-title">Com Interpretar el Focus de Convergència</div>'
-        f'    <p style="font-size:0.9em; color:#a0a0b0; margin-top:-5px; margin-bottom:15px;">El mapa mostra el punt de màxima convergència dins la comarca i la direcció de desplaçament prevista de la tempesta que es pugui formar.</p>'
+        f'    <div class="legend-title">Com Interpretar el Mapa de Focus</div>'
         
         f'    <div class="legend-section">'
         f'        <div class="legend-icon-container">'
         f'            <img src="data:image/png;base64,{icona_intensitat}" width="30">'
         f'        </div>'
         f'        <div class="legend-text-container">'
-        f'            <b>Intensitat (Color del Cercle):</b> Indica la força del "disparador".<br>'
-        f'            <span class="color-square" style="background-color: #FD7E14;"></span><span>Alt, </span>'
-        f'            <span class="color-square" style="background-color: #DC3545;"></span><span>Molt Alt, </span>'
-        f'            <span class="color-square" style="background-color: #9370DB;"></span><span>Extrem.</span>'
+        f'            <b>Intensitat (Color del Cercle):</b> Indica la força del "disparador" (convergència).<br>'
+        f'            <span class="color-square" style="background-color: #FD7E14;"></span><span>Alt</span>, '
+        f'            <span class="color-square" style="background-color: #DC3545;"></span><span>Molt Alt</span>, '
+        f'            <span class="color-square" style="background-color: #9370DB;"></span><span>Extrem</span>.'
         f'        </div>'
         f'    </div>'
         
@@ -5719,9 +5718,20 @@ def crear_llegenda_direccionalitat():
         f'            <img src="data:image/png;base64,{icona_direccio}" width="30">'
         f'        </div>'
         f'        <div class="legend-text-container">'
-        f'            <b>Direcció (Fletxa):</b> Estima la trajectòria que seguirà la tempesta un cop formada, basant-se en el vent a nivells mitjans de l\'atmosfera (700-500hPa).'
+        f'            <b>Direcció (Fletxa):</b> Estima la trajectòria que seguirà la tempesta un cop formada, basant-se en el vent a nivells mitjans.'
         f'        </div>'
         f'    </div>'
+
+        f'    <div class="legend-section">'
+        f'        <div class="legend-icon-container" style="font-size: 24px;">⚡️</div>'
+        f'        <div class="legend-text-container">'
+        f'            <b>Energia (Línies de CAPE):</b> Indiquen el "combustible" disponible. Valors més alts (en J/kg) impliquen un creixement més violent de la tempesta.<br>'
+        f'            <span style="color:#FFFF00; font-weight:bold;">500</span> → '
+        f'            <span style="color:#FF4500; font-weight:bold;">1500</span> → '
+        f'            <span style="color:#FF00FF; font-weight:bold;">3000+</span>'
+        f'        </div>'
+        f'    </div>'
+
         f'</div>'
     )
     st.markdown(html_llegenda, unsafe_allow_html=True)
@@ -7620,75 +7630,7 @@ def generar_icona_direccio(color, direccio_graus):
 
 
 
-def crear_llegenda_direccionalitat():
-    """
-    Mostra una llegenda visual i explicativa per al mapa de focus de convergència comarcal.
-    (Versió 2 - Anti-formatació de codi)
-    """
-    # El CSS es manté igual
-    st.markdown("""
-    <style>
-        .legend-box { background-color: #2a2c34; border-radius: 10px; padding: 15px; border: 1px solid #444; margin-top: 15px; }
-        .legend-title { font-size: 1.1em; font-weight: bold; color: #FAFAFA; margin-bottom: 12px; }
-        .legend-section { display: flex; align-items: flex-start; margin-bottom: 10px; }
-        .legend-icon-container { flex-shrink: 0; margin-right: 15px; width: 50px; height: 50px; }
-        .legend-text-container { flex-grow: 1; }
-        .legend-text-container b { color: #FFFFFF; }
-    </style>
-    """, unsafe_allow_html=True)
 
-    # Genera les icones dinàmicament
-    icona_alt = generar_icona_direccio('#FD7E14', 45)  # Taronja, cap al NE
-    icona_molt_alt = generar_icona_direccio('#DC3545', 270) # Vermell, cap a l'Oest
-
-    # --- CORRECCIÓ DEFINITIVA: Construïm l'HTML com una sola cadena llarga ---
-    # Aquesta tècnica evita que Streamlit interpreti el text com un bloc de codi.
-    html_llegenda = (
-        f'<div class="legend-box">'
-        f'    <div class="legend-title">Com Interpretar el Focus de Convergència</div>'
-        f'    <p style="font-size:0.9em; color:#a0a0b0;">El mapa mostra el punt de <b>màxima convergència</b> dins la comarca i la <b>direcció de desplaçament</b> prevista de la tempesta que es pugui formar.</p>'
-        f'    <div class="legend-section">'
-        f'        <div class="legend-icon-container">'
-        f'            <img src="data:image/png;base64,{icona_alt}" width="50">'
-        f'        </div>'
-        f'        <div class="legend-text-container">'
-        f'            <b>Intensitat (Color del Cercle):</b> Indica la força del "disparador".<br>'
-        f'            <span style="color:#FD7E14;">■ Taronja: Alt</span>, '
-        f'            <span style="color:#DC3545;">■ Vermell: Molt Alt</span>,'
-        f'            <span style="color:#9370DB;">■ Lila: Extrem.</span>'
-        f'        </div>'
-        f'    </div>'
-        f'    <div class="legend-section">'
-        f'        <div class="legend-icon-container">'
-        f'            <img src="data:image/png;base64,{icona_molt_alt}" width="50">'
-        f'        </div>'
-        f'        <div class="legend-text-container">'
-        f'            <b>Direcció (Fletxa):</b> Estima la trajectòria que seguirà la tempesta un cop formada, basant-se en el vent a nivells mitjans de l\'atmosfera (700-500hPa).'
-        f'        </div>'
-        f'    </div>'
-        f'</div>'
-    )
-    
-    st.markdown(html_llegenda, unsafe_allow_html=True)
-
-
-
-
-
-def ui_bulleti_inteligent(bulleti_data):
-    """Mostra el butlletí generat per l'algoritme."""
-    st.markdown("##### Butlletí d'Alertes per a la Zona")
-    st.markdown(f"""
-    <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444; margin-bottom: 10px;">
-         <span style="font-size: 1.2em; color: #FAFAFA;">Nivell de Risc: <strong style="color:{bulleti_data['nivell_risc']['color']}">{bulleti_data['nivell_risc']['text']}</strong></span>
-         <h6 style="color: white; margin-top: 10px; margin-bottom: 5px;">{bulleti_data['titol']}</h6>
-         <p style="font-size:0.95em; color:#a0a0b0; text-align: left;">{bulleti_data['resum']}</p>
-    """, unsafe_allow_html=True)
-    if bulleti_data['fenomens_previstos']:
-        st.markdown("<b style='color: white;'>Fenòmens previstos:</b>", unsafe_allow_html=True)
-        for fenomen in bulleti_data['fenomens_previstos']:
-            st.markdown(f"- <span style='font-size:0.95em; color:#a0a0b0;'>{fenomen}</span>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
 
 
 
