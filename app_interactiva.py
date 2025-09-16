@@ -7754,13 +7754,13 @@ def ui_portal_viatges_rapids(alertes_totals, comarca_actual):
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple, alertes_totals):
     """
-    PESTANYA D'ANÀLISI COMARCAL, versió final amb la creació del mapa corregida.
+    PESTANYA D'ANÀLISI COMARCAL, versió final amb ombrejat + isolínies ADAPTATIVES de CAPE i convergència.
     """
     st.markdown(f"#### Anàlisi de Convergència i CAPE per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
 
-    bulleti_data = None
     map_display_data = None
+    bulleti_data = None
     
     with st.spinner("Analitzant focus de convergència i trajectòries..."):
         if params_calc:
@@ -7783,26 +7783,39 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
     with col_mapa:
         st.markdown("##### Focus de Convergència i Energia (CAPE)")
         
-        # --- LÍNIA CORREGIDA: Utilitzem la funció correcta per crear el mapa ---
         if map_display_data:
             fig, ax = crear_mapa_base(map_display_data["map_extent"])
-            
             ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
             
             grid_cape = map_display_data["grid_cape"]
             if np.nanmax(grid_cape) > 20:
-                cape_levels = [20, 100, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000]
+                # --- LÒGICA D'ISOLÍNIES ADAPTATIVES ---
+                max_cape_in_view = np.nanmax(grid_cape)
+                if max_cape_in_view < 500:
+                    cape_line_levels = [20, 100, 250, 400]
+                elif max_cape_in_view < 1500:
+                    cape_line_levels = [250, 500, 750, 1000, 1250]
+                elif max_cape_in_view < 3000:
+                    cape_line_levels = [500, 1000, 1500, 2000, 2500]
+                else:
+                    cape_line_levels = [1000, 2000, 3000, 4000, 5000, 6000]
+                # --- FI DE LA LÒGICA ADAPTATIVA ---
+
+                # Dibuix de l'ombrejat (sempre amb la gamma completa per a consistència de color)
+                full_cape_levels = [20, 100, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000]
                 cape_colors = ['#ADD8E6', '#90EE90', '#32CD32', '#ADFF2F', '#FFFF00', '#FFA500', 
                                '#FF4500', '#FF0000', '#DC143C', '#FF00FF', '#9932CC', '#8A2BE2']
                 custom_cape_cmap = ListedColormap(cape_colors)
-                norm_cape = BoundaryNorm(cape_levels, ncolors=custom_cape_cmap.N, clip=True)
-
-                ax.contourf(map_display_data["grid_lon"], map_display_data["grid_lat"], grid_cape, levels=cape_levels, cmap=custom_cape_cmap, norm=norm_cape, alpha=0.35, zorder=2, transform=ccrs.PlateCarree(), extend='max')
-                cape_line_contours = ax.contour(map_display_data["grid_lon"], map_display_data["grid_lat"], grid_cape, levels=cape_levels, colors='white', linewidths=0.8, alpha=0.7, linestyles='solid', zorder=5, transform=ccrs.PlateCarree())
+                norm_cape = BoundaryNorm(full_cape_levels, ncolors=custom_cape_cmap.N, clip=True)
+                ax.contourf(map_display_data["grid_lon"], map_display_data["grid_lat"], grid_cape, levels=full_cape_levels, cmap=custom_cape_cmap, norm=norm_cape, alpha=0.35, zorder=2, transform=ccrs.PlateCarree(), extend='max')
+                
+                # Dibuix de les isolínies amb els nivells adaptatius
+                cape_line_contours = ax.contour(map_display_data["grid_lon"], map_display_data["grid_lat"], grid_cape, levels=cape_line_levels, colors='white', linewidths=0.9, alpha=0.8, linestyles='solid', zorder=5, transform=ccrs.PlateCarree())
                 cape_labels = ax.clabel(cape_line_contours, inline=True, fontsize=9, fmt='%1.0f')
                 for label in cape_labels:
                     label.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
 
+            # Dibuix de la convergència i marcadors (sense canvis)
             if map_display_data["max_conv_point"] is not None:
                 smoothed_convergence = map_display_data["smoothed_convergence"]
                 fill_levels_conv = [10, 20, 30, 40, 60, 80, 100, 120]
@@ -7834,7 +7847,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             ax.set_title(f"Focus de Tempesta a {comarca}", weight='bold', fontsize=12)
             st.pyplot(fig, use_container_width=True); plt.close(fig)
         else:
-            # Si no hi ha dades per al mapa, mostra un missatge
             st.info("No hi ha dades suficients per generar el mapa detallat de la comarca.")
 
     with col_diagnostic:
