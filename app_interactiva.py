@@ -7175,23 +7175,45 @@ def carregar_dades_maritimes(hourly_index):
 
 def ui_vista_maritima(hourly_index):
     """
-    Mostra la interfície d'anàlisi per a les zones marítimes.
+    Mostra la interfície d'anàlisi per a les zones marítimes amb el mapa de fons clar
+    i completament bloquejat.
     """
     st.markdown("#### Mapa de Situació Marítima")
     
     dades_mar = carregar_dades_maritimes(hourly_index)
     
-    # Creem un mapa centrat al mar
+    # ===== PARÀMETRES DEL MAPA MODIFICATS AQUÍ =====
     map_params = {
-        "location": [41.4, 2.5], "zoom_start": 8,
-        "tiles": "CartoDB dark_matter",
-        "scrollWheelZoom": True, "dragging": True
+        "location": [41.4, 2.5], 
+        "zoom_start": 8,
+        
+        # 1. Canviem el fons del mapa a un de clar
+        "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+        "attr": "Tiles &copy; Esri &mdash; and the GIS User Community",
+        
+        # 2. Bloquegem completament la interactivitat
+        "scrollWheelZoom": False,
+        "dragging": False,
+        "zoom_control": False,
+        "doubleClickZoom": False,
+        "min_zoom": 8, # Fixem el zoom
+        "max_zoom": 8  # Fixem el zoom
     }
+    # ===============================================
+    
     m = folium.Map(**map_params)
     
-    # Afegim marcadors per a cada punt
+    # Afegim les comarques com a referència visual de fons
+    gdf = carregar_dades_geografiques()
+    if gdf is not None:
+        folium.GeoJson(
+            gdf,
+            style_function=lambda x: {'color': '#555', 'weight': 1, 'fillOpacity': 0.1, 'fillColor': '#EEE'},
+        ).add_to(m)
+
+    # Afegim marcadors per a cada punt marítim
     for nom, data in dades_mar.items():
-        color, _ = get_color_from_cape(data['cape']) # Reutilitzem la funció de color del CAPE
+        color, _ = get_color_from_cape(data['cape'])
         icon_html = f"""
         <div style="background-color: {color}; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; border: 2px solid white; box-shadow: 2px 2px 4px rgba(0,0,0,0.5);">
             🌊
