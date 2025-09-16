@@ -5682,7 +5682,7 @@ def generar_icona_direccio(color, direccio_graus):
 def crear_llegenda_direccionalitat():
     """
     Mostra una llegenda visual i explicativa per al mapa de focus de convergència,
-    ara incloent la descripció de les isolínies de CAPE.
+    ara incloent la descripció de l'ombrejat de CAPE.
     """
     st.markdown("""
     <style>
@@ -5727,7 +5727,7 @@ def crear_llegenda_direccionalitat():
         f'    <div class="legend-section">'
         f'        <div class="legend-icon-container" style="font-size: 24px;">⚡️</div>'
         f'        <div class="legend-text-container">'
-        f'            <b>Energia (Línies de CAPE):</b> Indiquen el "combustible" disponible. Valors més alts (en J/kg) impliquen un creixement més violent de la tempesta.<br>'
+        f'            <b>Energia (Ombrejat de CAPE):</b> Mostra el "combustible" disponible. Valors més alts (en J/kg) impliquen un creixement més violent de la tempesta.<br>'
         f'            <span style="color:#FFFF00; font-weight:bold;">500</span> → '
         f'            <span style="color:#FF4500; font-weight:bold;">1500</span> → '
         f'            <span style="color:#FF00FF; font-weight:bold;">3000+</span>'
@@ -5736,7 +5736,7 @@ def crear_llegenda_direccionalitat():
 
         f'</div>'
     )
-    st.markdown(html_llegenda, unsafe_allow_html=True)
+    st.markdown(html_llegenda, unsafe_allow_html=True)```
 
 
 
