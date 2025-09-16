@@ -7750,7 +7750,7 @@ def ui_portal_viatges_rapids(alertes_totals, comarca_actual):
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple, alertes_totals):
     """
-    PESTANYA D'ANÀLISI COMARCAL, versió final amb CAPE com a ombrejat fi i convergència.
+    PESTANYA D'ANÀLISI COMARCAL, versió final amb ombrejat + isolínies de CAPE i convergència.
     """
     st.markdown(f"#### Anàlisi de Convergència i CAPE per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -7820,7 +7820,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         fig, ax = crear_mapa_base(map_extent if 'map_extent' in locals() else MAP_EXTENT_CAT)
         ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
         
-        # --- MODIFICAT: DIBUIX DEL CAPE COM A OMBREJAT FI ---
+        # --- DIBUIX COMBINAT DE CAPE (OMBREJAT + ISOLÍNIES) ---
         if 'grid_cape' in locals() and np.nanmax(grid_cape) > 20:
             cape_levels = [20, 100, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000]
             cape_colors = ['#ADD8E6', '#90EE90', '#32CD32', '#ADFF2F', '#FFFF00', '#FFA500', 
@@ -7828,28 +7828,30 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             custom_cape_cmap = ListedColormap(cape_colors)
             norm_cape = BoundaryNorm(cape_levels, ncolors=custom_cape_cmap.N, clip=True)
 
+            # 1. Ombrejat fi (contourf)
             ax.contourf(grid_lon, grid_lat, grid_cape,
                         levels=cape_levels, cmap=custom_cape_cmap, norm=norm_cape,
-                        alpha=0.4, # Transparència per a un efecte subtil
-                        zorder=2,  # Per sota de la convergència
-                        transform=ccrs.PlateCarree(), extend='max')
+                        alpha=0.4, zorder=2, transform=ccrs.PlateCarree(), extend='max')
 
-            # Afegim línies fines per definir millor les zones de CAPE
+            # 2. Isolínies definides amb etiquetes (contour)
             cape_line_contours = ax.contour(grid_lon, grid_lat, grid_cape,
-                                           levels=[500, 1000, 2000, 3000], # Nivells clau
-                                           colors='white', linewidths=0.6, alpha=0.7,
-                                           linestyles='--', zorder=5, transform=ccrs.PlateCarree())
+                                           levels=[500, 1000, 1500, 2000, 3000, 4000],
+                                           colors='white', linewidths=0.8, alpha=0.9,
+                                           linestyles='solid', zorder=5, transform=ccrs.PlateCarree())
             
-            cape_labels = ax.clabel(cape_line_contours, inline=True, fontsize=8, fmt='%1.0f J/kg')
+            cape_labels = ax.clabel(cape_line_contours, inline=True, fontsize=9, fmt='%1.0f')
             for label in cape_labels:
-                label.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')])
-        # --- FI DE LA MODIFICACIÓ ---
-
+                label.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
+                label.set_color("white")
+        
+        # Dibuix de la convergència (per sobre del CAPE)
         if max_conv_point is not None:
             fill_levels_conv = [10, 20, 30, 40, 60, 80, 100, 120]
             cmap_conv = plt.get_cmap('coolwarm'); norm_conv = BoundaryNorm(fill_levels_conv, ncolors=cmap_conv.N, clip=True)
             ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels_conv, cmap=cmap_conv, norm=norm_conv, alpha=0.7, zorder=3, transform=ccrs.PlateCarree(), extend='max')
 
+        # Dibuix del marcador de convergència i la seva trajectòria
+        if max_conv_point is not None:
             px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
             path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
             if bulleti_data and bulleti_data['nivell_risc']['text'] == "Nul":
