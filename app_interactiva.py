@@ -7863,12 +7863,13 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def _preparar_dades_mapa_comarcal(map_data, comarca_shape, nivell_sel, data_tuple, comarca_name, poble_coords):
+def _preparar_dades_mapa_comarcal(map_data, _comarca_shape, nivell_sel, data_tuple, comarca_name, poble_coords):
     """
     Funció interna i cachejada per al processament pesat de dades geoespacials.
     Retorna un diccionari amb totes les dades llestes per a ser dibuixades.
+    L'argument '_comarca_shape' s'ignora en el càlcul de la memòria cau.
     """
-    bounds = comarca_shape.total_bounds
+    bounds = _comarca_shape.total_bounds
     margin_lon = (bounds[2] - bounds[0]) * 0.3
     margin_lat = (bounds[3] - bounds[1]) * 0.3
     map_extent = [bounds[0] - margin_lon, bounds[2] + margin_lon, bounds[1] - margin_lat, bounds[3] + margin_lat]
@@ -7898,7 +7899,7 @@ def _preparar_dades_mapa_comarcal(map_data, comarca_shape, nivell_sel, data_tupl
     # Trobar el focus principal i la seva trajectòria
     points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
     gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
-    points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
+    points_in_comarca = gpd.sjoin(gdf_points, _comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
     
     max_conv_point = None
     storm_dir_to = None
