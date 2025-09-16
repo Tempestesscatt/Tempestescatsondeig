@@ -7242,9 +7242,11 @@ def ui_vista_maritima(hourly_index):
         st.button(f"🌊 Analitzar Mar Sud (Tgn)", key="btn_mar_sud", use_container_width=True,
                   on_click=seleccionar_poble, args=("Punt Marítim Sud",))
                   
+
+
 def run_catalunya_app():
     """
-    Versió Final amb selector de vista Terra/Mar.
+    Versió Final amb selector de vista Terra/Mar i correcció del bug de convergència.
     """
     # --- PAS 1: CAPÇALERA I INICIALITZACIÓ D'ESTAT ---
     ui_capcalera_selectors(None, zona_activa="catalunya")
@@ -7275,7 +7277,7 @@ def run_catalunya_app():
         poble_sel = st.session_state.poble_sel
         st.success(f"### Anàlisi per a: {poble_sel}")
         col_nav1, col_nav2 = st.columns(2)
-        with col_nav1: st.button("⬅️ Tornar a la Comarca/Mar", on_click=tornar_a_seleccio_comarca, use_container_width=True)
+        with col_nav1: st.button("⬅️ Tornar a la Vista Anterior", on_click=tornar_a_seleccio_comarca, use_container_width=True)
         with col_nav2: st.button("🗺️ Tornar al Mapa General", on_click=tornar_al_mapa_general, use_container_width=True)
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
         
@@ -7289,17 +7291,21 @@ def run_catalunya_app():
             return
             
         params_calculats = data_tuple[1]
+        
+        # ===== CORRECCIÓ DEL BUG DE CONVERGÈNCIA AQUÍ =====
+        # Assegurem que el càlcul es fa i s'afegeix al diccionari de paràmetres
+        # abans de passar-lo a cap altra funció de visualització.
         if not error_msg_map and map_data_conv:
             conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
             if pd.notna(conv_puntual):
                 params_calculats[f'CONV_{nivell_sel}hPa'] = conv_puntual
+        # ====================================================
 
         if final_index is not None and final_index != hourly_index_sel:
             adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
             adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
             st.warning(f"Avís: Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: {adjusted_local_time.strftime('%H:%Mh')}.")
         
-        # El menú de pestanyes per a la vista detallada
         menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi de Mapes", "Simulació de Núvol"]
         menu_icons = ["fullscreen", "graph-up-arrow", "map", "cloud-upload"]
         active_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key=f'option_menu_{poble_sel}')
@@ -7329,7 +7335,6 @@ def run_catalunya_app():
         with st.container(border=True):
             st.markdown("##### Opcions de Visualització del Mapa")
             
-            # Si estem en vista Terra, mostrem 3 columnes, sinó 1
             num_cols = 3 if st.session_state.get('analysis_view', 'Terra') == 'Terra' else 1
             cols = st.columns(num_cols)
             
@@ -7342,7 +7347,6 @@ def run_catalunya_app():
                 with cols[2]:
                     st.toggle("Mostrar detalls de les zones actives", key="show_comarca_labels")
         
-        # LÒGICA CONDICIONAL PER MOSTRAR UNA VISTA O L'ALTRA
         if st.session_state.analysis_view == 'Terra':
             with st.spinner("Analitzant focus de convergència a tot Catalunya..."):
                 alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
