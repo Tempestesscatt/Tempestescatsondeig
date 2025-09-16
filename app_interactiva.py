@@ -7755,7 +7755,8 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
     st.markdown(f"#### Anàlisi de Convergència i CAPE per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
 
-    max_conv_point = None; storm_dir_to = None; distance_km = None; is_threat = False; bulleti_data = None
+    bulleti_data = None
+    map_display_data = None
     
     with st.spinner("Analitzant focus de convergència i trajectòries..."):
         if params_calc:
@@ -7771,114 +7772,163 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
 
         if not comarca_shape.empty and map_data and 'cape_data' in map_data:
-            bounds = comarca_shape.total_bounds
-            margin_lon = (bounds[2] - bounds[0]) * 0.3; margin_lat = (bounds[3] - bounds[1]) * 0.3
-            map_extent = [bounds[0] - margin_lon, bounds[2] + margin_lon, bounds[1] - margin_lat, bounds[3] + margin_lat]
-            
-            lons, lats = map_data['lons'], map_data['lats']
-            grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 150), np.linspace(map_extent[2], map_extent[3], 150))
-            
-            grid_dewpoint = griddata((lons, lats), map_data['dewpoint_data'], (grid_lon, grid_lat), 'linear')
-            grid_cape = griddata((lons, lats), map_data['cape_data'], (grid_lon, grid_lat), 'linear')
-            u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
-            grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-            grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
-            
-            with np.errstate(invalid='ignore'):
-                dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
-                convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
-                convergence[np.isnan(convergence)] = 0
-                DEWPOINT_THRESHOLD = 14 if nivell_sel >= 950 else 12
-                humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
-                effective_convergence = np.where((convergence >= 10) & humid_mask, convergence, 0)
-            
-            smoothed_convergence = gaussian_filter(effective_convergence, sigma=5.5)
-            smoothed_convergence[smoothed_convergence < 10] = 0
-
-            points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
-            gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
-            points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
-            
-            if not points_in_comarca.empty and points_in_comarca['conv'].max() > 10:
-                max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
-                if data_tuple:
-                    sounding_data, _ = data_tuple
-                    p, u, v = sounding_data[0], sounding_data[3], sounding_data[4]
-                    if p.m.min() < 500 and p.m.max() > 700:
-                        u_700, v_700 = np.interp(700, p.m[::-1], u.m[::-1]), np.interp(700, p.m[::-1], v.m[::-1])
-                        u_500, v_500 = np.interp(500, p.m[::-1], u.m[::-1]), np.interp(500, p.m[::-1], v.m[::-1])
-                        mean_u, mean_v = (u_700 + u_500) / 2.0 * units('m/s'), (v_700 + v_500) / 2.0 * units('m/s')
-                        storm_dir_to = (mpcalc.wind_direction(mean_u, mean_v).m + 180) % 360
+            map_display_data = _preparar_dades_mapa_comarcal(map_data, comarca_shape, nivell_sel, data_tuple, comarca, poble_coords)
 
     col_mapa, col_diagnostic = st.columns([0.6, 0.4], gap="large")
 
     with col_mapa:
         st.markdown("##### Focus de Convergència i Energia (CAPE)")
-        plt.style.use('default')
-        fig, ax = crear_mapa_base(map_extent if 'map_extent' in locals() else MAP_EXTENT_CAT)
-        ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
+        fig, ax = plt.subplots(figsize=(10, 10), dpi=120)
         
-        if 'grid_cape' in locals() and np.nanmax(grid_cape) > 20:
-            cape_levels = [20, 100, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000]
-            cape_colors = ['#ADD8E6', '#90EE90', '#32CD32', '#ADFF2F', '#FFFF00', '#FFA500', 
-                           '#FF4500', '#FF0000', '#DC143C', '#FF00FF', '#9932CC', '#8A2BE2']
-            custom_cape_cmap = ListedColormap(cape_colors)
-            norm_cape = BoundaryNorm(cape_levels, ncolors=custom_cape_cmap.N, clip=True)
-
-            ax.contourf(grid_lon, grid_lat, grid_cape,
-                        levels=cape_levels, cmap=custom_cape_cmap, norm=norm_cape,
-                        alpha=0.4, zorder=2, transform=ccrs.PlateCarree(), extend='max')
-
-            # --- LÍNIA MODIFICADA: Ara les isolínies també van de 20 a 6000 ---
-            cape_line_contours = ax.contour(grid_lon, grid_lat, grid_cape,
-                                           levels=cape_levels, 
-                                           colors='white', linewidths=0.8, alpha=0.7,
-                                           linestyles='solid', zorder=5, transform=ccrs.PlateCarree())
+        if map_display_data:
+            ax.set_extent(map_display_data["map_extent"])
+            ax.add_feature(cfeature.LAND, facecolor="#D4E6B5", zorder=0)
+            ax.add_feature(cfeature.OCEAN, facecolor='#4682B4', zorder=0)
+            ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
+            ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
             
-            cape_labels = ax.clabel(cape_line_contours, inline=True, fontsize=9, fmt='%1.0f')
-            for label in cape_labels:
-                label.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
-                label.set_color("white")
-        
-        if max_conv_point is not None:
-            fill_levels_conv = [10, 20, 30, 40, 60, 80, 100, 120]
-            cmap_conv = plt.get_cmap('coolwarm'); norm_conv = BoundaryNorm(fill_levels_conv, ncolors=cmap_conv.N, clip=True)
-            ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels_conv, cmap=cmap_conv, norm=norm_conv, alpha=0.7, zorder=3, transform=ccrs.PlateCarree(), extend='max')
-            px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
-            path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
-            if bulleti_data and bulleti_data['nivell_risc']['text'] == "Nul":
-                circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor='grey', linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect, linestyle='--')
-                ax.add_patch(circle); ax.plot(px, py, 'x', color='grey', markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
-            else:
-                if valor_conv >= 100: indicator_color = '#9370DB'
-                elif valor_conv >= 60: indicator_color = '#DC3545'
-                elif valor_conv >= 40: indicator_color = '#FD7E14'
-                elif valor_conv >= 20: indicator_color = '#28A745'
-                else: indicator_color = '#6495ED'
-                circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
-                ax.add_patch(circle)
-                ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
-                if storm_dir_to is not None:
-                    dir_rad = np.deg2rad(90 - storm_dir_to); length = 0.25
-                    end_x, end_y = px + length * np.cos(dir_rad), py + length * np.sin(dir_rad)
-                    ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
-        
-        if poble_coords:
-            ax.text(poble_coords['lon'], poble_coords['lat'], '( Tú )\n▼', transform=ccrs.PlateCarree(), fontsize=10, fontweight='bold', color='black', ha='center', va='bottom', zorder=14, path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')])
-        
+            grid_cape = map_display_data["grid_cape"]
+            if np.nanmax(grid_cape) > 20:
+                cape_levels = [20, 100, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000]
+                cape_colors = ['#ADD8E6', '#90EE90', '#32CD32', '#ADFF2F', '#FFFF00', '#FFA500', 
+                               '#FF4500', '#FF0000', '#DC143C', '#FF00FF', '#9932CC', '#8A2BE2']
+                custom_cape_cmap = ListedColormap(cape_colors)
+                norm_cape = BoundaryNorm(cape_levels, ncolors=custom_cape_cmap.N, clip=True)
+                ax.contourf(map_display_data["grid_lon"], map_display_data["grid_lat"], grid_cape, levels=cape_levels, cmap=custom_cape_cmap, norm=norm_cape, alpha=0.35, zorder=2, transform=ccrs.PlateCarree(), extend='max')
+                cape_line_contours = ax.contour(map_display_data["grid_lon"], map_display_data["grid_lat"], grid_cape, levels=cape_levels, colors='white', linewidths=0.8, alpha=0.7, linestyles='solid', zorder=5, transform=ccrs.PlateCarree())
+                cape_labels = ax.clabel(cape_line_contours, inline=True, fontsize=9, fmt='%1.0f')
+                for label in cape_labels:
+                    label.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
+
+            if map_display_data["max_conv_point"] is not None:
+                smoothed_convergence = map_display_data["smoothed_convergence"]
+                fill_levels_conv = [10, 20, 30, 40, 60, 80, 100, 120]
+                cmap_conv = plt.get_cmap('plasma'); norm_conv = BoundaryNorm(fill_levels_conv, ncolors=cmap_conv.N, clip=True)
+                ax.contourf(map_display_data["grid_lon"], map_display_data["grid_lat"], smoothed_convergence, levels=fill_levels_conv, cmap=cmap_conv, norm=norm_conv, alpha=0.7, zorder=3, transform=ccrs.PlateCarree(), extend='max')
+                
+                px, py = map_display_data["max_conv_point"].geometry.x, map_display_data["max_conv_point"].geometry.y
+                path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
+                if bulleti_data and bulleti_data['nivell_risc']['text'] == "Nul":
+                    circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor='grey', linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect, linestyle='--')
+                    ax.add_patch(circle); ax.plot(px, py, 'x', color='grey', markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
+                else:
+                    if valor_conv >= 100: indicator_color = '#9370DB';
+                    elif valor_conv >= 60: indicator_color = '#DC3545';
+                    elif valor_conv >= 40: indicator_color = '#FD7E14';
+                    elif valor_conv >= 20: indicator_color = '#28A745';
+                    else: indicator_color = '#6495ED';
+                    circle = Circle((px, py), radius=0.05, facecolor='none', edgecolor=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+                    ax.add_patch(circle)
+                    ax.plot(px, py, 'x', color=indicator_color, markersize=8, markeredgewidth=2, zorder=13, transform=ccrs.PlateCarree(), path_effects=path_effect)
+                    if map_display_data["storm_dir_to"] is not None:
+                        dir_rad = np.deg2rad(90 - map_display_data["storm_dir_to"]); length = 0.25
+                        end_x, end_y = px + length * np.cos(dir_rad), py + length * np.sin(dir_rad)
+                        ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+            
+            if poble_coords:
+                ax.text(poble_coords['lon'], poble_coords['lat'], '( Tú )\n▼', transform=ccrs.PlateCarree(), fontsize=10, fontweight='bold', color='black', ha='center', va='bottom', zorder=14, path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')])
+            
         ax.set_title(f"Focus de Tempesta a {comarca}", weight='bold', fontsize=12)
         st.pyplot(fig, use_container_width=True); plt.close(fig)
 
     with col_diagnostic:
-        if bulleti_data:
+        if bulleti_data and map_display_data and map_display_data["max_conv_point"] is not None:
             ui_bulleti_inteligent(bulleti_data)
-        else:
-            st.warning("No hi ha prou dades per generar el butlletí d'alertes.")
             
-        st.caption(f"Aquesta anàlisi es basa en el sondeig de {poble_sel}.")
-        crear_llegenda_direccionalitat()
-        
-        ui_portal_viatges_rapids(alertes_totals, comarca)
+            distance_km = map_display_data["distance_km"]
+            is_threat = map_display_data["is_threat"]
+            
+            if distance_km is not None:
+                if distance_km <= 5:
+                    amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "A sobre!", "#DC3545", "⚠️", f"El focus principal és a menys de 5 km. La tempesta es formarà pràcticament sobre la teva posició."
+                elif is_threat:
+                    amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "S'apropa!", "#FD7E14", "🎯", f"El focus principal a {distance_km:.0f} km es desplaça en la teva direcció. La tempesta podria arribar en les properes hores."
+                else:
+                    amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "Fora de Risc", "#28A745", "✅", f"El focus a {distance_km:.0f} km no és una amenaça directa i estàs fora de la seva àrea d'influència."
+                
+                st.markdown(f"""
+                <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444; margin-top:10px;">
+                     <span style="font-size: 1.2em; color: #FAFAFA;">{amenaça_emoji} Amenaça Directa: <strong style="color:{amenaça_color}">{amenaça_titol}</strong></span>
+                     <p style="font-size:0.95em; color:#a0a0b0; margin-top:10px; text-align: left;">{amenaça_text}</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.caption(f"Aquesta anàlisi es basa en el sondeig de {poble_sel}.")
+            crear_llegenda_direccionalitat()
+            ui_portal_viatges_rapids(alertes_totals, comarca)
+        else:
+            st.info("No s'han detectat focus de convergència significatius a la comarca per a l'hora seleccionada.")
+
+
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _preparar_dades_mapa_comarcal(map_data, comarca_shape, nivell_sel, data_tuple, comarca_name, poble_coords):
+    """
+    Funció interna i cachejada per al processament pesat de dades geoespacials.
+    Retorna un diccionari amb totes les dades llestes per a ser dibuixades.
+    """
+    bounds = comarca_shape.total_bounds
+    margin_lon = (bounds[2] - bounds[0]) * 0.3
+    margin_lat = (bounds[3] - bounds[1]) * 0.3
+    map_extent = [bounds[0] - margin_lon, bounds[2] + margin_lon, bounds[1] - margin_lat, bounds[3] + margin_lat]
+
+    lons, lats = map_data['lons'], map_data['lats']
+    grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 150), np.linspace(map_extent[2], map_extent[3], 150))
+    
+    # Interpolar totes les dades necessàries
+    grid_dewpoint = griddata((lons, lats), map_data['dewpoint_data'], (grid_lon, grid_lat), 'linear')
+    grid_cape = griddata((lons, lats), map_data['cape_data'], (grid_lon, grid_lat), 'linear')
+    u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
+    grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+    grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+    
+    # Càlcul de convergència
+    with np.errstate(invalid='ignore'):
+        dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+        convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
+        convergence[np.isnan(convergence)] = 0
+        DEWPOINT_THRESHOLD = 14 if nivell_sel >= 950 else 12
+        humid_mask = grid_dewpoint >= DEWPOINT_THRESHOLD
+        effective_convergence = np.where((convergence >= 10) & humid_mask, convergence, 0)
+    
+    smoothed_convergence = gaussian_filter(effective_convergence, sigma=5.5)
+    smoothed_convergence[smoothed_convergence < 10] = 0
+
+    # Trobar el focus principal i la seva trajectòria
+    points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
+    gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
+    points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
+    
+    max_conv_point = None
+    storm_dir_to = None
+    distance_km = None
+    is_threat = False
+
+    if not points_in_comarca.empty and points_in_comarca['conv'].max() > 10:
+        max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
+        if data_tuple:
+            sounding_data, _ = data_tuple
+            p, u, v = sounding_data[0], sounding_data[3], sounding_data[4]
+            if p.m.min() < 500 and p.m.max() > 700:
+                u_700, v_700 = np.interp(700, p.m[::-1], u.m[::-1]), np.interp(700, p.m[::-1], v.m[::-1])
+                u_500, v_500 = np.interp(500, p.m[::-1], u.m[::-1]), np.interp(500, p.m[::-1], v.m[::-1])
+                mean_u, mean_v = (u_700 + u_500) / 2.0 * units('m/s'), (v_700 + v_500) / 2.0 * units('m/s')
+                storm_dir_to = (mpcalc.wind_direction(mean_u, mean_v).m + 180) % 360
+                
+                if poble_coords and storm_dir_to is not None:
+                    user_lat, user_lon = poble_coords['lat'], poble_coords['lon']
+                    px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
+                    distance_km = haversine_distance(user_lat, user_lon, py, px)
+                    bearing_to_user = get_bearing(py, px, user_lat, user_lon)
+                    is_threat = angular_difference(storm_dir_to, bearing_to_user) <= 45
+
+    return {
+        "map_extent": map_extent, "grid_lon": grid_lon, "grid_lat": grid_lat,
+        "grid_cape": grid_cape, "smoothed_convergence": smoothed_convergence,
+        "max_conv_point": max_conv_point, "storm_dir_to": storm_dir_to,
+        "distance_km": distance_km, "is_threat": is_threat
+    }
         
         
 
