@@ -5736,7 +5736,7 @@ def crear_llegenda_direccionalitat():
 
         f'</div>'
     )
-    st.markdown(html_llegenda, unsafe_allow_html=True)```
+    st.markdown(html_llegenda, unsafe_allow_html=True)
 
 
 
