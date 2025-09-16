@@ -7863,11 +7863,11 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def _preparar_dades_mapa_comarcal(map_data, _comarca_shape, nivell_sel, data_tuple, comarca_name, poble_coords):
+def _preparar_dades_mapa_comarcal(map_data, _comarca_shape, nivell_sel, _data_tuple, comarca_name, poble_coords):
     """
     Funció interna i cachejada per al processament pesat de dades geoespacials.
     Retorna un diccionari amb totes les dades llestes per a ser dibuixades.
-    L'argument '_comarca_shape' s'ignora en el càlcul de la memòria cau.
+    Els arguments amb '_' s'ignoren en el càlcul de la memòria cau.
     """
     bounds = _comarca_shape.total_bounds
     margin_lon = (bounds[2] - bounds[0]) * 0.3
@@ -7908,8 +7908,8 @@ def _preparar_dades_mapa_comarcal(map_data, _comarca_shape, nivell_sel, data_tup
 
     if not points_in_comarca.empty and points_in_comarca['conv'].max() > 10:
         max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
-        if data_tuple:
-            sounding_data, _ = data_tuple
+        if _data_tuple:
+            sounding_data, _ = _data_tuple
             p, u, v = sounding_data[0], sounding_data[3], sounding_data[4]
             if p.m.min() < 500 and p.m.max() > 700:
                 u_700, v_700 = np.interp(700, p.m[::-1], u.m[::-1]), np.interp(700, p.m[::-1], v.m[::-1])
