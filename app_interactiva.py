@@ -7806,9 +7806,9 @@ def ui_portal_viatges_rapids(alertes_totals, comarca_actual):
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple, alertes_totals):
     """
-    PESTANYA D'ANÀLISI COMARCAL, versió final amb totes les millores.
+    PESTANYA D'ANÀLISI COMARCAL, versió final amb CAPE i convergència integrats.
     """
-    st.markdown(f"#### Anàlisi de Convergència per a la Comarca: {comarca}")
+    st.markdown(f"#### Anàlisi de Convergència i CAPE per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
 
     max_conv_point = None; storm_dir_to = None; distance_km = None; is_threat = False; bulleti_data = None
@@ -7827,18 +7827,22 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         comarca_shape = gdf_comarques[gdf_comarques[property_name] == comarca]
         poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
 
-        if not comarca_shape.empty and map_data and valor_conv > 10:
+        if not comarca_shape.empty and map_data and 'cape_data' in map_data:
             bounds = comarca_shape.total_bounds
             margin_lon = (bounds[2] - bounds[0]) * 0.3; margin_lat = (bounds[3] - bounds[1]) * 0.3
             map_extent = [bounds[0] - margin_lon, bounds[2] + margin_lon, bounds[1] - margin_lat, bounds[3] + margin_lat]
             
             lons, lats = map_data['lons'], map_data['lats']
             grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 150), np.linspace(map_extent[2], map_extent[3], 150))
+            
+            # Interpolació de totes les variables necessàries
             grid_dewpoint = griddata((lons, lats), map_data['dewpoint_data'], (grid_lon, grid_lat), 'linear')
+            grid_cape = griddata((lons, lats), map_data['cape_data'], (grid_lon, grid_lat), 'linear')
             u_comp, v_comp = mpcalc.wind_components(np.array(map_data['speed_data']) * units('km/h'), np.array(map_data['dir_data']) * units.degrees)
             grid_u = griddata((lons, lats), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
             grid_v = griddata((lons, lats), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
             
+            # Càlcul de la convergència
             with np.errstate(invalid='ignore'):
                 dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
                 convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
@@ -7850,11 +7854,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             smoothed_convergence = gaussian_filter(effective_convergence, sigma=5.5)
             smoothed_convergence[smoothed_convergence < 10] = 0
 
-            if poble_coords:
-                user_lon, user_lat = poble_coords['lon'], poble_coords['lat']
-                conv_at_user_val = griddata((grid_lon.flatten(), grid_lat.flatten()), smoothed_convergence.flatten(), (user_lon, user_lat), method='nearest')
-                if pd.notna(conv_at_user_val): convergence_at_user = conv_at_user_val
-
+            # Càlcul de la trajectòria i amenaça (lògica existent)
             points_df = pd.DataFrame({'lat': grid_lat.flatten(), 'lon': grid_lon.flatten(), 'conv': smoothed_convergence.flatten()})
             gdf_points = gpd.GeoDataFrame(points_df, geometry=gpd.points_from_xy(points_df.lon, points_df.lat), crs="EPSG:4326")
             points_in_comarca = gpd.sjoin(gdf_points, comarca_shape.to_crs(gdf_points.crs), how="inner", predicate="within")
@@ -7870,26 +7870,44 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                         u_500, v_500 = np.interp(500, p.m[::-1], u.m[::-1]), np.interp(500, p.m[::-1], v.m[::-1])
                         mean_u, mean_v = (u_700 + u_500) / 2.0 * units('m/s'), (v_700 + v_500) / 2.0 * units('m/s')
                         storm_dir_to = (mpcalc.wind_direction(mean_u, mean_v).m + 180) % 360
-                        if poble_coords and storm_dir_to is not None:
-                            distance_km = haversine_distance(user_lat, user_lon, py, px)
-                            bearing_to_user = get_bearing(py, px, user_lat, user_lon)
-                            is_threat = angular_difference(storm_dir_to, bearing_to_user) <= 45
 
+    # Dibuix del mapa i diagnòstic
     col_mapa, col_diagnostic = st.columns([0.6, 0.4], gap="large")
 
     with col_mapa:
-        st.markdown("##### Focus de Convergència a la Zona")
+        st.markdown("##### Focus de Convergència i Energia (CAPE)")
         plt.style.use('default')
         fig, ax = crear_mapa_base(map_extent if 'map_extent' in locals() else MAP_EXTENT_CAT)
         ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
+        
+        # Dibuix de la convergència
         if max_conv_point is not None:
-            fill_levels = [10, 20, 30, 40, 60, 80, 100, 120]
-            cmap = plt.get_cmap('plasma'); norm = BoundaryNorm(fill_levels, ncolors=cmap.N, clip=True)
-            ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels, cmap=cmap, norm=norm, alpha=0.75, zorder=3, transform=ccrs.PlateCarree(), extend='max')
-            line_levels = [20, 40, 80]
-            contours = ax.contour(grid_lon, grid_lat, smoothed_convergence, levels=line_levels, colors='black', linestyles='--', linewidths=0.8, alpha=0.7, zorder=4, transform=ccrs.PlateCarree())
-            labels = ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f')
-            for label in labels: label.set_path_effects([path_effects.withStroke(linewidth=2, foreground='white')])
+            fill_levels_conv = [10, 20, 30, 40, 60, 80, 100, 120]
+            cmap_conv = plt.get_cmap('plasma'); norm_conv = BoundaryNorm(fill_levels_conv, ncolors=cmap_conv.N, clip=True)
+            ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels_conv, cmap=cmap_conv, norm=norm_conv, alpha=0.75, zorder=3, transform=ccrs.PlateCarree(), extend='max')
+
+        # --- NOU: DIBUIX DE LES ISOLÍNIES DE CAPE ---
+        if 'grid_cape' in locals() and np.nanmax(grid_cape) > 100:
+            cape_levels = [500, 1000, 1500, 2000, 2500, 3000]
+            cape_colors = ['#FFFF00', '#FFA500', '#FF4500', '#FF0000', '#C71585', '#FF00FF']
+            
+            cape_contours = ax.contour(grid_lon, grid_lat, grid_cape, 
+                                       levels=cape_levels, 
+                                       colors=cape_colors,
+                                       linewidths=1.8,
+                                       linestyles='solid',
+                                       alpha=0.9,
+                                       zorder=5,
+                                       transform=ccrs.PlateCarree())
+            
+            cape_labels = ax.clabel(cape_contours, inline=True, fontsize=9, fmt='%1.0f')
+            for label in cape_labels:
+                label.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
+                label.set_color("white")
+        # --- FI DEL NOU BLOC ---
+
+        # Dibuix del marcador de convergència
+        if max_conv_point is not None:
             px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
             path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
             if bulleti_data and bulleti_data['nivell_risc']['text'] == "Nul":
@@ -7908,9 +7926,11 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                     dir_rad = np.deg2rad(90 - storm_dir_to); length = 0.25
                     end_x, end_y = px + length * np.cos(dir_rad), py + length * np.sin(dir_rad)
                     ax.plot([px, end_x], [py, end_y], color=indicator_color, linewidth=2, transform=ccrs.PlateCarree(), zorder=12, path_effects=path_effect)
+        
         if poble_coords:
             ax.text(poble_coords['lon'], poble_coords['lat'], '( Tú )\n▼', transform=ccrs.PlateCarree(), fontsize=10, fontweight='bold', color='black', ha='center', va='bottom', zorder=14, path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')])
-        ax.set_title(f"Focus de Convergència a {comarca}", weight='bold', fontsize=12)
+        
+        ax.set_title(f"Focus de Tempesta a {comarca}", weight='bold', fontsize=12)
         st.pyplot(fig, use_container_width=True); plt.close(fig)
 
     with col_diagnostic:
@@ -7918,26 +7938,19 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             ui_bulleti_inteligent(bulleti_data)
         else:
             st.warning("No hi ha prou dades per generar el butlletí d'alertes.")
-
-        if distance_km is not None:
-            if distance_km <= 5:
-                amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "A sobre!", "#DC3545", "⚠️", f"El focus principal és a menys de 5 km. La tempesta es formarà pràcticament sobre la teva posició."
-            elif is_threat:
-                amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "S'apropa!", "#FD7E14", "🎯", f"El focus principal a {distance_km:.0f} km es desplaça en la teva direcció. La tempesta podria arribar en les properes hores."
-            elif convergence_at_user >= 10:
-                amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "Sota Influència", "#ffc107", "👀", "Estàs dins d'una zona amb ascendències, però no al nucli principal. Podrien formar-se torres convectives a la teva àrea."
-            else:
-                amenaça_titol, amenaça_color, amenaça_emoji, amenaça_text = "Fora de Risc", "#28A745", "✅", f"El focus a {distance_km:.0f} km no és una amenaça directa i estàs fora de la seva àrea d'influència."
             
-            st.markdown(f"""
-            <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444; margin-top:10px;">
-                 <span style="font-size: 1.2em; color: #FAFAFA;">{amenaça_emoji} Amenaça Directa: <strong style="color:{amenaça_color}">{amenaça_titol}</strong></span>
-                 <p style="font-size:0.95em; color:#a0a0b0; margin-top:10px; text-align: left;">{amenaça_text}</p>
-            </div>
-            """, unsafe_allow_html=True)
-
         st.caption(f"Aquesta anàlisi es basa en el sondeig de {poble_sel}.")
         crear_llegenda_direccionalitat()
+        
+        # Afegim la nova llegenda per al CAPE
+        st.markdown("""
+        <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444; margin-top:10px;">
+            <b style="color: white;">Llegenda Addicional del Mapa:</b><br>
+            <span style="font-size:0.9em; color:#a0a0b0;">- <b>Àrees de color porpra:</b> Focus de convergència (Disparador).</span><br>
+            <span style="font-size:0.9em; color:#a0a0b0;">- <b>Línies de color (groc/vermell):</b> Representen l'energia disponible (CAPE) en J/kg.</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
         ui_portal_viatges_rapids(alertes_totals, comarca)
         
         
