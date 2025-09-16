@@ -7750,13 +7750,12 @@ def ui_portal_viatges_rapids(alertes_totals, comarca_actual):
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple, alertes_totals):
     """
-    PESTANYA D'ANÀLISI COMARCAL, versió final amb ombrejat + isolínies de CAPE i convergència.
+    PESTANYA D'ANÀLISI COMARCAL, versió final amb ombrejat + isolínies completes de CAPE i convergència.
     """
     st.markdown(f"#### Anàlisi de Convergència i CAPE per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
 
     max_conv_point = None; storm_dir_to = None; distance_km = None; is_threat = False; bulleti_data = None
-    convergence_at_user = 0
     
     with st.spinner("Analitzant focus de convergència i trajectòries..."):
         if params_calc:
@@ -7802,7 +7801,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             
             if not points_in_comarca.empty and points_in_comarca['conv'].max() > 10:
                 max_conv_point = points_in_comarca.loc[points_in_comarca['conv'].idxmax()]
-                px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
                 if data_tuple:
                     sounding_data, _ = data_tuple
                     p, u, v = sounding_data[0], sounding_data[3], sounding_data[4]
@@ -7820,7 +7818,6 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         fig, ax = crear_mapa_base(map_extent if 'map_extent' in locals() else MAP_EXTENT_CAT)
         ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
         
-        # --- DIBUIX COMBINAT DE CAPE (OMBREJAT + ISOLÍNIES) ---
         if 'grid_cape' in locals() and np.nanmax(grid_cape) > 20:
             cape_levels = [20, 100, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000]
             cape_colors = ['#ADD8E6', '#90EE90', '#32CD32', '#ADFF2F', '#FFFF00', '#FFA500', 
@@ -7828,15 +7825,14 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             custom_cape_cmap = ListedColormap(cape_colors)
             norm_cape = BoundaryNorm(cape_levels, ncolors=custom_cape_cmap.N, clip=True)
 
-            # 1. Ombrejat fi (contourf)
             ax.contourf(grid_lon, grid_lat, grid_cape,
                         levels=cape_levels, cmap=custom_cape_cmap, norm=norm_cape,
                         alpha=0.4, zorder=2, transform=ccrs.PlateCarree(), extend='max')
 
-            # 2. Isolínies definides amb etiquetes (contour)
+            # --- LÍNIA MODIFICADA: Ara les isolínies també van de 20 a 6000 ---
             cape_line_contours = ax.contour(grid_lon, grid_lat, grid_cape,
-                                           levels=[500, 1000, 1500, 2000, 3000, 4000],
-                                           colors='white', linewidths=0.8, alpha=0.9,
+                                           levels=cape_levels, 
+                                           colors='white', linewidths=0.8, alpha=0.7,
                                            linestyles='solid', zorder=5, transform=ccrs.PlateCarree())
             
             cape_labels = ax.clabel(cape_line_contours, inline=True, fontsize=9, fmt='%1.0f')
@@ -7844,14 +7840,10 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                 label.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
                 label.set_color("white")
         
-        # Dibuix de la convergència (per sobre del CAPE)
         if max_conv_point is not None:
             fill_levels_conv = [10, 20, 30, 40, 60, 80, 100, 120]
             cmap_conv = plt.get_cmap('coolwarm'); norm_conv = BoundaryNorm(fill_levels_conv, ncolors=cmap_conv.N, clip=True)
             ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels_conv, cmap=cmap_conv, norm=norm_conv, alpha=0.7, zorder=3, transform=ccrs.PlateCarree(), extend='max')
-
-        # Dibuix del marcador de convergència i la seva trajectòria
-        if max_conv_point is not None:
             px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
             path_effect = [path_effects.withStroke(linewidth=3.5, foreground='black')]
             if bulleti_data and bulleti_data['nivell_risc']['text'] == "Nul":
