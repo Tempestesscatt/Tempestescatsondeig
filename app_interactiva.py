@@ -7137,11 +7137,92 @@ def ui_bulleti_automatic(bulleti_data):
         st.markdown("###### ⚠️ **Recomanacions a la Població**")
         st.warning(bulleti_data['recomanacio'])
 
+
+
+
+
+@st.cache_data(ttl=1800, show_spinner="Analitzant les condicions marítimes...")
+def carregar_dades_maritimes(hourly_index):
+    """
+    Obté les dades clau (CAPE) per als tres punts marítims definits.
+    Retorna un diccionari amb les dades per a cada punt.
+    """
+    punts_maritims = {
+        "Punt Marítim Nord": CIUTATS_CATALUNYA["Punt Marítim Nord"],
+        "Punt Marítim Central": CIUTATS_CATALUNYA["Punt Marítim Central"],
+        "Punt Marítim Sud": CIUTATS_CATALUNYA["Punt Marítim Sud"]
+    }
+    
+    dades_resultat = {}
+    
+    for nom, coords in punts_maritims.items():
+        data_tuple, _, _ = carregar_dades_sondeig_cat(coords['lat'], coords['lon'], hourly_index)
+        if data_tuple:
+            params = data_tuple[1]
+            dades_resultat[nom] = {
+                "cape": params.get('MLCAPE', 0),
+                "lat": coords['lat'],
+                "lon": coords['lon']
+            }
+        else:
+            dades_resultat[nom] = {"cape": 0, "lat": coords['lat'], "lon": coords['lon']}
+            
+    return dades_resultat
+
+
+
+
+
+def ui_vista_maritima(hourly_index):
+    """
+    Mostra la interfície d'anàlisi per a les zones marítimes.
+    """
+    st.markdown("#### Mapa de Situació Marítima")
+    
+    dades_mar = carregar_dades_maritimes(hourly_index)
+    
+    # Creem un mapa centrat al mar
+    map_params = {
+        "location": [41.4, 2.5], "zoom_start": 8,
+        "tiles": "CartoDB dark_matter",
+        "scrollWheelZoom": True, "dragging": True
+    }
+    m = folium.Map(**map_params)
+    
+    # Afegim marcadors per a cada punt
+    for nom, data in dades_mar.items():
+        color, _ = get_color_from_cape(data['cape']) # Reutilitzem la funció de color del CAPE
+        icon_html = f"""
+        <div style="background-color: {color}; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; border: 2px solid white; box-shadow: 2px 2px 4px rgba(0,0,0,0.5);">
+            🌊
+        </div>
+        """
+        icon = folium.DivIcon(html=icon_html)
+        folium.Marker(
+            location=[data['lat'], data['lon']],
+            icon=icon,
+            tooltip=f"{nom} | CAPE: {int(data['cape'])} J/kg"
+        ).add_to(m)
+
+    st_folium(m, width="100%", height=450)
+    
+    st.markdown("---")
+    st.markdown("##### Selecciona un punt per a una anàlisi detallada:")
+    
+    cols = st.columns(3)
+    with cols[0]:
+        st.button(f"🌊 Analitzar Mar Nord (Girona)", key="btn_mar_nord", use_container_width=True,
+                  on_click=seleccionar_poble, args=("Punt Marítim Nord",))
+    with cols[1]:
+        st.button(f"🌊 Analitzar Mar Central (Bcn)", key="btn_mar_central", use_container_width=True,
+                  on_click=seleccionar_poble, args=("Punt Marítim Central",))
+    with cols[2]:
+        st.button(f"🌊 Analitzar Mar Sud (Tgn)", key="btn_mar_sud", use_container_width=True,
+                  on_click=seleccionar_poble, args=("Punt Marítim Sud",))
+                  
 def run_catalunya_app():
     """
-    Versió Definitiva i Polida v2.2.
-    - **CORRECCIÓ DE BUG**: Soluciona l'error que feia que la 'Convergència' aparegués sense
-      dades ('---'). Ara es calcula abans i es passa correctament a totes les funcions.
+    Versió Final amb selector de vista Terra/Mar.
     """
     # --- PAS 1: CAPÇALERA I INICIALITZACIÓ D'ESTAT ---
     ui_capcalera_selectors(None, zona_activa="catalunya")
@@ -7158,6 +7239,7 @@ def run_catalunya_app():
             hora_sel_str = st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector", index=datetime.now(TIMEZONE_CAT).hour)
         with col_nivell:
             nivell_sel = st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
+    
     st.caption("ℹ️ Dades del model AROME 2.5km. L'aplicació es refresca cada 10 minuts.")
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     hora_num = int(hora_sel_str.split(':')[0])
@@ -7167,11 +7249,11 @@ def run_catalunya_app():
 
     # --- PAS 3: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # --- VISTA D'ANÀLISI DETALLADA D'UNA LOCALITAT ---
+        # --- VISTA D'ANÀLISI DETALLADA D'UNA LOCALITAT (TERRA O MAR) ---
         poble_sel = st.session_state.poble_sel
         st.success(f"### Anàlisi per a: {poble_sel}")
         col_nav1, col_nav2 = st.columns(2)
-        with col_nav1: st.button("⬅️ Tornar a la Comarca", on_click=tornar_a_seleccio_comarca, use_container_width=True)
+        with col_nav1: st.button("⬅️ Tornar a la Comarca/Mar", on_click=tornar_a_seleccio_comarca, use_container_width=True)
         with col_nav2: st.button("🗺️ Tornar al Mapa General", on_click=tornar_al_mapa_general, use_container_width=True)
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
         
@@ -7195,6 +7277,7 @@ def run_catalunya_app():
             adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
             st.warning(f"Avís: Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: {adjusted_local_time.strftime('%H:%Mh')}.")
         
+        # El menú de pestanyes per a la vista detallada
         menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi de Mapes", "Simulació de Núvol"]
         menu_icons = ["fullscreen", "graph-up-arrow", "map", "cloud-upload"]
         active_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key=f'option_menu_{poble_sel}')
@@ -7215,61 +7298,75 @@ def run_catalunya_app():
 
         elif active_tab == "Simulació de Núvol":
             ui_pestanya_simulacio_nuvol(params_calculats, timestamp_str, poble_sel)
-            
     else: 
-        # --- VISTA DE SELECCIÓ (MAPA INTERACTIU) ---
+        # --- VISTA DE SELECCIÓ GENERAL (TERRA o MAR) ---
+        st.session_state.setdefault('analysis_view', 'Terra')
         st.session_state.setdefault('show_comarca_labels', False)
         st.session_state.setdefault('alert_filter_level_cape', 'Energia Baixa i superior')
 
         with st.container(border=True):
             st.markdown("##### Opcions de Visualització del Mapa")
-            col_filter, col_labels = st.columns(2)
-            with col_filter: st.selectbox("Filtrar per nivell d'energia (CAPE):", options=["Tots", "Energia Baixa i superior", "Energia Moderada i superior", "Energia Alta i superior", "Només Extrems"], key="alert_filter_level_cape")
-            with col_labels: st.toggle("Mostrar detalls de les zones actives", key="show_comarca_labels")
+            
+            # Si estem en vista Terra, mostrem 3 columnes, sinó 1
+            num_cols = 3 if st.session_state.get('analysis_view', 'Terra') == 'Terra' else 1
+            cols = st.columns(num_cols)
+            
+            with cols[0]:
+                st.selectbox("Tipus d'Anàlisi:", options=["Terra", "Mar"], key="analysis_view")
+            
+            if st.session_state.analysis_view == 'Terra':
+                with cols[1]:
+                    st.selectbox("Filtrar per nivell d'energia (CAPE):", options=["Tots", "Energia Baixa i superior", "Energia Moderada i superior", "Energia Alta i superior", "Només Extrems"], key="alert_filter_level_cape")
+                with cols[2]:
+                    st.toggle("Mostrar detalls de les zones actives", key="show_comarca_labels")
         
-        with st.spinner("Analitzant focus de convergència a tot Catalunya..."):
-            alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
-        
-        LLINDARS_CAPE = {"Tots": 0, "Energia Baixa i superior": 500, "Energia Moderada i superior": 1000, "Energia Alta i superior": 2000, "Només Extrems": 3500}
-        llindar_cape_sel = LLINDARS_CAPE[st.session_state.alert_filter_level_cape]
-        alertes_filtrades = {zona: data for zona, data in alertes_totals.items() if data['cape'] >= llindar_cape_sel}
-        
-        with st.spinner("Dibuixant mapa interactiu..."):
-            map_output = ui_mapa_display_personalitzat(alertes_per_zona=alertes_filtrades, hourly_index=hourly_index_sel, show_labels=st.session_state.show_comarca_labels)
-        
-        ui_llegenda_mapa_principal()
-        
-        # Generem i mostrem el butlletí automàtic basat en TOTES les alertes
-        bulleti_data = generar_bulleti_automatic_catalunya(alertes_totals, hora_sel_str)
-        ui_bulleti_automatic(bulleti_data)
-        
-        if map_output and map_output.get("last_object_clicked_tooltip"):
-            raw_tooltip = map_output["last_object_clicked_tooltip"]
-            if "Comarca:" in raw_tooltip or "Zona:" in raw_tooltip:
-                clicked_area = raw_tooltip.split(':')[-1].strip().replace('.', '')
-                if clicked_area != st.session_state.get('selected_area'):
-                    st.session_state.selected_area = clicked_area
+        # LÒGICA CONDICIONAL PER MOSTRAR UNA VISTA O L'ALTRA
+        if st.session_state.analysis_view == 'Terra':
+            with st.spinner("Analitzant focus de convergència a tot Catalunya..."):
+                alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
+            
+            LLINDARS_CAPE = {"Tots": 0, "Energia Baixa i superior": 500, "Energia Moderada i superior": 1000, "Energia Alta i superior": 2000, "Només Extrems": 3500}
+            llindar_cape_sel = LLINDARS_CAPE.get(st.session_state.alert_filter_level_cape, 500)
+            alertes_filtrades = {zona: data for zona, data in alertes_totals.items() if data['cape'] >= llindar_cape_sel}
+            
+            with st.spinner("Dibuixant mapa interactiu..."):
+                map_output = ui_mapa_display_personalitzat(alertes_per_zona=alertes_filtrades, hourly_index=hourly_index_sel, show_labels=st.session_state.show_comarca_labels)
+            
+            ui_llegenda_mapa_principal()
+            
+            bulleti_data = generar_bulleti_automatic_catalunya(alertes_totals, hora_sel_str)
+            ui_bulleti_automatic(bulleti_data)
+            
+            if map_output and map_output.get("last_object_clicked_tooltip"):
+                raw_tooltip = map_output["last_object_clicked_tooltip"]
+                if "Comarca:" in raw_tooltip or "Zona:" in raw_tooltip:
+                    clicked_area = raw_tooltip.split(':')[-1].strip().replace('.', '')
+                    if clicked_area != st.session_state.get('selected_area'):
+                        st.session_state.selected_area = clicked_area
+                        st.rerun()
+            
+            selected_area = st.session_state.get('selected_area')
+            if selected_area and "---" not in selected_area:
+                st.markdown(f"##### Selecciona una localitat a {selected_area}:")
+                gdf = carregar_dades_geografiques()
+                property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), 'nom_comar')
+                poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
+                poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
+                if poblacions_a_mostrar:
+                    cols_pobles = st.columns(4)
+                    for i, nom_poble in enumerate(sorted(poblacions_a_mostrar.keys())):
+                        with cols_pobles[i % 4]:
+                            st.button(nom_poble, key=f"btn_{nom_poble.replace(' ', '_')}", on_click=seleccionar_poble, args=(nom_poble,), use_container_width=True)
+                else:
+                    st.warning("Aquesta zona no té localitats predefinides per a l'anàlisi.")
+                if st.button("⬅️ Veure totes les zones"):
+                    st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
                     st.rerun()
-        
-        selected_area = st.session_state.get('selected_area')
-        if selected_area and "---" not in selected_area:
-            st.markdown(f"##### Selecciona una localitat a {selected_area}:")
-            gdf = carregar_dades_geografiques()
-            property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), 'nom_comar')
-            poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
-            poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
-            if poblacions_a_mostrar:
-                cols = st.columns(4)
-                for i, nom_poble in enumerate(sorted(poblacions_a_mostrar.keys())):
-                    with cols[i % 4]:
-                        st.button(nom_poble, key=f"btn_{nom_poble.replace(' ', '_')}", on_click=seleccionar_poble, args=(nom_poble,), use_container_width=True)
             else:
-                st.warning("Aquesta zona no té localitats predefinides per a l'anàlisi.")
-            if st.button("⬅️ Veure totes les zones"):
-                st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
-                st.rerun()
-        else:
-            st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
+                st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
+        
+        else: # Si la vista seleccionada és "Mar"
+            ui_vista_maritima(hourly_index_sel)
             
 
 
