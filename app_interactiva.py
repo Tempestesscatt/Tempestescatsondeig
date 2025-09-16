@@ -5675,7 +5675,9 @@ def generar_icona_direccio(color, direccio_graus):
     fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0.05)
     plt.close(fig)
     return base64.b64encode(buf.getvalue()).decode()
-    
+
+
+
 
 def crear_llegenda_direccionalitat():
     """
@@ -7828,11 +7830,9 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             cmap_conv = plt.get_cmap('plasma'); norm_conv = BoundaryNorm(fill_levels_conv, ncolors=cmap_conv.N, clip=True)
             ax.contourf(grid_lon, grid_lat, smoothed_convergence, levels=fill_levels_conv, cmap=cmap_conv, norm=norm_conv, alpha=0.75, zorder=3, transform=ccrs.PlateCarree(), extend='max')
 
-        # --- NOU: DIBUIX DE LES ISOLÍNIES DE CAPE ---
+        # Dibuix de les isolínies de CAPE
         if 'grid_cape' in locals() and np.nanmax(grid_cape) > 20:
-            # Nivells des de 20 fins a 6000
             cape_levels = [20, 100, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000]
-            # Paleta de colors expandida per a tots els nivells
             cape_colors = ['#ADD8E6', '#90EE90', '#32CD32', '#ADFF2F', '#FFFF00', '#FFA500', 
                            '#FF4500', '#FF0000', '#DC143C', '#FF00FF', '#9932CC', '#8A2BE2']
             
@@ -7845,13 +7845,11 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                                        zorder=5,
                                        transform=ccrs.PlateCarree())
             
-            # Afegeix les etiquetes a les línies
             cape_labels = ax.clabel(cape_contours, inline=True, fontsize=9, fmt='%1.0f')
             for label in cape_labels:
                 label.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
                 label.set_color("white")
-        # --- FI DEL NOU BLOC ---
-
+        
         # Dibuix del marcador de convergència
         if max_conv_point is not None:
             px, py = max_conv_point.geometry.x, max_conv_point.geometry.y
@@ -7888,19 +7886,30 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
         st.caption(f"Aquesta anàlisi es basa en el sondeig de {poble_sel}.")
         crear_llegenda_direccionalitat()
         
-        # Afegim la nova llegenda per al CAPE
-        st.markdown("""
-        <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444; margin-top:10px;">
-            <b style="color: white;">Llegenda Addicional del Mapa:</b><br>
-            <span style="font-size:0.9em; color:#a0a0b0;">- <b>Àrees de color porpra:</b> Focus de convergència (Disparador).</span><br>
-            <span style="font-size:0.9em; color:#a0a0b0;">- <b>Línies de color (groc/vermell):</b> Representen l'energia disponible (CAPE) en J/kg.</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
         ui_portal_viatges_rapids(alertes_totals, comarca)
         
         
-        
+
+
+def ui_bulleti_inteligent(bulleti_data):
+    """
+    Mostra el butlletí generat per l'algoritme.
+    """
+    st.markdown("##### Butlletí d'Alertes per a la Zona")
+    st.markdown(f"""
+    <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border: 1px solid #444; margin-bottom: 10px;">
+         <span style="font-size: 1.2em; color: #FAFAFA;">Nivell de Risc: <strong style="color:{bulleti_data['nivell_risc']['color']}">{bulleti_data['nivell_risc']['text']}</strong></span>
+         <h6 style="color: white; margin-top: 10px; margin-bottom: 5px;">{bulleti_data['titol']}</h6>
+         <p style="font-size:0.95em; color:#a0a0b0; text-align: left;">{bulleti_data['resum']}</p>
+    """, unsafe_allow_html=True)
+    if bulleti_data['fenomens_previstos']:
+        st.markdown("<b style='color: white;'>Fenòmens previstos:</b>", unsafe_allow_html=True)
+        for fenomen in bulleti_data['fenomens_previstos']:
+            st.markdown(f"- <span style='font-size:0.95em; color:#a0a0b0;'>{fenomen}</span>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+
 
             
 def seleccionar_poble(nom_poble):
