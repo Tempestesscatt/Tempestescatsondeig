@@ -7372,6 +7372,24 @@ def run_catalunya_app():
 
 
 
+def get_color_from_cape(cape_value):
+    """
+    Retorna un color i un color de text basat en un valor de CAPE,
+    seguint els llindars d'alerta.
+    """
+    if not isinstance(cape_value, (int, float, np.number)) or pd.isna(cape_value) or cape_value < 500:
+        return '#6c757d', '#FFFFFF'  # Gris (Baix / Sense Risc)
+    if cape_value < 1000:
+        return '#28A745', '#FFFFFF'  # Verd (Moderat)
+    if cape_value < 1500:
+        return '#FFC107', '#000000'  # Groc (Groc)
+    if cape_value < 2000:
+        return '#FD7E14', '#FFFFFF'  # Taronja (Groc Fort)
+    if cape_value < 3000:
+        return '#DC3545', '#FFFFFF'  # Vermell (Taronja)
+    return '#9370DB', '#FFFFFF'      # Lila/Violeta (Vermell)
+    
+
 def forcar_regeneracio_animacio():
     """Incrementa la clau de regeneració per invalidar la memòria cau."""
     if 'regenerate_key' in st.session_state:
