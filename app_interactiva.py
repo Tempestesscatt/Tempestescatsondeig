@@ -1173,8 +1173,11 @@ def debug_calculos(p, T, Td, u, v, heights, prof):
 
     
 def crear_mapa_base(map_extent: Tuple[float, float, float, float], projection=ccrs.PlateCarree()) -> Tuple[plt.Figure, plt.Axes]:
-    """Crea una figura y un eje de mapa base con Cartopy."""
-    fig, ax = plt.subplots(figsize=(8, 8), dpi=100, subplot_kw={'projection': projection})
+    """
+    Crea una figura y un eje de mapa base con Cartopy (versión con tamaño y DPI ajustados).
+    """
+    # S'utilitzen els valors de figsize i dpi desitjats per al mapa comarcal
+    fig, ax = plt.subplots(figsize=(10, 10), dpi=120, subplot_kw={'projection': projection})
     ax.set_extent(map_extent, crs=ccrs.PlateCarree())
     
     ax.add_feature(cfeature.LAND, facecolor="#D4E6B5", zorder=0)
@@ -1184,6 +1187,7 @@ def crear_mapa_base(map_extent: Tuple[float, float, float, float], projection=cc
     if projection != ccrs.PlateCarree():
         ax.add_feature(cfeature.STATES, linestyle=':', edgecolor='gray', zorder=5)
     return fig, ax
+
 
 
 
@@ -7750,7 +7754,7 @@ def ui_portal_viatges_rapids(alertes_totals, comarca_actual):
 
 def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, nivell_sel, map_data, params_calc, hora_sel_str, data_tuple, alertes_totals):
     """
-    PESTANYA D'ANÀLISI COMARCAL, versió final amb ombrejat + isolínies completes de CAPE i convergència.
+    PESTANYA D'ANÀLISI COMARCAL, versió final amb la creació del mapa corregida.
     """
     st.markdown(f"#### Anàlisi de Convergència i CAPE per a la Comarca: {comarca}")
     st.caption(timestamp_str.replace(poble_sel, comarca))
@@ -7778,13 +7782,11 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
 
     with col_mapa:
         st.markdown("##### Focus de Convergència i Energia (CAPE)")
-        fig, ax = plt.subplots(figsize=(10, 10), dpi=120)
         
+        # --- LÍNIA CORREGIDA: Utilitzem la funció correcta per crear el mapa ---
         if map_display_data:
-            ax.set_extent(map_display_data["map_extent"])
-            ax.add_feature(cfeature.LAND, facecolor="#D4E6B5", zorder=0)
-            ax.add_feature(cfeature.OCEAN, facecolor='#4682B4', zorder=0)
-            ax.add_feature(cfeature.COASTLINE, edgecolor='black', linewidth=0.8, zorder=5)
+            fig, ax = crear_mapa_base(map_display_data["map_extent"])
+            
             ax.add_geometries(comarca_shape.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='blue', linewidth=2.5, linestyle='--', zorder=7)
             
             grid_cape = map_display_data["grid_cape"]
@@ -7794,6 +7796,7 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
                                '#FF4500', '#FF0000', '#DC143C', '#FF00FF', '#9932CC', '#8A2BE2']
                 custom_cape_cmap = ListedColormap(cape_colors)
                 norm_cape = BoundaryNorm(cape_levels, ncolors=custom_cape_cmap.N, clip=True)
+
                 ax.contourf(map_display_data["grid_lon"], map_display_data["grid_lat"], grid_cape, levels=cape_levels, cmap=custom_cape_cmap, norm=norm_cape, alpha=0.35, zorder=2, transform=ccrs.PlateCarree(), extend='max')
                 cape_line_contours = ax.contour(map_display_data["grid_lon"], map_display_data["grid_lat"], grid_cape, levels=cape_levels, colors='white', linewidths=0.8, alpha=0.7, linestyles='solid', zorder=5, transform=ccrs.PlateCarree())
                 cape_labels = ax.clabel(cape_line_contours, inline=True, fontsize=9, fmt='%1.0f')
@@ -7828,15 +7831,18 @@ def ui_pestanya_analisi_comarcal(comarca, valor_conv, poble_sel, timestamp_str, 
             if poble_coords:
                 ax.text(poble_coords['lon'], poble_coords['lat'], '( Tú )\n▼', transform=ccrs.PlateCarree(), fontsize=10, fontweight='bold', color='black', ha='center', va='bottom', zorder=14, path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')])
             
-        ax.set_title(f"Focus de Tempesta a {comarca}", weight='bold', fontsize=12)
-        st.pyplot(fig, use_container_width=True); plt.close(fig)
+            ax.set_title(f"Focus de Tempesta a {comarca}", weight='bold', fontsize=12)
+            st.pyplot(fig, use_container_width=True); plt.close(fig)
+        else:
+            # Si no hi ha dades per al mapa, mostra un missatge
+            st.info("No hi ha dades suficients per generar el mapa detallat de la comarca.")
 
     with col_diagnostic:
-        if bulleti_data and map_display_data and map_display_data["max_conv_point"] is not None:
+        if bulleti_data and map_display_data and map_display_data.get("max_conv_point") is not None:
             ui_bulleti_inteligent(bulleti_data)
             
-            distance_km = map_display_data["distance_km"]
-            is_threat = map_display_data["is_threat"]
+            distance_km = map_display_data.get("distance_km")
+            is_threat = map_display_data.get("is_threat", False)
             
             if distance_km is not None:
                 if distance_km <= 5:
