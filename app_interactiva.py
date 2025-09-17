@@ -5685,56 +5685,42 @@ def generar_icona_direccio(color, direccio_graus):
 
 def crear_llegenda_direccionalitat():
     """
-    Mostra una llegenda visual i explicativa per al mapa de focus de convergència,
-    ara incloent la descripció de l'ombrejat de CAPE.
+    Mostra una llegenda visual i explicativa completa per al mapa de focus de tempesta,
+    detallant l'ombrejat de CAPE, l'ombrejat de convergència i el marcador principal.
     """
     st.markdown("""
     <style>
         .legend-box { background-color: #2a2c34; border-radius: 10px; padding: 15px; border: 1px solid #444; margin-top: 15px; }
         .legend-title { font-size: 1.1em; font-weight: bold; color: #FAFAFA; margin-bottom: 12px; }
-        .legend-section { display: flex; align-items: center; margin-bottom: 12px; }
-        .legend-icon-container { flex-shrink: 0; margin-right: 15px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; }
+        .legend-section { display: flex; align-items: flex-start; margin-bottom: 12px; }
+        .legend-icon-container { flex-shrink: 0; margin-right: 15px; width: 30px; text-align: center; font-size: 24px; padding-top: 2px; }
         .legend-text-container { flex-grow: 1; font-size: 0.9em; color: #a0a0b0; line-height: 1.4; }
         .legend-text-container b { color: #FFFFFF; }
-        .color-square { display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: middle; border: 1px solid #555; }
     </style>
     """, unsafe_allow_html=True)
-
-    icona_intensitat = generar_icona_direccio('#FD7E14', 45)
-    icona_direccio = generar_icona_direccio('#DC3545', 270)
 
     html_llegenda = (
         f'<div class="legend-box">'
         f'    <div class="legend-title">Com Interpretar el Mapa de Focus</div>'
         
         f'    <div class="legend-section">'
-        f'        <div class="legend-icon-container">'
-        f'            <img src="data:image/png;base64,{icona_intensitat}" width="30">'
-        f'        </div>'
+        f'        <div class="legend-icon-container" style="color: #FFC107;">⚡️</div>'
         f'        <div class="legend-text-container">'
-        f'            <b>Intensitat (Color del Cercle):</b> Indica la força del "disparador" (convergència).<br>'
-        f'            <span class="color-square" style="background-color: #FD7E14;"></span><span>Alt</span>, '
-        f'            <span class="color-square" style="background-color: #DC3545;"></span><span>Molt Alt</span>, '
-        f'            <span class="color-square" style="background-color: #9370DB;"></span><span>Extrem</span>.'
+        f'            <b>Energia (CAPE):</b> Representat per l\'<b>ombrejat de fons verd-groc-vermell</b> i les <b>isolínies blanques</b>. Indica el "combustible" disponible per a les tempestes. Valors més alts (en J/kg) afavoreixen un creixement més violent.'
         f'        </div>'
         f'    </div>'
         
         f'    <div class="legend-section">'
-        f'        <div class="legend-icon-container">'
-        f'            <img src="data:image/png;base64,{icona_direccio}" width="30">'
-        f'        </div>'
+        f'        <div class="legend-icon-container" style="color: #6495ED;">🌀</div>'
         f'        <div class="legend-text-container">'
-        f'            <b>Direcció (Fletxa):</b> Estima la trajectòria que seguirà la tempesta un cop formada, basant-se en el vent a nivells mitjans.'
+        f'            <b>Disparador (Convergència):</b> Són les <b>àrees ombrejades de blau a vermell/groc</b>. Indiquen zones on l\'aire es veu forçat a ascendir, actuant com la "guspira" que pot iniciar la tempesta.'
         f'        </div>'
         f'    </div>'
-
+        
         f'    <div class="legend-section">'
-        f'        <div class="legend-icon-container" style="font-size: 24px;">⚡️</div>'
+        f'        <div class="legend-icon-container" style="font-size: 18px;">🎯</div>'
         f'        <div class="legend-text-container">'
-        f'            <b>Energia (Ombrejat de CAPE):</b> Mostra el "combustible" disponible. Valors més alts (en J/kg) impliquen un creixement més violent de la tempesta.<br>'
-        f'            <span style="color:#FFFF00; font-weight:bold;">500</span> → '
-        f'            <span style="color:#FF4500; font-weight:bold;">1500</span> → '
-        f'            <span style="color:#FF00FF; font-weight:bold;">3000+</span>'
+        f'            <b>Focus Principal (Cercle i Fletxa):</b> Marca el punt de <b>màxima convergència</b> dins la comarca i la seva <b>trajectòria més probable</b>. És la zona amb més potencial per iniciar la convecció. El color del cercle indica la seva intensitat.'
         f'        </div>'
         f'    </div>'
 
