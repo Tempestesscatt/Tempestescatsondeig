@@ -7747,14 +7747,13 @@ def _is_wind_onshore(wind_dir_from, sea_dir_range):
 
 # -*- coding: utf-8 -*-
 
-# -*- coding: utf-8 -*-
-
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 7.0 (Etiquetat Manual de Cims):
-    - Dibuixa les etiquetes dels cims provinents de la base de dades manual.
-    - Calcula la posició projectada de cada pic sobre l'eix del transecte.
+    Versió 7.1 (Etiquetat Intel·ligent de Cims):
+    - Implementa un algoritme anti-solapament per a les etiquetes dels cims.
+    - Prioritza els cims més alts i assegura una separació horitzontal mínima
+      entre etiquetes per a garantir la llegibilitat.
     """
     plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
     fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#E6F2FF')
@@ -7762,7 +7761,7 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     dist_total_km = analisi['transect_distances'][-1]; dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
     elev = analisi['transect_elevations']
     
-    # ... (La resta de la funció fins a la secció de marcadors es manté igual) ...
+    # ... (La definició de paletes i la preparació de la graella es mantenen igual) ...
     colors_humitat = ['#f0e68c', '#90ee90', '#4682b4', '#191970']; levels_humitat = [0, 30, 60, 80, 101]
     cmap_humitat = ListedColormap(colors_humitat); norm_humitat = BoundaryNorm(levels_humitat, ncolors=cmap_humitat.N, clip=True)
     colors_vent = ['#d3d3d3', '#add8e6', '#48d1cc', '#90ee90', '#32cd32', '#6b8e23', '#f0e68c', '#d2b48c', '#bc8f8f', '#ffb6c1', '#da70d6', '#9932cc', '#8a2be2', '#48d1cc', '#6495ed']
@@ -7812,21 +7811,30 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
 
-    # <<<--- NOU BLOC D'ETIQUETAT MANUAL ---
-    if 'transect_coords' in analisi:
+    # <<<--- NOU BLOC D'ETIQUETAT INTEL·LIGENT PER EVITAR SOLAPAMENTS ---
+    if 'transect_coords' in analisi and analisi.get('cims_identificats'):
         transect_lats, transect_lons = analisi['transect_coords']
-        for cim in analisi.get('cims_identificats', []):
+        
+        cims_amb_posicio = []
+        for cim in analisi['cims_identificats']:
             dist_al_cim = [haversine_distance(cim['lat'], cim['lon'], lat_t, lon_t) for lat_t, lon_t in zip(transect_lats, transect_lons)]
             idx_cim_proper = np.argmin(dist_al_cim)
-            dist_cim_centrada = dist_centrat[idx_cim_proper]
-            
-            # Dibuixem l'etiqueta utilitzant l'elevació OFICIAL del pic
-            ax.annotate(f"{cim['name']}\n({cim['ele']:.0f} m)", 
-                        xy=(dist_cim_centrada, cim['ele']), xytext=(dist_cim_centrada, cim['ele'] + max_alt_m * 0.08),
-                        arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4),
-                        ha='center', va='bottom', fontsize=8, zorder=11,
-                        bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", lw=1, alpha=0.8))
-    # <<<-----------------------------------
+            cims_amb_posicio.append({**cim, 'x_pos': dist_centrat[idx_cim_proper]})
+
+        cims_ordenats = sorted(cims_amb_posicio, key=lambda c: c['ele'], reverse=True)
+        etiquetes_dibuixades_x = []
+        MIN_SEPARACIO_HORITZONTAL = 10.0 # 10 km de separació mínima
+
+        for cim in cims_ordenats:
+            es_pot_dibuixar = all(abs(cim['x_pos'] - x_pos) > MIN_SEPARACIO_HORITZONTAL for x_pos in etiquetes_dibuixades_x)
+            if es_pot_dibuixar:
+                ax.annotate(f"{cim['name']}\n({cim['ele']:.0f} m)", 
+                            xy=(cim['x_pos'], cim['ele']), xytext=(cim['x_pos'], cim['ele'] + max_alt_m * 0.08),
+                            arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4),
+                            ha='center', va='bottom', fontsize=8, zorder=11,
+                            bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", lw=1, alpha=0.8))
+                etiquetes_dibuixades_x.append(cim['x_pos'])
+    # <<<----------------------------------------------------------------------
     
     fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['wind_dir_from']:.0f}°)")
