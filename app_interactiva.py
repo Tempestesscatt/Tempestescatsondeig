@@ -2486,7 +2486,29 @@ def ui_explicacio_convergencia():
         st.markdown(text_card_2, unsafe_allow_html=True)
 
 
-
+@st.cache_data(ttl=3600)
+def carregar_dades_mapa_base_cat(variables, hourly_index):
+    try:
+        # --- CANVI CLAU: AUGMENTEM LA RESOLUCIÓ DE LA PETICIÓ ---
+        # Passem de 12x12 a 40x40 punts. Això és crucial per a un mapa de qualitat.
+        lats, lons = np.linspace(MAP_EXTENT_CAT[2], MAP_EXTENT_CAT[3], 40), np.linspace(MAP_EXTENT_CAT[0], MAP_EXTENT_CAT[1], 40)
+        
+        lon_grid, lat_grid = np.meshgrid(lons, lats)
+        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": 4}
+        responses = openmeteo.weather_api(API_URL_CAT, params=params)
+        output = {var: [] for var in ["lats", "lons"] + variables}
+        for r in responses:
+            try:
+                vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
+                if not any(np.isnan(v) for v in vals):
+                    output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
+                    for i, var in enumerate(variables): output[var].append(vals[i])
+            except IndexError:
+                continue # Si l'hora no existeix per aquest punt, el saltem
+                
+        if not output["lats"]: return None, "No s'han rebut dades vàlides."
+        return output, None
+    except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
         
         
 
@@ -2862,52 +2884,39 @@ def ui_pestanya_satelit_japo():
     st.info("Aquesta imatge del satèl·lit japonès s'actualitza cada 10 minuts.")
     st.markdown("<p style='text-align: center;'>[Font: Japan Meteorological Agency (JMA)](https://www.data.jma.go.jp/mscweb/data/himawari/index.html)</p>", unsafe_allow_html=True)
 
-
-
-
 @st.cache_data(ttl=3600, show_spinner=False)
 def carregar_dades_mapa_base_cat(variables, hourly_index):
     """
-    Versió robusta v4.0. Funció base per carregar dades del model AROME.
-    Busca l'hora més propera amb dades vàlides i l'aplica a tota la graella.
-    Retorna (dades, índex_vàlid, missatge_error).
+    Versió única i correcta. Funció base per carregar dades del model AROME.
     """
     try:
-        lats_req, lons_req = np.linspace(MAP_EXTENT_CAT[2], MAP_EXTENT_CAT[3], 12), np.linspace(MAP_EXTENT_CAT[0], MAP_EXTENT_CAT[1], 12)
-        lon_grid, lat_grid = np.meshgrid(lons_req, lats_req)
+        lats, lons = np.linspace(MAP_EXTENT_CAT[2], MAP_EXTENT_CAT[3], 12), np.linspace(MAP_EXTENT_CAT[0], MAP_EXTENT_CAT[1], 12)
+        lon_grid, lat_grid = np.meshgrid(lons, lats)
         params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": 4}
-        
         responses = openmeteo.weather_api(API_URL_CAT, params=params)
         
-        if not responses:
-            return None, hourly_index, "L'API no ha retornat cap dada."
-
-        # Busquem un índex horari vàlid basant-nos en la resposta del primer punt de la graella
-        first_point_hourly = responses[0].Hourly()
-        valid_index = trobar_hora_valida_mes_propera(first_point_hourly, hourly_index, len(variables))
-        
-        if valid_index is None:
-            return None, hourly_index, "No s'han rebut dades vàlides per a l'hora seleccionada i les properes."
-
-        # Intentem carregar les dades per a TOTS els punts amb aquest 'valid_index' trobat
         output = {var: [] for var in ["lats", "lons"] + variables}
+        
         for r in responses:
             try:
-                vals = [r.Hourly().Variables(i).ValuesAsNumpy()[valid_index] for i in range(len(variables))]
+                # Agafem les dades per a l'índex horari sol·licitat
+                vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
+                # Només afegim el punt si TOTES les dades per a aquesta hora són vàlides
                 if not any(np.isnan(v) for v in vals):
                     output["lats"].append(r.Latitude())
                     output["lons"].append(r.Longitude())
                     for i, var in enumerate(variables):
                         output[var].append(vals[i])
-            except (IndexError, AttributeError):
-                continue # Si un punt no té dades per a l'hora vàlida, el saltem
+            except IndexError:
+                # Si l'índex horari està fora de rang per a aquest punt, el saltem
+                continue
                 
         if not output["lats"]:
-            return None, valid_index, "No s'han trobat prou punts amb dades completes a l'hora vàlida."
+            return None, "No s'han rebut dades vàlides per a l'hora seleccionada."
             
-        return output, valid_index, None
+        return output, None
     except Exception as e:
-        return None, hourly_index, f"Error en carregar dades del mapa: {e}"
+        return None, f"Error en carregar dades del mapa: {e}"
 
 
 
@@ -4600,9 +4609,9 @@ def ui_pestanya_satelit_europa():
 @st.cache_data(ttl=1800, max_entries=20, show_spinner=False)
 def carregar_dades_sondeig_cat(lat, lon, hourly_index):
     """
-    Versió Definitiva i Corregida v3.0 - Amb cerca d'hora vàlida.
+    Versió Definitiva i Corregida v2.0.
     Garanteix que el perfil de dades construït sigui sempre coherent
-    i busca l'hora més propera si la sol·licitada no té dades.
+    i net, eliminant la font principal d'errors posteriors.
     """
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
@@ -4611,11 +4620,18 @@ def carregar_dades_sondeig_cat(lat, lon, hourly_index):
         response = openmeteo.weather_api(API_URL_CAT, params=params)[0]
         hourly = response.Hourly()
 
-        # Utilitzem la nova funció per trobar l'hora més propera amb dades
-        valid_index = trobar_hora_valida_mes_propera(hourly, hourly_index, len(h_base))
+        valid_index = None; max_hours_to_check = 3
+        total_hours = len(hourly.Variables(0).ValuesAsNumpy())
+        for offset in range(max_hours_to_check + 1):
+            indices_to_try = sorted(list(set([hourly_index + offset, hourly_index - offset])))
+            for h_idx in indices_to_try:
+                if 0 <= h_idx < total_hours:
+                    sfc_check = [hourly.Variables(i).ValuesAsNumpy()[h_idx] for i in range(len(h_base))]
+                    if not any(np.isnan(val) for val in sfc_check):
+                        valid_index = h_idx; break
+            if valid_index is not None: break
         
-        if valid_index is None: 
-            return None, hourly_index, "No s'han trobat dades vàlides en un rang de +/- 8 hores."
+        if valid_index is None: return None, hourly_index, "No s'han trobat dades vàlides."
         
         sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[valid_index] for i, v in enumerate(h_base)}
         
@@ -4626,7 +4642,12 @@ def carregar_dades_sondeig_cat(lat, lon, hourly_index):
         
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
         
-        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
+        p_profile = [sfc_data["surface_pressure"]]
+        T_profile = [sfc_data["temperature_2m"]]
+        Td_profile = [sfc_data["dew_point_2m"]]
+        u_profile = [sfc_u.to('m/s').m]
+        v_profile = [sfc_v.to('m/s').m]
+        h_profile = [0.0]
         
         for i, p_val in enumerate(PRESS_LEVELS_AROME):
             if p_val < p_profile[-1] and all(not np.isnan(p_data[v][i]) for v in ["T", "RH", "WS", "WD", "H"]):
@@ -4637,7 +4658,6 @@ def carregar_dades_sondeig_cat(lat, lon, hourly_index):
                 u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m); h_profile.append(p_data["H"][i])
 
         processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
-        # Retornem també el 'valid_index' per informar a l'usuari si l'hora ha canviat
         return processed_data, valid_index, error
         
     except Exception as e: 
@@ -5708,307 +5728,6 @@ def crear_llegenda_direccionalitat():
     )
     st.markdown(html_llegenda, unsafe_allow_html=True)
 
-
-
-
-def ui_mode_selector():
-    """
-    Mostra un botó per canviar entre el mode 'Temps Sever' i 'Neu'.
-    """
-    # Determina el mode actual, sent 'temps_sever' el valor per defecte
-    current_mode = st.session_state.get('analysis_mode', 'temps_sever')
-
-    # Defineix el text i la icona del botó segons el mode actual
-    if current_mode == 'temps_sever':
-        button_text = "Canviar a Mode Neu"
-        button_icon = "❄️"
-        new_mode = 'neu'
-    else:
-        button_text = "Tornar a Temps Sever"
-        button_icon = "⛈️"
-        new_mode = 'temps_sever'
-
-    # Funció de callback per canviar l'estat
-    def toggle_analysis_mode():
-        st.session_state.analysis_mode = new_mode
-
-    # Mostra el botó
-    st.button(f"{button_icon} {button_text}", on_click=toggle_analysis_mode, use_container_width=True)
-
-
-
-
-@st.cache_data(ttl=3600, show_spinner="Carregant dades del mapa de neu...")
-def carregar_dades_mapa_neu(hourly_index):
-    """
-    Carrega les dades específiques necessàries per al mapa de neu,
-    utilitzant la cerca d'hora vàlida.
-    Retorna (dades, índex_final, error).
-    """
-    try:
-        variables = ["freezing_level_height", "snowfall", "precipitation_type", "temperature_850hPa"]
-        # La funció base ara retorna 3 valors
-        map_data_raw, final_index, error = carregar_dades_mapa_base_cat(variables, hourly_index)
-        if error:
-            return None, hourly_index, error
-        return map_data_raw, final_index, None
-    except Exception as e:
-        return None, hourly_index, f"Error en processar dades del mapa de neu: {e}"
-    
-
-
-
-
-
-def crear_mapa_neu(lons, lats, freezing_level_data, snowfall_data, precip_type_data, temp_850_data, timestamp_str, map_extent):
-    """
-    Crea un mapa especialitzat per a l'anàlisi de neu.
-    """
-    fig, ax = crear_mapa_base(map_extent)
-    
-    grid_lon, grid_lat = np.meshgrid(np.linspace(map_extent[0], map_extent[1], 200), np.linspace(map_extent[2], map_extent[3], 200))
-    
-    # Ombrejat de la cota de neu
-    grid_freezing_level = griddata((lons, lats), freezing_level_data, (grid_lon, grid_lat), 'linear')
-    fl_levels = [0, 200, 400, 600, 800, 1000, 1200, 1500, 2000, 2500, 3000]
-    fl_cmap = plt.get_cmap('coolwarm_r')
-    norm_fl = BoundaryNorm(fl_levels, ncolors=fl_cmap.N, clip=True)
-    cbar_fl = fig.colorbar(ax.contourf(grid_lon, grid_lat, grid_freezing_level, levels=fl_levels, cmap=fl_cmap, norm=norm_fl, alpha=0.6, zorder=2, transform=ccrs.PlateCarree(), extend='both'),
-                           ax=ax, orientation='vertical', shrink=0.7, pad=0.02)
-    cbar_fl.set_label("Cota de Neu Aproximada (m)")
-
-    # Isoterma de 0°C a 850hPa (línia blava)
-    grid_temp_850 = griddata((lons, lats), temp_850_data, (grid_lon, grid_lat), 'linear')
-    ax.contour(grid_lon, grid_lat, grid_temp_850, levels=[0], colors='blue', linewidths=2.5, linestyles='-', zorder=5, transform=ccrs.PlateCarree())
-
-    # Símbols per al tipus de precipitació
-    precip_symbols = {1: '❄️', 2: '💧', 3: '🧊', 4: '💧🧊'} # 1:Neu, 2:Pluja, 3:Pluja Gelant, 4:Aiguaneu
-    for lon, lat, p_type in zip(lons, lats, precip_type_data):
-        if p_type in precip_symbols:
-            ax.text(lon, lat, precip_symbols[p_type], fontsize=14, ha='center', va='center', transform=ccrs.PlateCarree(), zorder=6,
-                    path_effects=[path_effects.withStroke(linewidth=2, foreground='white')])
-
-    ax.set_title(f"Anàlisi de Neu\n{timestamp_str}", weight='bold', fontsize=16)
-    afegir_etiquetes_ciutats(ax, map_extent)
-    return fig
-
-def ui_caixa_parametres_neu(params):
-    """
-    Mostra una caixa amb els paràmetres clau per al pronòstic de neu.
-    """
-    st.markdown("##### Paràmetres Clau per a Neu")
-    
-    wbz_hgt = params.get('WBZ_HGT', np.nan)
-    t_850 = params.get('T_850hPa', np.nan)
-    pwat = params.get('PWAT', np.nan)
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        color = "#DC3545" if wbz_hgt > 600 else ("#28A745" if wbz_hgt < 300 else "#FFC107")
-        st.metric("Cota Neu (WBZ)", f"{wbz_hgt:.0f} m" if pd.notna(wbz_hgt) else "N/A", delta_color="off", help="Alçada on la temperatura de bulb humit és 0°C, un bon indicador de la cota de neu.")
-    with col2:
-        color = "#DC3545" if t_850 > 0 else ("#28A745" if t_850 < -2 else "#FFC107")
-        st.metric("Temp. a 850hPa", f"{t_850:.1f} °C" if pd.notna(t_850) else "N/A", delta_color="off", help="Temperatura a ~1500m. Valors < 0°C són favorables per a la neu a cotes mitjanes/baixes.")
-    with col3:
-        color = "#28A745" if pwat > 10 else "#FFC107"
-        st.metric("Aigua Precipitable", f"{pwat:.1f} mm" if pd.notna(pwat) else "N/A", delta_color="off", help="Quantitat d'humitat disponible. Més de 10-12 mm amb fred pot indicar nevades importants.")
-
-def generar_diagnostic_neu(params):
-    """
-    Genera un veredicte qualitatiu sobre el tipus de precipitació hivernal.
-    """
-    wbz_hgt = params.get('WBZ_HGT', 9999)
-    t_850 = params.get('T_850hPa', 99)
-    pwat = params.get('PWAT', 0)
-    
-    if pwat < 5:
-        return {"titol": "Ambient Sec", "color": "#6c757d", "desc": "L'atmosfera no té prou humitat per a generar precipitació significativa."}
-    if t_850 > 2:
-        return {"titol": "Pluja Assegurada", "color": "#007bff", "desc": f"L'aire és massa càlid en alçada (T850hPa: {t_850:.1f}°C) per a la formació de neu."}
-    if wbz_hgt < 300 and t_850 < -2 and pwat > 10:
-        return {"titol": "Nevada de Cota Baixa", "color": "#FFFFFF", "desc": "Condicions molt favorables per a nevades a cotes baixes, amb humitat i fred suficient."}
-    if wbz_hgt < 600 and t_850 < 0:
-        return {"titol": "Neu Humida / Aiguaneu", "color": "#ADD8E6", "desc": "La cota de neu és baixa, però les temperatures properes a 0°C suggereixen neu molt humida o aiguaneu."}
-    if wbz_hgt < 1000:
-        return {"titol": "Neu a Cotes Mitjanes", "color": "#90EE90", "desc": "La neu quedarà restringida a les cotes mitjanes i altes de la muntanya."}
-    
-    return {"titol": "Pluja Freda", "color": "#28a745", "desc": "Farà fred, però no prou per veure neu a cotes significatives. La precipitació serà en forma de pluja."}
-
-def run_snow_analysis_view(poble_sel, hourly_index_sel, dia_sel_str, hora_sel_str):
-    """
-    Renderitza tota la interfície d'usuari per al mode d'anàlisi de neu.
-    """
-    st.markdown("---")
-    st.info("❄️ **Mode d'Anàlisi de Neu Activat.** Els paràmetres i mapes estan adaptats per al pronòstic de precipitació hivernal.", icon="ℹ️")
-    
-    lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
-    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str}"
-
-    with st.spinner("Carregant dades de sondeig i mapes per a l'anàlisi de neu..."):
-        data_tuple, _, error_sounding = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
-        map_data, error_map = carregar_dades_mapa_neu(hourly_index_sel)
-
-    if error_sounding or error_map:
-        st.error(f"S'ha produït un error en carregar les dades: {error_sounding or error_map}")
-        return
-
-    params_calc = data_tuple[1]
-    
-    col_mapa, col_diagnostic = st.columns([0.6, 0.4], gap="large")
-    with col_mapa:
-        fig = crear_mapa_neu(map_data['lons'], map_data['lats'], map_data['freezing_level_height'], 
-                             map_data['snowfall'], map_data['precipitation_type'], map_data['temperature_850hPa'],
-                             timestamp_str, MAP_EXTENT_CAT)
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
-
-    with col_diagnostic:
-        diagnostic = generar_diagnostic_neu(params_calc)
-        st.markdown(f"""
-        <div style="padding: 15px; background-color: #2a2c34; border-radius: 10px; border-left: 5px solid {diagnostic['color']}; margin-bottom: 15px;">
-             <h5 style="color: {diagnostic['color']}; margin: 0;">{diagnostic['titol']}</h5>
-             <p style="font-size:0.95em; color:#a0a0b0; margin-top:8px;">{diagnostic['desc']}</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        ui_caixa_parametres_neu(params_calc)
-        
-    with st.expander("🔬 Veure Skew-T adaptat per a Neu"):
-        fig_skewt = crear_skewt(data_tuple[0][0], data_tuple[0][1], data_tuple[0][2], data_tuple[0][7], 
-                                data_tuple[0][3], data_tuple[0][4], data_tuple[0][6], params_calc, 
-                                f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=True)
-        ax = fig_skewt.axes[1]
-        ax.axhline(params_calc.get('WBZ_HGT', 0), color='cyan', linestyle=':', linewidth=2, label='WBZ Height')
-        ax.legend()
-        st.pyplot(fig_skewt)
-
-
-
-def run_severe_weather_view(poble_sel, hourly_index_sel, nivell_sel, dia_sel_str, hora_sel_str):
-    """
-    Conté tota la lògica de la vista de temps sever, ara amb gestió d'hores alternatives.
-    """
-    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
-    
-    with st.spinner(f"Carregant dades del sondeig i mapa per a {poble_sel}..."):
-        lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
-        # La crida ara retorna 3 valors, incloent el 'final_index'
-        data_tuple, final_index, error_msg_sounding = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
-        map_data_conv, error_msg_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
-
-    if error_msg_sounding or not data_tuple:
-        st.error(f"No s'ha pogut carregar el sondeig: {error_msg_sounding if error_msg_sounding else 'Dades no disponibles.'}")
-        return
-        
-    params_calculats = data_tuple[1]
-    
-    if not error_msg_map and map_data_conv:
-        conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
-        if pd.notna(conv_puntual):
-            params_calculats[f'CONV_{nivell_sel}hPa'] = conv_puntual
-
-    # --- NOU: Avís a l'usuari si l'hora de les dades ha canviat ---
-    if final_index is not None and final_index != hourly_index_sel:
-        start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
-        adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
-        st.warning(f"Avís: Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
-        # Actualitzem el timestamp per reflectir l'hora real de les dades
-        timestamp_str = f"{poble_sel} | {adjusted_local_time.strftime('%d/%m/%Y')} a les {adjusted_local_time.strftime('%H:%Mh')} (Local)"
-
-    
-    menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi de Mapes", "Simulació de Núvol"]
-    menu_icons = ["fullscreen", "graph-up-arrow", "map", "cloud-upload"]
-    active_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key=f'option_menu_{poble_sel}')
-    
-    if active_tab == "Anàlisi Comarcal":
-        with st.spinner("Carregant anàlisi comarcal completa..."):
-            alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
-        comarca_actual = get_comarca_for_poble(poble_sel)
-        if comarca_actual:
-            valor_conv_comarcal = alertes_totals.get(comarca_actual, {}).get('conv', 0)
-            ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calculats, hora_sel_str, data_tuple, alertes_totals)
-    
-    elif active_tab == "Anàlisi Vertical":
-        ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
-    
-    elif active_tab == "Anàlisi de Mapes":
-        ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
-
-    elif active_tab == "Simulació de Núvol":
-        ui_pestanya_simulacio_nuvol(params_calculats, timestamp_str, poble_sel)
-
-
-
-def run_main_selection_view(hourly_index_sel, nivell_sel, hora_sel_str):
-    """
-    Conté tota la lògica de la vista de selecció general que ja tenies.
-    """
-    st.session_state.setdefault('analysis_view', 'Terra')
-    st.session_state.setdefault('show_comarca_labels', False)
-    st.session_state.setdefault('alert_filter_level_cape', 'Energia Baixa i superior')
-
-    with st.container(border=True):
-        st.markdown("##### Opcions de Visualització del Mapa")
-        
-        num_cols = 3 if st.session_state.get('analysis_view', 'Terra') == 'Terra' else 1
-        cols = st.columns(num_cols)
-        
-        with cols[0]:
-            st.selectbox("Tipus d'Anàlisi:", options=["Terra", "Mar"], key="analysis_view")
-        
-        if st.session_state.analysis_view == 'Terra':
-            with cols[1]:
-                st.selectbox("Filtrar per nivell d'energia (CAPE):", options=["Tots", "Energia Baixa i superior", "Energia Moderada i superior", "Energia Alta i superior", "Només Extrems"], key="alert_filter_level_cape")
-            with cols[2]:
-                st.toggle("Mostrar detalls de les zones actives", key="show_comarca_labels")
-    
-    if st.session_state.analysis_view == 'Terra':
-        with st.spinner("Analitzant focus de convergència a tot Catalunya..."):
-            alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
-        
-        LLINDARS_CAPE = {"Tots": 0, "Energia Baixa i superior": 500, "Energia Moderada i superior": 1000, "Energia Alta i superior": 2000, "Només Extrems": 3500}
-        llindar_cape_sel = LLINDARS_CAPE.get(st.session_state.alert_filter_level_cape, 500)
-        alertes_filtrades = {zona: data for zona, data in alertes_totals.items() if data['cape'] >= llindar_cape_sel}
-        
-        with st.spinner("Dibuixant mapa interactiu..."):
-            map_output = ui_mapa_display_personalitzat(alertes_per_zona=alertes_filtrades, hourly_index=hourly_index_sel, show_labels=st.session_state.show_comarca_labels)
-        
-        ui_llegenda_mapa_principal()
-        
-        bulleti_data = generar_bulleti_automatic_catalunya(alertes_totals, hora_sel_str)
-        ui_bulleti_automatic(bulleti_data)
-        
-        if map_output and map_output.get("last_object_clicked_tooltip"):
-            raw_tooltip = map_output["last_object_clicked_tooltip"]
-            if "Comarca:" in raw_tooltip or "Zona:" in raw_tooltip:
-                clicked_area = raw_tooltip.split(':')[-1].strip().replace('.', '')
-                if clicked_area != st.session_state.get('selected_area'):
-                    st.session_state.selected_area = clicked_area
-                    st.rerun()
-        
-        selected_area = st.session_state.get('selected_area')
-        if selected_area and "---" not in selected_area:
-            st.markdown(f"##### Selecciona una localitat a {selected_area}:")
-            gdf = carregar_dades_geografiques()
-            property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), 'nom_comar')
-            poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
-            poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
-            if poblacions_a_mostrar:
-                cols_pobles = st.columns(4)
-                for i, nom_poble in enumerate(sorted(poblacions_a_mostrar.keys())):
-                    with cols_pobles[i % 4]:
-                        st.button(nom_poble, key=f"btn_{nom_poble.replace(' ', '_')}", on_click=seleccionar_poble, args=(nom_poble,), use_container_width=True)
-            else:
-                st.warning("Aquesta zona no té localitats predefinides per a l'anàlisi.")
-            if st.button("⬅️ Veure totes les zones"):
-                st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
-                st.rerun()
-        else:
-            st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
-    
-    else: # Si la vista seleccionada és "Mar"
-        ui_vista_maritima(hourly_index_sel)
 
 
 def on_day_change_cat():
@@ -7529,15 +7248,13 @@ def ui_vista_maritima(hourly_index):
 
 def run_catalunya_app():
     """
-    Funció principal per a Catalunya, ara amb un despatxador per al mode d'anàlisi.
-    Versió 100% completa i funcional.
+    Versió Final amb selector de vista Terra/Mar i correcció del bug de convergència.
     """
     # --- PAS 1: CAPÇALERA I INICIALITZACIÓ D'ESTAT ---
     ui_capcalera_selectors(None, zona_activa="catalunya")
     if 'selected_area' not in st.session_state: st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
     if 'poble_sel' not in st.session_state: st.session_state.poble_sel = "--- Selecciona una localitat ---"
-    if 'analysis_mode' not in st.session_state: st.session_state.analysis_mode = 'temps_sever' # Mode per defecte
-
+    
     # --- PAS 2: SELECTORS GLOBALS I CÀLCUL DE TEMPS ---
     with st.container(border=True):
         col_dia, col_hora, col_nivell = st.columns(3)
@@ -7547,14 +7264,8 @@ def run_catalunya_app():
         with col_hora:
             hora_sel_str = st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector", index=datetime.now(TIMEZONE_CAT).hour)
         with col_nivell:
-            # El selector de nivell només és rellevant per al mode de temps sever
-            if st.session_state.analysis_mode == 'temps_sever':
-                nivell_sel = st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
-            else:
-                # En mode neu, el selector no és necessari i es mostra desactivat
-                st.selectbox("Nivell d'Anàlisi:", ["N/A (Mode Neu)"], disabled=True)
-                nivell_sel = 850 # Un valor per defecte que no afectarà l'anàlisi de neu
-
+            nivell_sel = st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
+    
     st.caption("ℹ️ Dades del model AROME 2.5km. L'aplicació es refresca cada 10 minuts.")
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
     hora_num = int(hora_sel_str.split(':')[0])
@@ -7562,118 +7273,131 @@ def run_catalunya_app():
     start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_index_sel = int((local_dt.astimezone(pytz.utc) - start_of_today_utc).total_seconds() / 3600)
 
-    # --- PAS 3: DESPATXADOR DE VISTES (VISTA DETALLADA O VISTA GENERAL) ---
+    # --- PAS 3: LÒGICA PRINCIPAL (VISTA DETALLADA O VISTA DE MAPA) ---
     if st.session_state.poble_sel and "---" not in st.session_state.poble_sel:
-        # --- VISTA D'ANÀLISI DETALLADA D'UNA LOCALITAT ---
+        # --- VISTA D'ANÀLISI DETALLADA D'UNA LOCALITAT (TERRA O MAR) ---
         poble_sel = st.session_state.poble_sel
+        st.success(f"### Anàlisi per a: {poble_sel}")
+        col_nav1, col_nav2 = st.columns(2)
+        with col_nav1: st.button("⬅️ Tornar a la Vista Anterior", on_click=tornar_a_seleccio_comarca, use_container_width=True)
+        with col_nav2: st.button("🗺️ Tornar al Mapa General", on_click=tornar_al_mapa_general, use_container_width=True)
+        timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
         
-        # El títol i el botó de mode es mostren junts en una línia
-        col_titol, col_boto_mode = st.columns([0.7, 0.3])
-        with col_titol:
-            st.markdown(f"### Anàlisi per a: {poble_sel}")
-        with col_boto_mode:
-            ui_mode_selector() # Mostra el botó per canviar entre 'Temps Sever' i 'Neu'
+        with st.spinner(f"Carregant dades del sondeig i mapa per a {poble_sel}..."):
+            lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
+            data_tuple, final_index, error_msg_sounding = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+            map_data_conv, error_msg_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
 
-        # Comprovem el mode actiu i cridem la funció de vista corresponent
-        if st.session_state.analysis_mode == 'neu':
-            run_snow_analysis_view(poble_sel, hourly_index_sel, dia_sel_str, hora_sel_str)
-        else: # El mode per defecte és 'temps_sever'
-            run_severe_weather_view(poble_sel, hourly_index_sel, nivell_sel, dia_sel_str, hora_sel_str)
+        if error_msg_sounding or not data_tuple:
+            st.error(f"No s'ha pogut carregar el sondeig: {error_msg_sounding if error_msg_sounding else 'Dades no disponibles.'}")
+            return
+            
+        params_calculats = data_tuple[1]
+        
+        # ===== CORRECCIÓ DEL BUG DE CONVERGÈNCIA AQUÍ =====
+        # Assegurem que el càlcul es fa i s'afegeix al diccionari de paràmetres
+        # abans de passar-lo a cap altra funció de visualització.
+        if not error_msg_map and map_data_conv:
+            conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
+            if pd.notna(conv_puntual):
+                params_calculats[f'CONV_{nivell_sel}hPa'] = conv_puntual
+        # ====================================================
+
+        if final_index is not None and final_index != hourly_index_sel:
+            adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+            adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
+            st.warning(f"Avís: Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: {adjusted_local_time.strftime('%H:%Mh')}.")
+        
+        menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi de Mapes", "Simulació de Núvol"]
+        menu_icons = ["fullscreen", "graph-up-arrow", "map", "cloud-upload"]
+        active_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key=f'option_menu_{poble_sel}')
+        
+        if active_tab == "Anàlisi Comarcal":
+            with st.spinner("Carregant anàlisi comarcal completa..."):
+                alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
+            comarca_actual = get_comarca_for_poble(poble_sel)
+            if comarca_actual:
+                valor_conv_comarcal = alertes_totals.get(comarca_actual, {}).get('conv', 0)
+                ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calculats, hora_sel_str, data_tuple, alertes_totals)
+        
+        elif active_tab == "Anàlisi Vertical":
+            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+        
+        elif active_tab == "Anàlisi de Mapes":
+            ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
+
+        elif active_tab == "Simulació de Núvol":
+            ui_pestanya_simulacio_nuvol(params_calculats, timestamp_str, poble_sel)
     else: 
-        # --- VISTA DE SELECCIÓ GENERAL (mapa de comarques) ---
-        # A la vista general, el mode sempre serà 'temps sever' per mostrar el mapa de risc
-        st.session_state.analysis_mode = 'temps_sever'
-        run_main_selection_view(hourly_index_sel, nivell_sel, hora_sel_str)
+        # --- VISTA DE SELECCIÓ GENERAL (TERRA o MAR) ---
+        st.session_state.setdefault('analysis_view', 'Terra')
+        st.session_state.setdefault('show_comarca_labels', False)
+        st.session_state.setdefault('alert_filter_level_cape', 'Energia Baixa i superior')
 
-
-
-
-
-
-def run_snow_analysis_view(poble_sel, hourly_index_sel, dia_sel_str, hora_sel_str):
-    """
-    Renderitza tota la interfície d'usuari per al mode d'anàlisi de neu,
-    amb gestió d'hores alternatives i avisos a l'usuari.
-    """
-    st.markdown("---")
-    st.info("❄️ **Mode d'Anàlisi de Neu Activat.** Els paràmetres i mapes estan adaptats per al pronòstic de precipitació hivernal.", icon="ℹ️")
-    
-    lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
-    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str}"
-
-    with st.spinner("Carregant dades de sondeig i mapes per a l'anàlisi de neu..."):
-        data_tuple, final_index_sounding, error_sounding = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
-        map_data, final_index_map, error_map = carregar_dades_mapa_neu(hourly_index_sel)
-
-    # Prioritzem l'índex del sondeig, que és el més crític
-    final_index = final_index_sounding if final_index_sounding is not None else final_index_map
-
-    # Mostrem un avís si l'hora de les dades ha canviat
-    if final_index is not None and final_index != hourly_index_sel:
-        start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
-        adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
-        st.warning(f"Avís: Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
-        timestamp_str = f"{poble_sel} | {adjusted_local_time.strftime('%d/%m/%Y')} a les {adjusted_local_time.strftime('%H:%Mh')}"
-
-    if error_sounding or error_map:
-        error_message = error_sounding if error_sounding else error_map
-        st.error(f"S'ha produït un error en carregar les dades: {error_message}")
-        return
-
-    params_calc = data_tuple[1]
-    
-    col_mapa, col_diagnostic = st.columns([0.6, 0.4], gap="large")
-    with col_mapa:
-        fig = crear_mapa_neu(map_data['lons'], map_data['lats'], map_data['freezing_level_height'], 
-                             map_data['snowfall'], map_data['precipitation_type'], map_data['temperature_850hPa'],
-                             timestamp_str, MAP_EXTENT_CAT)
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
-
-    with col_diagnostic:
-        diagnostic = generar_diagnostic_neu(params_calc)
-        st.markdown(f"""
-        <div style="padding: 15px; background-color: #2a2c34; border-radius: 10px; border-left: 5px solid {diagnostic['color']}; margin-bottom: 15px;">
-             <h5 style="color: {diagnostic['color']}; margin: 0;">{diagnostic['titol']}</h5>
-             <p style="font-size:0.95em; color:#a0a0b0; margin-top:8px;">{diagnostic['desc']}</p>
-        </div>
-        """, unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("##### Opcions de Visualització del Mapa")
+            
+            num_cols = 3 if st.session_state.get('analysis_view', 'Terra') == 'Terra' else 1
+            cols = st.columns(num_cols)
+            
+            with cols[0]:
+                st.selectbox("Tipus d'Anàlisi:", options=["Terra", "Mar"], key="analysis_view")
+            
+            if st.session_state.analysis_view == 'Terra':
+                with cols[1]:
+                    st.selectbox("Filtrar per nivell d'energia (CAPE):", options=["Tots", "Energia Baixa i superior", "Energia Moderada i superior", "Energia Alta i superior", "Només Extrems"], key="alert_filter_level_cape")
+                with cols[2]:
+                    st.toggle("Mostrar detalls de les zones actives", key="show_comarca_labels")
         
-        ui_caixa_parametres_neu(params_calc)
+        if st.session_state.analysis_view == 'Terra':
+            with st.spinner("Analitzant focus de convergència a tot Catalunya..."):
+                alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
+            
+            LLINDARS_CAPE = {"Tots": 0, "Energia Baixa i superior": 500, "Energia Moderada i superior": 1000, "Energia Alta i superior": 2000, "Només Extrems": 3500}
+            llindar_cape_sel = LLINDARS_CAPE.get(st.session_state.alert_filter_level_cape, 500)
+            alertes_filtrades = {zona: data for zona, data in alertes_totals.items() if data['cape'] >= llindar_cape_sel}
+            
+            with st.spinner("Dibuixant mapa interactiu..."):
+                map_output = ui_mapa_display_personalitzat(alertes_per_zona=alertes_filtrades, hourly_index=hourly_index_sel, show_labels=st.session_state.show_comarca_labels)
+            
+            ui_llegenda_mapa_principal()
+            
+            bulleti_data = generar_bulleti_automatic_catalunya(alertes_totals, hora_sel_str)
+            ui_bulleti_automatic(bulleti_data)
+            
+            if map_output and map_output.get("last_object_clicked_tooltip"):
+                raw_tooltip = map_output["last_object_clicked_tooltip"]
+                if "Comarca:" in raw_tooltip or "Zona:" in raw_tooltip:
+                    clicked_area = raw_tooltip.split(':')[-1].strip().replace('.', '')
+                    if clicked_area != st.session_state.get('selected_area'):
+                        st.session_state.selected_area = clicked_area
+                        st.rerun()
+            
+            selected_area = st.session_state.get('selected_area')
+            if selected_area and "---" not in selected_area:
+                st.markdown(f"##### Selecciona una localitat a {selected_area}:")
+                gdf = carregar_dades_geografiques()
+                property_name = next((prop for prop in ['nom_zona', 'nom_comar', 'nomcomar'] if prop in gdf.columns), 'nom_comar')
+                poblacions_dict = CIUTATS_PER_ZONA_PERSONALITZADA if property_name == 'nom_zona' else CIUTATS_PER_COMARCA
+                poblacions_a_mostrar = poblacions_dict.get(selected_area.strip().replace('.', ''), {})
+                if poblacions_a_mostrar:
+                    cols_pobles = st.columns(4)
+                    for i, nom_poble in enumerate(sorted(poblacions_a_mostrar.keys())):
+                        with cols_pobles[i % 4]:
+                            st.button(nom_poble, key=f"btn_{nom_poble.replace(' ', '_')}", on_click=seleccionar_poble, args=(nom_poble,), use_container_width=True)
+                else:
+                    st.warning("Aquesta zona no té localitats predefinides per a l'anàlisi.")
+                if st.button("⬅️ Veure totes les zones"):
+                    st.session_state.selected_area = "--- Selecciona una zona al mapa ---"
+                    st.rerun()
+            else:
+                st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
         
-    with st.expander("🔬 Veure Skew-T adaptat per a Neu"):
-        fig_skewt = crear_skewt(data_tuple[0][0], data_tuple[0][1], data_tuple[0][2], data_tuple[0][7], 
-                                data_tuple[0][3], data_tuple[0][4], data_tuple[0][6], params_calc, 
-                                f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=True)
-        st.pyplot(fig_skewt)
+        else: # Si la vista seleccionada és "Mar"
+            ui_vista_maritima(hourly_index_sel)
+            
 
 
-def trobar_hora_valida_mes_propera(hourly_response, target_index, num_base_vars, max_offset=8):
-    """
-    Versió Definitiva: Busca l'índex horari més proper (en qualsevol direcció)
-    que tingui dades completes, buscant en una finestra més àmplia de 8 hores.
-    """
-    try:
-        if hourly_response is None or hourly_response.Variables(0) is None:
-            return None
-        total_hours = len(hourly_response.Variables(0).ValuesAsNumpy())
-    except (AttributeError, IndexError):
-        return None
-
-    for offset in range(max_offset + 1):
-        indices_to_check = [target_index] if offset == 0 else [target_index - offset, target_index + offset]
-        
-        for h_idx in indices_to_check:
-            if 0 <= h_idx < total_hours:
-                try:
-                    sfc_check = [hourly_response.Variables(i).ValuesAsNumpy()[h_idx] for i in range(num_base_vars)]
-                    if not any(np.isnan(val) for val in sfc_check):
-                        return h_idx
-                except (AttributeError, IndexError):
-                    continue
-
-    return None
 
 
 def get_color_from_cape(cape_value):
