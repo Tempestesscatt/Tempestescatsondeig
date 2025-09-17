@@ -7450,7 +7450,7 @@ def run_catalunya_app():
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     """
     Mostra la interfície per a la pestanya d'Anàlisi d'Interacció Vent-Orografia.
-    (Versió final que crida al nou motor de gràfics)
+    (Versió final amb rang d'altura del slider ampliat fins a 100m)
     """
     st.markdown(f"#### Anàlisi d'Interacció Vent-Orografia per a {poble_sel}")
     st.caption(timestamp_str)
@@ -7470,9 +7470,21 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
                                      options=["Vent", "Humitat", "Temperatura"], 
                                      key="orog_layer_selector")
         with col_height:
+            if layer_sel == "Humitat" or layer_sel == "Temperatura":
+                if data_tuple and len(data_tuple) > 0 and len(data_tuple[0]) >= 3:
+                    p, T, Td = data_tuple[0][0], data_tuple[0][1], data_tuple[0][2]
+                    rh_profile = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
+                    params_calc['RH_PROFILE'] = rh_profile.m
+                    params_calc['TEMP_PROFILE'] = T.m
+                else:
+                    params_calc['RH_PROFILE'] = []
+                    params_calc['TEMP_PROFILE'] = []
+
+            # <<<--- CANVI CLAU AQUÍ: HEM MODIFICAT ELS PARÀMETRES DEL SLIDER ---
             max_alt_sel = st.slider("Altura màxima del perfil (m):", 
-                                    min_value=2000, max_value=12000, value=4000, step=500, 
+                                    min_value=100, max_value=12000, value=4000, step=100, 
                                     key="orog_height_slider")
+            # <<<----------------------------------------------------------------
 
     # --- VISUALITZACIÓ PRINCIPAL ---
     col1, col2 = st.columns([0.65, 0.35], gap="large")
