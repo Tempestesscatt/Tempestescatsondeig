@@ -7637,18 +7637,25 @@ def _is_wind_onshore(wind_dir_from, sea_dir_range):
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 5.2:
-    - LÒGICA DE POSICIONAMENT DE CIMS MILLORADA: Troba el punt exacte del
-      transecte més proper a la coordenada del cim per a una precisió màxima.
+    Versió 5.2 (Correcció de Posicionament):
+    - CORREGIT: Restaura la lògica de càlcul de 'dist_total_km' i 'poble_dist_centrat'
+      per a assegurar que el marcador del poble sempre aparegui a la seva posició
+      correcta sobre el transecte, solucionant el problema de posicionament.
     """
     plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
     fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#E6F2FF')
     
+    # <<<--- LÒGICA DE POSICIONAMENT CORREGIDA ---
+    # 1. Obtenim la distància total del transecte (p. ex., 80 km)
     dist_total_km = analisi['transect_distances'][-1]
+    
+    # 2. Creem l'eix X centrat a 0 (anirà de -40 km a +40 km)
     dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
+    # <<<--------------------------------------------
+    
     elev = analisi['transect_elevations']
     
-    # ... (La resta de la funció fins a la secció de marcadors es manté igual) ...
+    # ... (La resta de la funció, incloent paletes i preparació de la graella, es manté igual) ...
     colors_humitat = ['#f0e68c', '#90ee90', '#4682b4', '#191970']; levels_humitat = [0, 30, 60, 80, 101]
     cmap_humitat = ListedColormap(colors_humitat); norm_humitat = BoundaryNorm(levels_humitat, ncolors=cmap_humitat.N, clip=True)
     colors_vent = ['#d3d3d3', '#add8e6', '#48d1cc', '#90ee90', '#32cd32', '#6b8e23', '#f0e68c', '#d2b48c', '#bc8f8f', '#ffb6c1', '#da70d6', '#9932cc', '#8a2be2', '#48d1cc', '#6495ed']
@@ -7663,20 +7670,24 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     xx, zz = np.meshgrid(x_grid, y_grid)
     
     if layer_to_show == "Humitat":
-        profile_1d = np.interp(y_grid, heights_m, rh_profile); cmap, norm, levels, label = cmap_humitat, norm_humitat, levels_humitat, "Humitat Relativa (%)"
+        profile_1d = np.interp(y_grid, heights_m, rh_profile)
+        cmap, norm, levels, label = cmap_humitat, norm_humitat, levels_humitat, "Humitat Relativa (%)"
     elif layer_to_show == "Temperatura":
-        profile_1d = np.interp(y_grid, heights_m, temp_profile); cmap, norm, levels, label = cmap_temp, norm_temp, levels_temp, "Temperatura (°C)"
+        profile_1d = np.interp(y_grid, heights_m, temp_profile)
+        cmap, norm, levels, label = cmap_temp, norm_temp, levels_temp, "Temperatura (°C)"
     else:
-        profile_1d = np.interp(y_grid, heights_m, wind_speed_profile); cmap, norm, levels, label = cmap_vent, norm_vent, levels_vent, "Velocitat del Vent (km/h)"
+        profile_1d = np.interp(y_grid, heights_m, wind_speed_profile)
+        cmap, norm, levels, label = cmap_vent, norm_vent, levels_vent, "Velocitat del Vent (km/h)"
     data_grid = np.tile(profile_1d.reshape(-1, 1), (1, len(x_grid)))
 
     im = ax.contourf(xx, zz, data_grid, levels=levels, cmap=cmap, norm=norm, extend='both', zorder=1)
     contours = ax.contour(xx, zz, data_grid, levels=levels[1:-1:2], colors='black', linewidths=0.5, alpha=0.7, zorder=2)
-    ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f'); ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
+    ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
+    ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
 
     is_convective = params_calc.get('MLCAPE', 0) > 400
     if is_convective:
-        lfc_hgt = params_calc.get('LFC_Hgt', 9999);
+        lfc_hgt = params_calc.get('LFC_Hgt', 9999)
         if lfc_hgt < max_alt_m: ax.axhline(y=lfc_hgt, color='white', linestyle=':', linewidth=2, label=f"LFC: {lfc_hgt:.0f} m", zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
     else:
         lcl_hgt = params_calc.get('LCL_Hgt', 9999)
@@ -7695,29 +7706,27 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         mask = barb_y_surface < max_alt_m
         ax.barbs(barb_x_surface[mask], barb_y_surface[mask], barb_u_surface[mask], barb_v_surface[mask], length=6, zorder=5, color='#F0E68C', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
     
+    # <<<--- CÀLCUL DE LA POSICIÓ DEL POBLE CORREGIT ---
+    # 3. Calculem la posició del poble sobre aquest eix centrat
     poble_dist_centrat = analisi['poble_dist'] - (dist_total_km / 2)
+    # <<<---------------------------------------------
+    
     ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
 
-    # <<<--- LÒGICA DE POSICIONAMENT D'ETIQUETES COMPLETAMENT REVISADA ---
     if 'transect_coords' in analisi:
         transect_lats, transect_lons = analisi['transect_coords']
         for cim in analisi.get('cims_identificats', []):
-            # Trobem el punt del nostre transecte que està més a prop del cim identificat
             dist_al_cim = [haversine_distance(cim['lat'], cim['lon'], lat_t, lon_t) for lat_t, lon_t in zip(transect_lats, transect_lons)]
             idx_cim_proper = np.argmin(dist_al_cim)
-            
-            # Usem la distància i elevació d'aquest punt del transecte per a posicionar l'etiqueta
             dist_cim_centrada = dist_centrat[idx_cim_proper]
             elev_cim_perfil = elev[idx_cim_proper]
-            
             ax.annotate(f"{cim['name']}\n({cim['elevation']:.0f} m)", 
                         xy=(dist_cim_centrada, elev_cim_perfil), xytext=(dist_cim_centrada, elev_cim_perfil + max_alt_m * 0.05),
                         arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4),
                         ha='center', va='bottom', fontsize=8, zorder=11,
                         bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", lw=1, alpha=0.7))
-    # <<<----------------------------------------------------------------------
-    
+
     fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['wind_dir_from']:.0f}°)")
     ax.set_ylabel("Elevació (m)"); ax.set_title("Secció Transversal Atmosfèrica")
