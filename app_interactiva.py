@@ -7740,9 +7740,11 @@ def _is_wind_onshore(wind_dir_from, sea_dir_range):
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 7.2 (Etiquetage Jeràrquic):
-    - Dibuixa SEMPRE el 'cim_principal' del diagnòstic amb un color destacat.
-    - Dibuixa la resta de 'altres_cims' notables amb un algoritme anti-solapament.
+    Versió 8.0 (Origen de Convecció i Etiquetatge Prioritari):
+    - AFEGEIX LÍNIA D'ORIGEN LCL/LFC: Dibuixa una línia vertical des del poble fins
+      al nivell de LCL/LFC per a visualitzar l'inici de l'ascens.
+    - ETIQUETATGE JERÀRQUIC MILLORAT: Garanteix que el 'Cim de Referència' del
+      diagnòstic sempre s'etiqueti amb un color distintiu.
     """
     plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
     fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#E6F2FF')
@@ -7775,57 +7777,60 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
 
     if np.min(elev) <= 5: x_wave = np.linspace(dist_centrat.min(), dist_centrat.max(), 200); y_wave = np.sin(x_wave * 0.5) * 5 + 5; ax.fill_between(x_wave, -100, y_wave, where=y_wave > 0, color='#6495ED', alpha=0.6, zorder=2)
 
-    is_convective = params_calc.get('MLCAPE', 0) > 400
-    if is_convective: lfc_hgt = params_calc.get('LFC_Hgt', 9999);
-    else: lcl_hgt = params_calc.get('LCL_Hgt', 9999)
-    if is_convective and lfc_hgt < max_alt_m: ax.axhline(y=lfc_hgt, color='white', linestyle=':', linewidth=2, label=f"LFC: {lfc_hgt:.0f} m", zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
-    elif not is_convective and lcl_hgt < max_alt_m: ax.axhline(y=lcl_hgt, color='white', linestyle=':', linewidth=2, label=f"LCL: {lcl_hgt:.0f} m", zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
-
-    if 'sondeig_perfil_complet' in analisi and analisi['sondeig_perfil_complet']:
-        barb_x_upper = np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7); barb_y_upper = np.arange(1000, max_alt_m, 500)
-        barb_xx, barb_zz = np.meshgrid(barb_x_upper, barb_y_upper)
-        barb_u = np.interp(barb_zz.flatten(), heights_m, u_ms) * 1.94384; barb_v = np.interp(barb_zz.flatten(), heights_m, v_ms) * 1.94384
-        ax.barbs(barb_xx.flatten(), barb_zz.flatten(), barb_u, barb_v, length=6, zorder=5, color='white', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
-        barb_x_surface = np.linspace(dist_centrat.min() + 2, dist_centrat.max() - 2, 10)
-        surface_elev_at_barbs = np.interp(barb_x_surface, dist_centrat, elev); barb_y_surface = np.maximum(surface_elev_at_barbs, 0) + 100
-        barb_u_surface = np.interp(barb_y_surface, heights_m, u_ms) * 1.94384; barb_v_surface = np.interp(barb_y_surface, heights_m, v_ms) * 1.94384
-        mask = barb_y_surface < max_alt_m; calm_mask = (np.sqrt(barb_u_surface**2 + barb_v_surface**2) < 2) & mask
-        ax.barbs(barb_x_surface[mask & ~calm_mask], barb_y_surface[mask & ~calm_mask], barb_u_surface[mask & ~calm_mask], barb_v_surface[mask & ~calm_mask], length=6, zorder=5, color='#F0E68C', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
-        ax.plot(barb_x_surface[calm_mask], barb_y_surface[calm_mask], 'o', markersize=5, color='#F0E68C', markeredgecolor='black', zorder=5)
-    
     poble_dist_centrat = analisi['poble_dist'] - (dist_total_km / 2)
+    
+    # --- LÒGICA D'ETIQUETAT LCL/LFC AMB LÍNIA VERTICAL ---
+    is_convective = params_calc.get('MLCAPE', 0) > 400
+    if is_convective:
+        lfc_hgt = params_calc.get('LFC_Hgt', 9999);
+        if lfc_hgt < max_alt_m: 
+            ax.axhline(y=lfc_hgt, color='white', linestyle=':', linewidth=2, label=f"LFC: {lfc_hgt:.0f} m", zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
+            # Línia vertical des del poble fins al LFC
+            ax.plot([poble_dist_centrat, poble_dist_centrat], [analisi['poble_elev'], lfc_hgt], color='red', linestyle='--', linewidth=1.5, zorder=7)
+            # Etiqueta per a la línia vertical
+            ax.text(poble_dist_centrat + 1.5, (analisi['poble_elev'] + lfc_hgt) / 2, 'Inici LFC', rotation=90, va='center', ha='left', fontsize=8, color='black', bbox=dict(facecolor='red', alpha=0.5, boxstyle='round,pad=0.2'), zorder=8)
+    else:
+        lcl_hgt = params_calc.get('LCL_Hgt', 9999)
+        if lcl_hgt < max_alt_m: 
+            ax.axhline(y=lcl_hgt, color='white', linestyle=':', linewidth=2, label=f"LCL: {lcl_hgt:.0f} m", zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
+            # Línia vertical des del poble fins al LCL
+            ax.plot([poble_dist_centrat, poble_dist_centrat], [analisi['poble_elev'], lcl_hgt], color='green', linestyle='--', linewidth=1.5, zorder=7)
+            # Etiqueta per a la línia vertical
+            ax.text(poble_dist_centrat + 1.5, (analisi['poble_elev'] + lcl_hgt) / 2, 'Inici LCL', rotation=90, va='center', ha='left', fontsize=8, color='black', bbox=dict(facecolor='green', alpha=0.5, boxstyle='round,pad=0.2'), zorder=8)
+    
+    # ... (La lògica de barbes es manté igual) ...
+    barb_x_upper = np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7); barb_y_upper = np.arange(1000, max_alt_m, 500)
+    barb_xx, barb_zz = np.meshgrid(barb_x_upper, barb_y_upper); barb_u = np.interp(barb_zz.flatten(), heights_m, u_ms) * 1.94384; barb_v = np.interp(barb_zz.flatten(), heights_m, v_ms) * 1.94384
+    ax.barbs(barb_xx.flatten(), barb_zz.flatten(), barb_u, barb_v, length=6, zorder=5, color='white', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+    barb_x_surface = np.linspace(dist_centrat.min() + 2, dist_centrat.max() - 2, 10); surface_elev_at_barbs = np.interp(barb_x_surface, dist_centrat, elev); barb_y_surface = np.maximum(surface_elev_at_barbs, 0) + 100
+    barb_u_surface = np.interp(barb_y_surface, heights_m, u_ms) * 1.94384; barb_v_surface = np.interp(barb_y_surface, heights_m, v_ms) * 1.94384
+    mask = barb_y_surface < max_alt_m; calm_mask = (np.sqrt(barb_u_surface**2 + barb_v_surface**2) < 2) & mask
+    ax.barbs(barb_x_surface[mask & ~calm_mask], barb_y_surface[mask & ~calm_mask], barb_u_surface[mask & ~calm_mask], barb_v_surface[mask & ~calm_mask], length=6, zorder=5, color='#F0E68C', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+    ax.plot(barb_x_surface[calm_mask], barb_y_surface[calm_mask], 'o', markersize=5, color='#F0E68C', markeredgecolor='black', zorder=5)
+    
     ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
 
-    # --- NOU BLOC D'ETIQUETAT JERÀRQUIC ---
+    # --- LÒGICA D'ETIQUETAT JERÀRQUIC (es manté igual) ---
     if 'transect_coords' in analisi:
-        transect_lats, transect_lons = analisi['transect_coords']
-        etiquetes_dibuixades_x = []
-        MIN_SEPARACIO_HORITZONTAL = 8.0
-
-        # 1. Dibuixar el Cim Principal (diagnòstic) sempre
+        transect_lats, transect_lons = analisi['transect_coords']; etiquetes_dibuixades_x = []; MIN_SEPARACIO_HORITZONTAL = 8.0
         cim_principal = analisi.get("cim_principal")
         if cim_principal:
-            dist_al_cim_p = [haversine_distance(cim_principal['lat'], cim_principal['lon'], lat_t, lon_t) for lat_t, lon_t in zip(transect_lats, transect_lons)]
-            idx_cim_proper_p = np.argmin(dist_al_cim_p)
+            dist_al_cim_p = [haversine_distance(cim_principal['lat'], cim_principal['lon'], lat_t, lon_t) for lat_t, lon_t in zip(transect_lats, transect_lons)]; idx_cim_proper_p = np.argmin(dist_al_cim_p)
             x_pos_p = dist_centrat[idx_cim_proper_p]
-            ax.annotate(f"{cim_principal['name']}\n({cim_principal['ele']:.0f} m)", 
-                        xy=(x_pos_p, cim_principal['ele']), xytext=(x_pos_p, cim_principal['ele'] + max_alt_m * 0.08),
+            ax.annotate(f"{cim_principal['name']}\n({cim_principal['ele']:.0f} m)", xy=(x_pos_p, cim_principal['ele']), xytext=(x_pos_p, cim_principal['ele'] + max_alt_m * 0.08),
                         arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4), ha='center', va='bottom', fontsize=8, zorder=12,
-                        bbox=dict(boxstyle="round,pad=0.3", fc="lightcoral", ec="black", lw=1, alpha=0.8)) # Color diferent
+                        bbox=dict(boxstyle="round,pad=0.3", fc="lightcoral", ec="black", lw=1, alpha=0.8))
             etiquetes_dibuixades_x.append(x_pos_p)
         
-        # 2. Dibuixar la resta de cims amb anti-solapament
         altres_cims_ordenats = sorted(analisi.get('altres_cims', []), key=lambda c: c['ele'], reverse=True)
         for cim in altres_cims_ordenats:
-            dist_al_cim = [haversine_distance(cim['lat'], cim['lon'], lat_t, lon_t) for lat_t, lon_t in zip(transect_lats, transect_lons)]
-            idx_cim_proper = np.argmin(dist_al_cim)
+            if cim_principal and cim['name'] == cim_principal['name']: continue
+            dist_al_cim = [haversine_distance(cim['lat'], cim['lon'], lat_t, lon_t) for lat_t, lon_t in zip(transect_lats, transect_lons)]; idx_cim_proper = np.argmin(dist_al_cim)
             x_pos = dist_centrat[idx_cim_proper]
-            
             es_pot_dibuixar = all(abs(x_pos - x_pos_prev) > MIN_SEPARACIO_HORITZONTAL for x_pos_prev in etiquetes_dibuixades_x)
             if es_pot_dibuixar:
-                ax.annotate(f"{cim['name']}\n({cim['ele']:.0f} m)", 
-                            xy=(x_pos, cim['ele']), xytext=(x_pos, cim['ele'] + max_alt_m * 0.08),
+                ax.annotate(f"{cim['name']}\n({cim['ele']:.0f} m)", xy=(x_pos, cim['ele']), xytext=(x_pos, cim['ele'] + max_alt_m * 0.08),
                             arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4), ha='center', va='bottom', fontsize=8, zorder=11,
                             bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", lw=1, alpha=0.8))
                 etiquetes_dibuixades_x.append(x_pos)
