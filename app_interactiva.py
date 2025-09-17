@@ -202,8 +202,9 @@ PICS_CATALUNYA_PER_COMARCA = {
     "Empordà (comarques variants)": [
         {'name': "Altres elevacions de la Serralada de l'Albera", 'lat': 42.36, 'lon': 3.03, 'ele': 1200},
     ],
-    
+    # Si falta alguna comarca concreta d'aquest llistat, puc afegir-la amb les cims corresponents.
 }
+
 
 
 
