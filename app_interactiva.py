@@ -6790,9 +6790,7 @@ def ui_explicacio_adveccio():
 
 
 
-# -*- coding: utf-8 -*-
-
-@st.cache_data(ttl=2592000, show_spinner="Identificant cims orogràfics...") # Cache de 30 dies
+@st.cache_data(ttl=2592000, show_spinner="Identificant cims orogràfics...")
 def get_peak_names(points_to_check: List[Dict[str, float]]) -> List[Dict[str, any]]:
     """
     Consulta l'API de GeoNames per a obtenir el nom dels cims més propers
@@ -6801,7 +6799,8 @@ def get_peak_names(points_to_check: List[Dict[str, float]]) -> List[Dict[str, an
     try:
         username = st.secrets["GEONAMES_USERNAME"]
     except KeyError:
-        # No mostrem error, simplement no afegim noms de cims
+        # Aquest missatge apareixerà a la teva consola si falta la clau
+        print("ALERTA: La clau 'GEONAMES_USERNAME' no està configurada als secrets de Streamlit. No es podran identificar els cims.")
         return []
 
     peak_names = []
@@ -6814,7 +6813,6 @@ def get_peak_names(points_to_check: List[Dict[str, float]]) -> List[Dict[str, an
             data = response.json()
             if 'geonames' in data and data['geonames']:
                 peak = data['geonames'][0]
-                # Evitem afegir duplicats si estan molt a prop
                 is_duplicate = any(p['name'] == peak.get('title') for p in peak_names)
                 if not is_duplicate:
                     peak_names.append({
@@ -6824,7 +6822,6 @@ def get_peak_names(points_to_check: List[Dict[str, float]]) -> List[Dict[str, an
                         "elevation": float(peak.get('elevation', 0))
                     })
         except Exception:
-            # Si una petició falla, continuem amb les altres
             continue
             
     return peak_names
@@ -7450,7 +7447,7 @@ def run_catalunya_app():
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     """
     Mostra la interfície per a la pestanya d'Anàlisi d'Interacció Vent-Orografia.
-    (Versió final amb rang d'altura del slider ampliat fins a 100m)
+    (Versió final amb feedback a l'usuari si no es troben cims)
     """
     st.markdown(f"#### Anàlisi d'Interacció Vent-Orografia per a {poble_sel}")
     st.caption(timestamp_str)
@@ -7462,31 +7459,13 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
         st.error(f"No s'ha pogut realitzar l'anàlisi: {analisi_orografica['error']}")
         return
         
-    # --- PANELL DE CONTROLS DE VISUALITZACIÓ ---
     with st.container(border=True):
         col_layer, col_height = st.columns(2)
         with col_layer:
-            layer_sel = st.selectbox("Capa de dades a visualitzar:", 
-                                     options=["Vent", "Humitat", "Temperatura"], 
-                                     key="orog_layer_selector")
+            layer_sel = st.selectbox("Capa de dades a visualitzar:", options=["Vent", "Humitat", "Temperatura"], key="orog_layer_selector")
         with col_height:
-            if layer_sel == "Humitat" or layer_sel == "Temperatura":
-                if data_tuple and len(data_tuple) > 0 and len(data_tuple[0]) >= 3:
-                    p, T, Td = data_tuple[0][0], data_tuple[0][1], data_tuple[0][2]
-                    rh_profile = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
-                    params_calc['RH_PROFILE'] = rh_profile.m
-                    params_calc['TEMP_PROFILE'] = T.m
-                else:
-                    params_calc['RH_PROFILE'] = []
-                    params_calc['TEMP_PROFILE'] = []
+            max_alt_sel = st.slider("Altura màxima del perfil (m):", min_value=100, max_value=12000, value=4000, step=100, key="orog_height_slider")
 
-            # <<<--- CANVI CLAU AQUÍ: HEM MODIFICAT ELS PARÀMETRES DEL SLIDER ---
-            max_alt_sel = st.slider("Altura màxima del perfil (m):", 
-                                    min_value=100, max_value=12000, value=4000, step=100, 
-                                    key="orog_height_slider")
-            # <<<----------------------------------------------------------------
-
-    # --- VISUALITZACIÓ PRINCIPAL ---
     col1, col2 = st.columns([0.65, 0.35], gap="large")
     with col1:
         st.markdown("##### Perfil del Terreny i Flux Atmosfèric")
@@ -7513,15 +7492,17 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
         </div>
         """, unsafe_allow_html=True)
         
+        # <<<--- FEEDBACK A L'USUARI SI NO ES TROBEN CIMS ---
+        if not analisi_orografica.get("cims_identificats"):
+            st.info("No s'han pogut identificar cims orogràfics notables en aquest transecte.", icon="🏔️")
+        # <<<------------------------------------------------
+        
         st.markdown("---")
         st.markdown("###### Detalls del Flux:")
         st.metric("Direcció del Vent Dominant", f"{analisi_orografica['wind_dir_from']:.0f}° ({graus_a_direccio_cardinal(analisi_orografica['wind_dir_from'])})")
         st.metric("Velocitat del Vent Dominant", f"{analisi_orografica['wind_spd_kmh']:.0f} km/h")
         st.caption("Vent a 850 hPa o superfície (si és alta muntanya).")
-
-
-
-# -*- coding: utf-8 -*-
+        
 
 @st.cache_data(ttl=86400, show_spinner="Obtenint perfil del terreny...")
 def get_elevation_profile(lat_start, lon_start, bearing_deg, distance_km=80, num_points=100):
@@ -7562,12 +7543,9 @@ def punt_desti(lat, lon, bearing, distance_km):
 
 def analitzar_orografia(poble_sel, data_tuple):
     """
-    Algoritme v4.0 d'anàlisi orogràfica (Conscient de la Costa).
-    - DETECTA LOCALITATS COSTANERES I FLUX MARÍ: Utilitza 'sea_dir' per a identificar el vent de mar.
-    - TRANSECTE INTEL·LIGENT: Si el flux és de mar, desplaça el transecte cap a l'interior
-      per a capturar correctament la interacció del vent amb la serralada litoral.
-    - MANTÉ LA LÒGICA ORIGINAL per a localitats d'interior o amb vent de terra.
-    - Recalcula la posició del poble sobre el transecte desplaçat.
+    Algoritme v4.1 d'anàlisi orogràfica.
+    - PARÀMETRES DE DETECCIÓ DE PICS AJUSTATS per a ser més sensible.
+    - Passa les coordenades completes del transecte per a un posicionament precís de les etiquetes.
     """
     if not data_tuple: return {"error": "Falten dades del sondeig."}
     sounding_data, params_calc = data_tuple
@@ -7592,37 +7570,30 @@ def analitzar_orografia(poble_sel, data_tuple):
 
     poble_coords = CIUTATS_CATALUNYA[poble_sel]
     poble_data = CIUTATS_CATALUNYA.get(poble_sel, {})
-    
-    # --- LÒGICA DE TRANSECTE INTEL·LIGENT ---
     is_onshore = _is_wind_onshore(wind_dir_from, poble_data.get('sea_dir'))
-    
     lat_centre, lon_centre = poble_coords['lat'], poble_coords['lon']
     dist_total_km = 80
     
     if is_onshore:
-        # Desplacem el centre del transecte 25 km cap a l'interior
         inland_bearing = (wind_dir_from + 180) % 360 
         lat_centre, lon_centre = punt_desti(lat_centre, lon_centre, inland_bearing, 25)
 
-    # El punt d'inici sempre es calcula a sobrevent del centre del transecte
     start_point_bearing = (wind_dir_from + 180) % 360
     lat_inici, lon_inici = punt_desti(lat_centre, lon_centre, start_point_bearing, dist_total_km / 2)
 
-    profile_data, error = get_elevation_profile(lat_inici, lon_inici, wind_dir_from, dist_total_km, 100)
+    profile_data, error = get_elevation_profile(lat_inici, lon_inici, dist_total_km, 100)
     if error: return {"error": error}
 
     elevations = np.array(profile_data['elevations']); distances = np.array(profile_data['distances'])
-    
-    # Recalculem la posició del poble sobre el nou transecte
     dist_al_poble = [haversine_distance(poble_coords['lat'], poble_coords['lon'], lat, lon) for lat, lon in zip(profile_data['lats'], profile_data['lons'])]
-    idx_poble = np.argmin(dist_al_poble)
-    elev_poble = elevations[idx_poble]
+    idx_poble = np.argmin(dist_al_poble); elev_poble = elevations[idx_poble]
     
     perfil_sobrevent = elevations[:idx_poble+1]
     idx_cim = np.argmax(perfil_sobrevent) if len(perfil_sobrevent) > 0 else idx_poble
     elev_cim = elevations[idx_cim]; dist_cim = distances[idx_cim]
 
-    indices_pics, _ = find_peaks(elevations, height=500, distance=10)
+    # <<<--- PARÀMETRES DE find_peaks AJUSTATS PER A SER MÉS SENSIBLE ---
+    indices_pics, _ = find_peaks(elevations, height=300, distance=8)
     punts_a_consultar = [{'lat': profile_data['lats'][i], 'lon': profile_data['lons'][i]} for i in indices_pics]
     noms_cims = get_peak_names(punts_a_consultar)
 
@@ -7636,11 +7607,13 @@ def analitzar_orografia(poble_sel, data_tuple):
 
     return {
         "transect_distances": distances, "transect_elevations": elevations, "poble_sel": poble_sel,
-        "poble_dist": distances[idx_poble], "poble_elev": elev_poble, # La distància del poble ja no és sempre 40
+        "poble_dist": distances[idx_poble], "poble_elev": elev_poble,
         "wind_dir_from": wind_dir_from, "wind_spd_kmh": wind_spd_kmh,
         "posicio": posicio, "diagnostico": diagnostico, "detalls": detalls,
         "cims_identificats": noms_cims,
-        "sondeig_perfil_complet": (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile)
+        "sondeig_perfil_complet": (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile),
+        # Passem les coordenades del transecte per al posicionament
+        "transect_coords": (profile_data['lats'], profile_data['lons'])
     }
 
 
@@ -7664,21 +7637,18 @@ def _is_wind_onshore(wind_dir_from, sea_dir_range):
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 5.1 (Correcció de NameError):
-    - CORREGIT: Defineix correctament la variable 'dist_total_km' a l'inici de la funció
-      per a evitar el NameError en calcular la posició del poble.
+    Versió 5.2:
+    - LÒGICA DE POSICIONAMENT DE CIMS MILLORADA: Troba el punt exacte del
+      transecte més proper a la coordenada del cim per a una precisió màxima.
     """
     plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
     fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#E6F2FF')
     
-    # <<<--- LÍNIA CLAU AFEGIDA PER CORREGIR EL NAMEERROR ---
     dist_total_km = analisi['transect_distances'][-1]
-    # <<<---------------------------------------------------
-    
     dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
     elev = analisi['transect_elevations']
     
-    # ... (La resta de la funció es manté exactament igual) ...
+    # ... (La resta de la funció fins a la secció de marcadors es manté igual) ...
     colors_humitat = ['#f0e68c', '#90ee90', '#4682b4', '#191970']; levels_humitat = [0, 30, 60, 80, 101]
     cmap_humitat = ListedColormap(colors_humitat); norm_humitat = BoundaryNorm(levels_humitat, ncolors=cmap_humitat.N, clip=True)
     colors_vent = ['#d3d3d3', '#add8e6', '#48d1cc', '#90ee90', '#32cd32', '#6b8e23', '#f0e68c', '#d2b48c', '#bc8f8f', '#ffb6c1', '#da70d6', '#9932cc', '#8a2be2', '#48d1cc', '#6495ed']
@@ -7693,68 +7663,67 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     xx, zz = np.meshgrid(x_grid, y_grid)
     
     if layer_to_show == "Humitat":
-        profile_1d = np.interp(y_grid, heights_m, rh_profile)
-        cmap, norm, levels, label = cmap_humitat, norm_humitat, levels_humitat, "Humitat Relativa (%)"
+        profile_1d = np.interp(y_grid, heights_m, rh_profile); cmap, norm, levels, label = cmap_humitat, norm_humitat, levels_humitat, "Humitat Relativa (%)"
     elif layer_to_show == "Temperatura":
-        profile_1d = np.interp(y_grid, heights_m, temp_profile)
-        cmap, norm, levels, label = cmap_temp, norm_temp, levels_temp, "Temperatura (°C)"
+        profile_1d = np.interp(y_grid, heights_m, temp_profile); cmap, norm, levels, label = cmap_temp, norm_temp, levels_temp, "Temperatura (°C)"
     else:
-        profile_1d = np.interp(y_grid, heights_m, wind_speed_profile)
-        cmap, norm, levels, label = cmap_vent, norm_vent, levels_vent, "Velocitat del Vent (km/h)"
+        profile_1d = np.interp(y_grid, heights_m, wind_speed_profile); cmap, norm, levels, label = cmap_vent, norm_vent, levels_vent, "Velocitat del Vent (km/h)"
     data_grid = np.tile(profile_1d.reshape(-1, 1), (1, len(x_grid)))
 
     im = ax.contourf(xx, zz, data_grid, levels=levels, cmap=cmap, norm=norm, extend='both', zorder=1)
     contours = ax.contour(xx, zz, data_grid, levels=levels[1:-1:2], colors='black', linewidths=0.5, alpha=0.7, zorder=2)
-    ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
-    ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
+    ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f'); ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
 
     is_convective = params_calc.get('MLCAPE', 0) > 400
     if is_convective:
-        lfc_hgt = params_calc.get('LFC_Hgt', 9999)
+        lfc_hgt = params_calc.get('LFC_Hgt', 9999);
         if lfc_hgt < max_alt_m: ax.axhline(y=lfc_hgt, color='white', linestyle=':', linewidth=2, label=f"LFC: {lfc_hgt:.0f} m", zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
     else:
         lcl_hgt = params_calc.get('LCL_Hgt', 9999)
         if lcl_hgt < max_alt_m: ax.axhline(y=lcl_hgt, color='white', linestyle=':', linewidth=2, label=f"LCL: {lcl_hgt:.0f} m", zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
 
     if 'sondeig_perfil_complet' in analisi and analisi['sondeig_perfil_complet']:
-        barb_x_upper = np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7)
-        barb_y_upper = np.arange(1000, max_alt_m, 500)
+        barb_x_upper = np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7); barb_y_upper = np.arange(1000, max_alt_m, 500)
         barb_xx, barb_zz = np.meshgrid(barb_x_upper, barb_y_upper)
-        barb_u = np.interp(barb_zz.flatten(), heights_m, u_ms) * 1.94384
-        barb_v = np.interp(barb_zz.flatten(), heights_m, v_ms) * 1.94384
+        barb_u = np.interp(barb_zz.flatten(), heights_m, u_ms) * 1.94384; barb_v = np.interp(barb_zz.flatten(), heights_m, v_ms) * 1.94384
         ax.barbs(barb_xx.flatten(), barb_zz.flatten(), barb_u, barb_v, length=6, zorder=5, color='white', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
         
         barb_x_surface = np.linspace(dist_centrat.min() + 2, dist_centrat.max() - 2, 10)
         surface_elev_at_barbs = np.interp(barb_x_surface, dist_centrat, elev)
         barb_y_surface = surface_elev_at_barbs + 100
-        barb_u_surface = np.interp(barb_y_surface, heights_m, u_ms) * 1.94384
-        barb_v_surface = np.interp(barb_y_surface, heights_m, v_ms) * 1.94384
+        barb_u_surface = np.interp(barb_y_surface, heights_m, u_ms) * 1.94384; barb_v_surface = np.interp(barb_y_surface, heights_m, v_ms) * 1.94384
         mask = barb_y_surface < max_alt_m
-        ax.barbs(barb_x_surface[mask], barb_y_surface[mask], barb_u_surface[mask], barb_v_surface[mask],
-                 length=6, zorder=5, color='#F0E68C',
-                 path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+        ax.barbs(barb_x_surface[mask], barb_y_surface[mask], barb_u_surface[mask], barb_v_surface[mask], length=6, zorder=5, color='#F0E68C', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
     
-    # Aquesta línia ara funcionarà correctament
     poble_dist_centrat = analisi['poble_dist'] - (dist_total_km / 2)
     ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
 
-    for cim in analisi.get('cims_identificats', []):
-        dist_cim_aprox = (haversine_distance(analisi['lats'][0], analisi['lons'][0], cim['lat'], cim['lon']) - 40)
-        ax.annotate(f"{cim['name']}\n({cim['elevation']:.0f} m)", 
-                    xy=(dist_cim_aprox, cim['elevation']), xytext=(dist_cim_aprox, cim['elevation'] + max_alt_m * 0.05),
-                    arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4),
-                    ha='center', va='bottom', fontsize=8, zorder=11,
-                    bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", lw=1, alpha=0.7))
-
+    # <<<--- LÒGICA DE POSICIONAMENT D'ETIQUETES COMPLETAMENT REVISADA ---
+    if 'transect_coords' in analisi:
+        transect_lats, transect_lons = analisi['transect_coords']
+        for cim in analisi.get('cims_identificats', []):
+            # Trobem el punt del nostre transecte que està més a prop del cim identificat
+            dist_al_cim = [haversine_distance(cim['lat'], cim['lon'], lat_t, lon_t) for lat_t, lon_t in zip(transect_lats, transect_lons)]
+            idx_cim_proper = np.argmin(dist_al_cim)
+            
+            # Usem la distància i elevació d'aquest punt del transecte per a posicionar l'etiqueta
+            dist_cim_centrada = dist_centrat[idx_cim_proper]
+            elev_cim_perfil = elev[idx_cim_proper]
+            
+            ax.annotate(f"{cim['name']}\n({cim['elevation']:.0f} m)", 
+                        xy=(dist_cim_centrada, elev_cim_perfil), xytext=(dist_cim_centrada, elev_cim_perfil + max_alt_m * 0.05),
+                        arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4),
+                        ha='center', va='bottom', fontsize=8, zorder=11,
+                        bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", lw=1, alpha=0.7))
+    # <<<----------------------------------------------------------------------
+    
     fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['wind_dir_from']:.0f}°)")
-    ax.set_ylabel("Elevació (m)")
-    ax.set_title("Secció Transversal Atmosfèrica")
+    ax.set_ylabel("Elevació (m)"); ax.set_title("Secció Transversal Atmosfèrica")
     ax.grid(True, linestyle=':', alpha=0.5, color='black', zorder=0)
     ax.legend(loc='upper left', fontsize=8)
     ax.set_ylim(bottom=0, top=max_alt_m); ax.set_xlim(dist_centrat.min(), dist_centrat.max())
-    
     ax.invert_xaxis()
     plt.tight_layout(); return fig
 
