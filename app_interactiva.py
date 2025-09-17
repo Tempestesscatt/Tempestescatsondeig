@@ -7447,12 +7447,10 @@ def run_catalunya_app():
 
 
 
-# -*- coding: utf-8 -*-
-
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     """
     Mostra la interfície per a la pestanya d'Anàlisi d'Interacció Vent-Orografia.
-    (VERSIÓ FINAL CORREGIDA: Passa tots els arguments requerits a la funció de gràfic)
+    (Versió final que crida al nou motor de gràfics)
     """
     st.markdown(f"#### Anàlisi d'Interacció Vent-Orografia per a {poble_sel}")
     st.caption(timestamp_str)
@@ -7465,7 +7463,6 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
         return
         
     # --- PANELL DE CONTROLS DE VISUALITZACIÓ ---
-    # Aquest bloc recull les opcions de l'usuari que necessitem passar al gràfic
     with st.container(border=True):
         col_layer, col_height = st.columns(2)
         with col_layer:
@@ -7473,19 +7470,6 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
                                      options=["Vent", "Humitat", "Temperatura"], 
                                      key="orog_layer_selector")
         with col_height:
-            # Preparem els perfils de T i RH per a la capa addicional si es seleccionen
-            if layer_sel == "Humitat" or layer_sel == "Temperatura":
-                # Assegurem que les dades existeixen abans d'intentar accedir-hi
-                if data_tuple and len(data_tuple) > 0 and len(data_tuple[0]) >= 3:
-                    p, T, Td = data_tuple[0][0], data_tuple[0][1], data_tuple[0][2]
-                    rh_profile = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
-                    params_calc['RH_PROFILE'] = rh_profile.m
-                    params_calc['TEMP_PROFILE'] = T.m
-                else:
-                    # Si no hi ha dades, assignem perfils buits per evitar errors
-                    params_calc['RH_PROFILE'] = []
-                    params_calc['TEMP_PROFILE'] = []
-
             max_alt_sel = st.slider("Altura màxima del perfil (m):", 
                                     min_value=2000, max_value=12000, value=4000, step=500, 
                                     key="orog_height_slider")
@@ -7495,12 +7479,6 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     with col1:
         st.markdown("##### Perfil del Terreny i Flux Atmosfèric")
         if "transect_distances" in analisi_orografica:
-            # <<<--- AQUESTA ÉS LA CRIDA CORREGIDA ---
-            # Ara passem els 4 arguments que la funció 'crear_grafic_perfil_orografic' espera:
-            # 1. analisi_orografica
-            # 2. params_calc
-            # 3. layer_sel (abans anomenada erròniament layer_to_show)
-            # 4. max_alt_sel
             fig = crear_grafic_perfil_orografic(analisi_orografica, params_calc, layer_sel, max_alt_sel)
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
@@ -7513,7 +7491,7 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
         
         if posicio == "Sobrevent": color, emoji = "#28a745", "🔼"
         elif posicio == "Sotavent": color, emoji = "#fd7e14", "🔽"
-        else: color, emoji = "#6c7s7d", "↔️"
+        else: color, emoji = "#6c757d", "↔️"
             
         st.markdown(f"""
         <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border-left: 5px solid {color}; margin-bottom: 15px;">
@@ -7528,7 +7506,6 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
         st.metric("Direcció del Vent Dominant", f"{analisi_orografica['wind_dir_from']:.0f}° ({graus_a_direccio_cardinal(analisi_orografica['wind_dir_from'])})")
         st.metric("Velocitat del Vent Dominant", f"{analisi_orografica['wind_spd_kmh']:.0f} km/h")
         st.caption("Vent a 850 hPa o superfície (si és alta muntanya).")
-
 
 
 
@@ -7571,17 +7548,15 @@ def punt_desti(lat, lon, bearing, distance_km):
     return degrees(lat2), degrees(lon2)
 
 
-# -*- coding: utf-8 -*-
-
 def analitzar_orografia(poble_sel, data_tuple):
     """
-    Algoritme v2.1 d'anàlisi orogràfica.
-    - CORREGIT: Assegura que la clau 'sondeig_perfil_vent' SEMPRE es retorna,
-      fins i tot en condicions de vent feble, per a evitar KeyErrors.
+    Algoritme v3.0 d'anàlisi orogràfica.
+    - Extreu els perfils verticals complets de T, RH i Velocitat del Vent per a la visualització.
+    - Crida a l'API per a identificar els noms dels cims.
     """
     if not data_tuple: return {"error": "Falten dades del sondeig."}
     sounding_data, params_calc = data_tuple
-    p, u, v, heights = sounding_data[0], sounding_data[3], sounding_data[4], sounding_data[5]
+    p, T, Td, u, v, heights = sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4], sounding_data[5]
 
     try:
         u_dom, v_dom = (u[0], v[0]) if p.m.min() > 850 else (np.interp(850, p.m[::-1], u.m[::-1]) * units('m/s'), np.interp(850, p.m[::-1], v.m[::-1]) * units('m/s'))
@@ -7589,16 +7564,16 @@ def analitzar_orografia(poble_sel, data_tuple):
         wind_spd_kmh = mpcalc.wind_speed(u_dom, v_dom).to('km/h').m
     except Exception: return {"error": "No s'ha pogut determinar el vent dominant."}
         
-    # <<<--- CANVI CLAU AQUÍ ---
+    # Preparem els perfils verticals per al gràfic
+    rh_profile = (mpcalc.relative_humidity_from_dewpoint(T, Td) * 100).m
+    wind_speed_profile = mpcalc.wind_speed(u, v).to('km/h').m
+    temp_profile = T.m
+    
     if wind_spd_kmh < 10: 
         return {
-            "diagnostico": "Vent Feble / Variable", 
-            "detalls": "El vent és massa feble per a generar efectes orogràfics significatius.", 
-            "posicio": "Indeterminat", 
-            "wind_dir_from": wind_dir_from, 
-            "wind_spd_kmh": wind_spd_kmh,
-            # Afegim la clau que faltava per a consistència de dades
-            "sondeig_perfil_vent": (heights.m, u.m, v.m)
+            "diagnostico": "Vent Feble / Variable", "detalls": "El vent és massa feble per a generar efectes orogràfics significatius.", "posicio": "Indeterminat",
+            "wind_dir_from": wind_dir_from, "wind_spd_kmh": wind_spd_kmh,
+            "sondeig_perfil_complet": (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile)
         }
 
     poble_coords = CIUTATS_CATALUNYA[poble_sel]
@@ -7630,77 +7605,97 @@ def analitzar_orografia(poble_sel, data_tuple):
     return {
         "transect_distances": distances, "transect_elevations": elevations, "poble_sel": poble_sel,
         "poble_dist": distances[idx_poble], "poble_elev": elev_poble,
-        "cim_dist": dist_cim, "cim_elev": elev_cim,
         "wind_dir_from": wind_dir_from, "wind_spd_kmh": wind_spd_kmh,
         "posicio": posicio, "diagnostico": diagnostico, "detalls": detalls,
         "cims_identificats": noms_cims,
-        "sondeig_perfil_vent": (heights.m, u.m, v.m)
+        "sondeig_perfil_complet": (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile)
     }
-
 
 
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m):
     """
-    Crea un gràfic de Matplotlib que mostra el perfil del terreny i el flux de vent.
-    Versió 2.1:
-    - CORREGIT: Afegeix una comprovació de seguretat per a 'sondeig_perfil_vent'
-      abans de dibuixar les barbes de vent per a evitar KeyErrors.
+    Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
+    Versió 3.0:
+    - Dibuixa un camp de contorn (contourf) per a la variable seleccionada.
+    - El terreny actua com una màscara sòlida.
+    - Inclou barbes de vent, línies LCL/LFC i etiquetes de cims.
     """
-    plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 5), dpi=120)
-    fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#F0F8FF')
+    plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
+    fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#E6F2FF') # Blau cel molt clar
+    
     dist_centrat = analisi['transect_distances'] - 40
     elev = analisi['transect_elevations']
-    ax.fill_between(dist_centrat, 0, elev, color='#C2B280', alpha=0.8, zorder=2)
-    ax.plot(dist_centrat, elev, color='#8B4513', linewidth=1.5, zorder=3)
     
+    # --- 1. Preparació de la Graella 2D i Dades Atmosfèriques ---
+    heights_m, u_ms, v_ms, rh_profile, temp_profile, wind_speed_profile = analisi['sondeig_perfil_complet']
+    
+    x_grid = dist_centrat
+    y_grid = np.linspace(0, max_alt_m, 100)
+    xx, zz = np.meshgrid(x_grid, y_grid)
+    
+    if layer_to_show == "Humitat":
+        profile_1d = np.interp(y_grid, heights_m, rh_profile)
+        cmap = plt.get_cmap('BrBG'); levels = np.arange(0, 101, 5); label = "Humitat Relativa (%)"
+    elif layer_to_show == "Temperatura":
+        profile_1d = np.interp(y_grid, heights_m, temp_profile)
+        cmap = plt.get_cmap('coolwarm'); levels = np.arange(-30, 31, 2); label = "Temperatura (°C)"
+    else: # Vent
+        profile_1d = np.interp(y_grid, heights_m, wind_speed_profile)
+        cmap = plt.get_cmap('plasma'); levels = np.arange(0, 151, 10); label = "Velocitat del Vent (km/h)"
+        
+    data_grid = np.tile(profile_1d.reshape(-1, 1), (1, len(x_grid)))
+    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+    # --- 2. Dibuix de les Capes (de fons a primer pla) ---
+    
+    # Capa de dades atmosfèriques (contourf i contour)
+    im = ax.contourf(xx, zz, data_grid, levels=levels, cmap=cmap, norm=norm, extend='both', zorder=1)
+    contours = ax.contour(xx, zz, data_grid, levels=levels[::2], colors='black', linewidths=0.5, alpha=0.7, zorder=2)
+    ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
+    
+    # Terreny (com a màscara negra)
+    ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
+
+    # Línies de LCL/LFC
+    is_convective = params_calc.get('MLCAPE', 0) > 400
+    if is_convective:
+        lfc_hgt = params_calc.get('LFC_Hgt', 9999)
+        if lfc_hgt < max_alt_m: ax.axhline(y=lfc_hgt, color='darkred', linestyle=':', linewidth=1.5, label=f"LFC: {lfc_hgt:.0f} m", zorder=4)
+    else:
+        lcl_hgt = params_calc.get('LCL_Hgt', 9999)
+        if lcl_hgt < max_alt_m: ax.axhline(y=lcl_hgt, color='darkgreen', linestyle=':', linewidth=1.5, label=f"LCL: {lcl_hgt:.0f} m", zorder=4)
+
+    # Barbes de Vent (més espaiades i només si es mostra Vent)
+    if layer_to_show == "Vent":
+        barb_heights = np.arange(1000, max_alt_m, 1500)
+        barb_u = np.interp(barb_heights, heights_m, u_ms) * 1.94384
+        barb_v = np.interp(barb_heights, heights_m, v_ms) * 1.94384
+        ax.barbs(np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 5), 
+                 np.tile(barb_heights, (5, 1)).T, 
+                 np.tile(barb_u, (5, 1)).T, 
+                 np.tile(barb_v, (5, 1)).T, 
+                 length=7, zorder=5, color='#333333')
+    
+    # Marcadors de Poble i Cims
     poble_dist_centrat = 0
-    ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='black')
+    ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
 
     for cim in analisi.get('cims_identificats', []):
         dist_cim_aprox = (haversine_distance(analisi['lats'][0], analisi['lons'][0], cim['lat'], cim['lon']) - 40)
         ax.annotate(f"{cim['name']}\n({cim['elevation']:.0f} m)", 
-                    xy=(dist_cim_aprox, cim['elevation']),
-                    xytext=(dist_cim_aprox, cim['elevation'] + max_alt_m * 0.05),
+                    xy=(dist_cim_aprox, cim['elevation']), xytext=(dist_cim_aprox, cim['elevation'] + max_alt_m * 0.05),
                     arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4),
                     ha='center', va='bottom', fontsize=8, zorder=11,
                     bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", lw=1, alpha=0.7))
 
-    is_convective = params_calc.get('MLCAPE', 0) > 400
-    if is_convective:
-        lfc_hgt = params_calc.get('LFC_Hgt', 9999)
-        if lfc_hgt < max_alt_m:
-            ax.axhline(y=lfc_hgt, color='darkred', linestyle=':', linewidth=1.5, label=f"LFC: {lfc_hgt:.0f} m", zorder=6)
-    else:
-        lcl_hgt = params_calc.get('LCL_Hgt', 9999)
-        if lcl_hgt < max_alt_m:
-            ax.axhline(y=lcl_hgt, color='darkgreen', linestyle=':', linewidth=1.5, label=f"LCL: {lcl_hgt:.0f} m", zorder=6)
-
-    # <<<--- CANVI CLAU AQUÍ: COMPROVACIÓ DE SEGURETAT ---
-    if 'sondeig_perfil_vent' in analisi and analisi['sondeig_perfil_vent']:
-        heights_m, u_ms, v_ms = analisi['sondeig_perfil_vent']
-        if len(heights_m) > 0: # Comprovem que el perfil no estigui buit
-            barb_heights = np.arange(500, max_alt_m, 1000)
-            barb_u = np.interp(barb_heights, heights_m, u_ms) * 1.94384
-            barb_v = np.interp(barb_heights, heights_m, v_ms) * 1.94384
-            ax.barbs(np.full_like(barb_heights, dist_centrat.min() + 2), barb_heights, barb_u, barb_v, length=7, zorder=8)
-
-    if layer_to_show != "Vent":
-        ax2 = ax.twinx()
-        if layer_to_show == "Humitat" and 'RH_PROFILE' in params_calc and len(params_calc['RH_PROFILE']) > 0:
-            rh = np.interp(barb_heights, heights_m, params_calc['RH_PROFILE'])
-            ax2.plot(np.full_like(barb_heights, dist_centrat.max() - 2), rh, color='blue', marker='.', label="Humitat Relativa")
-            ax2.set_ylabel("Humitat Relativa (%)", color='blue'); ax2.tick_params(axis='y', labelcolor='blue'); ax2.set_ylim(0, 105)
-        elif layer_to_show == "Temperatura" and 'TEMP_PROFILE' in params_calc and len(params_calc['TEMP_PROFILE']) > 0:
-            temps = np.interp(barb_heights, heights_m, params_calc['TEMP_PROFILE'])
-            ax2.plot(np.full_like(barb_heights, dist_centrat.max() - 2), temps, color='purple', marker='.', label="Temperatura")
-            ax2.set_ylabel("Temperatura (°C)", color='purple'); ax2.tick_params(axis='y', labelcolor='purple')
-        ax2.grid(False)
-        
+    # --- 3. Configuració Final del Gràfic ---
+    fig.colorbar(im, ax=ax, label=label, pad=0.02)
     ax.set_xlabel("Distància (km) [Sobrevent <-> Sotavent]")
     ax.set_ylabel("Elevació (m)")
-    ax.set_title(f"Perfil Orogràfic al llarg del Vent ({analisi['wind_dir_from']:.0f}° | {analisi['wind_spd_kmh']:.0f} km/h)")
-    ax.grid(True, linestyle=':', alpha=0.7); ax.legend(loc='upper left')
+    ax.set_title(f"Secció Transversal Atmosfèrica - Flux de {analisi['wind_dir_from']:.0f}°")
+    ax.grid(True, linestyle=':', alpha=0.5, color='white', zorder=0)
+    ax.legend(loc='upper left', fontsize=8)
     ax.set_ylim(bottom=0, top=max_alt_m); ax.set_xlim(dist_centrat.min(), dist_centrat.max())
     plt.tight_layout(); return fig
 
