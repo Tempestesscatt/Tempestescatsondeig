@@ -7572,12 +7572,15 @@ def punt_desti(lat, lon, bearing, distance_km):
 
 
 
+# -*- coding: utf-8 -*-
+
 def analitzar_orografia(poble_sel, data_tuple):
     """
-    Algoritme v5.2 d'anàlisi orogràfica (Detecció de Pics Millorada).
-    - DOBLE ESTRATÈGIA: Combina la cerca de pics per prominència amb la identificació
-      del punt més alt del transecte per a garantir la màxima detecció.
-    - GESTIÓ D'ERRORS D'API: Propaga l'error si falta la clau de GeoNames.
+    Algoritme v6.0 d'anàlisi orogràfica (Lògica de Desplaçament Condicional).
+    - DESPLAÇAMENT CONDICIONAL: El transecte només es desplaça cap a l'interior si
+      el vent és de mar I el diagnòstic és 'Sobrevent'. Això evita desplaçaments
+      innecessaris en zones costaneres planes.
+    - Manté la resta de lògiques avançades.
     """
     if not data_tuple: return {"error": "Falten dades del sondeig."}
     sounding_data, params_calc = data_tuple
@@ -7587,11 +7590,11 @@ def analitzar_orografia(poble_sel, data_tuple):
     poble_data = CIUTATS_CATALUNYA.get(poble_sel, {})
     
     try:
+        # ... (Càlcul de vent adaptatiu es manté igual) ...
         if poble_coords.get('lat', 0) > 42 and np.min(heights.m) > 700:
             altura_superficie = heights.m[0]
             mask_capa_baixa = (heights.m >= altura_superficie) & (heights.m <= altura_superficie + 1500)
-            u_dom = np.mean(u[mask_capa_baixa]) if np.any(mask_capa_baixa) else u[0]
-            v_dom = np.mean(v[mask_capa_baixa]) if np.any(mask_capa_baixa) else v[0]
+            u_dom = np.mean(u[mask_capa_baixa]) if np.any(mask_capa_baixa) else u[0]; v_dom = np.mean(v[mask_capa_baixa]) if np.any(mask_capa_baixa) else v[0]
         else:
             u_dom, v_dom = (u[0], v[0]) if p.m.min() > 850 else (np.interp(850, p.m[::-1], u.m[::-1]) * units('m/s'), np.interp(850, p.m[::-1], v.m[::-1]) * units('m/s'))
         wind_dir_from = mpcalc.wind_direction(u_dom, v_dom).m; wind_spd_kmh = mpcalc.wind_speed(u_dom, v_dom).to('km/h').m
@@ -7601,17 +7604,28 @@ def analitzar_orografia(poble_sel, data_tuple):
     wind_speed_profile = mpcalc.wind_speed(u, v).to('km/h').m; temp_profile = T.m
     
     if wind_spd_kmh < 10: 
-        return {
-            "diagnostico": "Vent Feble / Variable", "detalls": "El vent és massa feble.", "posicio": "Indeterminat",
-            "wind_dir_from": wind_dir_from, "wind_spd_kmh": wind_spd_kmh,
-            "sondeig_perfil_complet": (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile)
-        }
+        return { "diagnostico": "Vent Feble / Variable", "detalls": "El vent és massa feble.", "posicio": "Indeterminat", "wind_dir_from": wind_dir_from, "wind_spd_kmh": wind_spd_kmh, "sondeig_perfil_complet": (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile) }
 
+    # --- Anàlisi Inicial per a decidir si cal desplaçar ---
+    lat_centre_pre, lon_centre_pre = poble_coords['lat'], poble_coords['lon']; dist_total_km = 80
+    start_bearing_pre = (wind_dir_from + 180) % 360
+    lat_inici_pre, lon_inici_pre = punt_desti(lat_centre_pre, lon_centre_pre, start_bearing_pre, dist_total_km / 2)
+    profile_data_pre, _ = get_elevation_profile(lat_inici_pre, lon_inici_pre, wind_dir_from, dist_total_km, 100)
+    elev_pre = np.array(profile_data_pre['elevations']); dist_pre = np.array(profile_data_pre['distances'])
+    idx_poble_pre = np.argmin([haversine_distance(poble_coords['lat'], poble_coords['lon'], lat, lon) for lat, lon in zip(profile_data_pre['lats'], profile_data_pre['lons'])])
+    perfil_sobrevent_pre = elev_pre[:idx_poble_pre+1]
+    idx_cim_pre = np.argmax(perfil_sobrevent_pre) if len(perfil_sobrevent_pre) > 0 else idx_poble_pre
+    desnivell_pre = elev_pre[idx_cim_pre] - elev_pre[idx_poble_pre]
+    
     is_onshore = _is_wind_onshore(wind_dir_from, poble_data.get('sea_dir'))
-    lat_centre, lon_centre = poble_coords['lat'], poble_coords['lon']; dist_total_km = 80
-    if is_onshore:
+    # <<<--- DOBLE CONDICIÓ PER AL DESPLAÇAMENT ---
+    if is_onshore and desnivell_pre > 150:
         inland_bearing = (wind_dir_from + 180) % 360 
-        lat_centre, lon_centre = punt_desti(lat_centre, lon_centre, inland_bearing, 25)
+        lat_centre, lon_centre = punt_desti(poble_coords['lat'], poble_coords['lon'], inland_bearing, 25)
+    else:
+        lat_centre, lon_centre = poble_coords['lat'], poble_coords['lon']
+    # <<<-------------------------------------------
+
     start_point_bearing = (wind_dir_from + 180) % 360
     lat_inici, lon_inici = punt_desti(lat_centre, lon_centre, start_point_bearing, dist_total_km / 2)
     profile_data, error = get_elevation_profile(lat_inici, lon_inici, wind_dir_from, dist_total_km, 100)
@@ -7621,24 +7635,15 @@ def analitzar_orografia(poble_sel, data_tuple):
     dist_al_poble = [haversine_distance(poble_coords['lat'], poble_coords['lon'], lat, lon) for lat, lon in zip(profile_data['lats'], profile_data['lons'])]
     idx_poble = np.argmin(dist_al_poble); elev_poble = elevations[idx_poble]
     
-    # <<<--- DOBLE ESTRATÈGIA DE DETECCIÓ DE PICS ---
-    # 1. Trobar pics prominents
-    indices_prominents, _ = find_peaks(elevations, prominence=250, distance=5)
-    # 2. Trobar el pic més alt de tot el transecte
-    index_maxim = np.argmax(elevations)
-    # 3. Combinar-los i eliminar duplicats
-    indices_combinats = np.unique(np.append(indices_prominents, index_maxim))
-    punts_a_consultar = [{'lat': profile_data['lats'][i], 'lon': profile_data['lons'][i]} for i in indices_combinats]
-    
-    resultat_cims = get_peak_names(punts_a_consultar)
-    if "error" in resultat_cims:
-        return {"error": resultat_cims["error"]} # Propaguem l'error d'API
-    noms_cims = resultat_cims.get("peaks", [])
-    # <<<--------------------------------------------
-
     perfil_sobrevent = elevations[:idx_poble+1]
     idx_cim = np.argmax(perfil_sobrevent) if len(perfil_sobrevent) > 0 else idx_poble
     elev_cim = elevations[idx_cim]; desnivell = elev_cim - elev_poble
+
+    indices_pics, _ = find_peaks(elevations, prominence=250, distance=5)
+    punts_a_consultar = [{'lat': profile_data['lats'][i], 'lon': profile_data['lons'][i]} for i in indices_pics]
+    resultat_cims = get_peak_names(punts_a_consultar)
+    if "error" in resultat_cims: return {"error": resultat_cims["error"]}
+    noms_cims = resultat_cims.get("peaks", [])
     
     if elev_poble > 800 and desnivell < 250:
         posicio, diagnostico, detalls = "Exposat al Cim / Carena", "Flux Directe", "La localitat està en una posició elevada, directament exposada al vent."
@@ -7649,17 +7654,7 @@ def analitzar_orografia(poble_sel, data_tuple):
     else:
         posicio, diagnostico, detalls = "Sotavent", "Subsidència / Possible Efecte Foehn", f"El flux d'aire descendeix després de superar un obstacle de {elev_cim:.0f} m."
 
-    return {
-        "transect_distances": distances, "transect_elevations": elevations, "poble_sel": poble_sel,
-        "poble_dist": distances[idx_poble], "poble_elev": elev_poble,
-        "wind_dir_from": wind_dir_from, "wind_spd_kmh": wind_spd_kmh,
-        "posicio": posicio, "diagnostico": diagnostico, "detalls": detalls,
-        "cims_identificats": noms_cims,
-        "sondeig_perfil_complet": (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile),
-        "transect_coords": (profile_data['lats'], profile_data['lons'])
-    }
-
-
+    return { "transect_distances": distances, "transect_elevations": elevations, "poble_sel": poble_sel, "poble_dist": distances[idx_poble], "poble_elev": elev_poble, "wind_dir_from": wind_dir_from, "wind_spd_kmh": wind_spd_kmh, "posicio": posicio, "diagnostico": diagnostico, "detalls": detalls, "cims_identificats": noms_cims, "sondeig_perfil_complet": (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile), "transect_coords": (profile_data['lats'], profile_data['lons']) }
 
 
 
@@ -7681,19 +7676,15 @@ def _is_wind_onshore(wind_dir_from, sea_dir_range):
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 6.0 (Representació del Mar):
-    - DETECTA I DIBUIXA EL MAR: Si el perfil del terreny està a 0m o menys,
-      dibuixa un fons blau per a representar l'aigua.
-    - BARBES DE SUPERFÍCIE ADAPTATIVES: Les barbes de superfície ara es dibuixen
-      sempre per sobre del nivell del mar, garantint la seva visibilitat a la costa.
-    - Manté totes les funcionalitats anteriors.
+    Versió 6.1:
+    - VISUALITZACIÓ DEL MAR: Dibuixa una onada estilitzada per a zones costaneres.
+    - BARBES DE SUPERFÍCIE MILLORADES: Dibuixa ◎ per a vents en calma i les posiciona
+      sempre a 100m sobre el terreny o el mar per a garantir-ne la visibilitat.
     """
-
     plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
     fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#E6F2FF')
     
-    dist_total_km = analisi['transect_distances'][-1]
-    dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
+    dist_total_km = analisi['transect_distances'][-1]; dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
     elev = analisi['transect_elevations']
     
     # ... (La definició de paletes i la preparació de la graella es mantenen igual) ...
@@ -7710,26 +7701,23 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     x_grid = dist_centrat; y_grid = np.linspace(0, max_alt_m, 100)
     xx, zz = np.meshgrid(x_grid, y_grid)
     
-    if layer_to_show == "Humitat":
-        profile_1d = np.interp(y_grid, heights_m, rh_profile); cmap, norm, levels, label = cmap_humitat, norm_humitat, levels_humitat, "Humitat Relativa (%)"
-    elif layer_to_show == "Temperatura":
-        profile_1d = np.interp(y_grid, heights_m, temp_profile); cmap, norm, levels, label = cmap_temp, norm_temp, levels_temp, "Temperatura (°C)"
-    else:
-        profile_1d = np.interp(y_grid, heights_m, wind_speed_profile); cmap, norm, levels, label = cmap_vent, norm_vent, levels_vent, "Velocitat del Vent (km/h)"
+    if layer_to_show == "Humitat": profile_1d = np.interp(y_grid, heights_m, rh_profile); cmap, norm, levels, label = cmap_humitat, norm_humitat, levels_humitat, "Humitat Relativa (%)"
+    elif layer_to_show == "Temperatura": profile_1d = np.interp(y_grid, heights_m, temp_profile); cmap, norm, levels, label = cmap_temp, norm_temp, levels_temp, "Temperatura (°C)"
+    else: profile_1d = np.interp(y_grid, heights_m, wind_speed_profile); cmap, norm, levels, label = cmap_vent, norm_vent, levels_vent, "Velocitat del Vent (km/h)"
     data_grid = np.tile(profile_1d.reshape(-1, 1), (1, len(x_grid)))
 
     im = ax.contourf(xx, zz, data_grid, levels=levels, cmap=cmap, norm=norm, extend='both', zorder=1)
     contours = ax.contour(xx, zz, data_grid, levels=levels[1:-1:2], colors='black', linewidths=0.5, alpha=0.7, zorder=2)
     ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
 
-    # <<<--- NOU BLOC DE DIBUIX PER AL TERRENY I EL MAR ---
-    # Dibuixem el terreny sòlid
+    # Dibuix del terreny i del mar
     ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
-    # Si el punt més baix del terreny és a nivell del mar, dibuixem una capa d'aigua
-    if np.min(elev) <= 0:
-        ax.fill_between(dist_centrat, -100, 0, color='#1E90FF', alpha=0.5, zorder=2)
-    # <<<---------------------------------------------------
-
+    if np.min(elev) <= 5: # Si hi ha punts a nivell de mar
+        x_wave = np.linspace(dist_centrat.min(), dist_centrat.max(), 200)
+        y_wave = np.sin(x_wave * 0.5) * 5 + 5 # Ona suau a 5m
+        ax.fill_between(x_wave, -100, y_wave, where=y_wave > 0, color='#6495ED', alpha=0.6, zorder=2)
+    
+    # ... (La resta de la lògica de LCL/LFC i barbes superiors es manté igual) ...
     is_convective = params_calc.get('MLCAPE', 0) > 400
     if is_convective:
         lfc_hgt = params_calc.get('LFC_Hgt', 9999);
@@ -7738,23 +7726,22 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         lcl_hgt = params_calc.get('LCL_Hgt', 9999)
         if lcl_hgt < max_alt_m: ax.axhline(y=lcl_hgt, color='white', linestyle=':', linewidth=2, label=f"LCL: {lcl_hgt:.0f} m", zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
 
-    if 'sondeig_perfil_complet' in analisi and analisi['sondeig_perfil_complet']:
-        barb_x_upper = np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7); barb_y_upper = np.arange(1000, max_alt_m, 500)
-        barb_xx, barb_zz = np.meshgrid(barb_x_upper, barb_y_upper)
-        barb_u = np.interp(barb_zz.flatten(), heights_m, u_ms) * 1.94384; barb_v = np.interp(barb_zz.flatten(), heights_m, v_ms) * 1.94384
-        ax.barbs(barb_xx.flatten(), barb_zz.flatten(), barb_u, barb_v, length=6, zorder=5, color='white', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
-        
-        # <<<--- LÒGICA DE BARBES DE SUPERFÍCIE CORREGIDA ---
-        barb_x_surface = np.linspace(dist_centrat.min() + 2, dist_centrat.max() - 2, 10)
-        surface_elev_at_barbs = np.interp(barb_x_surface, dist_centrat, elev)
-        # Assegurem que les barbes es dibuixin sempre per sobre del nivell del mar (0m)
-        barb_y_surface = np.maximum(surface_elev_at_barbs, 0) + 100
-        barb_u_surface = np.interp(barb_y_surface, heights_m, u_ms) * 1.94384; barb_v_surface = np.interp(barb_y_surface, heights_m, v_ms) * 1.94384
-        mask = barb_y_surface < max_alt_m
-        ax.barbs(barb_x_surface[mask], barb_y_surface[mask], barb_u_surface[mask], barb_v_surface[mask],
-                 length=6, zorder=5, color='#F0E68C', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
-        # <<<---------------------------------------------------
+    barb_x_upper = np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7); barb_y_upper = np.arange(1000, max_alt_m, 500)
+    barb_xx, barb_zz = np.meshgrid(barb_x_upper, barb_y_upper)
+    barb_u = np.interp(barb_zz.flatten(), heights_m, u_ms) * 1.94384; barb_v = np.interp(barb_zz.flatten(), heights_m, v_ms) * 1.94384
+    ax.barbs(barb_xx.flatten(), barb_zz.flatten(), barb_u, barb_v, length=6, zorder=5, color='white', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
     
+    # Barbes de superfície millorades
+    barb_x_surface = np.linspace(dist_centrat.min() + 2, dist_centrat.max() - 2, 10)
+    surface_elev_at_barbs = np.interp(barb_x_surface, dist_centrat, elev)
+    barb_y_surface = np.maximum(surface_elev_at_barbs, 0) + 100
+    barb_u_surface = np.interp(barb_y_surface, heights_m, u_ms) * 1.94384
+    barb_v_surface = np.interp(barb_y_surface, heights_m, v_ms) * 1.94384
+    mask = barb_y_surface < max_alt_m
+    calm_mask = (np.sqrt(barb_u_surface**2 + barb_v_surface**2) < 2) & mask # Vent < 2 nusos
+    ax.barbs(barb_x_surface[mask & ~calm_mask], barb_y_surface[mask & ~calm_mask], barb_u_surface[mask & ~calm_mask], barb_v_surface[mask & ~calm_mask], length=6, zorder=5, color='#F0E68C', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+    ax.plot(barb_x_surface[calm_mask], barb_y_surface[calm_mask], 'o', markersize=5, color='#F0E68C', markeredgecolor='black', zorder=5)
+
     poble_dist_centrat = analisi['poble_dist'] - (dist_total_km / 2)
     ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
@@ -7763,13 +7750,10 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         transect_lats, transect_lons = analisi['transect_coords']
         for cim in analisi.get('cims_identificats', []):
             dist_al_cim = [haversine_distance(cim['lat'], cim['lon'], lat_t, lon_t) for lat_t, lon_t in zip(transect_lats, transect_lons)]
-            idx_cim_proper = np.argmin(dist_al_cim)
-            dist_cim_centrada = dist_centrat[idx_cim_proper]; elev_cim_perfil = elev[idx_cim_proper]
-            ax.annotate(f"{cim['name']}\n({cim['elevation']:.0f} m)", 
-                        xy=(dist_cim_centrada, elev_cim_perfil), xytext=(dist_cim_centrada, elev_cim_perfil + max_alt_m * 0.05),
+            idx_cim_proper = np.argmin(dist_al_cim); dist_cim_centrada = dist_centrat[idx_cim_proper]; elev_cim_perfil = elev[idx_cim_proper]
+            ax.annotate(f"{cim['name']}\n({cim['elevation']:.0f} m)", xy=(dist_cim_centrada, elev_cim_perfil), xytext=(dist_cim_centrada, elev_cim_perfil + max_alt_m * 0.05),
                         arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4),
-                        ha='center', va='bottom', fontsize=8, zorder=11,
-                        bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", lw=1, alpha=0.7))
+                        ha='center', va='bottom', fontsize=8, zorder=11, bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", lw=1, alpha=0.7))
 
     fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['wind_dir_from']:.0f}°)")
