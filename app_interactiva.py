@@ -4609,9 +4609,9 @@ def ui_pestanya_satelit_europa():
 @st.cache_data(ttl=1800, max_entries=20, show_spinner=False)
 def carregar_dades_sondeig_cat(lat, lon, hourly_index):
     """
-    Versió Definitiva i Corregida v2.0.
+    Versió Definitiva i Corregida v3.0 - Amb cerca d'hora vàlida.
     Garanteix que el perfil de dades construït sigui sempre coherent
-    i net, eliminant la font principal d'errors posteriors.
+    i busca l'hora més propera si la sol·licitada no té dades.
     """
     try:
         h_base = ["temperature_2m", "dew_point_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m"]
@@ -4620,18 +4620,11 @@ def carregar_dades_sondeig_cat(lat, lon, hourly_index):
         response = openmeteo.weather_api(API_URL_CAT, params=params)[0]
         hourly = response.Hourly()
 
-        valid_index = None; max_hours_to_check = 3
-        total_hours = len(hourly.Variables(0).ValuesAsNumpy())
-        for offset in range(max_hours_to_check + 1):
-            indices_to_try = sorted(list(set([hourly_index + offset, hourly_index - offset])))
-            for h_idx in indices_to_try:
-                if 0 <= h_idx < total_hours:
-                    sfc_check = [hourly.Variables(i).ValuesAsNumpy()[h_idx] for i in range(len(h_base))]
-                    if not any(np.isnan(val) for val in sfc_check):
-                        valid_index = h_idx; break
-            if valid_index is not None: break
+        # Utilitzem la nova funció per trobar l'hora més propera amb dades
+        valid_index = trobar_hora_valida_mes_propera(hourly, hourly_index, len(h_base))
         
-        if valid_index is None: return None, hourly_index, "No s'han trobat dades vàlides."
+        if valid_index is None: 
+            return None, hourly_index, "No s'han trobat dades vàlides en un rang de +/- 8 hores."
         
         sfc_data = {v: hourly.Variables(i).ValuesAsNumpy()[valid_index] for i, v in enumerate(h_base)}
         
@@ -4642,12 +4635,7 @@ def carregar_dades_sondeig_cat(lat, lon, hourly_index):
         
         sfc_u, sfc_v = mpcalc.wind_components(sfc_data["wind_speed_10m"] * units('km/h'), sfc_data["wind_direction_10m"] * units.degrees)
         
-        p_profile = [sfc_data["surface_pressure"]]
-        T_profile = [sfc_data["temperature_2m"]]
-        Td_profile = [sfc_data["dew_point_2m"]]
-        u_profile = [sfc_u.to('m/s').m]
-        v_profile = [sfc_v.to('m/s').m]
-        h_profile = [0.0]
+        p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile = [sfc_data["surface_pressure"]], [sfc_data["temperature_2m"]], [sfc_data["dew_point_2m"]], [sfc_u.to('m/s').m], [sfc_v.to('m/s').m], [0.0]
         
         for i, p_val in enumerate(PRESS_LEVELS_AROME):
             if p_val < p_profile[-1] and all(not np.isnan(p_data[v][i]) for v in ["T", "RH", "WS", "WD", "H"]):
@@ -4658,6 +4646,7 @@ def carregar_dades_sondeig_cat(lat, lon, hourly_index):
                 u_profile.append(u.to('m/s').m); v_profile.append(v.to('m/s').m); h_profile.append(p_data["H"][i])
 
         processed_data, error = processar_dades_sondeig(p_profile, T_profile, Td_profile, u_profile, v_profile, h_profile)
+        # Retornem també el 'valid_index' per informar a l'usuari si l'hora ha canviat
         return processed_data, valid_index, error
         
     except Exception as e: 
@@ -5900,12 +5889,13 @@ def run_snow_analysis_view(poble_sel, hourly_index_sel, dia_sel_str, hora_sel_st
 
 def run_severe_weather_view(poble_sel, hourly_index_sel, nivell_sel, dia_sel_str, hora_sel_str):
     """
-    Conté tota la lògica de la vista de temps sever que ja tenies.
+    Conté tota la lògica de la vista de temps sever, ara amb gestió d'hores alternatives.
     """
     timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
     
     with st.spinner(f"Carregant dades del sondeig i mapa per a {poble_sel}..."):
         lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
+        # La crida ara retorna 3 valors, incloent el 'final_index'
         data_tuple, final_index, error_msg_sounding = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
         map_data_conv, error_msg_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
 
@@ -5920,11 +5910,15 @@ def run_severe_weather_view(poble_sel, hourly_index_sel, nivell_sel, dia_sel_str
         if pd.notna(conv_puntual):
             params_calculats[f'CONV_{nivell_sel}hPa'] = conv_puntual
 
+    # --- NOU: Avís a l'usuari si l'hora de les dades ha canviat ---
     if final_index is not None and final_index != hourly_index_sel:
         start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
         adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
-        st.warning(f"Avís: Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: {adjusted_local_time.strftime('%H:%Mh')}.")
+        st.warning(f"Avís: Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+        # Actualitzem el timestamp per reflectir l'hora real de les dades
+        timestamp_str = f"{poble_sel} | {adjusted_local_time.strftime('%d/%m/%Y')} a les {adjusted_local_time.strftime('%H:%Mh')} (Local)"
+
     
     menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi de Mapes", "Simulació de Núvol"]
     menu_icons = ["fullscreen", "graph-up-arrow", "map", "cloud-upload"]
@@ -7596,6 +7590,31 @@ def run_catalunya_app():
             
 
 
+def trobar_hora_valida_mes_propera(hourly_response, target_index, num_base_vars, max_offset=8):
+    """
+    Versió Definitiva: Busca l'índex horari més proper (en qualsevol direcció)
+    que tingui dades completes, buscant en una finestra més àmplia de 8 hores.
+    """
+    try:
+        if hourly_response is None or hourly_response.Variables(0) is None:
+            return None
+        total_hours = len(hourly_response.Variables(0).ValuesAsNumpy())
+    except (AttributeError, IndexError):
+        return None
+
+    for offset in range(max_offset + 1):
+        indices_to_check = [target_index] if offset == 0 else [target_index - offset, target_index + offset]
+        
+        for h_idx in indices_to_check:
+            if 0 <= h_idx < total_hours:
+                try:
+                    sfc_check = [hourly_response.Variables(i).ValuesAsNumpy()[h_idx] for i in range(num_base_vars)]
+                    if not any(np.isnan(val) for val in sfc_check):
+                        return h_idx
+                except (AttributeError, IndexError):
+                    continue
+
+    return None
 
 
 def get_color_from_cape(cape_value):
