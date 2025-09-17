@@ -7651,19 +7651,19 @@ def _is_wind_onshore(wind_dir_from, sea_dir_range):
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 4.3:
-    - INVERTEIX L'EIX HORITZONTAL: El gràfic ara sempre es llegeix amb el vent
-      entrant per l'esquerra (sobrevent) i sortint per la dreta (sotavent)
-      per a una interpretació més intuïtiva.
+    Versió 5.0 (Perfil de Vent d'Alta Densitat):
+    - AFEGEIX BARBES DE SUPERFÍCIE: Dibuixa una capa de barbes de vent que segueix
+      el contorn del terreny per a analitzar el flux a nivells baixos.
+    - AUGMENTA LA DENSITAT VERTICAL: Les barbes de vent superiors ara es dibuixen
+      cada 500 metres per a un anàlisi de cizallament molt més detallat.
     """
     plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
     fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#E6F2FF')
     
-    dist_total_km = analisi['transect_distances'][-1]
-    dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
+    dist_centrat = analisi['transect_distances'] - 40
     elev = analisi['transect_elevations']
     
-    # ... (Tota la lògica de definició de paletes i preparació de la graella es manté exactament igual) ...
+    # ... (La definició de paletes de color i la preparació de la graella es mantenen igual) ...
     colors_humitat = ['#f0e68c', '#90ee90', '#4682b4', '#191970']; levels_humitat = [0, 30, 60, 80, 101]
     cmap_humitat = ListedColormap(colors_humitat); norm_humitat = BoundaryNorm(levels_humitat, ncolors=cmap_humitat.N, clip=True)
     colors_vent = ['#d3d3d3', '#add8e6', '#48d1cc', '#90ee90', '#32cd32', '#6b8e23', '#f0e68c', '#d2b48c', '#bc8f8f', '#ffb6c1', '#da70d6', '#9932cc', '#8a2be2', '#48d1cc', '#6495ed']
@@ -7688,7 +7688,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         cmap, norm, levels, label = cmap_vent, norm_vent, levels_vent, "Velocitat del Vent (km/h)"
     data_grid = np.tile(profile_1d.reshape(-1, 1), (1, len(x_grid)))
 
-    # ... (Tota la lògica de dibuix es manté exactament igual) ...
     im = ax.contourf(xx, zz, data_grid, levels=levels, cmap=cmap, norm=norm, extend='both', zorder=1)
     contours = ax.contour(xx, zz, data_grid, levels=levels[1:-1:2], colors='black', linewidths=0.5, alpha=0.7, zorder=2)
     ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
@@ -7702,13 +7701,31 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         lcl_hgt = params_calc.get('LCL_Hgt', 9999)
         if lcl_hgt < max_alt_m: ax.axhline(y=lcl_hgt, color='white', linestyle=':', linewidth=2, label=f"LCL: {lcl_hgt:.0f} m", zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
 
-    barb_x_positions = np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7)
-    barb_y_positions = np.arange(500, max_alt_m, 1000)
-    barb_xx, barb_zz = np.meshgrid(barb_x_positions, barb_y_positions)
-    barb_u = np.interp(barb_zz.flatten(), heights_m, u_ms) * 1.94384
-    barb_v = np.interp(barb_zz.flatten(), heights_m, v_ms) * 1.94384
-    ax.barbs(barb_xx.flatten(), barb_zz.flatten(), barb_u, barb_v, length=6, zorder=5, color='white', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
-    
+    # <<<--- NOU BLOC DE DIBUIX DE BARBES DE VENT ---
+    if 'sondeig_perfil_complet' in analisi and analisi['sondeig_perfil_complet']:
+        # 1. Barbes Superiors (cada 500m)
+        barb_x_upper = np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7)
+        barb_y_upper = np.arange(1000, max_alt_m, 500) # Més densitat
+        barb_xx, barb_zz = np.meshgrid(barb_x_upper, barb_y_upper)
+        barb_u = np.interp(barb_zz.flatten(), heights_m, u_ms) * 1.94384
+        barb_v = np.interp(barb_zz.flatten(), heights_m, v_ms) * 1.94384
+        ax.barbs(barb_xx.flatten(), barb_zz.flatten(), barb_u, barb_v, length=6, zorder=5, color='white', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+        
+        # 2. Barbes de Superfície (seguint el terreny)
+        barb_x_surface = np.linspace(dist_centrat.min() + 2, dist_centrat.max() - 2, 10) # Més barbes horitzontals
+        surface_elev_at_barbs = np.interp(barb_x_surface, dist_centrat, elev)
+        barb_y_surface = surface_elev_at_barbs + 100 # A 100m sobre el terreny
+        
+        barb_u_surface = np.interp(barb_y_surface, heights_m, u_ms) * 1.94384
+        barb_v_surface = np.interp(barb_y_surface, heights_m, v_ms) * 1.94384
+        
+        # Filtrem les barbes que quedarien fora de la vista vertical
+        mask = barb_y_surface < max_alt_m
+        ax.barbs(barb_x_surface[mask], barb_y_surface[mask], barb_u_surface[mask], barb_v_surface[mask],
+                 length=6, zorder=5, color='#F0E68C', # Color groc per a destacar
+                 path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+    # <<<---------------------------------------------------
+
     poble_dist_centrat = analisi['poble_dist'] - (dist_total_km / 2)
     ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
@@ -7729,10 +7746,7 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     ax.legend(loc='upper left', fontsize=8)
     ax.set_ylim(bottom=0, top=max_alt_m); ax.set_xlim(dist_centrat.min(), dist_centrat.max())
     
-    # <<<--- LÍNIA CLAU AFEGIDA AQUÍ ---
     ax.invert_xaxis()
-    # <<<--------------------------------
-    
     plt.tight_layout(); return fig
 
 
