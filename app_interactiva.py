@@ -7550,13 +7550,16 @@ def punt_desti(lat, lon, bearing, distance_km):
 
 def analitzar_orografia(poble_sel, data_tuple):
     """
-    Algoritme v3.0 d'anàlisi orogràfica.
-    - Extreu els perfils verticals complets de T, RH i Velocitat del Vent per a la visualització.
-    - Crida a l'API per a identificar els noms dels cims.
+    Algoritme v4.0 d'anàlisi orogràfica (Conscient de la Costa).
+    - DETECTA LOCALITATS COSTANERES I FLUX MARÍ: Utilitza 'sea_dir' per a identificar el vent de mar.
+    - TRANSECTE INTEL·LIGENT: Si el flux és de mar, desplaça el transecte cap a l'interior
+      per a capturar correctament la interacció del vent amb la serralada litoral.
+    - MANTÉ LA LÒGICA ORIGINAL per a localitats d'interior o amb vent de terra.
+    - Recalcula la posició del poble sobre el transecte desplaçat.
     """
     if not data_tuple: return {"error": "Falten dades del sondeig."}
     sounding_data, params_calc = data_tuple
-    p, T, Td, u, v, heights = sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4], sounding_data[5]
+    p, u, v, heights = sounding_data[0], sounding_data[3], sounding_data[4], sounding_data[5]
 
     try:
         u_dom, v_dom = (u[0], v[0]) if p.m.min() > 850 else (np.interp(850, p.m[::-1], u.m[::-1]) * units('m/s'), np.interp(850, p.m[::-1], v.m[::-1]) * units('m/s'))
@@ -7564,10 +7567,9 @@ def analitzar_orografia(poble_sel, data_tuple):
         wind_spd_kmh = mpcalc.wind_speed(u_dom, v_dom).to('km/h').m
     except Exception: return {"error": "No s'ha pogut determinar el vent dominant."}
         
-    # Preparem els perfils verticals per al gràfic
-    rh_profile = (mpcalc.relative_humidity_from_dewpoint(T, Td) * 100).m
+    rh_profile = (mpcalc.relative_humidity_from_dewpoint(sounding_data[1], sounding_data[2]) * 100).m
     wind_speed_profile = mpcalc.wind_speed(u, v).to('km/h').m
-    temp_profile = T.m
+    temp_profile = sounding_data[1].m
     
     if wind_spd_kmh < 10: 
         return {
@@ -7577,14 +7579,32 @@ def analitzar_orografia(poble_sel, data_tuple):
         }
 
     poble_coords = CIUTATS_CATALUNYA[poble_sel]
-    start_point_bearing = (wind_dir_from + 180) % 360
-    lat_inici, lon_inici = punt_desti(poble_coords['lat'], poble_coords['lon'], start_point_bearing, 40)
+    poble_data = CIUTATS_CATALUNYA.get(poble_sel, {})
+    
+    # --- LÒGICA DE TRANSECTE INTEL·LIGENT ---
+    is_onshore = _is_wind_onshore(wind_dir_from, poble_data.get('sea_dir'))
+    
+    lat_centre, lon_centre = poble_coords['lat'], poble_coords['lon']
+    dist_total_km = 80
+    
+    if is_onshore:
+        # Desplacem el centre del transecte 25 km cap a l'interior
+        inland_bearing = (wind_dir_from + 180) % 360 
+        lat_centre, lon_centre = punt_desti(lat_centre, lon_centre, inland_bearing, 25)
 
-    profile_data, error = get_elevation_profile(lat_inici, lon_inici, wind_dir_from, 80, 100)
+    # El punt d'inici sempre es calcula a sobrevent del centre del transecte
+    start_point_bearing = (wind_dir_from + 180) % 360
+    lat_inici, lon_inici = punt_desti(lat_centre, lon_centre, start_point_bearing, dist_total_km / 2)
+
+    profile_data, error = get_elevation_profile(lat_inici, lon_inici, wind_dir_from, dist_total_km, 100)
     if error: return {"error": error}
 
     elevations = np.array(profile_data['elevations']); distances = np.array(profile_data['distances'])
-    idx_poble = np.argmin(np.abs(distances - 40)); elev_poble = elevations[idx_poble]
+    
+    # Recalculem la posició del poble sobre el nou transecte
+    dist_al_poble = [haversine_distance(poble_coords['lat'], poble_coords['lon'], lat, lon) for lat, lon in zip(profile_data['lats'], profile_data['lons'])]
+    idx_poble = np.argmin(dist_al_poble)
+    elev_poble = elevations[idx_poble]
     
     perfil_sobrevent = elevations[:idx_poble+1]
     idx_cim = np.argmax(perfil_sobrevent) if len(perfil_sobrevent) > 0 else idx_poble
@@ -7604,7 +7624,7 @@ def analitzar_orografia(poble_sel, data_tuple):
 
     return {
         "transect_distances": distances, "transect_elevations": elevations, "poble_sel": poble_sel,
-        "poble_dist": distances[idx_poble], "poble_elev": elev_poble,
+        "poble_dist": distances[idx_poble], "poble_elev": elev_poble, # La distància del poble ja no és sempre 40
         "wind_dir_from": wind_dir_from, "wind_spd_kmh": wind_spd_kmh,
         "posicio": posicio, "diagnostico": diagnostico, "detalls": detalls,
         "cims_identificats": noms_cims,
@@ -7612,21 +7632,37 @@ def analitzar_orografia(poble_sel, data_tuple):
     }
 
 
+
+
+
+
+def _is_wind_onshore(wind_dir_from, sea_dir_range):
+    """Funció auxiliar per a comprovar si el vent ve del mar."""
+    if sea_dir_range is None:
+        return False
+    start, end = sea_dir_range
+    # Cas normal (ex: 90 a 180)
+    if start <= end:
+        return start <= wind_dir_from <= end
+    # Cas on el rang creua els 360 graus (ex: 330 a 45)
+    else:
+        return start <= wind_dir_from or wind_dir_from <= end
+        
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 4.1:
-    - CORREGIT: Soluciona el ValueError a 'ax.barbs' creant una graella explícita
-      de coordenades (meshgrid) per a les barbes de vent, assegurant que X i Y
-      tenen sempre la mateixa mida.
+    Versió 4.2:
+    - Adaptat per a funcionar amb el transecte intel·ligent desplaçat.
+    - Calcula la posició del poble dinàmicament sobre l'eix X.
     """
     plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
     fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#E6F2FF')
     
-    dist_centrat = analisi['transect_distances'] - 40
+    dist_total_km = analisi['transect_distances'][-1]
+    dist_centrat = analisi['transect_distances'] - (dist_total_km / 2) # Centrem el transecte a 0
     elev = analisi['transect_elevations']
     
-    # --- 1. DEFINICIÓ DE PALETES DE COLOR I NIVELLS (Sense canvis) ---
+    # ... (La definició de paletes de color i la preparació de la graella 2D es mantenen igual) ...
     colors_humitat = ['#f0e68c', '#90ee90', '#4682b4', '#191970']; levels_humitat = [0, 30, 60, 80, 101]
     cmap_humitat = ListedColormap(colors_humitat); norm_humitat = BoundaryNorm(levels_humitat, ncolors=cmap_humitat.N, clip=True)
     colors_vent = ['#d3d3d3', '#add8e6', '#48d1cc', '#90ee90', '#32cd32', '#6b8e23', '#f0e68c', '#d2b48c', '#bc8f8f', '#ffb6c1', '#da70d6', '#9932cc', '#8a2be2', '#48d1cc', '#6495ed']
@@ -7636,7 +7672,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     levels_temp = [-24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 46]
     cmap_temp = ListedColormap(colors_temp); norm_temp = BoundaryNorm(levels_temp, ncolors=cmap_temp.N, clip=True)
     
-    # --- 2. Preparació de la Graella 2D i Dades Atmosfèriques ---
     heights_m, u_ms, v_ms, rh_profile, temp_profile, wind_speed_profile = analisi['sondeig_perfil_complet']
     x_grid = dist_centrat; y_grid = np.linspace(0, max_alt_m, 100)
     xx, zz = np.meshgrid(x_grid, y_grid)
@@ -7647,12 +7682,12 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     elif layer_to_show == "Temperatura":
         profile_1d = np.interp(y_grid, heights_m, temp_profile)
         cmap, norm, levels, label = cmap_temp, norm_temp, levels_temp, "Temperatura (°C)"
-    else: # Vent
+    else:
         profile_1d = np.interp(y_grid, heights_m, wind_speed_profile)
         cmap, norm, levels, label = cmap_vent, norm_vent, levels_vent, "Velocitat del Vent (km/h)"
     data_grid = np.tile(profile_1d.reshape(-1, 1), (1, len(x_grid)))
 
-    # --- 3. Dibuix de les Capes ---
+    # ... (La resta del dibuix es manté pràcticament igual) ...
     im = ax.contourf(xx, zz, data_grid, levels=levels, cmap=cmap, norm=norm, extend='both', zorder=1)
     contours = ax.contour(xx, zz, data_grid, levels=levels[1:-1:2], colors='black', linewidths=0.5, alpha=0.7, zorder=2)
     ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
@@ -7666,25 +7701,15 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         lcl_hgt = params_calc.get('LCL_Hgt', 9999)
         if lcl_hgt < max_alt_m: ax.axhline(y=lcl_hgt, color='white', linestyle=':', linewidth=2, label=f"LCL: {lcl_hgt:.0f} m", zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
 
-    # <<<--- LÒGICA DE LES BARBES DE VENT COMPLETAMENT CORREGIDA ---
-    if 'sondeig_perfil_complet' in analisi and analisi['sondeig_perfil_complet']:
-        barb_x_positions = np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7)
-        barb_y_positions = np.arange(500, max_alt_m, 1000)
-        
-        # Creem una graella (meshgrid) per a les posicions de les barbes
-        barb_xx, barb_zz = np.meshgrid(barb_x_positions, barb_y_positions)
-        
-        # Interpolem els valors U i V a les altures de la nostra graella
-        barb_u = np.interp(barb_zz.flatten(), heights_m, u_ms) * 1.94384
-        barb_v = np.interp(barb_zz.flatten(), heights_m, v_ms) * 1.94384
-        
-        # Ara X, Y, U i V tenen la mateixa mida, solucionant el ValueError
-        ax.barbs(barb_xx.flatten(), barb_zz.flatten(), barb_u, barb_v, 
-                 length=6, zorder=5, color='white', 
-                 path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
-    # <<<------------------------------------------------------------------
-
-    poble_dist_centrat = 0
+    barb_x_positions = np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7)
+    barb_y_positions = np.arange(500, max_alt_m, 1000)
+    barb_xx, barb_zz = np.meshgrid(barb_x_positions, barb_y_positions)
+    barb_u = np.interp(barb_zz.flatten(), heights_m, u_ms) * 1.94384
+    barb_v = np.interp(barb_zz.flatten(), heights_m, v_ms) * 1.94384
+    ax.barbs(barb_xx.flatten(), barb_zz.flatten(), barb_u, barb_v, length=6, zorder=5, color='white', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+    
+    # <<<--- CÀLCUL DINÀMIC DE LA POSICIÓ DEL POBLE ---
+    poble_dist_centrat = analisi['poble_dist'] - (dist_total_km / 2)
     ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
 
@@ -7696,11 +7721,10 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
                     ha='center', va='bottom', fontsize=8, zorder=11,
                     bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", lw=1, alpha=0.7))
 
-    # --- 4. Configuració Final del Gràfic ---
     fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
-    ax.set_xlabel("Distància (km) [Sobrevent <-> Sotavent]")
+    ax.set_xlabel(f"Distància (km) | Direcció del Vent → ({analisi['wind_dir_from']:.0f}°)")
     ax.set_ylabel("Elevació (m)")
-    ax.set_title(f"Secció Transversal Atmosfèrica - Flux de {analisi['wind_dir_from']:.0f}°")
+    ax.set_title("Secció Transversal Atmosfèrica")
     ax.grid(True, linestyle=':', alpha=0.5, color='black', zorder=0)
     ax.legend(loc='upper left', fontsize=8)
     ax.set_ylim(bottom=0, top=max_alt_m); ax.set_xlim(dist_centrat.min(), dist_centrat.max())
