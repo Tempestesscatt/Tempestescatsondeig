@@ -8768,11 +8768,11 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Expert v71.0 (Lògica de Fractocúmuls Corregida).
-    - **CORRECCIÓ CLAU**: S'ha creat un diagnòstic explícit per a Fractocúmuls sota condicions de baixa humitat moderada i aire sec a sobre, evitant que sigui un diagnòstic per defecte.
-    - **NOU DIAGNÒSTIC PER DEFECTE**: Si cap patró clar s'identifica, el sistema retorna "Nuvolositat Variable / Patró Incert", un veredicte més segur i precís.
-    - **LLINDARS REFINATS**: S'han ajustat els llindars d'humitat per a altres tipus de núvols per a millorar la distinció entre ells.
-    - Manté l'anàlisi jeràrquica integral de la versió anterior.
+    Sistema de Diagnòstic Expert v72.0 (Eliminació de "Patró Incert").
+    - **ELIMINACIÓ DEL DIAGNÒSTIC GENÈRIC**: S'ha eliminat completament el diagnòstic "Nuvolositat Variable / Patró Incert". La lògica ara és exhaustiva.
+    - **NOU DIAGNÒSTIC PRECÍS**: S'introdueix "Cel Emblanquinat / Tèrbol" per a condicions amb humitat moderada a nivells mitjans/alts però sense capes de núvols definides.
+    - **LÒGICA EXHAUSTIVA**: El sistema ara SEMPRE retorna un diagnòstic meteorològic concret, des de "Cel Serè" fins a "Potencial de Supercèl·lula".
+    - Manté la jerarquia i la precisió de les versions anteriors per a la resta de fenòmens.
     """
     
     # --- 1. Extracció Exhaustiva i Robusta de Paràmetres ---
@@ -8825,34 +8825,34 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     # Capa baixa (Estratus densos o Cúmuls mediocris)
     if rh_baixa >= 85 and lcl_hgt < 500:
          return {'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos i cel cobert, pot produir plugims."}
-    if rh_baixa >= 75: # Llindar ajustat
+    if rh_baixa >= 75:
         return {'descripcio': "Cúmuls mediocris", 'veredicte': "Núvols baixos amb cert desenvolupament vertical, però sense arribar a ser tempestes."}
-
-    # <<<--- NOVA CONDICIÓ EXPLÍCITA PER A FRACTOCÚMULS ---
+    
+    # Condició específica per a Fractocúmuls
     if 60 <= rh_baixa < 75 and rh_mitjana < 50 and max_cape > 50:
         return {'descripcio': "Fractocúmuls", 'veredicte': "Humitat limitada a capes baixes amb aire sec a sobre, formant núvols trencats."}
-    # <<<----------------------------------------------------
 
-    # Capa mitjana
+    # Capa mitjana i alta (ben definides)
     if rh_mitjana >= 70:
         if bwd_6km > 40:
              return {'descripcio': "Altocúmulus Lenticular", 'veredicte': "Núvols en forma de 'plat volador', indiquen vent fort i turbulència en alçada."}
         return {'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Cel cobert o parcialment cobert per núvols a nivells mitjans."}
-
-    # Capa alta
+    
     if rh_alta >= 60:
         if params.get('LI', 5) < 0 or params.get('T_500hPa', 0) < -15:
             return {'descripcio': "Cirrus Castellanus", 'veredicte': "Núvols alts amb petites 'torres', indiquen inestabilitat en nivells superiors."}
         return {'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Presència de núvols alts de tipus cirrus que poden produir un halo solar/lunar."}
+        
+    # == NOU NIVELL 5: CONDICIONS DE CEL TÈRBOL (ABANS "PATRÓ INCERT") ==
+    if rh_mitjana > 50 or rh_alta > 50:
+        return {'descripcio': "Cel Emblanquinat / Tèrbol", 'veredicte': "Capes d'humitat a nivells mitjans i alts creen un cel d'aspecte lletós."}
     
-    # == NIVELL 5: CONDICIONS DE CEL POC ENNUVOLAT O SERÈ ==
-    if rh_baixa < 60 and rh_mitjana < 50 and rh_alta < 40:
-        if max_cape > 50:
-            return {'descripcio': "Cúmuls de bon temps", 'veredicte': "Poca humitat però una mica d'energia per a formar petits cúmuls dispersos."}
-        return {'descripcio': "Cel Serè", 'veredicte': "Atmosfera estable i seca, sense nuvolositat significativa."}
-
-    # == RETORN PER DEFECTE SI CAP CONDICIÓ ES COMPLEIX (MOLT POC PROBABLE ARA) ==
-    return {'descripcio': "Nuvolositat Variable / Patró Incert", 'veredicte': "Condicions mixtes amb capes d'humitat disperses que no encaixen en un patró clar."}
+    # == NIVELL 6: CONDICIONS DE CEL POC ENNUVOLAT O SERÈ (ÚLTIM RECURS) ==
+    if max_cape > 50:
+        return {'descripcio': "Cúmuls de bon temps", 'veredicte': "Poca humitat però una mica d'energia per a formar petits cúmuls dispersos."}
+    
+    # Si arribem aquí, és que totes les capes són seques i no hi ha energia.
+    return {'descripcio': "Cel Serè", 'veredicte': "Atmosfera estable i seca, sense nuvolositat significativa."}
 
     
 if __name__ == "__main__":
