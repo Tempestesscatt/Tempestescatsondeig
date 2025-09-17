@@ -7615,68 +7615,86 @@ def analitzar_orografia(poble_sel, data_tuple):
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 3.0:
-    - Dibuixa un camp de contorn (contourf) per a la variable seleccionada.
-    - El terreny actua com una màscara sòlida.
-    - Inclou barbes de vent, línies LCL/LFC i etiquetes de cims.
+    Versió 4.0:
+    - PALETES DE COLOR PROFESSIONALS: Implementa les escales de color i els llindars
+      específics proporcionats per a Humitat, Vent i Temperatura.
+    - Utilitza ListedColormap i BoundaryNorm per a un control precís del color.
     """
     plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
-    fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#E6F2FF') # Blau cel molt clar
+    fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#E6F2FF')
     
     dist_centrat = analisi['transect_distances'] - 40
     elev = analisi['transect_elevations']
     
-    # --- 1. Preparació de la Graella 2D i Dades Atmosfèriques ---
-    heights_m, u_ms, v_ms, rh_profile, temp_profile, wind_speed_profile = analisi['sondeig_perfil_complet']
+    # --- 1. DEFINICIÓ DE LES NOVES PALETES DE COLOR I NIVELLS ---
+
+    # Paleta per a HUMITAT
+    colors_humitat = ['#f0e68c', '#90ee90', '#4682b4', '#191970']
+    levels_humitat = [0, 30, 60, 80, 101]
+    cmap_humitat = ListedColormap(colors_humitat)
+    norm_humitat = BoundaryNorm(levels_humitat, ncolors=cmap_humitat.N, clip=True)
+
+    # Paleta per a VENT
+    colors_vent = [
+        '#d3d3d3', '#add8e6', '#48d1cc', '#90ee90', '#32cd32', '#6b8e23', '#f0e68c', 
+        '#d2b48c', '#bc8f8f', '#ffb6c1', '#da70d6', '#9932cc', '#8a2be2', '#48d1cc', '#6495ed'
+    ]
+    levels_vent = [0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104, 131]
+    cmap_vent = ListedColormap(colors_vent)
+    norm_vent = BoundaryNorm(levels_vent, ncolors=cmap_vent.N, clip=True)
     
+    # Paleta per a TEMPERATURA
+    colors_temp = [
+        '#4b0082', '#8a2be2', '#0000cd', '#0000ff', '#1e90ff', '#00bfff', '#00ffff', 
+        '#00fa9a', '#32cd32', '#adff2f', '#ffff00', '#ffd700', '#ffa500', '#ff4500', 
+        '#ff0000', '#dc143c', '#ff00ff', '#ff69b4'
+    ]
+    levels_temp = [-24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 46]
+    cmap_temp = ListedColormap(colors_temp)
+    norm_temp = BoundaryNorm(levels_temp, ncolors=cmap_temp.N, clip=True)
+    
+    # --- 2. Preparació de la Graella 2D i Dades Atmosfèriques ---
+    heights_m, u_ms, v_ms, rh_profile, temp_profile, wind_speed_profile = analisi['sondeig_perfil_complet']
     x_grid = dist_centrat
     y_grid = np.linspace(0, max_alt_m, 100)
     xx, zz = np.meshgrid(x_grid, y_grid)
     
     if layer_to_show == "Humitat":
         profile_1d = np.interp(y_grid, heights_m, rh_profile)
-        cmap = plt.get_cmap('BrBG'); levels = np.arange(0, 101, 5); label = "Humitat Relativa (%)"
+        cmap, norm, levels, label = cmap_humitat, norm_humitat, levels_humitat, "Humitat Relativa (%)"
     elif layer_to_show == "Temperatura":
         profile_1d = np.interp(y_grid, heights_m, temp_profile)
-        cmap = plt.get_cmap('coolwarm'); levels = np.arange(-30, 31, 2); label = "Temperatura (°C)"
+        cmap, norm, levels, label = cmap_temp, norm_temp, levels_temp, "Temperatura (°C)"
     else: # Vent
         profile_1d = np.interp(y_grid, heights_m, wind_speed_profile)
-        cmap = plt.get_cmap('plasma'); levels = np.arange(0, 151, 10); label = "Velocitat del Vent (km/h)"
+        cmap, norm, levels, label = cmap_vent, norm_vent, levels_vent, "Velocitat del Vent (km/h)"
         
     data_grid = np.tile(profile_1d.reshape(-1, 1), (1, len(x_grid)))
-    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
-    # --- 2. Dibuix de les Capes (de fons a primer pla) ---
-    
-    # Capa de dades atmosfèriques (contourf i contour)
+    # --- 3. Dibuix de les Capes (de fons a primer pla) ---
     im = ax.contourf(xx, zz, data_grid, levels=levels, cmap=cmap, norm=norm, extend='both', zorder=1)
-    contours = ax.contour(xx, zz, data_grid, levels=levels[::2], colors='black', linewidths=0.5, alpha=0.7, zorder=2)
+    contours = ax.contour(xx, zz, data_grid, levels=levels[1:-1:2], colors='black', linewidths=0.5, alpha=0.7, zorder=2)
     ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
     
-    # Terreny (com a màscara negra)
     ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
 
-    # Línies de LCL/LFC
     is_convective = params_calc.get('MLCAPE', 0) > 400
     if is_convective:
         lfc_hgt = params_calc.get('LFC_Hgt', 9999)
-        if lfc_hgt < max_alt_m: ax.axhline(y=lfc_hgt, color='darkred', linestyle=':', linewidth=1.5, label=f"LFC: {lfc_hgt:.0f} m", zorder=4)
+        if lfc_hgt < max_alt_m: ax.axhline(y=lfc_hgt, color='white', linestyle=':', linewidth=2, label=f"LFC: {lfc_hgt:.0f} m", zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
     else:
         lcl_hgt = params_calc.get('LCL_Hgt', 9999)
-        if lcl_hgt < max_alt_m: ax.axhline(y=lcl_hgt, color='darkgreen', linestyle=':', linewidth=1.5, label=f"LCL: {lcl_hgt:.0f} m", zorder=4)
+        if lcl_hgt < max_alt_m: ax.axhline(y=lcl_hgt, color='white', linestyle=':', linewidth=2, label=f"LCL: {lcl_hgt:.0f} m", zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
 
-    # Barbes de Vent (més espaiades i només si es mostra Vent)
-    if layer_to_show == "Vent":
-        barb_heights = np.arange(1000, max_alt_m, 1500)
-        barb_u = np.interp(barb_heights, heights_m, u_ms) * 1.94384
-        barb_v = np.interp(barb_heights, heights_m, v_ms) * 1.94384
-        ax.barbs(np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 5), 
-                 np.tile(barb_heights, (5, 1)).T, 
-                 np.tile(barb_u, (5, 1)).T, 
-                 np.tile(barb_v, (5, 1)).T, 
-                 length=7, zorder=5, color='#333333')
+    barb_heights = np.arange(500, max_alt_m, 1000)
+    barb_u = np.interp(barb_heights, heights_m, u_ms) * 1.94384
+    barb_v = np.interp(barb_heights, heights_m, v_ms) * 1.94384
+    ax.barbs(np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7), 
+             np.tile(barb_heights, (7, 1)).T, 
+             np.tile(barb_u, (7, 1)).T, 
+             np.tile(barb_v, (7, 1)).T, 
+             length=6, zorder=5, color='white', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
     
-    # Marcadors de Poble i Cims
     poble_dist_centrat = 0
     ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
@@ -7689,12 +7707,12 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
                     ha='center', va='bottom', fontsize=8, zorder=11,
                     bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", lw=1, alpha=0.7))
 
-    # --- 3. Configuració Final del Gràfic ---
-    fig.colorbar(im, ax=ax, label=label, pad=0.02)
+    # --- 4. Configuració Final del Gràfic ---
+    fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
     ax.set_xlabel("Distància (km) [Sobrevent <-> Sotavent]")
     ax.set_ylabel("Elevació (m)")
     ax.set_title(f"Secció Transversal Atmosfèrica - Flux de {analisi['wind_dir_from']:.0f}°")
-    ax.grid(True, linestyle=':', alpha=0.5, color='white', zorder=0)
+    ax.grid(True, linestyle=':', alpha=0.5, color='black', zorder=0)
     ax.legend(loc='upper left', fontsize=8)
     ax.set_ylim(bottom=0, top=max_alt_m); ax.set_xlim(dist_centrat.min(), dist_centrat.max())
     plt.tight_layout(); return fig
