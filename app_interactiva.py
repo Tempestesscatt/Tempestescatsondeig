@@ -7506,7 +7506,7 @@ def run_catalunya_app():
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     """
     Mostra la interfície per a la pestanya d'Anàlisi d'Interacció Vent-Orografia.
-    (Versió completa amb anàlisi i gràfic)
+    (VERSIÓ FINAL CORREGIDA: Passa tots els arguments requerits a la funció de gràfic)
     """
     st.markdown(f"#### Anàlisi d'Interacció Vent-Orografia per a {poble_sel}")
     st.caption(timestamp_str)
@@ -7517,12 +7517,45 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     if "error" in analisi_orografica:
         st.error(f"No s'ha pogut realitzar l'anàlisi: {analisi_orografica['error']}")
         return
+        
+    # --- PANELL DE CONTROLS DE VISUALITZACIÓ ---
+    # Aquest bloc recull les opcions de l'usuari que necessitem passar al gràfic
+    with st.container(border=True):
+        col_layer, col_height = st.columns(2)
+        with col_layer:
+            layer_sel = st.selectbox("Capa de dades a visualitzar:", 
+                                     options=["Vent", "Humitat", "Temperatura"], 
+                                     key="orog_layer_selector")
+        with col_height:
+            # Preparem els perfils de T i RH per a la capa addicional si es seleccionen
+            if layer_sel == "Humitat" or layer_sel == "Temperatura":
+                # Assegurem que les dades existeixen abans d'intentar accedir-hi
+                if data_tuple and len(data_tuple) > 0 and len(data_tuple[0]) >= 3:
+                    p, T, Td = data_tuple[0][0], data_tuple[0][1], data_tuple[0][2]
+                    rh_profile = mpcalc.relative_humidity_from_dewpoint(T, Td) * 100
+                    params_calc['RH_PROFILE'] = rh_profile.m
+                    params_calc['TEMP_PROFILE'] = T.m
+                else:
+                    # Si no hi ha dades, assignem perfils buits per evitar errors
+                    params_calc['RH_PROFILE'] = []
+                    params_calc['TEMP_PROFILE'] = []
 
+            max_alt_sel = st.slider("Altura màxima del perfil (m):", 
+                                    min_value=2000, max_value=12000, value=4000, step=500, 
+                                    key="orog_height_slider")
+
+    # --- VISUALITZACIÓ PRINCIPAL ---
     col1, col2 = st.columns([0.65, 0.35], gap="large")
     with col1:
-        st.markdown("##### Perfil del Terreny")
+        st.markdown("##### Perfil del Terreny i Flux Atmosfèric")
         if "transect_distances" in analisi_orografica:
-            fig = crear_grafic_perfil_orografic(analisi_orografica)
+            # <<<--- AQUESTA ÉS LA CRIDA CORREGIDA ---
+            # Ara passem els 4 arguments que la funció 'crear_grafic_perfil_orografic' espera:
+            # 1. analisi_orografica
+            # 2. params_calc
+            # 3. layer_sel (abans anomenada erròniament layer_to_show)
+            # 4. max_alt_sel
+            fig = crear_grafic_perfil_orografic(analisi_orografica, params_calc, layer_sel, max_alt_sel)
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
         else:
@@ -7534,7 +7567,7 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
         
         if posicio == "Sobrevent": color, emoji = "#28a745", "🔼"
         elif posicio == "Sotavent": color, emoji = "#fd7e14", "🔽"
-        else: color, emoji = "#6c757d", "↔️"
+        else: color, emoji = "#6c7s7d", "↔️"
             
         st.markdown(f"""
         <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border-left: 5px solid {color}; margin-bottom: 15px;">
