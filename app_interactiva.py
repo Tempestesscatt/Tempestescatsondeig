@@ -7615,10 +7615,10 @@ def analitzar_orografia(poble_sel, data_tuple):
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 4.0:
-    - PALETES DE COLOR PROFESSIONALS: Implementa les escales de color i els llindars
-      específics proporcionats per a Humitat, Vent i Temperatura.
-    - Utilitza ListedColormap i BoundaryNorm per a un control precís del color.
+    Versió 4.1:
+    - CORREGIT: Soluciona el ValueError a 'ax.barbs' creant una graella explícita
+      de coordenades (meshgrid) per a les barbes de vent, assegurant que X i Y
+      tenen sempre la mateixa mida.
     """
     plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
     fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#E6F2FF')
@@ -7626,37 +7626,19 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     dist_centrat = analisi['transect_distances'] - 40
     elev = analisi['transect_elevations']
     
-    # --- 1. DEFINICIÓ DE LES NOVES PALETES DE COLOR I NIVELLS ---
-
-    # Paleta per a HUMITAT
-    colors_humitat = ['#f0e68c', '#90ee90', '#4682b4', '#191970']
-    levels_humitat = [0, 30, 60, 80, 101]
-    cmap_humitat = ListedColormap(colors_humitat)
-    norm_humitat = BoundaryNorm(levels_humitat, ncolors=cmap_humitat.N, clip=True)
-
-    # Paleta per a VENT
-    colors_vent = [
-        '#d3d3d3', '#add8e6', '#48d1cc', '#90ee90', '#32cd32', '#6b8e23', '#f0e68c', 
-        '#d2b48c', '#bc8f8f', '#ffb6c1', '#da70d6', '#9932cc', '#8a2be2', '#48d1cc', '#6495ed'
-    ]
+    # --- 1. DEFINICIÓ DE PALETES DE COLOR I NIVELLS (Sense canvis) ---
+    colors_humitat = ['#f0e68c', '#90ee90', '#4682b4', '#191970']; levels_humitat = [0, 30, 60, 80, 101]
+    cmap_humitat = ListedColormap(colors_humitat); norm_humitat = BoundaryNorm(levels_humitat, ncolors=cmap_humitat.N, clip=True)
+    colors_vent = ['#d3d3d3', '#add8e6', '#48d1cc', '#90ee90', '#32cd32', '#6b8e23', '#f0e68c', '#d2b48c', '#bc8f8f', '#ffb6c1', '#da70d6', '#9932cc', '#8a2be2', '#48d1cc', '#6495ed']
     levels_vent = [0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104, 131]
-    cmap_vent = ListedColormap(colors_vent)
-    norm_vent = BoundaryNorm(levels_vent, ncolors=cmap_vent.N, clip=True)
-    
-    # Paleta per a TEMPERATURA
-    colors_temp = [
-        '#4b0082', '#8a2be2', '#0000cd', '#0000ff', '#1e90ff', '#00bfff', '#00ffff', 
-        '#00fa9a', '#32cd32', '#adff2f', '#ffff00', '#ffd700', '#ffa500', '#ff4500', 
-        '#ff0000', '#dc143c', '#ff00ff', '#ff69b4'
-    ]
+    cmap_vent = ListedColormap(colors_vent); norm_vent = BoundaryNorm(levels_vent, ncolors=cmap_vent.N, clip=True)
+    colors_temp = ['#4b0082', '#8a2be2', '#0000cd', '#0000ff', '#1e90ff', '#00bfff', '#00ffff', '#00fa9a', '#32cd32', '#adff2f', '#ffff00', '#ffd700', '#ffa500', '#ff4500', '#ff0000', '#dc143c', '#ff00ff', '#ff69b4']
     levels_temp = [-24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 46]
-    cmap_temp = ListedColormap(colors_temp)
-    norm_temp = BoundaryNorm(levels_temp, ncolors=cmap_temp.N, clip=True)
+    cmap_temp = ListedColormap(colors_temp); norm_temp = BoundaryNorm(levels_temp, ncolors=cmap_temp.N, clip=True)
     
     # --- 2. Preparació de la Graella 2D i Dades Atmosfèriques ---
     heights_m, u_ms, v_ms, rh_profile, temp_profile, wind_speed_profile = analisi['sondeig_perfil_complet']
-    x_grid = dist_centrat
-    y_grid = np.linspace(0, max_alt_m, 100)
+    x_grid = dist_centrat; y_grid = np.linspace(0, max_alt_m, 100)
     xx, zz = np.meshgrid(x_grid, y_grid)
     
     if layer_to_show == "Humitat":
@@ -7668,14 +7650,12 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     else: # Vent
         profile_1d = np.interp(y_grid, heights_m, wind_speed_profile)
         cmap, norm, levels, label = cmap_vent, norm_vent, levels_vent, "Velocitat del Vent (km/h)"
-        
     data_grid = np.tile(profile_1d.reshape(-1, 1), (1, len(x_grid)))
 
-    # --- 3. Dibuix de les Capes (de fons a primer pla) ---
+    # --- 3. Dibuix de les Capes ---
     im = ax.contourf(xx, zz, data_grid, levels=levels, cmap=cmap, norm=norm, extend='both', zorder=1)
     contours = ax.contour(xx, zz, data_grid, levels=levels[1:-1:2], colors='black', linewidths=0.5, alpha=0.7, zorder=2)
     ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
-    
     ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
 
     is_convective = params_calc.get('MLCAPE', 0) > 400
@@ -7686,15 +7666,24 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         lcl_hgt = params_calc.get('LCL_Hgt', 9999)
         if lcl_hgt < max_alt_m: ax.axhline(y=lcl_hgt, color='white', linestyle=':', linewidth=2, label=f"LCL: {lcl_hgt:.0f} m", zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
 
-    barb_heights = np.arange(500, max_alt_m, 1000)
-    barb_u = np.interp(barb_heights, heights_m, u_ms) * 1.94384
-    barb_v = np.interp(barb_heights, heights_m, v_ms) * 1.94384
-    ax.barbs(np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7), 
-             np.tile(barb_heights, (7, 1)).T, 
-             np.tile(barb_u, (7, 1)).T, 
-             np.tile(barb_v, (7, 1)).T, 
-             length=6, zorder=5, color='white', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
-    
+    # <<<--- LÒGICA DE LES BARBES DE VENT COMPLETAMENT CORREGIDA ---
+    if 'sondeig_perfil_complet' in analisi and analisi['sondeig_perfil_complet']:
+        barb_x_positions = np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7)
+        barb_y_positions = np.arange(500, max_alt_m, 1000)
+        
+        # Creem una graella (meshgrid) per a les posicions de les barbes
+        barb_xx, barb_zz = np.meshgrid(barb_x_positions, barb_y_positions)
+        
+        # Interpolem els valors U i V a les altures de la nostra graella
+        barb_u = np.interp(barb_zz.flatten(), heights_m, u_ms) * 1.94384
+        barb_v = np.interp(barb_zz.flatten(), heights_m, v_ms) * 1.94384
+        
+        # Ara X, Y, U i V tenen la mateixa mida, solucionant el ValueError
+        ax.barbs(barb_xx.flatten(), barb_zz.flatten(), barb_u, barb_v, 
+                 length=6, zorder=5, color='white', 
+                 path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+    # <<<------------------------------------------------------------------
+
     poble_dist_centrat = 0
     ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
