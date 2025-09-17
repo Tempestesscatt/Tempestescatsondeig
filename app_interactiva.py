@@ -7541,18 +7541,38 @@ def punt_desti(lat, lon, bearing, distance_km):
     return degrees(lat2), degrees(lon2)
 
 
+
+# -*- coding: utf-8 -*-
+
 def analitzar_orografia(poble_sel, data_tuple):
     """
-    Algoritme v4.1 d'anàlisi orogràfica.
-    - PARÀMETRES DE DETECCIÓ DE PICS AJUSTATS per a ser més sensible.
-    - Passa les coordenades completes del transecte per a un posicionament precís de les etiquetes.
+    Algoritme v5.0 d'anàlisi orogràfica (Intel·ligència per a Alta Muntanya).
+    - NOU DIAGNÒSTIC: Afegeix la categoria "Exposat al Cim / Carena" per a localitats
+      d'alta muntanya que no tenen una barrera a sobrevent.
+    - CÀLCUL DE VENT ADAPTATIU: Per a zones altes, calcula un vent mitjà en una capa
+      profunda sobre el terreny per a una anàlisi més realista.
+    - DETECCIÓ DE PICS PER PROMINÈNCIA: Utilitza 'prominence' en lloc de 'height'
+      per a identificar cims rellevants en terreny complex.
+    - Manté la lògica de transecte intel·ligent per a zones costaneres.
     """
     if not data_tuple: return {"error": "Falten dades del sondeig."}
     sounding_data, params_calc = data_tuple
-    p, u, v, heights = sounding_data[0], sounding_data[3], sounding_data[4], sounding_data[5]
-
+    p, u, v, heights = sounding_data[0], sounding_data[1], sounding_data[2], sounding_data[3], sounding_data[4], sounding_data[5]
+    
+    poble_coords = CIUTATS_CATALUNYA[poble_sel]
+    poble_data = CIUTATS_CATALUNYA.get(poble_sel, {})
+    
+    # --- Càlcul de Vent Dominant Adaptatiu ---
     try:
-        u_dom, v_dom = (u[0], v[0]) if p.m.min() > 850 else (np.interp(850, p.m[::-1], u.m[::-1]) * units('m/s'), np.interp(850, p.m[::-1], v.m[::-1]) * units('m/s'))
+        if poble_coords['lat'] > 42 and np.min(heights.m) > 700: # Heurística per a zones del Pirineu
+            # Mitjana del vent en els primers 1500m sobre el terreny
+            altura_superficie = heights.m[0]
+            mask_capa_baixa = (heights.m >= altura_superficie) & (heights.m <= altura_superficie + 1500)
+            u_dom = np.mean(u[mask_capa_baixa]) if np.any(mask_capa_baixa) else u[0]
+            v_dom = np.mean(v[mask_capa_baixa]) if np.any(mask_capa_baixa) else v[0]
+        else: # Lògica anterior per a zones més baixes
+            u_dom, v_dom = (u[0], v[0]) if p.m.min() > 850 else (np.interp(850, p.m[::-1], u.m[::-1]) * units('m/s'), np.interp(850, p.m[::-1], v.m[::-1]) * units('m/s'))
+
         wind_dir_from = mpcalc.wind_direction(u_dom, v_dom).m
         wind_spd_kmh = mpcalc.wind_speed(u_dom, v_dom).to('km/h').m
     except Exception: return {"error": "No s'ha pogut determinar el vent dominant."}
@@ -7568,37 +7588,37 @@ def analitzar_orografia(poble_sel, data_tuple):
             "sondeig_perfil_complet": (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile)
         }
 
-    poble_coords = CIUTATS_CATALUNYA[poble_sel]
-    poble_data = CIUTATS_CATALUNYA.get(poble_sel, {})
+    # --- Lògica de Transecte (es manté igual) ---
     is_onshore = _is_wind_onshore(wind_dir_from, poble_data.get('sea_dir'))
-    lat_centre, lon_centre = poble_coords['lat'], poble_coords['lon']
-    dist_total_km = 80
-    
+    lat_centre, lon_centre = poble_coords['lat'], poble_coords['lon']; dist_total_km = 80
     if is_onshore:
         inland_bearing = (wind_dir_from + 180) % 360 
         lat_centre, lon_centre = punt_desti(lat_centre, lon_centre, inland_bearing, 25)
-
     start_point_bearing = (wind_dir_from + 180) % 360
     lat_inici, lon_inici = punt_desti(lat_centre, lon_centre, start_point_bearing, dist_total_km / 2)
-
-    profile_data, error = get_elevation_profile(lat_inici, lon_inici, dist_total_km, 100)
+    profile_data, error = get_elevation_profile(lat_inici, lon_inici, wind_dir_from, dist_total_km, 100)
     if error: return {"error": error}
 
     elevations = np.array(profile_data['elevations']); distances = np.array(profile_data['distances'])
     dist_al_poble = [haversine_distance(poble_coords['lat'], poble_coords['lon'], lat, lon) for lat, lon in zip(profile_data['lats'], profile_data['lons'])]
     idx_poble = np.argmin(dist_al_poble); elev_poble = elevations[idx_poble]
     
+    # --- Anàlisi de Pics i Diagnòstic Millorat ---
     perfil_sobrevent = elevations[:idx_poble+1]
     idx_cim = np.argmax(perfil_sobrevent) if len(perfil_sobrevent) > 0 else idx_poble
     elev_cim = elevations[idx_cim]; dist_cim = distances[idx_cim]
-
-    # <<<--- PARÀMETRES DE find_peaks AJUSTATS PER A SER MÉS SENSIBLE ---
-    indices_pics, _ = find_peaks(elevations, height=300, distance=8)
+    
+    # Usem 'prominence' per a una millor detecció en terreny complex
+    indices_pics, _ = find_peaks(elevations, prominence=300, distance=8)
     punts_a_consultar = [{'lat': profile_data['lats'][i], 'lon': profile_data['lons'][i]} for i in indices_pics]
     noms_cims = get_peak_names(punts_a_consultar)
 
     desnivell = elev_cim - elev_poble
-    if desnivell < 150:
+    # <<<--- NOVA CONDICIÓ PER A LLOCS D'ALTA MUNTANYA ---
+    if elev_poble > 800 and desnivell < 250:
+        posicio, diagnostico, detalls = "Exposat al Cim / Carena", "Flux Directe", "La localitat està en una posició elevada, directament exposada al vent. Això pot intensificar la sensació de vent i fred, i afavorir la formació de boira enganxada si la humitat és alta."
+    # <<<-----------------------------------------------
+    elif desnivell < 150:
         posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "El terreny proper no presenta obstacles prou significatius per a forçar un ascens o descens marcat del flux d'aire."
     elif elev_cim > elev_poble + 100 and (distances[idx_poble] - dist_cim) > 2:
         posicio, diagnostico, detalls = "Sobrevent", "Ascens Orogràfic", f"El flux de vent es veu forçat a ascendir per un obstacle de {elev_cim:.0f} m. Això refreda l'aire, afavorint la formació de núvols i pot intensificar la precipitació."
@@ -7612,10 +7632,8 @@ def analitzar_orografia(poble_sel, data_tuple):
         "posicio": posicio, "diagnostico": diagnostico, "detalls": detalls,
         "cims_identificats": noms_cims,
         "sondeig_perfil_complet": (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile),
-        # Passem les coordenades del transecte per al posicionament
         "transect_coords": (profile_data['lats'], profile_data['lons'])
     }
-
 
 
 
