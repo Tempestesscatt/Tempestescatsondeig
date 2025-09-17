@@ -7672,12 +7672,11 @@ def _is_wind_onshore(wind_dir_from, sea_dir_range):
 
 def analitzar_orografia(poble_sel, data_tuple):
     """
-    Algoritme v9.0 d'anàlisi orogràfica (Lògica de Diagnòstic Contextual).
-    - CORRECCIÓ FONAMENTAL: El diagnòstic ara es basa en el pic més alt de TOT el
-      transecte. La posició del poble es determina en relació a aquest pic.
-    - Elimina completament el diagnòstic erroni de "Cim de Referència (0 m)" a la costa.
-    - La lògica "Plana / Vall Oberta" només s'activa si tot el perfil és realment pla,
-      garantint la coherència entre el text i el gràfic.
+    Algoritme v9.1 d'anàlisi orogràfica (Anàlisi Incondicional).
+    - ELIMINA EL VETO PER VENT FEBLE: L'anàlisi del terreny i el gràfic ara es
+      generen sempre, independentment de la velocitat del vent.
+    - DIAGNÒSTIC ADAPTATIU: Si el vent és feble, el text del diagnòstic ho reflecteix,
+      explicant que no s'esperen efectes orogràfics notables.
     """
     if not data_tuple: return {"error": "Falten dades del sondeig."}
     sounding_data, params_calc = data_tuple
@@ -7698,9 +7697,7 @@ def analitzar_orografia(poble_sel, data_tuple):
     rh_profile = (mpcalc.relative_humidity_from_dewpoint(T, Td) * 100).m
     wind_speed_profile = mpcalc.wind_speed(u, v).to('km/h').m; temp_profile = T.m
     
-    if wind_spd_kmh < 10: 
-        return { "diagnostico": "Vent Feble / Variable", "detalls": "El vent és massa feble.", "posicio": "Indeterminat", "wind_dir_from": wind_dir_from, "wind_spd_kmh": wind_spd_kmh, "sondeig_perfil_complet": (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile) }
-
+    # --- LÒGICA DE TRANSECTE I PERFIL (ARA S'EXECUTA SEMPRE) ---
     start_point_bearing = (wind_dir_from + 180) % 360
     lat_inici, lon_inici = punt_desti(poble_coords['lat'], poble_coords['lon'], start_point_bearing, 40)
     profile_data, error = get_elevation_profile(lat_inici, lon_inici, wind_dir_from, 80, 100)
@@ -7710,41 +7707,37 @@ def analitzar_orografia(poble_sel, data_tuple):
     dist_al_poble = [haversine_distance(poble_coords['lat'], poble_coords['lon'], lat, lon) for lat, lon in zip(profile_data['lats'], profile_data['lons'])]
     idx_poble = np.argmin(dist_al_poble); elev_poble = elevations[idx_poble]
     
-    # --- NOVA LÒGICA DE DIAGNÒSTIC CONTEXTUAL ---
-    # 1. Trobar el cim més alt de TOT el transecte com a referència principal
-    idx_cim_principal = np.argmax(elevations)
-    elev_cim_principal = elevations[idx_cim_principal]
-    
-    # 2. Diagnòstic Jeràrquic
-    if elev_cim_principal < 250: # Si tot el transecte és pla
-        posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "El terreny proper no presenta obstacles significatius."
-        cim_principal_info = None # No hi ha cim de referència
+    # --- LÒGICA DE DIAGNÒSTIC (ARA AMB CONDICIÓ PER A VENT FEBLE) ---
+    is_wind_weak = wind_spd_kmh < 10
+
+    if is_wind_weak:
+        posicio, diagnostico, detalls = "Indeterminat (Vent Feble)", "Efecte Orogràfic Menyspreable", "El vent és massa feble per a interactuar de manera significativa amb el terreny. El perfil es mostra com a referència geogràfica."
+        cim_principal_info = None
+        altres_cims = []
     else:
-        # Si hi ha un obstacle real, procedim a l'anàlisi de posició
-        dist_poble_al_cim = distances[idx_poble] - distances[idx_cim_principal]
-        
-        # Identifiquem el nom del cim principal
+        idx_cim_principal = np.argmax(elevations)
+        elev_cim_principal = elevations[idx_cim_principal]
         comarca = get_comarca_for_poble(poble_sel)
         cims_de_la_comarca = PICS_CATALUNYA_PER_COMARCA.get(comarca, [])
-        dist_als_cims = [haversine_distance(profile_data['lats'][idx_cim_principal], profile_data['lons'][idx_cim_principal], pic['lat'], pic['lon']) for pic in cims_de_la_comarca]
+        cims_propers = [pic for pic in cims_de_la_comarca if np.min([haversine_distance(pic['lat'], pic['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]) < 20]
         
+        dist_als_cims = [haversine_distance(profile_data['lats'][idx_cim_principal], profile_data['lons'][idx_cim_principal], pic['lat'], pic['lon']) for pic in cims_propers]
         cim_principal_info = { "name": "Cim de Referència", "ele": elev_cim_principal, "lat": profile_data['lats'][idx_cim_principal], "lon": profile_data['lons'][idx_cim_principal] }
         if dist_als_cims and np.min(dist_als_cims) < 20:
-             cim_principal_info.update(cims_de_la_comarca[np.argmin(dist_als_cims)])
+             cim_principal_info.update(cims_propers[np.argmin(dist_als_cims)])
 
-        if elev_poble > 800 and (elev_cim_principal - elev_poble) < 250:
+        dist_poble_al_cim = distances[idx_poble] - distances[idx_cim_principal]
+        if elev_cim_principal < 250:
+            posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "El terreny proper no presenta obstacles significatius."
+            cim_principal_info = None
+        elif elev_poble > 800 and (elev_cim_principal - elev_poble) < 250:
             posicio, diagnostico, detalls = "Exposat al Cim / Carena", "Flux Directe", "La localitat està en una posició elevada, directament exposada al vent."
-        elif dist_poble_al_cim < -2: # El poble està a més de 2km a sobrevent del pic
+        elif dist_poble_al_cim < -2:
             posicio, diagnostico, detalls = "Sobrevent", "Ascens Orogràfic", f"El flux de vent es veu forçat a ascendir per un obstacle de {elev_cim_principal:.0f} m."
-        else: # El poble està a sotavent o molt a prop del pic
+        else:
             posicio, diagnostico, detalls = "Sotavent", "Subsidència / Possible Efecte Foehn", f"El flux d'aire descendeix després de superar un obstacle de {elev_cim_principal:.0f} m."
-    
-    # La resta de cims notables es busquen com abans
-    indices_pics, _ = find_peaks(elevations, prominence=250, distance=5)
-    punts_a_consultar = [{'lat': profile_data['lats'][i], 'lon': profile_data['lons'][i]} for i in indices_pics]
-    resultat_cims = get_peak_names(punts_a_consultar)
-    if "error" in resultat_cims: return {"error": resultat_cims["error"]}
-    altres_cims = resultat_cims.get("peaks", [])
+        
+        altres_cims = cims_propers
 
     return {
         "transect_distances": distances, "transect_elevations": elevations, "poble_sel": poble_sel, "poble_dist": distances[idx_poble], "poble_elev": elev_poble,
