@@ -48,7 +48,7 @@ from matplotlib.patches import Polygon, Wedge, Circle
 from typing import List, Tuple, Dict, Any  
 import matplotlib.lines as mlines  
 import scipy.ndimage as ndi
-
+from math import radians, sin, cos, sqrt, atan2, degrees, asin
 
 
 
@@ -7246,9 +7246,12 @@ def ui_vista_maritima(hourly_index):
                   
 
 
+# -*- coding: utf-8 -*-
+
 def run_catalunya_app():
     """
     Versió Final amb selector de vista Terra/Mar i correcció del bug de convergència.
+    INCLOU LA NOVA PESTANYA "ANÀLISI OROGRÀFICA".
     """
     # --- PAS 1: CAPÇALERA I INICIALITZACIÓ D'ESTAT ---
     ui_capcalera_selectors(None, zona_activa="catalunya")
@@ -7294,22 +7297,19 @@ def run_catalunya_app():
             
         params_calculats = data_tuple[1]
         
-        # ===== CORRECCIÓ DEL BUG DE CONVERGÈNCIA AQUÍ =====
-        # Assegurem que el càlcul es fa i s'afegeix al diccionari de paràmetres
-        # abans de passar-lo a cap altra funció de visualització.
         if not error_msg_map and map_data_conv:
             conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
             if pd.notna(conv_puntual):
                 params_calculats[f'CONV_{nivell_sel}hPa'] = conv_puntual
-        # ====================================================
 
         if final_index is not None and final_index != hourly_index_sel:
             adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
             adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
             st.warning(f"Avís: Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: {adjusted_local_time.strftime('%H:%Mh')}.")
         
-        menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi de Mapes", "Simulació de Núvol"]
-        menu_icons = ["fullscreen", "graph-up-arrow", "map", "cloud-upload"]
+        # --- CANVI AQUÍ: AFEGIM LA NOVA PESTANYA AL MENÚ ---
+        menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi Orogràfica", "Anàlisi de Mapes", "Simulació de Núvol"]
+        menu_icons = ["fullscreen", "graph-up-arrow", "bar-chart-line", "map", "cloud-upload"]
         active_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key=f'option_menu_{poble_sel}')
         
         if active_tab == "Anàlisi Comarcal":
@@ -7323,13 +7323,17 @@ def run_catalunya_app():
         elif active_tab == "Anàlisi Vertical":
             ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
         
+        # --- CANVI AQUÍ: AFEGIM LA CRIDA A LA FUNCIÓ DE LA NOVA PESTANYA ---
+        elif active_tab == "Anàlisi Orogràfica":
+            ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calculats)
+
         elif active_tab == "Anàlisi de Mapes":
             ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
 
         elif active_tab == "Simulació de Núvol":
             ui_pestanya_simulacio_nuvol(params_calculats, timestamp_str, poble_sel)
     else: 
-        # --- VISTA DE SELECCIÓ GENERAL (TERRA o MAR) ---
+        # ... (la resta de la funció 'run_catalunya_app' es manté exactament igual) ...
         st.session_state.setdefault('analysis_view', 'Terra')
         st.session_state.setdefault('show_comarca_labels', False)
         st.session_state.setdefault('alert_filter_level_cape', 'Energia Baixa i superior')
@@ -7393,10 +7397,176 @@ def run_catalunya_app():
             else:
                 st.info("Fes clic en una zona del mapa per veure'n les localitats.", icon="👆")
         
-        else: # Si la vista seleccionada és "Mar"
+        else:
             ui_vista_maritima(hourly_index_sel)
-            
 
+
+
+
+
+# -*- coding: utf-8 -*-
+
+def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
+    """
+    Mostra la interfície per a la pestanya d'Anàlisi d'Interacció Vent-Orografia.
+    (Versió completa amb anàlisi i gràfic)
+    """
+    st.markdown(f"#### Anàlisi d'Interacció Vent-Orografia per a {poble_sel}")
+    st.caption(timestamp_str)
+
+    with st.spinner("Analitzant el flux d'aire sobre el terreny..."):
+        analisi_orografica = analitzar_orografia(poble_sel, data_tuple)
+
+    if "error" in analisi_orografica:
+        st.error(f"No s'ha pogut realitzar l'anàlisi: {analisi_orografica['error']}")
+        return
+
+    col1, col2 = st.columns([0.65, 0.35], gap="large")
+    with col1:
+        st.markdown("##### Perfil del Terreny")
+        if "transect_distances" in analisi_orografica:
+            fig = crear_grafic_perfil_orografic(analisi_orografica)
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
+        else:
+            st.info("El vent és massa feble per a generar un perfil orogràfic rellevant.")
+    
+    with col2:
+        st.markdown("##### Diagnòstic Orogràfic")
+        posicio, diagnostico, detalls = analisi_orografica.get("posicio"), analisi_orografica.get("diagnostico"), analisi_orografica.get("detalls")
+        
+        if posicio == "Sobrevent": color, emoji = "#28a745", "🔼"
+        elif posicio == "Sotavent": color, emoji = "#fd7e14", "🔽"
+        else: color, emoji = "#6c757d", "↔️"
+            
+        st.markdown(f"""
+        <div style="padding: 12px; background-color: #2a2c34; border-radius: 10px; border-left: 5px solid {color}; margin-bottom: 15px;">
+             <span style="font-size: 1.2em; color: #FAFAFA;">{emoji} Posició Relativa: <strong style="color:{color}">{posicio}</strong></span>
+             <h6 style="color: white; margin-top: 10px; margin-bottom: 5px;">Efecte Principal: {diagnostico}</h6>
+             <p style="font-size:0.95em; color:#a0a0b0; text-align: left;">{detalls}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        st.markdown("###### Detalls del Flux:")
+        st.metric("Direcció del Vent Dominant", f"{analisi_orografica['wind_dir_from']:.0f}° ({graus_a_direccio_cardinal(analisi_orografica['wind_dir_from'])})")
+        st.metric("Velocitat del Vent Dominant", f"{analisi_orografica['wind_spd_kmh']:.0f} km/h")
+        st.caption("Vent a 850 hPa o superfície (si és alta muntanya).")
+
+
+
+
+# -*- coding: utf-8 -*-
+
+@st.cache_data(ttl=86400, show_spinner="Obtenint perfil del terreny...")
+def get_elevation_profile(lat_start, lon_start, bearing_deg, distance_km=80, num_points=100):
+    """
+    Obté un perfil d'elevació al llarg d'un transecte des d'un punt inicial.
+    Retorna les coordenades dels punts, les seves distàncies i les seves elevacions.
+    """
+    R = 6371.0
+    lats, lons, dists = [], [], []
+    lat_start_rad, lon_start_rad, bearing_rad = map(radians, [lat_start, lon_start, bearing_deg])
+
+    for i in range(num_points):
+        d = i * (distance_km / (num_points - 1))
+        dists.append(d)
+        lat_rad = asin(sin(lat_start_rad) * cos(d / R) + cos(lat_start_rad) * sin(d / R) * cos(bearing_rad))
+        lon_rad = lon_start_rad + atan2(sin(bearing_rad) * sin(d / R) * cos(lat_start_rad), cos(d / R) - sin(lat_start_rad) * sin(lat_rad))
+        lats.append(degrees(lat_rad)); lons.append(degrees(lon_rad))
+        
+    try:
+        response = requests.get("https://api.open-meteo.com/v1/elevation", params={"latitude": lats, "longitude": lons}, timeout=10)
+        response.raise_for_status()
+        elevations = response.json().get('elevation', [0] * num_points)
+        return {"distances": dists, "elevations": elevations, "lats": lats, "lons": lons}, None
+    except Exception as e:
+        return None, f"Error obtenint dades d'elevació: {e}"
+
+def punt_desti(lat, lon, bearing, distance_km):
+    """
+    Calcula les coordenades d'un punt de destinació donat un punt de partida,
+    una direcció (bearing) i una distància. Funció auxiliar per a l'anàlisi orogràfica.
+    """
+    R = 6371.0
+    lat, lon, bearing = map(radians, [lat, lon, bearing])
+    lat2 = asin(sin(lat) * cos(distance_km / R) + cos(lat) * sin(distance_km / R) * cos(bearing))
+    lon2 = lon + atan2(sin(bearing) * sin(distance_km / R) * cos(lat), cos(distance_km / R) - sin(lat) * sin(lat2))
+    return degrees(lat2), degrees(lon2)
+
+def analitzar_orografia(poble_sel, data_tuple):
+    """
+    Algoritme principal d'anàlisi orogràfica.
+    Analitza el flux de vent i el terreny per determinar l'efecte orogràfic.
+    """
+    if not data_tuple: return {"error": "Falten dades del sondeig."}
+    sounding_data, _ = data_tuple
+    p, u, v = sounding_data[0], sounding_data[3], sounding_data[4]
+
+    try:
+        u_dom, v_dom = (u[0], v[0]) if p.m.min() > 850 else (np.interp(850, p.m[::-1], u.m[::-1]) * units('m/s'), np.interp(850, p.m[::-1], v.m[::-1]) * units('m/s'))
+        wind_dir_from = mpcalc.wind_direction(u_dom, v_dom).m
+        wind_spd_kmh = mpcalc.wind_speed(u_dom, v_dom).to('km/h').m
+    except Exception: return {"error": "No s'ha pogut determinar el vent dominant."}
+        
+    if wind_spd_kmh < 10: return {"diagnostico": "Vent Feble / Variable", "detalls": "El vent és massa feble per a generar efectes orogràfics significatius.", "posicio": "Indeterminat", "wind_dir_from": wind_dir_from, "wind_spd_kmh": wind_spd_kmh}
+
+    poble_coords = CIUTATS_CATALUNYA[poble_sel]
+    start_point_bearing = (wind_dir_from + 180) % 360
+    lat_inici, lon_inici = punt_desti(poble_coords['lat'], poble_coords['lon'], start_point_bearing, 40)
+
+    profile_data, error = get_elevation_profile(lat_inici, lon_inici, wind_dir_from, 80, 100)
+    if error: return {"error": error}
+
+    elevations = np.array(profile_data['elevations']); distances = np.array(profile_data['distances'])
+    idx_poble = np.argmin(np.abs(distances - 40)); elev_poble = elevations[idx_poble]
+    
+    perfil_sobrevent = elevations[:idx_poble+1]
+    idx_cim = np.argmax(perfil_sobrevent) if len(perfil_sobrevent) > 0 else idx_poble
+    elev_cim = elevations[idx_cim]; dist_cim = distances[idx_cim]
+
+    desnivell = elev_cim - elev_poble
+    if desnivell < 150:
+        posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "El terreny proper no presenta obstacles prou significatius per a forçar un ascens o descens marcat del flux d'aire."
+    elif elev_cim > elev_poble + 100 and (distances[idx_poble] - dist_cim) > 2:
+        posicio, diagnostico, detalls = "Sobrevent", "Ascens Orogràfic", f"El flux de vent es veu forçat a ascendir per un obstacle de {elev_cim:.0f} m. Això refreda l'aire, afavorint la formació de núvols i pot intensificar la precipitació."
+    else:
+        posicio, diagnostico, detalls = "Sotavent", "Subsidència / Possible Efecte Foehn", f"El flux d'aire descendeix després de superar un obstacle de {elev_cim:.0f} m. Aquest descens comprimeix i escalfa l'aire, afavorint un cel més serè i un ambient més sec i càlid."
+
+    return {"transect_distances": distances, "transect_elevations": elevations, "poble_sel": poble_sel, "poble_dist": distances[idx_poble], "poble_elev": elev_poble, "cim_dist": dist_cim, "cim_elev": elev_cim, "wind_dir_from": wind_dir_from, "wind_spd_kmh": wind_spd_kmh, "posicio": posicio, "diagnostico": diagnostico, "detalls": detalls}
+
+def crear_grafic_perfil_orografic(analisi):
+    """
+    Crea un gràfic de Matplotlib que mostra el perfil del terreny i el flux de vent.
+    """
+    plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 4), dpi=100)
+    fig.patch.set_facecolor('#F0F2F6'); ax.set_facecolor('#FFFFFF')
+    dist_centrat = analisi['transect_distances'] - 40
+    elev = analisi['transect_elevations']
+    ax.fill_between(dist_centrat, 0, elev, color='#C2B280', alpha=0.8, zorder=2)
+    ax.plot(dist_centrat, elev, color='#8B4513', linewidth=1.5, zorder=3)
+    
+    poble_dist_centrat = 0; ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='black')
+    ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
+
+    if analisi['posicio'] != "Plana / Vall Oberta":
+        cim_dist_centrat = analisi['cim_dist'] - 40
+        ax.plot(cim_dist_centrat, analisi['cim_elev'], '^', color='blue', markersize=10, label=f"Cim Orogràfic ({analisi['cim_elev']:.0f} m)", zorder=9, markeredgecolor='black')
+
+    max_elev = max(2000, np.max(elev) * 1.5)
+    for alt in np.linspace(np.max(elev) + 300, max_elev, 4):
+        x_points = np.linspace(dist_centrat.min(), dist_centrat.max(), 100)
+        desnivell = np.interp(x_points, dist_centrat, elev)
+        y_points = alt + (desnivell * 0.4)
+        ax.plot(x_points, y_points, color='cornflowerblue', linewidth=0.8, linestyle='-', zorder=4, alpha=0.9)
+        ax.arrow(x_points[-10], y_points[-10], x_points[-9] - x_points[-10], y_points[-9] - y_points[-10], head_width=80, head_length=1.5, fc='cornflowerblue', ec='cornflowerblue', zorder=5)
+
+    ax.set_xlabel("Distància (km) [Sobrevent <-> Sotavent]")
+    ax.set_ylabel("Elevació (m)")
+    ax.set_title(f"Perfil Orogràfic al llarg del Vent ({analisi['wind_dir_from']:.0f}° | {analisi['wind_spd_kmh']:.0f} km/h)")
+    ax.grid(True, linestyle=':', alpha=0.7); ax.legend()
+    ax.set_ylim(bottom=0, top=max_elev); ax.set_xlim(dist_centrat.min(), dist_centrat.max())
+    plt.tight_layout(); return fig
 
 
 
