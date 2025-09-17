@@ -7648,22 +7648,25 @@ def _is_wind_onshore(wind_dir_from, sea_dir_range):
     else:
         return start <= wind_dir_from or wind_dir_from <= end
         
+
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 5.0 (Perfil de Vent d'Alta Densitat):
-    - AFEGEIX BARBES DE SUPERFÍCIE: Dibuixa una capa de barbes de vent que segueix
-      el contorn del terreny per a analitzar el flux a nivells baixos.
-    - AUGMENTA LA DENSITAT VERTICAL: Les barbes de vent superiors ara es dibuixen
-      cada 500 metres per a un anàlisi de cizallament molt més detallat.
+    Versió 5.1 (Correcció de NameError):
+    - CORREGIT: Defineix correctament la variable 'dist_total_km' a l'inici de la funció
+      per a evitar el NameError en calcular la posició del poble.
     """
     plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
     fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#E6F2FF')
     
-    dist_centrat = analisi['transect_distances'] - 40
+    # <<<--- LÍNIA CLAU AFEGIDA PER CORREGIR EL NAMEERROR ---
+    dist_total_km = analisi['transect_distances'][-1]
+    # <<<---------------------------------------------------
+    
+    dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
     elev = analisi['transect_elevations']
     
-    # ... (La definició de paletes de color i la preparació de la graella es mantenen igual) ...
+    # ... (La resta de la funció es manté exactament igual) ...
     colors_humitat = ['#f0e68c', '#90ee90', '#4682b4', '#191970']; levels_humitat = [0, 30, 60, 80, 101]
     cmap_humitat = ListedColormap(colors_humitat); norm_humitat = BoundaryNorm(levels_humitat, ncolors=cmap_humitat.N, clip=True)
     colors_vent = ['#d3d3d3', '#add8e6', '#48d1cc', '#90ee90', '#32cd32', '#6b8e23', '#f0e68c', '#d2b48c', '#bc8f8f', '#ffb6c1', '#da70d6', '#9932cc', '#8a2be2', '#48d1cc', '#6495ed']
@@ -7701,31 +7704,25 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         lcl_hgt = params_calc.get('LCL_Hgt', 9999)
         if lcl_hgt < max_alt_m: ax.axhline(y=lcl_hgt, color='white', linestyle=':', linewidth=2, label=f"LCL: {lcl_hgt:.0f} m", zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
 
-    # <<<--- NOU BLOC DE DIBUIX DE BARBES DE VENT ---
     if 'sondeig_perfil_complet' in analisi and analisi['sondeig_perfil_complet']:
-        # 1. Barbes Superiors (cada 500m)
         barb_x_upper = np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7)
-        barb_y_upper = np.arange(1000, max_alt_m, 500) # Més densitat
+        barb_y_upper = np.arange(1000, max_alt_m, 500)
         barb_xx, barb_zz = np.meshgrid(barb_x_upper, barb_y_upper)
         barb_u = np.interp(barb_zz.flatten(), heights_m, u_ms) * 1.94384
         barb_v = np.interp(barb_zz.flatten(), heights_m, v_ms) * 1.94384
         ax.barbs(barb_xx.flatten(), barb_zz.flatten(), barb_u, barb_v, length=6, zorder=5, color='white', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
         
-        # 2. Barbes de Superfície (seguint el terreny)
-        barb_x_surface = np.linspace(dist_centrat.min() + 2, dist_centrat.max() - 2, 10) # Més barbes horitzontals
+        barb_x_surface = np.linspace(dist_centrat.min() + 2, dist_centrat.max() - 2, 10)
         surface_elev_at_barbs = np.interp(barb_x_surface, dist_centrat, elev)
-        barb_y_surface = surface_elev_at_barbs + 100 # A 100m sobre el terreny
-        
+        barb_y_surface = surface_elev_at_barbs + 100
         barb_u_surface = np.interp(barb_y_surface, heights_m, u_ms) * 1.94384
         barb_v_surface = np.interp(barb_y_surface, heights_m, v_ms) * 1.94384
-        
-        # Filtrem les barbes que quedarien fora de la vista vertical
         mask = barb_y_surface < max_alt_m
         ax.barbs(barb_x_surface[mask], barb_y_surface[mask], barb_u_surface[mask], barb_v_surface[mask],
-                 length=6, zorder=5, color='#F0E68C', # Color groc per a destacar
+                 length=6, zorder=5, color='#F0E68C',
                  path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
-    # <<<---------------------------------------------------
-
+    
+    # Aquesta línia ara funcionarà correctament
     poble_dist_centrat = analisi['poble_dist'] - (dist_total_km / 2)
     ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
