@@ -8768,11 +8768,13 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Expert v72.0 (Eliminació de "Patró Incert").
-    - **ELIMINACIÓ DEL DIAGNÒSTIC GENÈRIC**: S'ha eliminat completament el diagnòstic "Nuvolositat Variable / Patró Incert". La lògica ara és exhaustiva.
-    - **NOU DIAGNÒSTIC PRECÍS**: S'introdueix "Cel Emblanquinat / Tèrbol" per a condicions amb humitat moderada a nivells mitjans/alts però sense capes de núvols definides.
-    - **LÒGICA EXHAUSTIVA**: El sistema ara SEMPRE retorna un diagnòstic meteorològic concret, des de "Cel Serè" fins a "Potencial de Supercèl·lula".
-    - Manté la jerarquia i la precisió de les versions anteriors per a la resta de fenòmens.
+    Sistema de Diagnòstic Expert v73.0 (Diagnòstic de Baixa Humitat Refinat).
+    - **NOVA LÒGICA PER A CEL SERÈ**:
+        - Si RH < 30% a totes les capes -> "Cel Serè" (absolut).
+        - Si 30% <= RH Baixa < 40% -> "Cel Serè amb núvols fragmentats" (possible fractostratus/fractocúmuls).
+    - **LLINDARS AJUSTATS**: El diagnòstic "Cúmuls de bon temps" ara requereix una humitat mínima del 40%.
+    - **DIAGNÒSTIC EXHAUSTIU**: La funció cobreix tots els escenaris de manera determinista, eliminant qualsevol ambigüitat.
+    - Manté la jerarquia i precisió per a la resta de fenòmens de versions anteriors.
     """
     
     # --- 1. Extracció Exhaustiva i Robusta de Paràmetres ---
@@ -8785,7 +8787,6 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
     
     bwd_6km = params.get('BWD_0-6km', 0) or 0
-    pwat = params.get('PWAT', 0) or 0
     
     rh_capes = params.get('RH_CAPES', {})
     rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
@@ -8795,9 +8796,9 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     conv_key = f'CONV_{nivell_conv}hPa'
     conv = params.get(conv_key, 0) or 0
 
-    # --- 2. Anàlisi Jeràrquica del Potencial Meteorològic ---
+    # --- 2. Anàlisi Jeràrquica del Potencial Meteorològic (de major a menor impacte) ---
 
-    # == NIVELL 1: POTENCIAL DE TEMPESTES SEVERES (MÀXIMA PRIORITAT) ==
+    # == NIVELL 1: POTENCIAL DE TEMPESTES SEVERES ==
     condicions_de_dispar = (cin > -100 and lfc_hgt < 2200 and conv > 10)
     
     if max_cape > 1500 and bwd_6km >= 35 and condicions_de_dispar:
@@ -8812,27 +8813,19 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     if max_cape > 800 and condicions_de_dispar:
         return {'descripcio': "Tempesta Comuna", 'veredicte': "Energia suficient per a tempestes amb forta pluja i activitat elèctrica."}
 
-    # == NIVELL 2: POTENCIAL DE PLUJA CONTÍNUA (NO CONVECTIVA) ==
+    # == NIVELL 2: PLUJA CONTÍNUA O NÚVOLS CONVECTIUS EN DESENVOLUPAMENT ==
     if rh_baixa >= 80 and rh_mitjana >= 75 and max_cape < 300:
         return {'descripcio': "Nimbostratus (Pluja Contínua)", 'veredicte': "Capa de núvols molt humida i gruixuda, favorable a pluges extenses i persistents."}
 
-    # == NIVELL 3: NÚVOLS CONVECTIUS EN DESENVOLUPAMENT ==
     if max_cape > 250 and lfc_hgt < 3000 and rh_baixa > 70:
         return {'descripcio': "Cúmuls de creixement", 'veredicte': "Inici de convecció amb creixement vertical. Precursors de possibles tempestes."}
 
-    # == NIVELL 4: NUVOLOSITAT ESTRATIFORME PER CAPES (DE BAIX A DALT) ==
-    
-    # Capa baixa (Estratus densos o Cúmuls mediocris)
+    # == NIVELL 3: NUVOLOSITAT ESTRATIFORME PER CAPES (DE BAIX A DALT) ==
     if rh_baixa >= 85 and lcl_hgt < 500:
          return {'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos i cel cobert, pot produir plugims."}
     if rh_baixa >= 75:
         return {'descripcio': "Cúmuls mediocris", 'veredicte': "Núvols baixos amb cert desenvolupament vertical, però sense arribar a ser tempestes."}
     
-    # Condició específica per a Fractocúmuls
-    if 60 <= rh_baixa < 75 and rh_mitjana < 50 and max_cape > 50:
-        return {'descripcio': "Fractocúmuls", 'veredicte': "Humitat limitada a capes baixes amb aire sec a sobre, formant núvols trencats."}
-
-    # Capa mitjana i alta (ben definides)
     if rh_mitjana >= 70:
         if bwd_6km > 40:
              return {'descripcio': "Altocúmulus Lenticular", 'veredicte': "Núvols en forma de 'plat volador', indiquen vent fort i turbulència en alçada."}
@@ -8843,16 +8836,22 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
             return {'descripcio': "Cirrus Castellanus", 'veredicte': "Núvols alts amb petites 'torres', indiquen inestabilitat en nivells superiors."}
         return {'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Presència de núvols alts de tipus cirrus que poden produir un halo solar/lunar."}
         
-    # == NOU NIVELL 5: CONDICIONS DE CEL TÈRBOL (ABANS "PATRÓ INCERT") ==
-    if rh_mitjana > 50 or rh_alta > 50:
-        return {'descripcio': "Cel Emblanquinat / Tèrbol", 'veredicte': "Capes d'humitat a nivells mitjans i alts creen un cel d'aspecte lletós."}
+    # == NIVELL 4: LÒGICA DEFINITIVA PER A CONDICIONS DE BAIXA HUMITAT ==
+
+    # Condició d'extrema sequedat
+    if rh_baixa < 30 and rh_mitjana < 30 and rh_alta < 30:
+        return {'descripcio': "Cel Serè", 'veredicte': "Atmosfera extremadament seca a tots els nivells. Absència total de nuvolositat."}
+
+    # Condició de sequedat amb possible formació de núvols fragmentats
+    if 30 <= rh_baixa < 40 and rh_mitjana < 50:
+        return {'descripcio': "Cel Serè amb núvols fragmentats", 'veredicte': "Humitat molt baixa. Cel majoritàriament serè amb possibles fractostratus o cúmuls molt aïllats."}
     
-    # == NIVELL 6: CONDICIONS DE CEL POC ENNUVOLAT O SERÈ (ÚLTIM RECURS) ==
-    if max_cape > 50:
-        return {'descripcio': "Cúmuls de bon temps", 'veredicte': "Poca humitat però una mica d'energia per a formar petits cúmuls dispersos."}
-    
-    # Si arribem aquí, és que totes les capes són seques i no hi ha energia.
-    return {'descripcio': "Cel Serè", 'veredicte': "Atmosfera estable i seca, sense nuvolositat significativa."}
+    # Condició per a cúmuls de bon temps (humitat baixa però suficient)
+    if 40 <= rh_baixa < 70 and max_cape > 50:
+        return {'descripcio': "Cúmuls de bon temps", 'veredicte': "Humitat suficient per a formar petits cúmuls dispersos sense desenvolupament."}
+        
+    # Si arribem aquí, les condicions restants no afavoreixen la formació de núvols.
+    return {'descripcio': "Cel Serè", 'veredicte': "Atmosfera estable i/o seca, sense nuvolositat significativa."}
 
     
 if __name__ == "__main__":
