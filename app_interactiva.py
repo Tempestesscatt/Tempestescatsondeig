@@ -67,144 +67,160 @@ openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
 PICS_CATALUNYA_PER_COMARCA = {
-    "Alt Empordà": [
-        {'name': "Roc del Comptador", 'lat': 42.4013, 'lon': 2.9667, 'ele': 1451},
-        {'name': "Montferrer", 'lat': 42.3410, 'lon': 3.0010, 'ele': 795},
+    # COMARQUES PIRINENQUES I PRE-PIRINENQUES
+    "Val d'Aran": [
+        {'name': "Tuc de Molières", 'lat': 42.636, 'lon': 0.723, 'ele': 3010},
+        {'name': "Besiberri Nord", 'lat': 42.602, 'lon': 0.817, 'ele': 3008},
+        {'name': "Montardo", 'lat': 42.651, 'lon': 0.875, 'ele': 2833},
     ],
-    "Baix Empordà": [
-        {'name': "Puig d'Arques", 'lat': 42.0010, 'lon': 3.0360, 'ele': 513},
-        {'name': "La Ganga (les Gavarres)", 'lat': 41.9960, 'lon': 2.9780, 'ele': 441},
+    "Pallars Sobirà": [
+        {'name': "Pica d'Estats", 'lat': 42.665, 'lon': 1.442, 'ele': 3143},
+        {'name': "Montsent de Pallars", 'lat': 42.492, 'lon': 1.050, 'ele': 2883},
+        {'name': "Tuc de la Cigalera", 'lat': 42.686, 'lon': 1.018, 'ele': 2668},
     ],
-    "Gironès": [
-        {'name': "Puig d'Afrau", 'lat': 42.016, 'lon': 2.895, 'ele': 708},
+    "Alta Ribagorça": [
+        {'name': "Comaloforno", 'lat': 42.585, 'lon': 0.809, 'ele': 3029},
+        {'name': "Punta Alta", 'lat': 42.570, 'lon': 0.888, 'ele': 3014},
     ],
-    "Pla de l'Estany": [
-        {'name': "Comaestremer", 'lat': 42.119, 'lon': 2.861, 'ele': 885},
+    "Pallars Jussà": [
+        {'name': "Montsec d'Ares", 'lat': 42.046, 'lon': 0.760, 'ele': 1676},
+        {'name': "Gallina Pelada", 'lat': 42.174, 'lon': 1.705, 'ele': 2321},
+        {'name': "Pala Pedregosa", 'lat': 42.368, 'lon': 1.042, 'ele': 2450},
     ],
-    "Selva": [
-        {'name': "Les Agudes", 'lat': 41.7890, 'lon': 2.4340, 'ele': 1705},
-        {'name': "Turó de l'Home", 'lat': 41.7760, 'lon': 2.4170, 'ele': 1706},
+    "Cerdanya": [
+        {'name': "Puigpedrós", 'lat': 42.493, 'lon': 1.841, 'ele': 2915},
+        {'name': "La Tosa", 'lat': 42.330, 'lon': 1.879, 'ele': 2536},
+        {'name': "Puigmal", 'lat': 42.383, 'lon': 2.112, 'ele': 2910},
+    ],
+    "Alt Urgell": [
+        {'name': "Vulturó", 'lat': 42.278, 'lon': 1.670, 'ele': 2648},
+        {'name': "Salòria", 'lat': 42.433, 'lon': 1.403, 'ele': 2789},
+        {'name': "El Boumort", 'lat': 42.215, 'lon': 1.139, 'ele': 2077},
+    ],
+    "Ripollès": [
+        {'name': "Puigmal", 'lat': 42.383, 'lon': 2.112, 'ele': 2910},
+        {'name': "Bastiments", 'lat': 42.455, 'lon': 2.222, 'ele': 2881},
+        {'name': "Taga", 'lat': 42.261, 'lon': 2.169, 'ele': 2040},
     ],
     "Garrotxa": [
         {'name': "Comanegra", 'lat': 42.327, 'lon': 2.583, 'ele': 1557},
         {'name': "Puigsacalm", 'lat': 42.129, 'lon': 2.441, 'ele': 1514},
     ],
-    "Ripollès": [
-        {'name': "Puigmal (sostre comarcal)", 'lat': 42.383, 'lon': 2.112, 'ele': 2910},
-        {'name': "Bastiments", 'lat': 42.455, 'lon': 2.222, 'ele': 2881},
-    ],
-    "Cerdanya": [
-        {'name': "Puigpedrós", 'lat': 42.493, 'lon': 1.841, 'ele': 2914},
-        {'name': "La Tosa", 'lat': 42.330, 'lon': 1.879, 'ele': 2536},
-    ],
-    "Alt Urgell": [
-        {'name': "Serra del Cadí (Puntó més alt: Cadí-Moixeró)", 'lat': 42.278, 'lon': 1.670, 'ele': 2648}, # Pedraforca/Salts nearby
-        {'name': "Tuc de la Llança (poss.)", 'lat': 42.55, 'lon': 1.33, 'ele': 2635},
-    ],
-    "Noguera": [
-        {'name': "Sant Corneli (Serra del Montsec)", 'lat': 41.883, 'lon': 0.785, 'ele': 1586},
-        {'name': "Montsec d'Ares (part)", 'lat': 42.046, 'lon': 0.760, 'ele': 1676},
-    ],
-    "Pallars Sobirà": [
-        {'name': "Pica d'Estats", 'lat': 42.6653, 'lon': 1.4247, 'ele': 3143},
-        {'name': "Besiberri Nord", 'lat': 42.602, 'lon': 0.817, 'ele': 3008},
-    ],
-    "Pallars Jussà": [
-        {'name': "Pic de Peguera", 'lat': 42.516, 'lon': 0.993, 'ele': 2983},
-        {'name': "Montsec (punts)", 'lat': 42.046, 'lon': 0.760, 'ele': 1676},
-    ],
-    "Alta Ribagorça": [
-        {'name': "Comaloforno", 'lat': 42.585, 'lon': 0.809, 'ele': 3029},
-        {'name': "Punta Alta de Comalesbienes", 'lat': 42.570, 'lon': 0.888, 'ele': 3014},
-    ],
-    "Segrià": [
-        {'name': "Tossal de la Baltasana", 'lat': 41.639, 'lon': 0.870, 'ele': 456},
-    ],
-    "Pla d'Urgell": [
-        {'name': "Tossal de Miralles (petit turó)", 'lat': 41.616, 'lon': 0.948, 'ele': 310},
-    ],
-    "Urgell": [
-        {'name': "Serra de Bellmunt (Altres elevacions)", 'lat': 41.6, 'lon': 1.0, 'ele': 400},
-    ],
-    "Garrigues": [
-        {'name': "Tossal de la Llena", 'lat': 41.48, 'lon': 0.86, 'ele': 515},
-    ],
-    "Segarra": [
-        {'name': "Turó del Galutxo (sostre comarcal)", 'lat': 41.658, 'lon': 1.388, 'ele': 854},
-    },
-    "Solsonès": [
-        {'name': "Port del Comte (serra)", 'lat': 42.176, 'lon': 1.503, 'ele': 2383},
-    ],
     "Berguedà": [
         {'name': "Pedraforca", 'lat': 42.235, 'lon': 1.713, 'ele': 2506},
         {'name': "Penyes Altes de Moixeró", 'lat': 42.288, 'lon': 1.849, 'ele': 2276},
     ],
+    "Solsonès": [
+        {'name': "Pedró dels Quatre Batlles", 'lat': 42.176, 'lon': 1.503, 'ele': 2383},
+    ],
+    # COMARQUES CENTRALS I PRE-LITORALS
+    "Osona": [
+        {'name': "Matagalls", 'lat': 41.854, 'lon': 2.387, 'ele': 1698},
+        {'name': "Bellmunt", 'lat': 42.093, 'lon': 2.274, 'ele': 1246},
+    ],
+    "Moianès": [
+        {'name': "Puig de la Caritat", 'lat': 41.834, 'lon': 2.155, 'ele': 1009},
+    ],
     "Bages": [
-        {'name': "Montserrat (sostre comarcal)", 'lat': 41.594, 'lon': 1.837, 'ele': 1236},
+        {'name': "Montserrat (Sant Jeroni)", 'lat': 41.594, 'lon': 1.837, 'ele': 1236},
         {'name': "La Mola", 'lat': 41.637, 'lon': 2.019, 'ele': 1104},
     ],
     "Anoia": [
-        {'name': "Montserrat (part sud)", 'lat': 41.594, 'lon': 1.837, 'ele': 1236},
+        {'name': "Montserrat", 'lat': 41.594, 'lon': 1.837, 'ele': 1236},
+        {'name': "Tossa de Montbui", 'lat': 41.551, 'lon': 1.558, 'ele': 620},
     ],
-    "Baix Llobregat": [
-        {'name': "Montserrat (massís)", 'lat': 41.594, 'lon': 1.837, 'ele': 1236},
-        {'name': "Castell d'Eramprunyà", 'lat': 41.340, 'lon': 1.977, 'ele': 380},
+    "Segarra": [
+        {'name': "Tossal de la Guàrdia", 'lat': 41.748, 'lon': 1.472, 'ele': 876},
     ],
-    "Vallès Occidental": [
-        {'name': "La Mola", 'lat': 41.637, 'lon': 2.019, 'ele': 1104},
-        {'name': "Turo de l'Home (baixa)", 'lat': 41.42, 'lon': 2.12, 'ele': 512},
+    "Urgell": [
+        {'name': "Tossal de l'Àliga", 'lat': 41.530, 'lon': 1.071, 'ele': 558},
+    ],
+    "Conca de Barberà": [
+        {'name': "Tossal Gros de Miramar", 'lat': 41.312, 'lon': 1.229, 'ele': 867},
+        {'name': "Mola d'Estat", 'lat': 41.393, 'lon': 1.018, 'ele': 1126},
+    ],
+    "Alt Penedès": [
+        {'name': "El Montmell", 'lat': 41.309, 'lon': 1.458, 'ele': 861},
+    ],
+    # COMARQUES DEL LITORAL I PRE-LITORAL
+    "Alt Empordà": [
+        {'name': "Puig Neulós", 'lat': 42.493, 'lon': 2.846, 'ele': 1256},
+        {'name': "Sant Salvador de Verdera", 'lat': 42.321, 'lon': 3.270, 'ele': 670},
+    ],
+    "Gironès": [
+        {'name': "Rocacorba", 'lat': 42.093, 'lon': 2.684, 'ele': 991},
+    ],
+    "Pla de l'Estany": [
+        {'name': "Puig de Sant Patllari", 'lat': 42.176, 'lon': 2.713, 'ele': 654},
+    ],
+    "Baix Empordà": [
+        {'name': "Les Gavarres (Puig d'Arques)", 'lat': 41.905, 'lon': 2.975, 'ele': 535},
+    ],
+    "Selva": [
+        {'name': "Turó de l'Home", 'lat': 41.776, 'lon': 2.417, 'ele': 1706},
+        {'name': "Les Agudes", 'lat': 41.789, 'lon': 2.434, 'ele': 1706},
+        {'name': "Puig de Ses Cadiretes", 'lat': 41.766, 'lon': 2.912, 'ele': 519},
     ],
     "Vallès Oriental": [
         {'name': "Turó de l'Home", 'lat': 41.776, 'lon': 2.417, 'ele': 1706},
-        {'name': "Les Agudes", 'lat': 41.789, 'lon': 2.434, 'ele': 1706},
     ],
     "Maresme": [
-        {'name': "Cabrera (serra de les Guilleries/Serra de Marina punts)", 'lat': 41.6, 'lon': 2.7, 'ele': 500},
+        {'name': "Turó d'en Vives (Montnegre)", 'lat': 41.679, 'lon': 2.584, 'ele': 760},
+    ],
+    "Vallès Occidental": [
+        {'name': "La Mola", 'lat': 41.637, 'lon': 2.019, 'ele': 1104},
         {'name': "Tibidabo", 'lat': 41.422, 'lon': 2.119, 'ele': 512},
     ],
     "Barcelonès": [
         {'name': "Tibidabo", 'lat': 41.422, 'lon': 2.119, 'ele': 512},
     ],
-    "Garraf": [
-        {'name': "Cau de la Guineu / Montgròs", 'lat': 41.278, 'lon': 1.916, 'ele': 657},
+    "Baix Llobregat": [
+        {'name': "Montserrat", 'lat': 41.594, 'lon': 1.837, 'ele': 1236},
+        {'name': "Puig de les Agulles", 'lat': 41.346, 'lon': 1.810, 'ele': 553},
     ],
-    "Alt Penedès": [
-        {'name': "Serra de Miralpeix", 'lat': 41.4, 'lon': 1.7, 'ele': 600},
+    "Garraf": [
+        {'name': "La Morella", 'lat': 41.272, 'lon': 1.839, 'ele': 594},
     ],
     "Baix Penedès": [
-        {'name': "Turó de la Geltrú (punts)", 'lat': 41.23, 'lon': 1.73, 'ele': 300},
+        {'name': "Montmell-Marmellar", 'lat': 41.309, 'lon': 1.458, 'ele': 861},
     ],
-    "Priorat": [
-        {'name': "Serra de Montsant", 'lat': 41.294, 'lon': 0.828, 'ele': 1163},
+    "Tarragonès": [
+        {'name': "La Mola (Bonastre)", 'lat': 41.233, 'lon': 1.439, 'ele': 317},
+    ],
+    "Alt Camp": [
+        {'name': "Tossal Gros de Miramar", 'lat': 41.312, 'lon': 1.229, 'ele': 867},
+    ],
+    "Baix Camp": [
+        {'name': "Muntanyes de Prades (Tossal de la Baltasana)", 'lat': 41.353, 'lon': 1.034, 'ele': 1201},
         {'name': "La Mola de Colldejou", 'lat': 41.094, 'lon': 0.838, 'ele': 921},
     ],
-    "Ribera d'Ebre": [
-        {'name': "La Creu de Santos", 'lat': 41.099, 'lon': 0.866, 'ele': 942},
+    # PLANA DE LLEIDA I TERRES DE L'EBRE
+    "Noguera": [
+        {'name': "Montsec de Rúbies", 'lat': 42.053, 'lon': 1.043, 'ele': 1677},
+    ],
+    "Segrià": [
+        {'name': "Puntals dels Marquesos", 'lat': 41.455, 'lon': 0.697, 'ele': 434},
+    ],
+    "Pla d_Urgell": [], # Comarca molt plana
+    "Garrigues": [
+        {'name': "Serra de la Llena (Punta del Curull)", 'lat': 41.365, 'lon': 0.902, 'ele': 1022},
+    ],
+    "Priorat": [
+        {'name': "Roca Corbatera (Montsant)", 'lat': 41.294, 'lon': 0.828, 'ele': 1163},
+    ],
+    "Ribera d_Ebre": [
+        {'name': "La Figuera (Serra Major)", 'lat': 41.218, 'lon': 0.729, 'ele': 614},
     ],
     "Terra Alta": [
-        {'name': "Tossals", 'lat': 40.9, 'lon': 0.3, 'ele': 870},
+        {'name': "Puig de l'Àliga (Cavalls)", 'lat': 41.066, 'lon': 0.548, 'ele': 714},
+    ],
+    "Montsià": [
+        {'name': "La Foradada", 'lat': 40.671, 'lon': 0.505, 'ele': 698},
     ],
     "Baix Ebre": [
         {'name': "Mont Caro", 'lat': 40.793, 'lon': 0.344, 'ele': 1441},
     ],
-    "Montsià": [
-        {'name': "Tossal d'Almatret (punts)", 'lat': 40.7, 'lon': 0.6, 'ele': 800},
-    ],
-    "Tarragonès": [
-        {'name': "Cingles de Baronia (punts)", 'lat': 41.05, 'lon': 1.35, 'ele': 700},
-    ],
-    "Conca de Barberà": [
-        {'name': "Pardines / Rocacorba (altes muntanyes locals)", 'lat': 41.42, 'lon': 1.28, 'ele': 914},
-    ],
-    "Baixa Segarra (Segarra incl.)": [
-        {'name': "Turó de la Guixa", 'lat': 41.6, 'lon': 1.4, 'ele': 800},
-    ],
-    "Empordà (comarques variants)": [
-        {'name': "Altres elevacions de la Serralada de l'Albera", 'lat': 42.36, 'lon': 3.03, 'ele': 1200},
-    ],
-    # Si falta alguna comarca concreta d'aquest llistat, puc afegir-la amb les cims corresponents.
 }
-
 
 
 
