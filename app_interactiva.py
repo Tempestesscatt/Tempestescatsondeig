@@ -8768,11 +8768,11 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Expert v70.0 (Anàlisi Jeràrquica Integral).
-    - **Visió Completa**: Integra un rang molt més ampli de variables (CAPE, CIN, BWD, SRH, PWAT, DCAPE, LCL, LFC, RH per capes) per a un diagnòstic més precís.
-    - **Lògica Jeràrquica**: Avalua el potencial de major a menor impacte. Si detecta un entorn de supercèl·lula, no continua buscant núvols baixos.
-    - **Més Granularitat**: Distingeix entre diferents tipus de cúmuls, núvols alts i situacions de pluja contínua (Nimbostratus).
-    - **Retorn Únic**: Retorna el diagnòstic MÉS rellevant per a una interpretació clara i directa.
+    Sistema de Diagnòstic Expert v71.0 (Lògica de Fractocúmuls Corregida).
+    - **CORRECCIÓ CLAU**: S'ha creat un diagnòstic explícit per a Fractocúmuls sota condicions de baixa humitat moderada i aire sec a sobre, evitant que sigui un diagnòstic per defecte.
+    - **NOU DIAGNÒSTIC PER DEFECTE**: Si cap patró clar s'identifica, el sistema retorna "Nuvolositat Variable / Patró Incert", un veredicte més segur i precís.
+    - **LLINDARS REFINATS**: S'han ajustat els llindars d'humitat per a altres tipus de núvols per a millorar la distinció entre ells.
+    - Manté l'anàlisi jeràrquica integral de la versió anterior.
     """
     
     # --- 1. Extracció Exhaustiva i Robusta de Paràmetres ---
@@ -8786,7 +8786,6 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     pwat = params.get('PWAT', 0) or 0
-    dcape = params.get('DCAPE', 0) or 0
     
     rh_capes = params.get('RH_CAPES', {})
     rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
@@ -8798,7 +8797,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
 
     # --- 2. Anàlisi Jeràrquica del Potencial Meteorològic ---
 
-    # == NIVELL 1: POTENCIAL DE TEMPESTES SEVERES ORGANITZADES ==
+    # == NIVELL 1: POTENCIAL DE TEMPESTES SEVERES (MÀXIMA PRIORITAT) ==
     condicions_de_dispar = (cin > -100 and lfc_hgt < 2200 and conv > 10)
     
     if max_cape > 1500 and bwd_6km >= 35 and condicions_de_dispar:
@@ -8807,52 +8806,55 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     if max_cape > 1000 and bwd_6km >= 25 and condicions_de_dispar:
         return {'descripcio': "Tempestes Organitzades", 'veredicte': "Potencial per a la formació de sistemes multicel·lulars o línies de tempesta."}
 
-    # == NIVELL 2: POTENCIAL DE TEMPESTES FORTES D'IMPULS (POC ORGANITZADES) ==
     if max_cape > 2500 and bwd_6km < 20 and condicions_de_dispar:
          return {'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Molt de 'combustible' però poca organització. Potencial per a calamarsa i esclafits."}
          
     if max_cape > 800 and condicions_de_dispar:
         return {'descripcio': "Tempesta Comuna", 'veredicte': "Energia suficient per a tempestes amb forta pluja i activitat elèctrica."}
 
-    # == NIVELL 3: POTENCIAL DE PLUJA CONTÍNUA (NO CONVECTIVA) ==
+    # == NIVELL 2: POTENCIAL DE PLUJA CONTÍNUA (NO CONVECTIVA) ==
     if rh_baixa >= 80 and rh_mitjana >= 75 and max_cape < 300:
         return {'descripcio': "Nimbostratus (Pluja Contínua)", 'veredicte': "Capa de núvols molt humida i gruixuda, favorable a pluges extenses i persistents."}
 
-    # == NIVELL 4: NÚVOLS CONVECTIUS EN DESENVOLUPAMENT ==
-    if max_cape > 250 and lfc_hgt < 3000 and rh_baixa > 65:
+    # == NIVELL 3: NÚVOLS CONVECTIUS EN DESENVOLUPAMENT ==
+    if max_cape > 250 and lfc_hgt < 3000 and rh_baixa > 70:
         return {'descripcio': "Cúmuls de creixement", 'veredicte': "Inici de convecció amb creixement vertical. Precursors de possibles tempestes."}
 
-    # == NIVELL 5: NUVOLOSITAT ESTRATIFORME PER CAPES ==
-    # (Aquesta part només s'executa si no s'han complert les condicions anteriors)
+    # == NIVELL 4: NUVOLOSITAT ESTRATIFORME PER CAPES (DE BAIX A DALT) ==
     
-    # Capa baixa
-    if rh_baixa >= 85 and lcl_hgt < 500: # Molt enganxat a terra
+    # Capa baixa (Estratus densos o Cúmuls mediocris)
+    if rh_baixa >= 85 and lcl_hgt < 500:
          return {'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos i cel cobert, pot produir plugims."}
-    if rh_baixa >= 70:
+    if rh_baixa >= 75: # Llindar ajustat
         return {'descripcio': "Cúmuls mediocris", 'veredicte': "Núvols baixos amb cert desenvolupament vertical, però sense arribar a ser tempestes."}
+
+    # <<<--- NOVA CONDICIÓ EXPLÍCITA PER A FRACTOCÚMULS ---
+    if 60 <= rh_baixa < 75 and rh_mitjana < 50 and max_cape > 50:
+        return {'descripcio': "Fractocúmuls", 'veredicte': "Humitat limitada a capes baixes amb aire sec a sobre, formant núvols trencats."}
+    # <<<----------------------------------------------------
 
     # Capa mitjana
     if rh_mitjana >= 70:
-        if bwd_6km > 40: # Vent fort en alçada
+        if bwd_6km > 40:
              return {'descripcio': "Altocúmulus Lenticular", 'veredicte': "Núvols en forma de 'plat volador', indiquen vent fort i turbulència en alçada."}
         return {'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Cel cobert o parcialment cobert per núvols a nivells mitjans."}
 
     # Capa alta
     if rh_alta >= 60:
-         # Mirem si hi ha una mica d'inestabilitat residual en alçada
         if params.get('LI', 5) < 0 or params.get('T_500hPa', 0) < -15:
             return {'descripcio': "Cirrus Castellanus", 'veredicte': "Núvols alts amb petites 'torres', indiquen inestabilitat en nivells superiors."}
         return {'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Presència de núvols alts de tipus cirrus que poden produir un halo solar/lunar."}
     
-    # == NIVELL 6: CONDICIONS DE CEL POC ENNUVOLAT O SERÈ ==
+    # == NIVELL 5: CONDICIONS DE CEL POC ENNUVOLAT O SERÈ ==
     if rh_baixa < 60 and rh_mitjana < 50 and rh_alta < 40:
         if max_cape > 50:
             return {'descripcio': "Cúmuls de bon temps", 'veredicte': "Poca humitat però una mica d'energia per a formar petits cúmuls dispersos."}
         return {'descripcio': "Cel Serè", 'veredicte': "Atmosfera estable i seca, sense nuvolositat significativa."}
 
-    # == RETORN PER DEFECTE SI CAP CONDICIÓ ES COMPLEIX ==
-    # Això pot passar si hi ha capes d'humitat disperses que no encaixen en un patró clar
-    return {'descripcio': "Fractocúmuls", 'veredicte': "Condicions mixtes amb capes de núvols disperses a diferents nivells."}
+    # == RETORN PER DEFECTE SI CAP CONDICIÓ ES COMPLEIX (MOLT POC PROBABLE ARA) ==
+    return {'descripcio': "Nuvolositat Variable / Patró Incert", 'veredicte': "Condicions mixtes amb capes d'humitat disperses que no encaixen en un patró clar."}
+
+    
 if __name__ == "__main__":
     main()
 
