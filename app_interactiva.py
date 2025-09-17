@@ -7651,18 +7651,19 @@ def _is_wind_onshore(wind_dir_from, sea_dir_range):
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 4.2:
-    - Adaptat per a funcionar amb el transecte intel·ligent desplaçat.
-    - Calcula la posició del poble dinàmicament sobre l'eix X.
+    Versió 4.3:
+    - INVERTEIX L'EIX HORITZONTAL: El gràfic ara sempre es llegeix amb el vent
+      entrant per l'esquerra (sobrevent) i sortint per la dreta (sotavent)
+      per a una interpretació més intuïtiva.
     """
     plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
     fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#E6F2FF')
     
     dist_total_km = analisi['transect_distances'][-1]
-    dist_centrat = analisi['transect_distances'] - (dist_total_km / 2) # Centrem el transecte a 0
+    dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
     elev = analisi['transect_elevations']
     
-    # ... (La definició de paletes de color i la preparació de la graella 2D es mantenen igual) ...
+    # ... (Tota la lògica de definició de paletes i preparació de la graella es manté exactament igual) ...
     colors_humitat = ['#f0e68c', '#90ee90', '#4682b4', '#191970']; levels_humitat = [0, 30, 60, 80, 101]
     cmap_humitat = ListedColormap(colors_humitat); norm_humitat = BoundaryNorm(levels_humitat, ncolors=cmap_humitat.N, clip=True)
     colors_vent = ['#d3d3d3', '#add8e6', '#48d1cc', '#90ee90', '#32cd32', '#6b8e23', '#f0e68c', '#d2b48c', '#bc8f8f', '#ffb6c1', '#da70d6', '#9932cc', '#8a2be2', '#48d1cc', '#6495ed']
@@ -7687,7 +7688,7 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         cmap, norm, levels, label = cmap_vent, norm_vent, levels_vent, "Velocitat del Vent (km/h)"
     data_grid = np.tile(profile_1d.reshape(-1, 1), (1, len(x_grid)))
 
-    # ... (La resta del dibuix es manté pràcticament igual) ...
+    # ... (Tota la lògica de dibuix es manté exactament igual) ...
     im = ax.contourf(xx, zz, data_grid, levels=levels, cmap=cmap, norm=norm, extend='both', zorder=1)
     contours = ax.contour(xx, zz, data_grid, levels=levels[1:-1:2], colors='black', linewidths=0.5, alpha=0.7, zorder=2)
     ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
@@ -7708,7 +7709,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     barb_v = np.interp(barb_zz.flatten(), heights_m, v_ms) * 1.94384
     ax.barbs(barb_xx.flatten(), barb_zz.flatten(), barb_u, barb_v, length=6, zorder=5, color='white', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
     
-    # <<<--- CÀLCUL DINÀMIC DE LA POSICIÓ DEL POBLE ---
     poble_dist_centrat = analisi['poble_dist'] - (dist_total_km / 2)
     ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
@@ -7722,12 +7722,17 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
                     bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", lw=1, alpha=0.7))
 
     fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
-    ax.set_xlabel(f"Distància (km) | Direcció del Vent → ({analisi['wind_dir_from']:.0f}°)")
+    ax.set_xlabel(f"Distància (km) | Vent → ({analisi['wind_dir_from']:.0f}°)")
     ax.set_ylabel("Elevació (m)")
     ax.set_title("Secció Transversal Atmosfèrica")
     ax.grid(True, linestyle=':', alpha=0.5, color='black', zorder=0)
     ax.legend(loc='upper left', fontsize=8)
     ax.set_ylim(bottom=0, top=max_alt_m); ax.set_xlim(dist_centrat.min(), dist_centrat.max())
+    
+    # <<<--- LÍNIA CLAU AFEGIDA AQUÍ ---
+    ax.invert_xaxis()
+    # <<<--------------------------------
+    
     plt.tight_layout(); return fig
 
 
