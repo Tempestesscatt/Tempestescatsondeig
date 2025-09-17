@@ -1763,9 +1763,9 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     # --- INICI DE LA NOVA ESTRUCTURA PER SECCIONS ---
     
     # --- Secció 1: Diagnòstic Visual del Cel ---
-    analisi_temps_list = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
-    if analisi_temps_list:
-        diag = analisi_temps_list[0]; desc, veredicte = diag.get("descripcio", "Desconegut"), diag.get("veredicte", "")
+    analisi_temps_dict = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
+    if analisi_temps_dict:
+        desc, veredicte = analisi_temps_dict.get("descripcio", "Desconegut"), analisi_temps_dict.get("veredicte", "")
         nom_arxiu = MAPA_IMATGES_REALS.get(desc, MAPA_IMATGES_REALS["fallback"]); ruta_arxiu_imatge = os.path.join("imatges_reals", nom_arxiu)
         b64_img = convertir_img_a_base64(ruta_arxiu_imatge)
         st.markdown(f"""<div style="position: relative; width: 100%; height: 150px; border-radius: 10px; background-image: url('{b64_img}'); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 15px; box-shadow: inset 0 -80px 60px -30px rgba(0,0,0,0.8); margin-bottom: 10px;"><div style="color: white; text-shadow: 2px 2px 5px rgba(0,0,0,0.8);"><strong style="font-size: 1.3em;">{veredicte}</strong><br><em style="font-size: 0.9em; color: #DDDDDD;">({desc})</em></div></div>""", unsafe_allow_html=True)
