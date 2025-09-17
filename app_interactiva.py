@@ -2486,29 +2486,7 @@ def ui_explicacio_convergencia():
         st.markdown(text_card_2, unsafe_allow_html=True)
 
 
-@st.cache_data(ttl=3600)
-def carregar_dades_mapa_base_cat(variables, hourly_index):
-    try:
-        # --- CANVI CLAU: AUGMENTEM LA RESOLUCIÓ DE LA PETICIÓ ---
-        # Passem de 12x12 a 40x40 punts. Això és crucial per a un mapa de qualitat.
-        lats, lons = np.linspace(MAP_EXTENT_CAT[2], MAP_EXTENT_CAT[3], 40), np.linspace(MAP_EXTENT_CAT[0], MAP_EXTENT_CAT[1], 40)
-        
-        lon_grid, lat_grid = np.meshgrid(lons, lats)
-        params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": 4}
-        responses = openmeteo.weather_api(API_URL_CAT, params=params)
-        output = {var: [] for var in ["lats", "lons"] + variables}
-        for r in responses:
-            try:
-                vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
-                if not any(np.isnan(v) for v in vals):
-                    output["lats"].append(r.Latitude()); output["lons"].append(r.Longitude())
-                    for i, var in enumerate(variables): output[var].append(vals[i])
-            except IndexError:
-                continue # Si l'hora no existeix per aquest punt, el saltem
-                
-        if not output["lats"]: return None, "No s'han rebut dades vàlides."
-        return output, None
-    except Exception as e: return None, f"Error en carregar dades del mapa: {e}"
+
         
         
 
@@ -2884,39 +2862,52 @@ def ui_pestanya_satelit_japo():
     st.info("Aquesta imatge del satèl·lit japonès s'actualitza cada 10 minuts.")
     st.markdown("<p style='text-align: center;'>[Font: Japan Meteorological Agency (JMA)](https://www.data.jma.go.jp/mscweb/data/himawari/index.html)</p>", unsafe_allow_html=True)
 
+
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def carregar_dades_mapa_base_cat(variables, hourly_index):
     """
-    Versió única i correcta. Funció base per carregar dades del model AROME.
+    Versió robusta v4.0. Funció base per carregar dades del model AROME.
+    Busca l'hora més propera amb dades vàlides i l'aplica a tota la graella.
+    Retorna (dades, índex_vàlid, missatge_error).
     """
     try:
-        lats, lons = np.linspace(MAP_EXTENT_CAT[2], MAP_EXTENT_CAT[3], 12), np.linspace(MAP_EXTENT_CAT[0], MAP_EXTENT_CAT[1], 12)
-        lon_grid, lat_grid = np.meshgrid(lons, lats)
+        lats_req, lons_req = np.linspace(MAP_EXTENT_CAT[2], MAP_EXTENT_CAT[3], 12), np.linspace(MAP_EXTENT_CAT[0], MAP_EXTENT_CAT[1], 12)
+        lon_grid, lat_grid = np.meshgrid(lons_req, lats_req)
         params = {"latitude": lat_grid.flatten().tolist(), "longitude": lon_grid.flatten().tolist(), "hourly": variables, "models": "arome_seamless", "forecast_days": 4}
+        
         responses = openmeteo.weather_api(API_URL_CAT, params=params)
         
-        output = {var: [] for var in ["lats", "lons"] + variables}
+        if not responses:
+            return None, hourly_index, "L'API no ha retornat cap dada."
+
+        # Busquem un índex horari vàlid basant-nos en la resposta del primer punt de la graella
+        first_point_hourly = responses[0].Hourly()
+        valid_index = trobar_hora_valida_mes_propera(first_point_hourly, hourly_index, len(variables))
         
+        if valid_index is None:
+            return None, hourly_index, "No s'han rebut dades vàlides per a l'hora seleccionada i les properes."
+
+        # Intentem carregar les dades per a TOTS els punts amb aquest 'valid_index' trobat
+        output = {var: [] for var in ["lats", "lons"] + variables}
         for r in responses:
             try:
-                # Agafem les dades per a l'índex horari sol·licitat
-                vals = [r.Hourly().Variables(i).ValuesAsNumpy()[hourly_index] for i in range(len(variables))]
-                # Només afegim el punt si TOTES les dades per a aquesta hora són vàlides
+                vals = [r.Hourly().Variables(i).ValuesAsNumpy()[valid_index] for i in range(len(variables))]
                 if not any(np.isnan(v) for v in vals):
                     output["lats"].append(r.Latitude())
                     output["lons"].append(r.Longitude())
                     for i, var in enumerate(variables):
                         output[var].append(vals[i])
-            except IndexError:
-                # Si l'índex horari està fora de rang per a aquest punt, el saltem
-                continue
+            except (IndexError, AttributeError):
+                continue # Si un punt no té dades per a l'hora vàlida, el saltem
                 
         if not output["lats"]:
-            return None, "No s'han rebut dades vàlides per a l'hora seleccionada."
+            return None, valid_index, "No s'han trobat prou punts amb dades completes a l'hora vàlida."
             
-        return output, None
+        return output, valid_index, None
     except Exception as e:
-        return None, f"Error en carregar dades del mapa: {e}"
+        return None, hourly_index, f"Error en carregar dades del mapa: {e}"
 
 
 
@@ -5747,21 +5738,27 @@ def ui_mode_selector():
 
 
 
-# --- FUNCIONS PER A LA NOVA VISTA DE NEU ---
-
 @st.cache_data(ttl=3600, show_spinner="Carregant dades del mapa de neu...")
 def carregar_dades_mapa_neu(hourly_index):
     """
-    Carrega les dades específiques necessàries per al mapa de neu.
+    Carrega les dades específiques necessàries per al mapa de neu,
+    utilitzant la cerca d'hora vàlida.
+    Retorna (dades, índex_final, error).
     """
     try:
         variables = ["freezing_level_height", "snowfall", "precipitation_type", "temperature_850hPa"]
-        map_data_raw, error = carregar_dades_mapa_base_cat(variables, hourly_index)
+        # La funció base ara retorna 3 valors
+        map_data_raw, final_index, error = carregar_dades_mapa_base_cat(variables, hourly_index)
         if error:
-            return None, error
-        return map_data_raw, None
+            return None, hourly_index, error
+        return map_data_raw, final_index, None
     except Exception as e:
-        return None, f"Error en carregar dades del mapa de neu: {e}"
+        return None, hourly_index, f"Error en processar dades del mapa de neu: {e}"
+    
+
+
+
+
 
 def crear_mapa_neu(lons, lats, freezing_level_data, snowfall_data, precip_type_data, temp_850_data, timestamp_str, map_extent):
     """
@@ -7587,7 +7584,69 @@ def run_catalunya_app():
         # A la vista general, el mode sempre serà 'temps sever' per mostrar el mapa de risc
         st.session_state.analysis_mode = 'temps_sever'
         run_main_selection_view(hourly_index_sel, nivell_sel, hora_sel_str)
-            
+
+
+
+
+
+
+def run_snow_analysis_view(poble_sel, hourly_index_sel, dia_sel_str, hora_sel_str):
+    """
+    Renderitza tota la interfície d'usuari per al mode d'anàlisi de neu,
+    amb gestió d'hores alternatives i avisos a l'usuari.
+    """
+    st.markdown("---")
+    st.info("❄️ **Mode d'Anàlisi de Neu Activat.** Els paràmetres i mapes estan adaptats per al pronòstic de precipitació hivernal.", icon="ℹ️")
+    
+    lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
+    timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str}"
+
+    with st.spinner("Carregant dades de sondeig i mapes per a l'anàlisi de neu..."):
+        data_tuple, final_index_sounding, error_sounding = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
+        map_data, final_index_map, error_map = carregar_dades_mapa_neu(hourly_index_sel)
+
+    # Prioritzem l'índex del sondeig, que és el més crític
+    final_index = final_index_sounding if final_index_sounding is not None else final_index_map
+
+    # Mostrem un avís si l'hora de les dades ha canviat
+    if final_index is not None and final_index != hourly_index_sel:
+        start_of_today_utc = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
+        adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
+        st.warning(f"Avís: Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: **{adjusted_local_time.strftime('%H:%Mh')}**.")
+        timestamp_str = f"{poble_sel} | {adjusted_local_time.strftime('%d/%m/%Y')} a les {adjusted_local_time.strftime('%H:%Mh')}"
+
+    if error_sounding or error_map:
+        error_message = error_sounding if error_sounding else error_map
+        st.error(f"S'ha produït un error en carregar les dades: {error_message}")
+        return
+
+    params_calc = data_tuple[1]
+    
+    col_mapa, col_diagnostic = st.columns([0.6, 0.4], gap="large")
+    with col_mapa:
+        fig = crear_mapa_neu(map_data['lons'], map_data['lats'], map_data['freezing_level_height'], 
+                             map_data['snowfall'], map_data['precipitation_type'], map_data['temperature_850hPa'],
+                             timestamp_str, MAP_EXTENT_CAT)
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
+
+    with col_diagnostic:
+        diagnostic = generar_diagnostic_neu(params_calc)
+        st.markdown(f"""
+        <div style="padding: 15px; background-color: #2a2c34; border-radius: 10px; border-left: 5px solid {diagnostic['color']}; margin-bottom: 15px;">
+             <h5 style="color: {diagnostic['color']}; margin: 0;">{diagnostic['titol']}</h5>
+             <p style="font-size:0.95em; color:#a0a0b0; margin-top:8px;">{diagnostic['desc']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        ui_caixa_parametres_neu(params_calc)
+        
+    with st.expander("🔬 Veure Skew-T adaptat per a Neu"):
+        fig_skewt = crear_skewt(data_tuple[0][0], data_tuple[0][1], data_tuple[0][2], data_tuple[0][7], 
+                                data_tuple[0][3], data_tuple[0][4], data_tuple[0][6], params_calc, 
+                                f"Sondeig Vertical - {poble_sel}", timestamp_str, zoom_capa_baixa=True)
+        st.pyplot(fig_skewt)
 
 
 def trobar_hora_valida_mes_propera(hourly_response, target_index, num_base_vars, max_offset=8):
