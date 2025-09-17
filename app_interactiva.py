@@ -6796,9 +6796,10 @@ def ui_explicacio_adveccio():
 def get_peak_names(points_to_check: List[Dict[str, float]]) -> Dict[str, any]:
     """
     Consulta l'API de GeoNames per a obtenir el nom dels cims més propers.
-    Versió 2.0:
-    - Augmenta el radi de cerca a 10km per a més probabilitat d'èxit.
-    - Retorna un error si la clau de l'API no està configurada.
+    Versió 3.0 (Doble Búsqueda):
+    - ESTRATÈGIA DOBLE: Primer intenta buscar a Wikipedia. Si falla, fa una
+      segona cerca a OpenStreetMap (OSM) per a màxima probabilitat d'èxit.
+    - GESTIÓ D'ERRORS MILLORADA: Detecta si s'ha excedit el límit de peticions de l'API.
     """
     try:
         username = st.secrets["GEONAMES_USERNAME"]
@@ -6806,26 +6807,48 @@ def get_peak_names(points_to_check: List[Dict[str, float]]) -> Dict[str, any]:
         return {"error": "La clau 'GEONAMES_USERNAME' no està configurada als secrets. No es poden identificar els cims."}
 
     peak_names = []
+    session = requests.Session() # Usem una sessió per a més eficiència
+
     for point in points_to_check:
         lat, lon = point['lat'], point['lon']
+        peak_found = False
+        
+        # --- Primer Intent: Wikipedia (noms més nets) ---
         try:
-            # <<<--- RADI DE CERCA AMPLIAT A 10 KM ---
-            url = f"http://api.geonames.org/findNearbyWikipediaJSON?lat={lat}&lng={lon}&radius=10&maxRows=1&featureClass=T&lang=ca&username={username}"
-            response = requests.get(url, timeout=5)
+            url_wiki = f"http://api.geonames.org/findNearbyWikipediaJSON?lat={lat}&lng={lon}&radius=10&maxRows=1&featureClass=T&lang=ca&username={username}"
+            response = session.get(url_wiki, timeout=5)
             response.raise_for_status()
             data = response.json()
             if 'geonames' in data and data['geonames']:
                 peak = data['geonames'][0]
                 is_duplicate = any(p['name'] == peak.get('title') for p in peak_names)
                 if not is_duplicate:
-                    peak_names.append({
-                        "name": peak.get('title', 'Cim desconegut'),
-                        "lat": float(peak.get('lat')),
-                        "lon": float(peak.get('lon')),
-                        "elevation": float(peak.get('elevation', 0))
-                    })
+                    peak_names.append({"name": peak.get('title'), "lat": float(peak.get('lat')), "lon": float(peak.get('lon')), "elevation": float(peak.get('elevation', 0))})
+                    peak_found = True
+            elif "status" in data: # Comprovem si hi ha un missatge d'error de l'API
+                if "limit" in data["status"]["message"]:
+                    return {"error": "S'ha excedit el límit de peticions a l'API de GeoNames. Prova-ho més tard."}
         except Exception:
-            continue
+            pass # Si falla, simplement ho intentem amb OSM
+
+        # --- Segon Intent: OpenStreetMap (més dades, fallback) ---
+        if not peak_found:
+            try:
+                # 'T.PK' és el codi per a 'peak' a OSM
+                url_osm = f"http://api.geonames.org/findNearbyPOIsOSMJSON?lat={lat}&lng={lon}&radius=10&maxRows=1&featureCode=T.PK&username={username}"
+                response = session.get(url_osm, timeout=5)
+                response.raise_for_status()
+                data = response.json()
+                if 'poi' in data and data['poi']:
+                    peak = data['poi'][0]
+                    is_duplicate = any(p['name'] == peak.get('name') for p in peak_names)
+                    if not is_duplicate:
+                        # L'elevació no ve a l'API d'OSM, així que la demanem a part
+                        elev_resp = session.get(f"http://api.geonames.org/gtopo30JSON?lat={peak.get('lat')}&lng={peak.get('lon')}&username={username}").json()
+                        elevation = elev_resp.get('gtopo30', 0)
+                        peak_names.append({"name": peak.get('name'), "lat": float(peak.get('lat')), "lon": float(peak.get('lon')), "elevation": float(elevation)})
+            except Exception:
+                continue # Si aquest també falla, passem al següent pic
             
     return {"peaks": peak_names}
 
@@ -7447,10 +7470,12 @@ def run_catalunya_app():
 
 
 
+# -*- coding: utf-8 -*-
+
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     """
     Mostra la interfície per a la pestanya d'Anàlisi d'Interacció Vent-Orografia.
-    (Versió final amb feedback a l'usuari si no es troben cims)
+    (Versió final amb gestió d'errors de l'API de cims)
     """
     st.markdown(f"#### Anàlisi d'Interacció Vent-Orografia per a {poble_sel}")
     st.caption(timestamp_str)
@@ -7458,9 +7483,11 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     with st.spinner("Analitzant el flux d'aire sobre el terreny..."):
         analisi_orografica = analitzar_orografia(poble_sel, data_tuple)
 
+    # <<<--- GESTIÓ D'ERRORS MILLORADA AQUÍ ---
     if "error" in analisi_orografica:
         st.error(f"No s'ha pogut realitzar l'anàlisi: {analisi_orografica['error']}")
         return
+    # <<<--------------------------------------
         
     with st.container(border=True):
         col_layer, col_height = st.columns(2)
@@ -7482,9 +7509,9 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     with col2:
         st.markdown("##### Diagnòstic Orogràfic")
         posicio, diagnostico, detalls = analisi_orografica.get("posicio"), analisi_orografica.get("diagnostico"), analisi_orografica.get("detalls")
-        
         if posicio == "Sobrevent": color, emoji = "#28a745", "🔼"
         elif posicio == "Sotavent": color, emoji = "#fd7e14", "🔽"
+        elif posicio == "Exposat al Cim / Carena": color, emoji = "#007bff", "💨"
         else: color, emoji = "#6c757d", "↔️"
             
         st.markdown(f"""
@@ -7495,16 +7522,14 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
         </div>
         """, unsafe_allow_html=True)
         
-        # <<<--- FEEDBACK A L'USUARI SI NO ES TROBEN CIMS ---
         if not analisi_orografica.get("cims_identificats"):
             st.info("No s'han pogut identificar cims orogràfics notables en aquest transecte.", icon="🏔️")
-        # <<<------------------------------------------------
         
         st.markdown("---")
         st.markdown("###### Detalls del Flux:")
         st.metric("Direcció del Vent Dominant", f"{analisi_orografica['wind_dir_from']:.0f}° ({graus_a_direccio_cardinal(analisi_orografica['wind_dir_from'])})")
         st.metric("Velocitat del Vent Dominant", f"{analisi_orografica['wind_spd_kmh']:.0f} km/h")
-        st.caption("Vent a 850 hPa o superfície (si és alta muntanya).")
+        st.caption("Vent dominant calculat de manera adaptativa.")
         
 
 @st.cache_data(ttl=86400, show_spinner="Obtenint perfil del terreny...")
