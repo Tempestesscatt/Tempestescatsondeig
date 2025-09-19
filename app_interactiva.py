@@ -8160,10 +8160,12 @@ def analitzar_formacio_nuvols(sounding_data, params_calc):
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m, show_barbs=True):
     """
     Crea una secció transversal atmosfèrica amb interacció realista i capes de dades avançades.
-    Versió 15.0 (Solució Definitiva del Bug Visual):
-    - CORREGEIX el bug crític que col·lapsava el gràfic en una línia vertical.
-    - La capa "Núvols" ara es renderitza amb 'contourf' en lloc d''imshow', garantint consistència i estabilitat.
-    - La visualització dels núvols és ara molt més suau i orgànica, amb vores difuminades.
+    Versió 14.0 (Renderitzat de Núvols Orgànic):
+    - Soluciona el bug de la "torre convectiva" artificial.
+    - La capa "Núvols" ara renderitza una densitat de núvol contínua basada en la humitat.
+    - La convecció es simula com una "ploma" de densitat afegida que neix sobre
+      les zones de sobrevent, amb una forma i mida dependents del CAPE.
+    - S'utilitza imshow per a un acabat visual suau i realista.
     """
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
@@ -8210,34 +8212,47 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         if layer_to_show != "Núvols":
             fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
     
-    # --- LÒGICA DE NÚVOLS COMPLETAMENT RECONSTRUÏDA ---
+    # --- NOVA LÒGICA DE RENDERITZAT DE NÚVOLS ---
     if layer_to_show == "Núvols":
         sky_gradient = np.linspace(0.8, 0.4, 100).reshape(-1, 1)
         ax.imshow(sky_gradient, aspect='auto', cmap='Blues_r', origin='lower', extent=[dist_centrat.min(), dist_centrat.max(), 0, max_alt_m], zorder=0)
         
         rh_grid = np.interp(zz_deformat, heights_m, rh_profile)
-        cloud_density = np.clip((rh_grid - 80) / 19.9, 0, 1) # Densitat base
         
+        # 1. Creem una densitat de núvol base contínua
+        cloud_density = np.clip((rh_grid - 80) / 19.9, 0, 1)
+        
+        # 2. Potenciem el desenvolupament convectiu de manera realista
         cape = params_calc.get('MLCAPE', 0)
         if cape > 100:
             lcl = params_calc.get('LCL_Hgt', 9999); el = params_calc.get('EL_Hgt', 0)
             if el > lcl:
                 upslope_mask_1d = pendent > 0.03
                 if np.any(upslope_mask_1d):
+                    # Trobem el centre del principal pendent ascendent
                     x_upslope_center = np.mean(dist_centrat[upslope_mask_1d])
-                    sigma_x = max(1.5, (el - lcl) / 4000); sigma_z = (el - lcl) * 0.4
+                    
+                    # Definim la ploma convectiva amb una funció Gaussiana 2D
+                    sigma_x = max(1.5, (el - lcl) / 4000) # L'amplada depèn de la profunditat de la tempesta
+                    sigma_z = (el - lcl) * 0.4
                     center_z = lcl + sigma_z * 0.8
+                    
                     convective_plume = np.exp(-(((xx - x_upslope_center)**2 / (2 * sigma_x**2)) + ((zz_asl - center_z)**2 / (2 * sigma_z**2))))
+                    # L'efecte de la ploma és més fort si hi ha més CAPE
                     convective_intensity = np.clip(cape / 1200, 0.5, 1.5)
+                    
+                    # Afegim la densitat de la ploma a la densitat base
                     cloud_density += convective_plume * convective_intensity
 
-        masked_density = np.where(zz_asl > elev, np.clip(cloud_density, 0, 1), 0)
+        # Retallem la densitat final i l'emmascarem sota el terreny
+        cloud_density = np.clip(cloud_density, 0, 1)
+        masked_density = np.where(zz_asl > elev, cloud_density, 0)
         
-        # S'utilitza contourf per a un dibuix suau i dimensionalment correcte
-        cloud_levels = np.linspace(0.1, 1.0, 10)
-        cloud_cmap = LinearSegmentedColormap.from_list("cloud_cmap", [(1, 1, 1, 0), (1, 1, 1, 0.9)])
-        ax.contourf(xx, zz_asl, masked_density, levels=cloud_levels, cmap=cloud_cmap, zorder=2)
-        
+        # Dibuixem el resultat amb un mapa de colors suau i transparent
+        cloud_cmap = LinearSegmentedColormap.from_list("cloud_cmap", [(1, 1, 1, 0), (1, 1, 1, 0.4), (1, 1, 1, 0.9)])
+        ax.imshow(masked_density, cmap=cloud_cmap, origin='lower', 
+                  extent=[dist_centrat.min(), dist_centrat.max(), 0, max_alt_m], 
+                  zorder=2, vmin=0, vmax=1.2) # vmax > 1 per a nuclis més opacs
         ax.set_title(f"Secció Transversal Atmosfèrica - Nuvolositat (HR > 85%)")
 
     # --- La resta de la funció es manté igual ---
