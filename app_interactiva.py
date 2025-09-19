@@ -8233,7 +8233,8 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     """
     Mostra la interfície per a la pestanya d'Anàlisi d'Interacció Vent-Orografia.
-    VERSIÓ MILLORADA: Afegeix un interruptor per a mostrar/amagar les barbes de vent.
+    VERSIÓ CORREGIDA: Elimina l'interruptor de les barbes de vent, ja que
+    ara s'utilitzen streamlines per defecte.
     """
     st.markdown(f"#### Anàlisi d'Interacció Vent-Orografia per a {poble_sel}")
     st.caption(timestamp_str)
@@ -8246,23 +8247,19 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
         return
         
     with st.container(border=True):
-        # --- NOU: TRES COLUMNES PER A MÉS OPCIONS ---
-        col_layer, col_height, col_barbs = st.columns(3)
+        # Ara només tenim dues columnes per als selectors
+        col_layer, col_height = st.columns(2)
         with col_layer:
             layer_sel = st.selectbox("Capa de dades a visualitzar:", options=["Vent", "Humitat", "Temperatura"], key="orog_layer_selector")
         with col_height:
             max_alt_sel = st.slider("Altura màxima del perfil (m):", min_value=100, max_value=12000, value=4000, step=100, key="orog_height_slider")
-        # --- NOU: INTERRUPTOR PER A LES BARBES ---
-        with col_barbs:
-            st.write("") # Espaiador
-            show_barbs_sel = st.toggle("Mostrar Barbes de Vent", value=True, key="show_barbs_toggle")
 
     col1, col2 = st.columns([0.65, 0.35], gap="large")
     with col1:
         st.markdown("##### Perfil del Terreny i Flux Atmosfèric")
         if "transect_distances" in analisi_orografica:
-            # Passem el nou paràmetre al gràfic
-            fig = crear_grafic_perfil_orografic(analisi_orografica, params_calc, layer_sel, max_alt_sel, show_barbs=show_barbs_sel)
+            # La crida a la funció ja no inclou 'show_barbs'
+            fig = crear_grafic_perfil_orografic(analisi_orografica, params_calc, layer_sel, max_alt_sel)
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
         else:
@@ -8289,7 +8286,6 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
         st.metric("Direcció del Vent Dominant", f"{analisi_orografica['wind_dir_from']:.0f}° ({graus_a_direccio_cardinal(analisi_orografica['wind_dir_from'])})")
         st.metric("Velocitat del Vent Dominant", f"{analisi_orografica['wind_spd_kmh']:.0f} km/h")
         st.caption("Vent dominant calculat de manera adaptativa.")
-        
 
 @st.cache_data(ttl=86400, show_spinner="Obtenint perfil del terreny...")
 def get_elevation_profile(lat_start, lon_start, bearing_deg, distance_km=80, num_points=100):
