@@ -7736,14 +7736,12 @@ def _is_wind_onshore(wind_dir_from, sea_dir_range):
 
 def analitzar_orografia(poble_sel, data_tuple):
     """
-    Algoritme v9.2 d'anàlisi orogràfica (Transecte Fix).
-    - TRANSECTE ESTÀTIC: El perfil del terreny es calcula sempre en una direcció
-      fixa de 195° (Sud-Nord) per a mantenir una referència visual consistent,
-      tal com ha sol·licitat l'usuari.
-    - DADES DINÀMIQUES: Les dades atmosfèriques (vent, temperatura, etc.)
-      sí que s'actualitzen amb l'hora seleccionada i es mostren sobre el perfil fix.
-    - DIAGNÒSTIC BASAT EN VENT REAL: El diagnòstic de sobrevent/sotavent
-      continua basant-se en la direcció real del vent per a una anàlisi correcta.
+    Algoritme v9.3 d'anàlisi orogràfica (Reconstrucció de Cims).
+    - SOLUCIÓ DEFINITIVA AL PROBLEMA VISUAL: Després de calcular el transecte en línia
+      recta, el codi identifica els cims importants propers i modifica el perfil del
+      terreny per "injectar" aquests cims a la seva altitud real.
+    - El resultat és un gràfic visualment coherent on l'altitud de l'etiqueta
+      d'un cim coincideix amb l'altura de la muntanya dibuixada.
     """
     if not data_tuple: return {"error": "Falten dades del sondeig."}
     sounding_data, params_calc = data_tuple
@@ -7751,7 +7749,6 @@ def analitzar_orografia(poble_sel, data_tuple):
     
     poble_coords = CIUTATS_CATALUNYA[poble_sel]
     
-    # --- CÀLCUL DEL VENT REAL (PER AL DIAGNÒSTIC I LES BARBES) ---
     try:
         if poble_coords.get('lat', 0) > 42 and np.min(heights.m) > 700:
             altura_superficie = heights.m[0]; mask_capa_baixa = (heights.m >= altura_superficie) & (heights.m <= altura_superficie + 1500)
@@ -7762,22 +7759,41 @@ def analitzar_orografia(poble_sel, data_tuple):
         wind_spd_kmh = mpcalc.wind_speed(u_dom, v_dom).to('km/h').m
     except Exception: return {"error": "No s'ha pogut determinar el vent dominant."}
     
-    # --- DEFINICIÓ DEL TRANSECTE FIX ---
-    BEARING_FIXE_PER_AL_TALL = 194.0  # Direcció fixa Sud a Nord
+    BEARING_FIXE_PER_AL_TALL = 194.0
     start_point_bearing = (BEARING_FIXE_PER_AL_TALL + 180) % 360
     lat_inici, lon_inici = punt_desti(poble_coords['lat'], poble_coords['lon'], start_point_bearing, 40)
     profile_data, error = get_elevation_profile(lat_inici, lon_inici, BEARING_FIXE_PER_AL_TALL, 80, 100)
     if error: return {"error": error}
 
     elevations = np.array(profile_data['elevations']); distances = np.array(profile_data['distances'])
+    
+    # --- NOU BLOC: INJECCIÓ DE CIMS REALS AL PERFIL ---
+    comarca = get_comarca_for_poble(poble_sel)
+    cims_de_la_comarca = PICS_CATALUNYA_PER_COMARCA.get(comarca, [])
+    cims_propers = [pic for pic in cims_de_la_comarca if np.min([haversine_distance(pic['lat'], pic['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]) < 15]
+
+    for cim in cims_propers:
+        altitud_real_cim = cim.get('ele', 0)
+        dist_al_cim = [haversine_distance(cim['lat'], cim['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]
+        idx_cim_proper = np.argmin(dist_al_cim)
+        
+        # Només modifiquem el terreny si el cim real és més alt que el perfil del transecte
+        if altitud_real_cim > elevations[idx_cim_proper]:
+            diferencia_altura = altitud_real_cim - elevations[idx_cim_proper]
+            # Creem una "campana de Gauss" per a suavitzar el nou pic
+            sigma = 4 # Amplada de la base del pic que injectem
+            x_indices = np.arange(len(elevations))
+            gauss_bump = diferencia_altura * np.exp(-((x_indices - idx_cim_proper)**2) / (2 * sigma**2))
+            # Afegim la campana al terreny existent, assegurant-nos de no baixar l'altitud enlloc
+            elevations = np.maximum(elevations, elevations + gauss_bump)
+    # --- FI DEL BLOC D'INJECCIÓ ---
+
     dist_al_poble = [haversine_distance(poble_coords['lat'], poble_coords['lon'], lat, lon) for lat, lon in zip(profile_data['lats'], profile_data['lons'])]
     idx_poble = np.argmin(dist_al_poble); elev_poble = elevations[idx_poble]
-
-    # --- DIAGNÒSTIC (BASAT EN EL VENT REAL) ---
+    
     idx_cim_principal = np.argmax(elevations)
     elev_cim_principal = elevations[idx_cim_principal]
     
-    # Per determinar si estem a sobrevent o sotavent, comparem la direcció del vent REAL amb la línia que uneix el poble i el cim.
     bearing_poble_a_cim = get_bearing(poble_coords['lat'], poble_coords['lon'], profile_data['lats'][idx_cim_principal], profile_data['lons'][idx_cim_principal])
     diferencia_angular = angular_difference(wind_dir_from_real, bearing_poble_a_cim)
 
@@ -7787,23 +7803,17 @@ def analitzar_orografia(poble_sel, data_tuple):
         posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "El terreny proper no presenta obstacles significatius."
     elif elev_poble > 800 and (elev_cim_principal - elev_poble) < 250:
         posicio, diagnostico, detalls = "Exposat al Cim / Carena", "Flux Directe", "La localitat està en una posició elevada, directament exposada al vent."
-    elif diferencia_angular > 90: # El vent bufa des del costat oposat al cim -> estem a sobrevent
+    elif diferencia_angular > 90:
         posicio, diagnostico, detalls = "Sobrevent", "Ascens Orogràfic", f"El flux de vent real es veu forçat a ascendir per un obstacle de {elev_cim_principal:.0f} m."
-    else: # El vent bufa des del mateix costat que el cim -> estem a sotavent
+    else:
         posicio, diagnostico, detalls = "Sotavent", "Subsidència / Possible Efecte Foehn", f"El flux d'aire real descendeix després de superar un obstacle de {elev_cim_principal:.0f} m."
 
-    # Identificació de cims (sense canvis)
-    comarca = get_comarca_for_poble(poble_sel)
-    cims_de_la_comarca = PICS_CATALUNYA_PER_COMARCA.get(comarca, [])
-    cims_propers = [pic for pic in cims_de_la_comarca if np.min([haversine_distance(pic['lat'], pic['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]) < 20]
-    
     cim_principal_info = { "name": "Cim de Referència", "ele": elev_cim_principal, "lat": profile_data['lats'][idx_cim_principal], "lon": profile_data['lons'][idx_cim_principal] }
     if cims_propers:
         dist_als_cims = [haversine_distance(cim_principal_info['lat'], cim_principal_info['lon'], pic['lat'], pic['lon']) for pic in cims_propers]
         if dist_als_cims and np.min(dist_als_cims) < 20:
              cim_principal_info.update(cims_propers[np.argmin(dist_als_cims)])
     
-    # Preparació de dades del sondeig per al gràfic
     rh_profile = (mpcalc.relative_humidity_from_dewpoint(T, Td) * 100).m
     wind_speed_profile = mpcalc.wind_speed(u, v).to('km/h').m; temp_profile = T.m
 
@@ -7813,7 +7823,7 @@ def analitzar_orografia(poble_sel, data_tuple):
         "cim_principal": cim_principal_info, "altres_cims": cims_propers,
         "sondeig_perfil_complet": (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile),
         "transect_coords": (profile_data['lats'], profile_data['lons']),
-        "bearing_fixe": BEARING_FIXE_PER_AL_TALL # Important: passem la direcció fixa al gràfic
+        "bearing_fixe": BEARING_FIXE_PER_AL_TALL
     }
     
 
@@ -7859,13 +7869,15 @@ def _is_wind_onshore(wind_dir_from, sea_dir_range):
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 8.3 (Etiqueta de Transecte Fix): L'etiqueta de l'eix X ara mostra
-    la direcció fixa del tall (p. ex., 195°) per a més claredat.
+    Versió 8.4: Aquesta funció no necessita canvis, ja que ara rep el perfil
+    del terreny ja corregit i simplement el dibuixa. La lògica de les etiquetes
+    ja era correcta.
     """
     plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
     fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#E6F2FF')
     
     dist_total_km = analisi['transect_distances'][-1]; dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
+    # Aquesta 'elev' ara és la versió amb els cims injectats
     elev = analisi['transect_elevations']
     
     # ... (El codi intern de dibuix de capes, barbes, etc. es manté igual) ...
@@ -7920,6 +7932,7 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
             dist_al_cim_p = [haversine_distance(cim_principal['lat'], cim_principal['lon'], lat_t, lon_t) for lat_t, lon_t in zip(transect_lats, transect_lons)]; idx_cim_proper_p = np.argmin(dist_al_cim_p)
             x_pos_p = dist_centrat[idx_cim_proper_p]
             altitud_real_cim_p = cim_principal.get('ele', cim_principal.get('elevation', 0))
+            # La fletxa apunta a l'elevació del terreny en aquell punt, que ara hauria de ser la correcta
             ax.annotate(f"{cim_principal['name']}\n({altitud_real_cim_p:.0f} m)", xy=(x_pos_p, elev[idx_cim_proper_p]), xytext=(x_pos_p, altitud_real_cim_p + max_alt_m * 0.08),
                         arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4), ha='center', va='bottom', fontsize=8, zorder=12,
                         bbox=dict(boxstyle="round,pad=0.3", fc="lightcoral", ec="black", lw=1, alpha=0.8))
@@ -7939,7 +7952,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
                 etiquetes_dibuixades_x.append(x_pos)
 
     fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
-    # <<<--- ETIQUETA DE L'EIX X MODIFICADA ---
     ax.set_xlabel(f"Distància (km) | Tall → ({analisi['bearing_fixe']:.0f}°)"); ax.set_ylabel("Elevació (m)"); ax.set_title("Secció Transversal Atmosfèrica")
     ax.grid(True, linestyle=':', alpha=0.5, color='black', zorder=0)
     ax.legend(loc='upper left', fontsize=8)
