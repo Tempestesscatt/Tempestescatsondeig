@@ -8097,21 +8097,23 @@ def analitzar_orografia(poble_sel, data_tuple):
 def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 12.0 (Simulació d'Ones de Muntanya i Núvols de Rotor/Lenticulars):
-    - ESTIL VISUAL NET: Inspirat directament en el diagrama de referència, amb fons blanc
-      i elements en blanc i negre per a màxima claredat.
-    - SIMULACIÓ DE FLUX AVANÇADA: El flux d'aire (streamlines) ara genera ones orogràfiques
-      a sotavent dels cims principals.
-    - FORMACIÓ DE NÚVOLS:
-        - NÚVOLS LENTICULARS: Es generen automàticament a les crestes de les ones si
-          l'aire puja per sobre del seu Nivell de Condensació (LCL).
-        - NÚVOLS DE ROTOR: Simula la formació de núvols turbulents i esparracats a la
-          zona del rotor a sotavent, una de les zones més perilloses.
-    - ANOTACIONS DIDÀCTIQUES: Afegeix etiquetes per identificar clarament cada fenomen,
-      convertint el gràfic en una eina d'aprenentatge.
+    Versió 13.0 (Renderització d'Alta Fidelitat amb Rebufos i Capes de Flux):
+    - ESTIL VISUAL CIENTÍFIC: Inspirat en diagrames meteorològics clàssics, utilitzant
+      un estil net en blanc i negre amb ombrejats grisos per a màxima claredat.
+    - CAPES DE FLUX DEFORMABLES: Dibuixa línies de corrent horitzontals que representen
+      capes atmosfèriques. Aquestes línies s'eleven sobre el relleu i generen ones a sotavent.
+    - SIMULACIÓ DE REBUFOS (ROTORS): A sotavent dels cims principals, el flux a baixa
+      altura es torna turbulent i caòtic, simulant visualment la perillosa zona del rotor.
+    - FORMACIÓ DE NÚVOLS FÍSICA:
+        - LENTICULARS: Es dibuixen com a capes de condensació (ombrejat gris) entre les
+          línies de flux a les crestes de les ones, només si superen el nivell de condensació.
+        - DE ROTOR: Es generen a la zona de rebuf si la turbulència eleva la humitat
+          per sobre del seu punt de condensació.
+    - PERFIL DE VENT REAL: Mostra el perfil de vent vertical del sondeig mitjançant
+      una columna de fletxes, indicant la velocitat a diferents altituds.
     """
     plt.style.use('default')
-    fig, ax = plt.subplots(figsize=(12, 7), dpi=140)
+    fig, ax = plt.subplots(figsize=(12, 7), dpi=150)
     fig.patch.set_facecolor('white')
     ax.set_facecolor('white')
 
@@ -8119,107 +8121,97 @@ def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
     dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
     elev = analisi['transect_elevations']
 
-    # --- 1. Preparació de Paràmetres Clau ---
-    heights_m, u_ms, v_ms, _, _, wind_speed_profile = analisi['sondeig_perfil_complet']
+    heights_m, _, _, _, _, wind_speed_profile = analisi['sondeig_perfil_complet']
     wind_spd_kmh = analisi['wind_spd_kmh']
-    lcl_hgt = params_calc.get('LCL_Hgt', 9999) # Nivell de Condensació per Ascens
-    
-    x_grid = dist_centrat
-    y_grid = np.linspace(0, max_alt_m, 150)
-    xx, zz = np.meshgrid(x_grid, y_grid)
+    lcl_hgt = params_calc.get('LCL_Hgt', 9999)
 
-    # --- 2. Simulació Avançada d'Ones de Muntanya ---
+    # --- 1. Simulació del Flux Deformat i la Turbulència ---
+    y_grid_base = np.linspace(0, max_alt_m, 150)
+    xx, zz_base = np.meshgrid(dist_centrat, y_grid_base)
     deformation_grid = np.zeros_like(xx)
-    peak_indices, properties = find_peaks(elev, prominence=200, width=5) # Identifiquem cims importants
-
-    # Generem les ones a sotavent (downwind) de cada cim
+    turbulence_grid = np.zeros_like(xx)
+    
+    peak_indices, properties = find_peaks(elev, prominence=250, width=5)
+    
     for i, peak_idx in enumerate(peak_indices):
         peak_prominence = properties["prominences"][i]
-        initial_amplitude = peak_prominence * np.clip(wind_spd_kmh / 35.0, 0.5, 2.5)
         wavelength = wind_spd_kmh * 150
-        
-        dist_from_peak = (xx - x_grid[peak_idx]) * 1000
+        dist_from_peak = (xx - dist_centrat[peak_idx]) * 1000
         downwind_mask = dist_from_peak > 0
         
-        decay_distance = np.exp(-dist_from_peak[downwind_mask] / (wavelength * 2.5))
-        decay_altitude = np.exp(-zz[downwind_mask] / 3000.0)
+        # Càlcul de l'ona
+        initial_amplitude = peak_prominence * np.clip(wind_spd_kmh / 40.0, 0.5, 2.5)
+        decay_alt = np.exp(-zz_base / 3500.0)
+        decay_dist = np.exp(-dist_from_peak / (wavelength * 2.5))
+        wave = initial_amplitude * np.sin(2 * np.pi * dist_from_peak / wavelength) * decay_alt * decay_dist
+        deformation_grid[downwind_mask] += wave[downwind_mask]
+
+        # Càlcul de la zona del rotor (rebuf)
+        rotor_x_center = dist_centrat[peak_idx] + wavelength / (2 * np.pi * 1000) * 1.5
+        rotor_z_center = peak_prominence * 0.9
+        rotor_x_radius = wavelength / (2 * np.pi * 1000) * 1.8
+        rotor_z_radius = peak_prominence * 0.8
         
-        wave = initial_amplitude * np.sin(2 * np.pi * dist_from_peak[downwind_mask] / wavelength) * decay_distance * decay_altitude
-        deformation_grid[downwind_mask] += wave
-    
-    # La graella final deformada inclou el terreny i les ones
-    zz_deformat = zz + np.interp(xx, x_grid, elev) + deformation_grid
+        rotor_zone = (((xx - rotor_x_center) / rotor_x_radius)**2 + ((zz_base - rotor_z_center) / rotor_z_radius)**2 < 1)
+        turbulence_intensity = np.clip(1 - (zz_base / (rotor_z_center * 2)), 0, 1) * 200 * np.clip(wind_spd_kmh / 50, 0.5, 1.5)
+        turbulence_grid[rotor_zone] = turbulence_intensity[rotor_zone] * (np.random.rand(*xx.shape) - 0.5)
 
-    # --- 3. Simulació i Dibuix de Núvols ---
-    cloud_density = np.zeros_like(xx)
-    
-    # NÚVOLS LENTICULARS: A les crestes de les ones per sobre del LCL
-    vertical_displacement = zz_deformat - zz
-    # Trobem les crestes de les ones (on el desplaçament vertical és màxim)
-    wave_crests_mask = (vertical_displacement > 0.5 * np.max(vertical_displacement, axis=0)) & (zz > lcl_hgt)
-    cloud_density[wave_crests_mask] = (zz[wave_crests_mask] - lcl_hgt) / 1000.0
+    # Graella final amb terreny, ones i turbulència
+    zz_deformat = zz_base + np.interp(xx, dist_centrat, elev) + deformation_grid + turbulence_grid
 
-    # NÚVOLS DE ROTOR: A la zona de turbulència just darrere del cim
-    if len(peak_indices) > 0:
-        main_peak_idx = peak_indices[np.argmax(properties["prominences"])]
-        rotor_x_center = x_grid[main_peak_idx] + 2.5 # Centrat a ~2.5km darrere del pic
-        rotor_z_center = properties["prominences"][np.argmax(properties["prominences"])] * 0.8
+    # --- 2. Dibuix de les Capes de Flux i els Núvols ---
+    num_layers = 40
+    altitudes_inicials = np.linspace(np.min(heights_m), max_alt_m, num_layers)
+
+    for i in range(num_layers - 1):
+        y1 = altitudes_inicials[i]
+        y2 = altitudes_inicials[i+1]
         
-        if rotor_z_center > lcl_hgt:
-            # Creem una zona de densitat de núvol caòtica
-            rotor_mask = (np.abs(xx - rotor_x_center) < 2) & (np.abs(zz - rotor_z_center) < 500)
-            # Usem un patró de soroll per donar-li un aspecte trencat
-            noise = np.random.normal(0, 0.3, xx.shape)
-            cloud_density[rotor_mask] = np.clip(cloud_density[rotor_mask] + 0.8 + noise[rotor_mask], 0, 1)
+        # Obtenim les coordenades deformades de les dues línies que formen la capa
+        z1_deformed = np.interp(y1, y_grid_base, zz_deformat.T).T
+        z2_deformed = np.interp(y2, y_grid_base, zz_deformat.T).T
+        
+        # Dibuixem les línies de flux
+        ax.plot(dist_centrat, z1_deformed[0, :], color='black', linewidth=0.7)
+        if i == num_layers - 2: # Dibuixa l'última línia
+            ax.plot(dist_centrat, z2_deformed[0, :], color='black', linewidth=0.7)
+        
+        # Condició de formació de núvols: la capa s'eleva per sobre del LCL
+        is_cloud_mask = (z1_deformed[0, :] + z2_deformed[0, :]) / 2 > lcl_hgt
+        
+        # Omplim la capa de gris si hi ha núvol
+        ax.fill_between(dist_centrat, z1_deformed[0, :], z2_deformed[0, :], 
+                        where=is_cloud_mask, color='lightgray', interpolate=True, zorder=3)
 
-    # Dibuixem els núvols amb un contorn suau i ombrejat
-    cloud_cmap = ListedColormap(["#FFFFFF00", "#E0E0E0", "#C8C8C8", "#B0B0B0"])
-    cloud_levels = [0.1, 0.4, 0.7, 1.5]
-    if np.any(cloud_density > 0.1):
-        ax.contourf(xx, zz_deformat, cloud_density, levels=cloud_levels, cmap=cloud_cmap, 
-                    zorder=3, antialiased=True)
-        ax.contour(xx, zz_deformat, cloud_density, levels=cloud_levels, colors='black', 
-                   linewidths=0.6, zorder=3, antialiased=True)
-
-    # --- 4. Dibuix del Flux d'Aire (Streamlines) ---
-    u_grid_ms = np.interp(zz, y_grid, np.interp(y_grid, heights_m, wind_speed_profile) / 3.6)
-    v_grid_ms = u_grid_ms * np.gradient(zz_deformat, x_grid * 1000, axis=1)
-    
-    ax.streamplot(xx, zz, u_grid_ms, v_grid_ms, 
-                  color='black', linewidth=0.8, density=[1.2, 1.5], 
-                  arrowsize=1.0, zorder=4)
-
-    # --- 5. Dibuix del Terreny i Anotacions Didàctiques ---
+    # --- 3. Dibuix del Terreny i Anotacions ---
     ax.fill_between(dist_centrat, 0, elev, color='black', zorder=5)
-    
-    # Anotacions (posicionades de manera automàtica)
-    ax.annotate('Strong winds', xy=(dist_centrat[5], max_alt_m * 0.8), xytext=(dist_centrat[5], max_alt_m * 0.9),
-                arrowprops=dict(arrowstyle="->"), fontsize=10)
-    ax.annotate('Ridge lift', xy=(dist_centrat[20], max_alt_m * 0.4), xytext=(dist_centrat[10], max_alt_m * 0.5),
-                arrowprops=dict(arrowstyle="->"), fontsize=10)
-    if np.any(wave_crests_mask):
-        crest_y, crest_x = np.unravel_index(np.argmax(cloud_density * (zz > lcl_hgt + 500)), cloud_density.shape)
-        ax.annotate('Lenticular clouds', xy=(x_grid[crest_x], zz_deformat[crest_y, crest_x]), 
-                    xytext=(x_grid[crest_x], max_alt_m * 0.9),
-                    arrowprops=dict(arrowstyle="->"), fontsize=10)
 
-    if 'rotor_mask' in locals() and np.any(rotor_mask):
-         ax.annotate('Rotor clouds', xy=(rotor_x_center, rotor_z_center), 
-                    xytext=(rotor_x_center + 5, rotor_z_center - 1000),
-                    arrowprops=dict(arrowstyle="->"), fontsize=10)
+    ax.annotate('Strong winds', xy=(dist_centrat[5], max_alt_m * 0.85), xytext=(dist_centrat[5], max_alt_m * 0.92),
+                arrowprops=dict(arrowstyle="->"), fontsize=10)
+    ax.annotate('Ridge lift', xy=(dist_centrat[int(len(dist_centrat)*0.3)], max_alt_m * 0.4), 
+                xytext=(dist_centrat[int(len(dist_centrat)*0.7)], max_alt_m * 0.5),
+                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=.2"), ha='center', fontsize=10)
 
-    # --- 6. Configuració Final del Gràfic ---
+    # Dibuixem el perfil de vent del sondeig
+    x_perfil = dist_centrat[int(len(dist_centrat)*0.5)] # Posició central
+    ax.plot([x_perfil, x_perfil], [0, max_alt_m], color='black', linestyle='-', linewidth=0.5, alpha=0.8)
+    for alt in np.arange(500, max_alt_m, 500):
+        wind_at_alt = np.interp(alt, heights_m, wind_speed_profile)
+        # La fletxa apunta en la direcció del flux
+        ax.arrow(x_perfil, alt, wind_at_alt / 10, 0, # Longitud de la fletxa depèn de la velocitat
+                 head_width=100, head_length=1.5, fc='k', ec='k', length_includes_head=True)
+
+    # --- 4. Configuració Final del Gràfic ---
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['bearing_fixe']:.0f}°)")
     ax.set_ylabel("Elevació (m)")
     ax.set_title("Simulació d'Ones de Muntanya i Fenòmens Associats")
-    ax.grid(False) # Eliminem la graella per a un aspecte més net
+    ax.grid(False)
     ax.set_ylim(bottom=0, top=max_alt_m)
     ax.set_xlim(dist_centrat.min(), dist_centrat.max())
     
     ax.invert_xaxis()
-    plt.tight_layout()
+    plt.tight_layout(pad=1.5)
     return fig
-
 
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     """
