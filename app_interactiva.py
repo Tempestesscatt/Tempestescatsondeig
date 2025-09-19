@@ -8159,11 +8159,11 @@ def analitzar_formacio_nuvols(sounding_data, params_calc):
 
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m, show_barbs=True):
     """
-    Crea una secció transversal atmosfèrica amb interacció realista i capes de dades avançades.
-    Versió 16.0 (Renderitzat de Núvols Orgànic i Localitzat):
-    - CORREGEIX el bug que creava un "pilar" convectiu artificial.
-    - El creixement convectiu ara es simula com una potenciació de la densitat de núvol
-      localitzada ÚNICAMENT sobre els pendents de sobrevent, creant un aspecte orgànic.
+    Crea una secció transversal atmosfàrica amb interacció realista i capes de dades avançades.
+    Versió 13.0 (Visualització de Núvols Basada en Humitat):
+    - La capa "Núvols" ara dibuixa directament les zones on la humitat relativa > 85%.
+    - L'opacitat del núvol depèn de la intensitat de la humitat.
+    - Si hi ha CAPE, es potencia un desenvolupament vertical convectiu al centre del gràfic.
     """
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
@@ -8181,14 +8181,19 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     colors_vent = ['#d3d3d3', '#add8e6', '#48d1cc', '#90ee90', '#32cd32', '#6b8e23', '#f0e68c', '#d2b48c', '#bc8f8f', '#ffb6c1', '#da70d6', '#9932cc', '#8a2be2']; levels_vent = [0, 11, 25, 40, 54, 68, 86, 104, 131]; cmap_vent = ListedColormap(colors_vent); norm_vent = BoundaryNorm(levels_vent, ncolors=cmap_vent.N, clip=True)
     colors_temp = ['#8a2be2', '#0000ff', '#1e90ff', '#00ffff', '#32cd32', '#ffff00', '#ffa500', '#ff0000', '#dc143c', '#ff00ff']; levels_temp = [-20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30]; cmap_temp = ListedColormap(colors_temp); norm_temp = BoundaryNorm(levels_temp, ncolors=cmap_temp.N, clip=True)
     
+    # Desempaquetem les dades del sondeig
     heights_m, u_ms, v_ms, rh_profile, temp_profile, wind_speed_profile, theta_e_profile, parcel_temp_profile = analisi['sondeig_perfil_complet']
     
+    # Creació de la graella deformada per l'orografia
     x_grid = dist_centrat; y_grid = np.linspace(0, max_alt_m, 100)
     xx, zz_asl = np.meshgrid(x_grid, y_grid)
     pendent = np.gradient(elev, dist_centrat * 1000); factor_decaiguda = np.exp(-zz_asl / 4000)
     zz_deformat = zz_asl + np.outer(np.ones(len(y_grid)), pendent * 5000) * factor_decaiguda
     
-    data_grid, label, im = None, "", None
+    # --- Lògica principal de selecció i dibuix de capa ---
+    data_grid = None
+    label = ""
+    im = None
     if layer_to_show == "Humitat":
         data_grid = np.interp(zz_deformat, heights_m, rh_profile); cmap, norm, levels, label = cmap_humitat, norm_humitat, levels_humitat, "Humitat Relativa (%)"
     elif layer_to_show == "Temperatura":
@@ -8199,56 +8204,52 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         profile_celsius = theta_e_profile - 273.15
         data_grid = np.interp(zz_deformat, heights_m, profile_celsius); cmap, norm, levels, label = cmap_theta_e, norm_theta_e, levels_theta_e, "Theta-E (°C)"
     elif layer_to_show == "CAPE (Flotabilitat)":
-        parcel_temp_grid = np.interp(zz_deformat, heights_m, parcel_temp_profile); env_temp_grid = np.interp(zz_deformat, heights_m, temp_profile)
+        parcel_temp_grid = np.interp(zz_deformat, heights_m, parcel_temp_profile)
+        env_temp_grid = np.interp(zz_deformat, heights_m, temp_profile)
         data_grid = parcel_temp_grid - env_temp_grid; cmap, norm, levels, label = cmap_buoyancy, norm_buoyancy, levels_buoyancy, "Flotabilitat (°C) | CAPE > 0 / CIN < 0"
     
+    # Dibuix de les capes de dades (excepte núvols)
     if data_grid is not None:
         masked_data = np.where(zz_asl > elev, data_grid, np.nan)
         im = ax.contourf(xx, zz_asl, masked_data, levels=levels, cmap=cmap, norm=norm, extend='both', zorder=1)
         contours = ax.contour(xx, zz_asl, masked_data, levels=levels[1:-1:2], colors='black', linewidths=0.5, alpha=0.7, zorder=2)
         ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
-        if layer_to_show != "Núvols":
-            fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
+        fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
     
-    # --- LÒGICA DE NÚVOLS COMPLETAMENT RECONSTRUÏDA ---
+    # --- NOVA LÒGICA PER A LA CAPA DE NÚVOLS ---
     if layer_to_show == "Núvols":
         sky_gradient = np.linspace(0.8, 0.4, 100).reshape(-1, 1)
         ax.imshow(sky_gradient, aspect='auto', cmap='Blues_r', origin='lower', extent=[dist_centrat.min(), dist_centrat.max(), 0, max_alt_m], zorder=0)
         
+        # Interpolem la humitat a la graella deformada
         rh_grid = np.interp(zz_deformat, heights_m, rh_profile)
-        cloud_density = np.clip((rh_grid - 80) / 19.9, 0, 1) # Densitat base contínua
+        
+        # Creem una graella de dades per als núvols basada en llindars d'humitat
+        cloud_data = np.zeros_like(rh_grid)
+        cloud_data[rh_grid >= 85] = 1 # Nuvolositat lleugera
+        cloud_data[rh_grid >= 95] = 2 # Nucli dens del núvol
 
+        # Potenciem el desenvolupament vertical si hi ha CAPE
         cape = params_calc.get('MLCAPE', 0)
         if cape > 100:
-            lcl = params_calc.get('LCL_Hgt', 9999); el = params_calc.get('EL_Hgt', 0)
+            lcl = params_calc.get('LCL_Hgt', 9999)
+            el = params_calc.get('EL_Hgt', 0)
             if el > lcl:
-                # Creem una màscara 1D per a les zones de sobrevent
-                upslope_mask_1d = pendent > 0.03
-                
-                # Creem un perfil vertical de "potenciació convectiva"
-                convective_boost_profile = np.zeros_like(y_grid)
-                convective_layer_mask = (y_grid >= lcl) & (y_grid <= el)
-                # La potenciació és màxima al centre de la capa convectiva
-                mid_convective_layer = (lcl + el) / 2
-                sigma_z = (el - lcl) * 0.4
-                convective_boost_profile[convective_layer_mask] = np.exp(-((y_grid[convective_layer_mask] - mid_convective_layer)**2 / (2 * sigma_z**2)))
-                
-                # Apliquem aquesta potenciació només a les columnes de sobrevent
-                convective_boost_2d = np.outer(convective_boost_profile, upslope_mask_1d)
-                
-                convective_intensity = np.clip(cape / 1200, 0.5, 1.5)
-                cloud_density += convective_boost_2d * convective_intensity
+                # Creem una columna vertical al centre que representa la tempesta
+                width_km = (el - lcl) * 0.2 / 1000 
+                convective_mask = (zz_asl >= lcl) & (zz_asl <= el) & (np.abs(xx) < width_km)
+                cloud_data[convective_mask] = 2 # Marquem tota la columna com a nucli dens
 
-        masked_density = np.where(zz_asl > elev, np.clip(cloud_density, 0, 1.2), 0)
+        masked_cloud_data = np.where(zz_asl > elev, cloud_data, 0)
         
-        # Utilitzem contourf per a un dibuix suau i dimensionalment correcte
-        cloud_levels = np.linspace(0.1, 1.2, 11)
-        cloud_cmap = LinearSegmentedColormap.from_list("cloud_cmap", [(1, 1, 1, 0), (1, 1, 1, 0.95)])
-        ax.contourf(xx, zz_asl, masked_density, levels=cloud_levels, cmap=cloud_cmap, zorder=2)
+        # Mapa de colors: 0=Transparent, 1=Gris clar semitransparent, 2=Blanc opac
+        cloud_cmap = ListedColormap(['#00000000', '#dcdcdc80', '#ffffffE6'])
+        cloud_norm = BoundaryNorm([0, 1, 2, 3], ncolors=cloud_cmap.N)
         
-        ax.set_title(f"Secció Transversal Atmosfèrica - Nuvolositat (HR > 85%)")
+        ax.contourf(xx, zz_asl, masked_cloud_data, levels=[0.5, 1.5, 2.5], cmap=cloud_cmap, norm=cloud_norm, zorder=2)
+        ax.set_title("Secció Transversal Atmosfèrica - Nuvolositat (HR > 85%)")
 
-    # --- La resta de la funció es manté igual ---
+    # Dibuix del terreny, línies de nivell, barbes i marcadors (la resta de la funció)
     ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
     if np.min(elev) <= 5:
         x_wave = np.linspace(dist_centrat.min(), dist_centrat.max(), 200); y_wave = np.sin(x_wave * 0.5) * 5 + 5
@@ -8262,7 +8263,8 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
 
     if show_barbs:
         barb_x_upper = np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7); barb_y_upper = np.arange(1000, max_alt_m, 500)
-        barb_xx, barb_zz = np.meshgrid(barb_x_upper, barb_y_upper); terrain_at_barbs_upper = np.interp(barb_xx.flatten(), dist_centrat, elev)
+        barb_xx, barb_zz = np.meshgrid(barb_x_upper, barb_y_upper)
+        terrain_at_barbs_upper = np.interp(barb_xx.flatten(), dist_centrat, elev)
         valid_mask_upper = barb_zz.flatten() > terrain_at_barbs_upper
         barb_u = np.interp(barb_zz.flatten(), heights_m, u_ms) * 1.94384; barb_v = np.interp(barb_zz.flatten(), heights_m, v_ms) * 1.94384
         ax.barbs(barb_xx.flatten()[valid_mask_upper], barb_zz.flatten()[valid_mask_upper], barb_u[valid_mask_upper], barb_v[valid_mask_upper], length=6, zorder=5, color='white', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
@@ -8282,8 +8284,10 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     turo = analisi.get("turo_referencia")
     if turo:
         x_pos = dist_centrat[turo['idx']]
-        ax.annotate(f"{turo['name']}\n({turo['ele']:.0f} m)", xy=(x_pos, elev[turo['idx']]), xytext=(x_pos, turo['ele'] + max_alt_m * 0.08),
-                    arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4), ha='center', va='bottom', fontsize=8, zorder=12,
+        ax.annotate(f"{turo['name']}\n({turo['ele']:.0f} m)", 
+                    xy=(x_pos, elev[turo['idx']]), xytext=(x_pos, turo['ele'] + max_alt_m * 0.08),
+                    arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4), 
+                    ha='center', va='bottom', fontsize=8, zorder=12,
                     bbox=dict(boxstyle="round,pad=0.3", fc="lightblue", ec="black", lw=1, alpha=0.8))
 
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['bearing_fixe']:.0f}°)")
