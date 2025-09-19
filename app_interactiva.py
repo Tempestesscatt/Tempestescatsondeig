@@ -8097,10 +8097,10 @@ def analitzar_orografia(poble_sel, data_tuple):
 def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 13.1 (Correcció de Bug de Broadcasting):
-    - CORRECCIÓ CRÍTICA: S'ha redissenyat la lògica d'interpolació de les capes de
-      flux per evitar errors de 'broadcasting' (ValueError). Ara la deformació
-      de cada línia de flux es calcula de manera robusta per a cada punt horitzontal.
+    Versió 13.2 (Correcció Definitiva de Broadcasting):
+    - CORRECCIÓ DE L'ERROR 'ValueError': S'ha solucionat el problema de dimensions
+      utilitzant el mètode de 'broadcasting' de NumPy per aplicar correctament
+      l'elevació del terreny a la graella atmosfèrica, eliminant l'error.
     - Manté l'estil visual científic, la simulació d'ones de muntanya, rebufos
       i la formació de núvols de la versió anterior.
     """
@@ -8109,8 +8109,7 @@ def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
     fig.patch.set_facecolor('white')
     ax.set_facecolor('white')
 
-    dist_total_km = analisi['transect_distances'][-1]
-    dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
+    dist_centrat = analisi['transect_distances'] - (analisi['transect_distances'][-1] / 2)
     elev = analisi['transect_elevations']
 
     heights_m, _, _, _, _, wind_speed_profile = analisi['sondeig_perfil_complet']
@@ -8146,26 +8145,21 @@ def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
         turbulence_intensity = np.clip(1 - (zz_base / (rotor_z_center * 2)), 0, 1) * 200 * np.clip(wind_spd_kmh / 50, 0.5, 1.5)
         turbulence_grid[rotor_zone] = turbulence_intensity[rotor_zone] * (np.random.rand(*xx.shape) - 0.5)
 
-    zz_deformat = zz_base + np.interp(xx, dist_centrat, elev) + deformation_grid + turbulence_grid
+    # ### LÍNIA DE CODI CORREGIDA ###
+    # Utilitzem el 'broadcasting' de NumPy per sumar el terreny (1D) a la graella (2D).
+    # Aquesta és la forma correcta de "pujar" tota la graella sobre el relleu.
+    zz_deformat = zz_base + elev + deformation_grid + turbulence_grid
+    # ### FI DE LA CORRECCIÓ ###
 
     # --- 2. Dibuix de les Capes de Flux i els Núvols ---
     num_layers = 40
     altitudes_inicials = np.linspace(np.min(heights_m), max_alt_m, num_layers)
 
     for i in range(num_layers - 1):
-        y1 = altitudes_inicials[i]
-        y2 = altitudes_inicials[i+1]
+        y1, y2 = altitudes_inicials[i], altitudes_inicials[i+1]
         
-        # ### BLOC DE CODI CORREGIT ###
-        # Calculem la posició Z deformada per a cada línia de flux de manera independent,
-        # interpolant verticalment per a cada columna horitzontal.
-        z1_deformed_values = [np.interp(y1, y_grid_base, zz_deformat[:, col_idx]) for col_idx in range(xx.shape[1])]
-        z2_deformed_values = [np.interp(y2, y_grid_base, zz_deformat[:, col_idx]) for col_idx in range(xx.shape[1])]
-        
-        # Convertim les llistes a arrays de NumPy, que ara tindran la forma correcta (1D)
-        z1_deformed = np.array(z1_deformed_values)
-        z2_deformed = np.array(z2_deformed_values)
-        # ### FI DE LA CORRECCIÓ ###
+        z1_deformed = np.array([np.interp(y1, y_grid_base, zz_deformat[:, col_idx]) for col_idx in range(xx.shape[1])])
+        z2_deformed = np.array([np.interp(y2, y_grid_base, zz_deformat[:, col_idx]) for col_idx in range(xx.shape[1])])
         
         ax.plot(dist_centrat, z1_deformed, color='black', linewidth=0.7)
         if i == num_layers - 2:
@@ -8178,7 +8172,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
     # --- 3. Dibuix del Terreny i Anotacions ---
     ax.fill_between(dist_centrat, 0, elev, color='black', zorder=5)
     
-    # Anotacions (la lògica es manté)
     ax.annotate('Strong winds', xy=(dist_centrat[5], max_alt_m * 0.85), xytext=(dist_centrat[5], max_alt_m * 0.92),
                 arrowprops=dict(arrowstyle="->"), fontsize=10)
     ax.annotate('Ridge lift', xy=(dist_centrat[int(len(dist_centrat)*0.3)], max_alt_m * 0.4), 
@@ -8192,7 +8185,7 @@ def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
         wind_at_alt = np.interp(alt, heights_m, wind_speed_profile)
         ax.arrow(x_perfil, alt, wind_at_alt / 10, 0, 
                  head_width=100, head_length=1.5, fc='k', ec='k', length_includes_head=True)
-    
+
     # --- 4. Configuració Final del Gràfic ---
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['bearing_fixe']:.0f}°)")
     ax.set_ylabel("Elevació (m)")
