@@ -8159,12 +8159,10 @@ def analitzar_formacio_nuvols(sounding_data, params_calc):
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m, show_barbs=True):
     """
     Crea una secció transversal atmosfèrica amb interacció realista i capes de dades avançades.
-    Versió 12.0:
-    - Converteix Theta-E a graus Celsius per a la visualització.
-    - Afegeix una nova capa "Núvols" que dibuixa una representació visual de les capes
-      de núvols (estratiformes i convectius) analitzades prèviament.
-    - La capa de CAPE mostra la diferència de temperatura entre la bombolla i l'entorn,
-      on els valors positius (vermell) representen energia i els negatius (blau) inhibició.
+    Versió 12.1 (Correcció d'Import):
+    - Soluciona l'error 'NameError: name 'Ellipse' is not defined'.
+    - Aquesta funció requereix que 'from matplotlib.patches import Ellipse' estigui importat
+      a l'inici del teu script.
     """
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
@@ -8189,7 +8187,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     colors_vent = ['#d3d3d3', '#add8e6', '#48d1cc', '#90ee90', '#32cd32', '#6b8e23', '#f0e68c', '#d2b48c', '#bc8f8f', '#ffb6c1', '#da70d6', '#9932cc', '#8a2be2']; levels_vent = [0, 11, 25, 40, 54, 68, 86, 104, 131]; cmap_vent = ListedColormap(colors_vent); norm_vent = BoundaryNorm(levels_vent, ncolors=cmap_vent.N, clip=True)
     colors_temp = ['#8a2be2', '#0000ff', '#1e90ff', '#00ffff', '#32cd32', '#ffff00', '#ffa500', '#ff0000', '#dc143c', '#ff00ff']; levels_temp = [-20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30]; cmap_temp = ListedColormap(colors_temp); norm_temp = BoundaryNorm(levels_temp, ncolors=cmap_temp.N, clip=True)
     
-    # Desempaquetem les 8 variables del sondeig
     heights_m, u_ms, v_ms, rh_profile, temp_profile, wind_speed_profile, theta_e_profile, parcel_temp_profile = analisi['sondeig_perfil_complet']
     
     x_grid = dist_centrat; y_grid = np.linspace(0, max_alt_m, 100)
@@ -8197,8 +8194,9 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     pendent = np.gradient(elev, dist_centrat * 1000); factor_decaiguda = np.exp(-zz_asl / 4000)
     zz_deformat = zz_asl + np.outer(np.ones(len(y_grid)), pendent * 5000) * factor_decaiguda
     
-    # --- Lògica principal de selecció i dibuix de capa ---
     data_grid = None
+    label = "" # Inicialitzem per si la capa és 'Núvols'
+    im = None
     if layer_to_show == "Humitat":
         data_grid = np.interp(zz_deformat, heights_m, rh_profile); cmap, norm, levels, label = cmap_humitat, norm_humitat, levels_humitat, "Humitat Relativa (%)"
     elif layer_to_show == "Temperatura":
@@ -8213,7 +8211,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         env_temp_grid = np.interp(zz_deformat, heights_m, temp_profile)
         data_grid = parcel_temp_grid - env_temp_grid; cmap, norm, levels, label = cmap_buoyancy, norm_buoyancy, levels_buoyancy, "Flotabilitat (°C) | CAPE > 0 / CIN < 0"
     
-    # Dibuix de les capes de dades (excepte núvols)
     if data_grid is not None:
         masked_data = np.where(zz_asl > elev, data_grid, np.nan)
         im = ax.contourf(xx, zz_asl, masked_data, levels=levels, cmap=cmap, norm=norm, extend='both', zorder=1)
@@ -8221,7 +8218,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
         fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
     
-    # Lògica específica per a la capa de núvols
     if layer_to_show == "Núvols":
         sky_gradient = np.linspace(0.8, 0.4, 100).reshape(-1, 1)
         ax.imshow(sky_gradient, aspect='auto', cmap='Blues_r', origin='lower', extent=[dist_centrat.min(), dist_centrat.max(), 0, max_alt_m], zorder=0)
@@ -8229,22 +8225,20 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         for cloud in cloud_layers:
             base, top, density = cloud['base_m'], cloud['top_m'], cloud['density']
             if cloud['type'] == 'Convectiu':
-                # Simulem un núvol convectiu amb múltiples el·lipses
                 width = (top - base) * 0.4
-                center_y = (base + top) / 2
-                num_puffs = int(25 * density) # Més CAPE = núvol més dens i complex
+                num_puffs = int(25 * density)
                 for _ in range(num_puffs):
                     puff_x = (np.random.rand() - 0.5) * width * 1.5
-                    puff_y = base + np.random.power(2.5) * (top - base) # Més densitat a la base
+                    puff_y = base + np.random.power(2.5) * (top - base)
                     puff_width = (np.random.rand() * 0.5 + 0.5) * (width * 0.4)
                     puff_height = puff_width * (0.6 + np.random.rand() * 0.2)
                     puff_alpha = (0.3 + np.random.rand() * 0.5) * density
+                    # Aquí és on es fa servir Ellipse
                     cloud_puff = Ellipse(xy=(puff_x, puff_y), width=puff_width, height=puff_height, facecolor='white', alpha=puff_alpha, zorder=2)
                     ax.add_patch(cloud_puff)
-            else: # Estratiforme
+            else:
                 ax.fill_between(dist_centrat, base, top, color='white', alpha=0.6 * density, zorder=1, linewidth=0)
     
-    # Dibuix del terreny, mar, línies LCL/LFC i barbes (sense canvis)
     ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
     if np.min(elev) <= 5:
         x_wave = np.linspace(dist_centrat.min(), dist_centrat.max(), 200); y_wave = np.sin(x_wave * 0.5) * 5 + 5
@@ -8272,7 +8266,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         for x, y_terrain, y_barb in zip(barb_x_surface[mask], surface_elev_at_barbs[mask], barb_y_surface[mask]):
             ax.plot([x, x], [y_terrain, y_barb], color='#F0E68C', lw=0.6, linestyle='--', zorder=4)
 
-    # Marcadors de localització
     poble_dist_centrat = analisi['poble_dist'] - (dist_total_km / 2)
     ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
@@ -8286,7 +8279,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
                     ha='center', va='bottom', fontsize=8, zorder=12,
                     bbox=dict(boxstyle="round,pad=0.3", fc="lightblue", ec="black", lw=1, alpha=0.8))
 
-    # Configuració final del gràfic
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['bearing_fixe']:.0f}°)")
     ax.set_ylabel("Elevació (m)")
     ax.set_title("Secció Transversal Atmosfèrica")
