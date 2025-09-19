@@ -8098,38 +8098,32 @@ def crear_grafic_perfil_orografic_adiabatic_amb_nuvols(analisi, params_calc):
     """
     Crea una secció transversal atmosfàrica amb un model d'escalfament/refredament
     adiabàtic i la formació dinàmica de núvols orogràfics.
-    Versió 2.1 (Correcció de colorbar):
-    - Soluciona l'error 'im is not defined' assignant correctament el resultat de contourf.
+    Versió 2.2 (Compatibilitat amb MetPy antic):
+    - Utilitza un càlcul de dewpoint en dos passos per a ser compatible amb versions antigues de MetPy.
     """
-    # Constants físiques (aproximades)
-    DALR_PER_METRE = 9.8 / 1000  # °C de refredament per metre d'ascens (aire sec)
-    MALR_PER_METRE = 6.5 / 1000  # °C de refredament per metre d'ascens (aire humit)
+    DALR_PER_METRE = 9.8 / 1000
+    MALR_PER_METRE = 6.5 / 1000
 
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(12, 6), dpi=130)
     ax.set_facecolor('#E6F2FF')
 
-    # Dades del perfil del terreny
     dist_total_km = analisi['transect_distances'][-1]
     dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
     elev = analisi['transect_elevations']
     max_alt_m = np.max(elev) + 3500
 
-    # Dades del sondeig inicial
     heights_m, u_ms, v_ms, rh_profile, temp_profile, _ = analisi['sondeig_perfil_complet']
     p_sfc = params_calc.get('SFC_P', 1000) * units.hPa
     p_profile_hpa = mpcalc.height_to_pressure_std(heights_m * units.meter)
 
-    # Creació de la graella de visualització
     x_grid = dist_centrat
     y_grid = np.linspace(0, max_alt_m, 150)
     xx, zz = np.meshgrid(x_grid, y_grid)
     
-    # Graelles finals que calcularem
     temp_grid_final = np.zeros_like(xx)
     rh_grid_final = np.zeros_like(xx)
 
-    # --- INICI DEL CÀLCUL TERMODINÀMIC ---
     for i in range(len(x_grid)):
         columna_z_final = zz[:, i]
         ascens_orografic = np.interp(x_grid[i], dist_centrat, elev) * np.exp(-columna_z_final / 2500.0)
@@ -8162,7 +8156,12 @@ def crear_grafic_perfil_orografic_adiabatic_amb_nuvols(analisi, params_calc):
 
         mixing_ratio = mpcalc.mixing_ratio_from_relative_humidity(p_original, temp_original, rh_original)
         p_final = np.interp(columna_z_final, heights_m, p_profile_hpa.m) * units.hPa
-        td_final = mpcalc.dewpoint_from_mixing_ratio(p_final, mixing_ratio)
+        
+        # === LÍNIES CORREGIDES PER A COMPATIBILITAT ===
+        vapor_pressure_final = mpcalc.vapor_pressure(p_final, mixing_ratio)
+        td_final = mpcalc.dewpoint(vapor_pressure_final)
+        # ============================================
+
         rh_final = mpcalc.relative_humidity_from_dewpoint(temp_final * units.degC, td_final).m * 100
         
         saturat_mask = (puja_mask) & (columna_z_final > h_lcl)
@@ -8170,22 +8169,15 @@ def crear_grafic_perfil_orografic_adiabatic_amb_nuvols(analisi, params_calc):
 
         rh_grid_final[:, i] = rh_final
 
-    # --- FINAL DEL CÀLCUL TERMODINÀMIC ---
-
-    # Dibuixem la capa de temperatura de fons
     cmap_colors_temp = ['#8a2be2','#0000ff','#1e90ff','#00ffff','#32cd32','#adff2f','#ffff00','#ffa500','#ff0000','#dc143c']
     levels_temp = [-16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24]
     cmap_temp = ListedColormap(cmap_colors_temp)
     norm_temp = BoundaryNorm(levels_temp, ncolors=cmap_temp.N, clip=True)
-    
-    # === LÍNIA CORREGIDA ===
     im = ax.contourf(xx, zz, temp_grid_final, levels=levels_temp, cmap=cmap_temp, norm=norm_temp, extend='both', zorder=1, antialiased=True)
 
-    # === DIBUIX DEL NÚVOL ===
     cloud_levels = [95, 101] 
     cloud_cmap = ListedColormap([(1, 1, 1, 0.4), (1, 1, 1, 0.9)])
     norm_cloud = BoundaryNorm(cloud_levels, ncolors=cloud_cmap.N, clip=True)
-    
     ax.contourf(xx + 150, zz - 150, rh_grid_final, levels=cloud_levels, cmap=ListedColormap([(0,0,0,0.2)]), norm=norm_cloud, zorder=2)
     ax.contourf(xx, zz, rh_grid_final, levels=cloud_levels, cmap=cloud_cmap, norm=norm_cloud, zorder=3)
 
@@ -8196,7 +8188,6 @@ def crear_grafic_perfil_orografic_adiabatic_amb_nuvols(analisi, params_calc):
             label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
 
-    # Configuració final del gràfic
     fig.colorbar(im, ax=ax, label="Temperatura (°C)", pad=0.02, ticks=levels_temp[::2])
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['bearing_fixe']:.0f}°)")
     ax.set_ylabel("Elevació (m)")
@@ -8209,7 +8200,6 @@ def crear_grafic_perfil_orografic_adiabatic_amb_nuvols(analisi, params_calc):
     ax.invert_xaxis()
     plt.tight_layout()
     return fig
-
 
 
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
