@@ -8094,62 +8094,72 @@ def analitzar_orografia(poble_sel, data_tuple):
 
 
 
-def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
+def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 17.0 (Simulació de Flux Vectorial d'Alta Fidelitat):
-    - APROXIMACIÓ DEFINITIVA: Fusiona el realisme físic d'un model de flux amb la
-      claredat d'un diagrama científic.
-    - CAMP DE VENT VECTORIAL 2D: Construeix un camp de vent (u, w) a tota la graella.
-      La component horitzontal (u) es basa en el sondeig i la component vertical (w)
-      es simula basant-se en la interacció amb el terreny.
-    - BLOQUEIG FÍSIC I REBUFOS INDUÏTS: El relleu actua com una barrera sòlida. El
-      vent s'anul·la a l'interior, forçant el flux a ascendir i envoltar els obstacles.
-      Això genera de manera natural zones de rebuf i vòrtexs a sotavent.
-    - VISUALITZACIÓ AMB STREAMLINES: El camp de vent final es visualitza amb streamlines
-      que mostren el flux laminar, les ones de muntanya i la turbulència del rotor.
-    - FORMACIÓ DE NÚVOLS FÍSICA: Els núvols lenticulars i de rotor es generen com a
-      ombrejats grisos només si les capes d'aire corresponents s'eleven per sobre
-      del nivell de condensació (LCL), integrant la termodinàmica a la dinàmica.
+    Versió 18.0 (Versió Definitiva de l'Autor - Fusió de Tècniques):
+    - SÍNTESI FINAL: Combina el fons de color informatiu amb streamlines dinàmiques
+      per a una visualització completa i professional.
+    - CAMP DE FLUX VECTORIAL: Simula un camp de vent 2D (u, w) que interactua
+      físicament amb el terreny, actuant com una barrera sòlida.
+    - DEFORMACIÓ DE CAPES: Les capes de color (humitat, temp, vent) es deformen
+      seguint el camp de flux simulat, mostrant visualment l'ascens, la
+      subsidència i les ones de muntanya.
+    - STREAMLINES SUPERPOSADES: Les línies de corrent es dibuixen sobre el fons de
+      color, proporcionant una guia visual clara de la trajectòria de l'aire i
+      dels rebufos a sotavent.
+    - RENDERITZACIÓ D'ALTA QUALITAT: Utilitza antialiasing i contorns suaus per
+      a un acabat professional i didàctic.
     """
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(14, 8), dpi=150)
     fig.patch.set_facecolor('white')
-    ax.set_facecolor('white')
+    ax.set_facecolor('#f0f5ff') # Un blau cel molt clar per al fons
 
     dist_centrat = analisi['transect_distances'] - (analisi['transect_distances'][-1] / 2)
     elev = analisi['transect_elevations']
 
     heights_m, _, _, _, _, wind_speed_profile = analisi['sondeig_perfil_complet']
     wind_spd_kmh = analisi['wind_spd_kmh']
-    lcl_hgt = params_calc.get('LCL_Hgt', 9999)
 
-    # --- 1. Creació de la Graella i el Camp de Vent Base ---
-    y_grid_base = np.linspace(0, max_alt_m, 150)
-    xx, zz = np.meshgrid(dist_centrat, y_grid_base)
+    # --- 1. Selecció de la Capa de Dades a Visualitzar ---
+    # (Aquesta secció es manté de la versió de colors)
+    if layer_to_show == "Humitat":
+        profile_1d = np.interp(y_grid, heights_m, analisi['sondeig_perfil_complet'][3])
+        cmap_colors = ['#f0e68c', '#90ee90', '#4682b4', '#191970']; levels = [0, 30, 60, 80, 101]
+        label = "Humitat Relativa (%)"
+    elif layer_to_show == "Temperatura":
+        profile_1d = np.interp(y_grid, heights_m, analisi['sondeig_perfil_complet'][4])
+        cmap_colors = ['#8a2be2','#0000ff','#1e90ff','#00ffff','#32cd32','#ffff00','#ffa500','#ff0000','#dc143c']
+        levels = [-16, -12, -8, -4, 0, 4, 8, 12, 16, 20]
+        label = "Temperatura (°C)"
+    else: # Vent
+        profile_1d = np.interp(y_grid, heights_m, wind_speed_profile)
+        cmap_colors = ['#add8e6', '#90ee90', '#ffff00', '#ffa500', '#ff4500', '#ff0000']
+        levels = [0, 20, 40, 60, 80, 100, 120]
+        label = "Velocitat del Vent (km/h)"
+        
+    cmap = ListedColormap(cmap_colors)
+    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
     
-    # Component horitzontal (u) del vent del sondeig (m/s)
-    u_base_ms = np.interp(y_grid_base, heights_m, wind_speed_profile) / 3.6
+    # --- 2. Creació del Camp de Vent Vectorial 2D ---
+    y_grid = np.linspace(0, max_alt_m, 150)
+    xx, zz = np.meshgrid(dist_centrat, y_grid)
+    
+    u_base_ms = np.interp(y_grid, heights_m, wind_speed_profile) / 3.6
     u_grid = np.tile(u_base_ms, (xx.shape[1], 1)).T
-    
-    # Component vertical (w) inicialment zero
     w_grid = np.zeros_like(xx)
 
-    # --- 2. Simulació de la Interacció del Flux amb el Terreny ---
     terrain_slope = np.gradient(elev, dist_centrat * 1000)
     slope_grid = np.tile(terrain_slope, (xx.shape[0], 1))
     
-    # Ascens orogràfic a sobrevent
     lift_mask = slope_grid > 0
     decay_lift = np.exp(-zz / 1500.0)
     w_grid[lift_mask] += (u_grid * slope_grid * decay_lift)[lift_mask]
 
-    # Vòrtexs i ones a sotavent
     peak_indices, properties = find_peaks(elev, prominence=300, width=5)
     for i, peak_idx in enumerate(peak_indices):
         peak_prominence = properties["prominences"][i]
-        
-        # Posició i força del vòrtex principal (rotor)
         rotor_x_center = dist_centrat[peak_idx] + 2.5
         rotor_z_center = peak_prominence * 0.8
         rotor_radius = peak_prominence * 1.5
@@ -8160,83 +8170,96 @@ def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
         r_sq = dist_x_from_center**2 + dist_z_from_center**2
         r_sq[r_sq == 0] = 1e-6
         
-        # Camp de vent induït pel vòrtex
         u_vortex = vortex_strength * dist_z_from_center / r_sq
         w_vortex = -vortex_strength * dist_x_from_center / r_sq
         vortex_mask = np.exp(-(r_sq / (rotor_radius**2)))
         u_grid += u_vortex * vortex_mask
         w_grid += w_vortex * vortex_mask
 
-    # --- 3. Aplicació del Bloqueig Físic del Terreny ---
+    # Aplicació del bloqueig físic del terreny
     terrain_mask = zz < np.interp(xx, dist_centrat, elev)
     u_grid[terrain_mask] = 0
     w_grid[terrain_mask] = 0
 
+    # --- 3. Dibuix de la Capa de Color Deformada ---
+    data_grid_base = np.tile(profile_1d, (xx.shape[1], 1)).T
+    
+    # Calculem la deformació vertical a partir del camp de vent 'w'
+    dt = (dist_centrat[1] - dist_centrat[0]) * 1000 / u_grid
+    dt[u_grid < 1] = 0
+    vertical_displacement = np.cumsum(w_grid * dt, axis=1)
+    zz_deformat = zz + vertical_displacement
+    
+    im = ax.contourf(xx, zz_deformat, data_grid_base, levels=levels, cmap=cmap, norm=norm,
+                     extend='both', zorder=1, antialiased=True, alpha=0.9)
+    
     # --- 4. Dibuix del Flux d'Aire (Streamlines) ---
     ax.streamplot(xx, zz, u_grid, w_grid, 
                   color='black', 
-                  linewidth=0.9, 
+                  linewidth=0.7, 
                   density=2.0,
-                  arrowsize=0.9)
+                  arrowsize=0.8,
+                  zorder=4)
 
-    # --- 5. Simulació i Dibuix de Núvols ---
-    # Calculem l'elevació final de cada punt de la graella seguint el flux
-    # (Integració simple: posició_final = posició_inicial + velocitat_vertical * temps_de_pas)
-    dt = (dist_centrat[1] - dist_centrat[0]) * 1000 / u_grid
-    dt[u_grid < 1] = 0 # Evitar temps infinits
-    vertical_displacement = np.cumsum(w_grid * dt, axis=1)
-    zz_final = zz + vertical_displacement
-    
-    cloud_mask = (zz_final > lcl_hgt) & (zz > np.interp(xx, dist_centrat, elev))
-    
-    # Ombrejat suau per als núvols
-    ax.contourf(xx, zz_final, cloud_mask.astype(float), 
-                levels=[0.5, 1.5], colors=['lightgray'], alpha=0.8, zorder=3)
-    ax.contour(xx, zz_final, cloud_mask.astype(float),
-               levels=[0.5], colors=['black'], linewidths=0.6, zorder=3)
-
-    # --- 6. Dibuix del Terreny i Anotacions ---
+    # --- 5. Dibuix del Terreny i Anotacions ---
     ax.fill_between(dist_centrat, 0, elev, color='black', zorder=5)
+    # Afegim una línia fina a la part superior del terreny per a més definició
+    ax.plot(dist_centrat, elev, color='gray', linewidth=0.5, zorder=6)
 
+    # Dibuix d'etiquetes i marcadors (com a les versions anteriors)
+    poble_dist_centrat = analisi['poble_dist'] - (dist_total_km / 2)
+    ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8,
+            label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
+    ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1.2, zorder=1)
+
+    # --- 6. Configuració Final del Gràfic ---
+    fig.colorbar(im, ax=ax, label=label, pad=0.02, shrink=0.8)
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['bearing_fixe']:.0f}°)")
     ax.set_ylabel("Elevació (m)")
     ax.set_title("Simulació de Flux Orogràfic amb Interacció Física")
-    ax.grid(False)
+    ax.grid(True, linestyle=':', alpha=0.5, color='gray', zorder=0)
+    ax.legend(loc='upper left', fontsize=8)
     ax.set_ylim(bottom=0, top=max_alt_m)
     ax.set_xlim(dist_centrat.min(), dist_centrat.max())
     
     ax.invert_xaxis()
     plt.tight_layout(pad=1.5)
     return fig
+    
 
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     """
-    Mostra la interfície per a la pestanya d'Anàlisi Orogràfica,
-    ara adaptada per al nou gràfic d'ones de muntanya.
+    Mostra la interfície per a la pestanya d'Anàlisi d'Interacció Vent-Orografia,
+    adaptada per a la versió final de simulació de flux vectorial.
     """
     st.markdown(f"#### Anàlisi d'Interacció Vent-Orografia per a {poble_sel}")
     st.caption(timestamp_str)
 
-    with st.spinner("Simulant el flux d'aire sobre el terreny amb ones de muntanya..."):
+    with st.spinner("Simulant el camp de vent i la seva interacció amb el relleu..."):
         analisi_orografica = analitzar_orografia(poble_sel, data_tuple)
 
     if "error" in analisi_orografica:
         st.error(f"No s'ha pogut realitzar l'anàlisi: {analisi_orografica['error']}")
         return
         
-    # El selector de capa ja no és necessari, només mantenim el d'altura
     with st.container(border=True):
-        max_alt_sel = st.slider("Altura màxima del perfil (m):", 
-                                min_value=1000, max_value=12000, value=6000, step=250, 
-                                key="orog_height_slider",
-                                help="Ajusta l'altura per veure millor les ones a diferents nivells.")
+        # Reintroduïm el selector de capa juntament amb el d'altura
+        col_layer, col_height = st.columns(2)
+        with col_layer:
+            layer_sel = st.selectbox("Capa de dades a visualitzar:", 
+                                     options=["Humitat", "Vent", "Temperatura"], 
+                                     key="orog_layer_selector")
+        with col_height:
+            max_alt_sel = st.slider("Altura màxima del perfil (m):", 
+                                    min_value=1000, max_value=12000, value=6000, step=250, 
+                                    key="orog_height_slider")
 
     col1, col2 = st.columns([0.7, 0.3], gap="large")
     with col1:
         st.markdown("##### Perfil del Terreny i Flux Atmosfèric")
         if "transect_distances" in analisi_orografica:
-            # La crida al gràfic ara és més simple
-            fig = crear_grafic_perfil_orografic(analisi_orografica, params_calc, max_alt_sel)
+            # La crida al gràfic ara passa el 'layer_sel' de nou
+            fig = crear_grafic_perfil_orografic(analisi_orografica, params_calc, layer_sel, max_alt_sel)
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
         else:
@@ -8247,7 +8270,6 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
         posicio, diagnostico, detalls = analisi_orografica.get("posicio"), analisi_orografica.get("diagnostico"), analisi_orografica.get("detalls")
         if posicio == "Sobrevent": color, emoji = "#28a745", "🔼"
         elif posicio == "Sotavent": color, emoji = "#fd7e14", "🔽"
-        elif posicio == "Exposat al Cim / Carena" or posicio == "Flux Paral·lel": color, emoji = "#007bff", "💨"
         else: color, emoji = "#6c757d", "↔️"
             
         st.markdown(f"""
