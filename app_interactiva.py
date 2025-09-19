@@ -8158,11 +8158,10 @@ def analitzar_formacio_nuvols(sounding_data, params_calc):
 
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m, show_barbs=True):
     """
-    Crea una secció transversal atmosfèrica amb interacció realista i capes de dades avançades.
-    Versió 12.1 (Correcció d'Import):
-    - Soluciona l'error 'NameError: name 'Ellipse' is not defined'.
-    - Aquesta funció requereix que 'from matplotlib.patches import Ellipse' estigui importat
-      a l'inici del teu script.
+    Crea una secció transversal atmosfàrica amb interacció realista i capes de dades avançades.
+    Versió 12.2 (Correcció de ValueError):
+    - Soluciona l'error de desajust entre el nombre de nivells i colors per a Theta-E
+      utilitzant un mapa de colors continu de Matplotlib ('viridis').
     """
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
@@ -8173,12 +8172,18 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
     elev = analisi['transect_elevations']
 
-    # --- Configuració de Paletes de Colors i Nivells ---
-    colors_theta_e = ['#ffffcc','#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#0c2c84']
-    levels_theta_e = list(range(15, 75, 5)) # En Celsius
-    cmap_theta_e = ListedColormap(colors_theta_e)
+    # --- CANVI CLAU AQUÍ: CORRECCIÓ DE LA PALETA THETA-E ---
+    # Línies originals que causaven l'error:
+    # colors_theta_e = ['#ffffcc','#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#0c2c84'] # Només 7 colors
+    # cmap_theta_e = ListedColormap(colors_theta_e)
+    
+    # Línia nova i corregida:
+    levels_theta_e = list(range(15, 75, 5)) # 12 nivells -> 11 intervals (correcte)
+    cmap_theta_e = plt.get_cmap('viridis') # Utilitzem un mapa de colors continu (amb centenars de colors)
     norm_theta_e = BoundaryNorm(levels_theta_e, ncolors=cmap_theta_e.N, clip=True)
+    # --- FI DE LA CORRECCIÓ ---
 
+    # La resta de paletes es mantenen igual
     levels_buoyancy = [-8, -6, -4, -2, -0.5, 0.5, 2, 4, 6, 8, 10, 12]
     cmap_buoyancy = plt.get_cmap('bwr')
     norm_buoyancy = BoundaryNorm(levels_buoyancy, ncolors=cmap_buoyancy.N, clip=True)
@@ -8195,7 +8200,7 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     zz_deformat = zz_asl + np.outer(np.ones(len(y_grid)), pendent * 5000) * factor_decaiguda
     
     data_grid = None
-    label = "" # Inicialitzem per si la capa és 'Núvols'
+    label = ""
     im = None
     if layer_to_show == "Humitat":
         data_grid = np.interp(zz_deformat, heights_m, rh_profile); cmap, norm, levels, label = cmap_humitat, norm_humitat, levels_humitat, "Humitat Relativa (%)"
@@ -8233,7 +8238,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
                     puff_width = (np.random.rand() * 0.5 + 0.5) * (width * 0.4)
                     puff_height = puff_width * (0.6 + np.random.rand() * 0.2)
                     puff_alpha = (0.3 + np.random.rand() * 0.5) * density
-                    # Aquí és on es fa servir Ellipse
                     cloud_puff = Ellipse(xy=(puff_x, puff_y), width=puff_width, height=puff_height, facecolor='white', alpha=puff_alpha, zorder=2)
                     ax.add_patch(cloud_puff)
             else:
@@ -8289,7 +8293,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     ax.invert_xaxis()
     plt.tight_layout()
     return fig
-
 
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     """
