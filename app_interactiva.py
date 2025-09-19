@@ -8099,7 +8099,7 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
     Versió 10.0 (Renderització millorada i Interacció amb el Relleu):
     - QUALITAT VISUAL: Utilitza antialiasing i contorns més suaus per a un acabat professional.
-    - INTERACCIÓ DINÀMICA: Simula com les capes atmosfèriques (temperatura, humitat, vent)
+    - INTERACCIó DINÀMICA: Simula com les capes atmosfèriques (temperatura, humitat, vent)
       es deformen en passar per sobre del relleu, mostrant visualment l'ascens
       orogràfic a sobrevent i la subsidència a sotavent. L'efecte s'intensifica
       amb la velocitat del vent.
@@ -8165,7 +8165,7 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
                           colors='black', linewidths=0.5, alpha=0.7, zorder=2, antialiased=True)
     ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
 
-    # --- 4. Dibuix del terreny i altres elements (sense canvis significatius) ---
+    # --- 4. Dibuix del terreny i altres elements ---
     ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
     
     if np.min(elev) <= 5:
@@ -8173,7 +8173,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         y_wave = np.sin(x_wave * 0.5) * 5 + 5
         ax.fill_between(x_wave, -100, y_wave, where=y_wave > 0, color='#6495ED', alpha=0.6, zorder=2)
 
-    # Dibuix de nivells LCL/LFC i Barbes de Vent (si estan activades)
     is_convective = params_calc.get('MLCAPE', 0) > 400
     level_hgt = params_calc.get('LFC_Hgt') if is_convective else params_calc.get('LCL_Hgt')
     level_label = "LFC" if is_convective else "LCL"
@@ -8182,7 +8181,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
                    zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
 
     if show_barbs:
-        # La lògica de les barbes de vent es manté igual
         barb_x_upper = np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7)
         barb_y_upper = np.arange(1000, max_alt_m, 500)
         barb_xx, barb_zz = np.meshgrid(barb_x_upper, barb_y_upper)
@@ -8191,7 +8189,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         ax.barbs(barb_xx.flatten(), barb_zz.flatten(), barb_u, barb_v, length=6, zorder=5, 
                  color='white', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
 
-    # Dibuix d'etiquetes i marcadors (sense canvis)
     poble_dist_centrat = analisi['poble_dist'] - (dist_total_km / 2)
     ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, 
             label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
