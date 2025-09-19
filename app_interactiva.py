@@ -8097,21 +8097,17 @@ def analitzar_orografia(poble_sel, data_tuple):
 def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 14.0 (Simulació de Flux Estil CFD amb Vòrtexs):
-    - ESTIL VISUAL TÈCNIC: Emula un diagrama de dinàmica de fluids, amb un fons
-      blanc i streamlines negres per a una claredat màxima.
-    - CAMP DE VENT VECTORIAL 2D: Construeix un camp de vent (u, w) a tota la graella.
-      La component horitzontal (u) es basa en el sondeig i la component vertical (w)
-      es simula.
-    - SIMULACIÓ DE VÒRTEXS I REBUFOS: Identifica els cims principals i genera
-      vòrtexs de recirculació (rotors) a sotavent. Aquests vòrtexs alteren
-      localment el camp de vent, creant els rebufos i les línies de flux
-      tancades característiques.
-    - CAPES DE CISALLAMENT (SHEAR LAYERS): La interacció entre el flux principal i
-      els vòrtexs genera naturalment capes de cisallament, que es visualitzen
-      on les streamlines es comprimeixen i canvien bruscament de direcció.
-    - SENSE NÚVOLS NI COLORS: L'enfocament és purament en la dinàmica del flux,
-      eliminant qualsevol altre element visual per no distreure.
+    Versió 15.0 (Interacció Física amb el Relleu):
+    - BLOQUEIG FÍSIC DEL TERRENY: El relleu ara actua com una barrera sòlida. El vent
+      dins de la muntanya s'anul·la, forçant el flux a ascendir i envoltar els obstacles.
+    - FLUX DEFORMABLE: Les streamlines ja no són línies horitzontals deformades, sinó la
+      representació d'un camp de vent vectorial (u, w) que interactua directament amb
+      la topografia.
+    - VÒRTEXS INDUÏTS: Els rebufos i rotors a sotavent no són simplement afegits, sinó
+      que es generen com a conseqüència del bloqueig del flux principal, creant una
+      representació molt més realista de la turbulència.
+    - ESTIL CFD MANTINGUT: Conserva l'estètica neta i tècnica, centrada exclusivament
+      en la dinàmica del flux d'aire.
     """
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(12, 7), dpi=150)
@@ -8128,76 +8124,72 @@ def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
     y_grid_base = np.linspace(0, max_alt_m, 150)
     xx, zz = np.meshgrid(dist_centrat, y_grid_base)
     
-    # Component horitzontal (u): vent del sondeig (m/s)
     u_base_ms = np.interp(y_grid_base, heights_m, wind_speed_profile) / 3.6
-    u_grid = np.tile(u_base_ms, (xx.shape[1], 1)).T # Repetim el perfil vertical horitzontalment
-
-    # Component vertical (w): inicialment zero, la modificarem
+    u_grid = np.tile(u_base_ms, (xx.shape[1], 1)).T
     w_grid = np.zeros_like(xx)
 
     # --- 2. Simulació de l'Ascens Orogràfic (Ridge Lift) ---
     terrain_slope = np.gradient(elev, dist_centrat * 1000)
-    # Interpolem el pendent a tota la graella
     slope_grid = np.tile(terrain_slope, (xx.shape[0], 1))
     
-    # L'ascens és més fort a prop del terra i en pendents positius
     lift_mask = slope_grid > 0
-    decay_lift = np.exp(-zz / 1500.0) # L'efecte d'ascens directe disminueix amb l'altura
+    decay_lift = np.exp(-zz / 1500.0)
     w_grid[lift_mask] += (u_grid * slope_grid * decay_lift)[lift_mask]
 
     # --- 3. Simulació de Vòrtexs a Sotavent (Rebufos/Rotors) ---
     peak_indices, properties = find_peaks(elev, prominence=300, width=5)
-
     for i, peak_idx in enumerate(peak_indices):
         peak_prominence = properties["prominences"][i]
-        
-        # Posició del centre del vòrtex
-        rotor_x_center = dist_centrat[peak_idx] + 3.0 # a 3km darrere del pic
+        rotor_x_center = dist_centrat[peak_idx] + 3.0
         rotor_z_center = peak_prominence * 0.7
-        
-        # Mida i força del vòrtex
         rotor_radius = peak_prominence * 1.5
-        vortex_strength = (peak_prominence / 500) * (wind_spd_kmh / 3.6) * -15 # Força i direcció (negatiu = horari)
+        vortex_strength = (peak_prominence / 500) * (wind_spd_kmh / 3.6) * -15
 
-        # Distàncies relatives al centre del vòrtex
         dist_x_from_center = (xx - rotor_x_center) * 1000
         dist_z_from_center = zz - rotor_z_center
         r_sq = dist_x_from_center**2 + dist_z_from_center**2
-        r_sq[r_sq == 0] = 1e-6 # Evitar divisió per zero
-
-        # Càlcul del camp de vent induït pel vòrtex
+        r_sq[r_sq == 0] = 1e-6
+        
         u_vortex = vortex_strength * dist_z_from_center / r_sq
         w_vortex = -vortex_strength * dist_x_from_center / r_sq
-
-        # Creem una màscara suau per aplicar el vòrtex de manera gradual
-        vortex_mask = np.exp(-(r_sq / (rotor_radius**2)))
         
-        # Apliquem el vòrtex: el vent final és la suma del flux base i el del vòrtex
+        vortex_mask = np.exp(-(r_sq / (rotor_radius**2)))
         u_grid += u_vortex * vortex_mask
         w_grid += w_vortex * vortex_mask
 
-    # --- 4. Dibuix del Flux d'Aire (Streamlines) ---
+    # ### 4. Bloqueig Físic del Terreny (NOU I CLAU) ###
+    # Creem una màscara per a tots els punts de la graella que estan sota el relleu.
+    # Usem np.interp per obtenir l'elevació del terreny a cada coordenada 'x' de la graella.
+    terrain_mask = zz < np.interp(xx, dist_centrat, elev)
+    
+    # Anul·lem completament el vent (components u i w) dins d'aquesta màscara.
+    # Això crea la "barrera sòlida".
+    u_grid[terrain_mask] = 0
+    w_grid[terrain_mask] = 0
+    # ### FI DEL BLOC NOU ###
+
+    # --- 5. Dibuix del Flux d'Aire (Streamlines) ---
+    # El streamplot ara utilitzarà el camp de vent modificat, on el flux
+    # s'atura a la superfície del terreny i es veu forçat a envoltar-lo.
     ax.streamplot(xx, zz, u_grid, w_grid, 
                   color='black', 
                   linewidth=0.8, 
-                  density=2.5,  # Més densitat per a un look més detallat
+                  density=2.5,
                   arrowsize=0.8)
 
-    # --- 5. Dibuix del Terreny i Configuració Final ---
+    # --- 6. Dibuix del Terreny i Configuració Final ---
     ax.fill_between(dist_centrat, 0, elev, color='black', zorder=5)
 
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['bearing_fixe']:.0f}°)")
     ax.set_ylabel("Elevació (m)")
-    ax.set_title("Simulació de Flux Orogràfic amb Vòrtexs a Sotavent")
+    ax.set_title("Simulació de Flux Orogràfic amb Bloqueig i Rebufos")
     ax.grid(False)
     ax.set_ylim(bottom=0, top=max_alt_m)
     ax.set_xlim(dist_centrat.min(), dist_centrat.max())
     
-    # Invertim l'eix X per a consistència amb diagrames anteriors (vent d'esquerra a dreta)
     ax.invert_xaxis()
     plt.tight_layout(pad=1.5)
     return fig
-    
 
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     """
