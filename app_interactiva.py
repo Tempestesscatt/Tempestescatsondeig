@@ -8097,20 +8097,12 @@ def analitzar_orografia(poble_sel, data_tuple):
 def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 13.0 (Renderització d'Alta Fidelitat amb Rebufos i Capes de Flux):
-    - ESTIL VISUAL CIENTÍFIC: Inspirat en diagrames meteorològics clàssics, utilitzant
-      un estil net en blanc i negre amb ombrejats grisos per a màxima claredat.
-    - CAPES DE FLUX DEFORMABLES: Dibuixa línies de corrent horitzontals que representen
-      capes atmosfèriques. Aquestes línies s'eleven sobre el relleu i generen ones a sotavent.
-    - SIMULACIÓ DE REBUFOS (ROTORS): A sotavent dels cims principals, el flux a baixa
-      altura es torna turbulent i caòtic, simulant visualment la perillosa zona del rotor.
-    - FORMACIÓ DE NÚVOLS FÍSICA:
-        - LENTICULARS: Es dibuixen com a capes de condensació (ombrejat gris) entre les
-          línies de flux a les crestes de les ones, només si superen el nivell de condensació.
-        - DE ROTOR: Es generen a la zona de rebuf si la turbulència eleva la humitat
-          per sobre del seu punt de condensació.
-    - PERFIL DE VENT REAL: Mostra el perfil de vent vertical del sondeig mitjançant
-      una columna de fletxes, indicant la velocitat a diferents altituds.
+    Versió 13.1 (Correcció de Bug de Broadcasting):
+    - CORRECCIÓ CRÍTICA: S'ha redissenyat la lògica d'interpolació de les capes de
+      flux per evitar errors de 'broadcasting' (ValueError). Ara la deformació
+      de cada línia de flux es calcula de manera robusta per a cada punt horitzontal.
+    - Manté l'estil visual científic, la simulació d'ones de muntanya, rebufos
+      i la formació de núvols de la versió anterior.
     """
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(12, 7), dpi=150)
@@ -8139,14 +8131,12 @@ def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
         dist_from_peak = (xx - dist_centrat[peak_idx]) * 1000
         downwind_mask = dist_from_peak > 0
         
-        # Càlcul de l'ona
         initial_amplitude = peak_prominence * np.clip(wind_spd_kmh / 40.0, 0.5, 2.5)
         decay_alt = np.exp(-zz_base / 3500.0)
         decay_dist = np.exp(-dist_from_peak / (wavelength * 2.5))
         wave = initial_amplitude * np.sin(2 * np.pi * dist_from_peak / wavelength) * decay_alt * decay_dist
         deformation_grid[downwind_mask] += wave[downwind_mask]
 
-        # Càlcul de la zona del rotor (rebuf)
         rotor_x_center = dist_centrat[peak_idx] + wavelength / (2 * np.pi * 1000) * 1.5
         rotor_z_center = peak_prominence * 0.9
         rotor_x_radius = wavelength / (2 * np.pi * 1000) * 1.8
@@ -8156,7 +8146,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
         turbulence_intensity = np.clip(1 - (zz_base / (rotor_z_center * 2)), 0, 1) * 200 * np.clip(wind_spd_kmh / 50, 0.5, 1.5)
         turbulence_grid[rotor_zone] = turbulence_intensity[rotor_zone] * (np.random.rand(*xx.shape) - 0.5)
 
-    # Graella final amb terreny, ones i turbulència
     zz_deformat = zz_base + np.interp(xx, dist_centrat, elev) + deformation_grid + turbulence_grid
 
     # --- 2. Dibuix de les Capes de Flux i els Núvols ---
@@ -8167,40 +8156,43 @@ def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
         y1 = altitudes_inicials[i]
         y2 = altitudes_inicials[i+1]
         
-        # Obtenim les coordenades deformades de les dues línies que formen la capa
-        z1_deformed = np.interp(y1, y_grid_base, zz_deformat.T).T
-        z2_deformed = np.interp(y2, y_grid_base, zz_deformat.T).T
+        # ### BLOC DE CODI CORREGIT ###
+        # Calculem la posició Z deformada per a cada línia de flux de manera independent,
+        # interpolant verticalment per a cada columna horitzontal.
+        z1_deformed_values = [np.interp(y1, y_grid_base, zz_deformat[:, col_idx]) for col_idx in range(xx.shape[1])]
+        z2_deformed_values = [np.interp(y2, y_grid_base, zz_deformat[:, col_idx]) for col_idx in range(xx.shape[1])]
         
-        # Dibuixem les línies de flux
-        ax.plot(dist_centrat, z1_deformed[0, :], color='black', linewidth=0.7)
-        if i == num_layers - 2: # Dibuixa l'última línia
-            ax.plot(dist_centrat, z2_deformed[0, :], color='black', linewidth=0.7)
+        # Convertim les llistes a arrays de NumPy, que ara tindran la forma correcta (1D)
+        z1_deformed = np.array(z1_deformed_values)
+        z2_deformed = np.array(z2_deformed_values)
+        # ### FI DE LA CORRECCIÓ ###
         
-        # Condició de formació de núvols: la capa s'eleva per sobre del LCL
-        is_cloud_mask = (z1_deformed[0, :] + z2_deformed[0, :]) / 2 > lcl_hgt
+        ax.plot(dist_centrat, z1_deformed, color='black', linewidth=0.7)
+        if i == num_layers - 2:
+            ax.plot(dist_centrat, z2_deformed, color='black', linewidth=0.7)
         
-        # Omplim la capa de gris si hi ha núvol
-        ax.fill_between(dist_centrat, z1_deformed[0, :], z2_deformed[0, :], 
+        is_cloud_mask = (z1_deformed + z2_deformed) / 2 > lcl_hgt
+        ax.fill_between(dist_centrat, z1_deformed, z2_deformed, 
                         where=is_cloud_mask, color='lightgray', interpolate=True, zorder=3)
 
     # --- 3. Dibuix del Terreny i Anotacions ---
     ax.fill_between(dist_centrat, 0, elev, color='black', zorder=5)
-
+    
+    # Anotacions (la lògica es manté)
     ax.annotate('Strong winds', xy=(dist_centrat[5], max_alt_m * 0.85), xytext=(dist_centrat[5], max_alt_m * 0.92),
                 arrowprops=dict(arrowstyle="->"), fontsize=10)
     ax.annotate('Ridge lift', xy=(dist_centrat[int(len(dist_centrat)*0.3)], max_alt_m * 0.4), 
                 xytext=(dist_centrat[int(len(dist_centrat)*0.7)], max_alt_m * 0.5),
                 arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=.2"), ha='center', fontsize=10)
 
-    # Dibuixem el perfil de vent del sondeig
-    x_perfil = dist_centrat[int(len(dist_centrat)*0.5)] # Posició central
+    # Perfil de vent del sondeig
+    x_perfil = dist_centrat[int(len(dist_centrat)*0.5)]
     ax.plot([x_perfil, x_perfil], [0, max_alt_m], color='black', linestyle='-', linewidth=0.5, alpha=0.8)
     for alt in np.arange(500, max_alt_m, 500):
         wind_at_alt = np.interp(alt, heights_m, wind_speed_profile)
-        # La fletxa apunta en la direcció del flux
-        ax.arrow(x_perfil, alt, wind_at_alt / 10, 0, # Longitud de la fletxa depèn de la velocitat
+        ax.arrow(x_perfil, alt, wind_at_alt / 10, 0, 
                  head_width=100, head_length=1.5, fc='k', ec='k', length_includes_head=True)
-
+    
     # --- 4. Configuració Final del Gràfic ---
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['bearing_fixe']:.0f}°)")
     ax.set_ylabel("Elevació (m)")
@@ -8212,6 +8204,7 @@ def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
     ax.invert_xaxis()
     plt.tight_layout(pad=1.5)
     return fig
+    
 
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     """
