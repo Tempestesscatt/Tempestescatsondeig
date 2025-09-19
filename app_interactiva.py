@@ -8216,6 +8216,7 @@ def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
     return fig
 
 
+
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     """
     Mostra la interfície per a la pestanya d'Anàlisi Orogràfica,
