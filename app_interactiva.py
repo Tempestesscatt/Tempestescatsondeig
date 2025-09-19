@@ -8204,8 +8204,9 @@ def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
 
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     """
-    Mostra la interfície per a la pestanya d'Anàlisi d'Interacció Vent-Orografia,
-    adaptada per a la versió final de simulació de flux vectorial.
+    Mostra la interfície per a la pestanya d'Anàlisi d'Interacció Vent-Orografia.
+    VERSIÓ CORREGIDA: Elimina el paràmetre 'params_calc' de la crida a la funció
+    de creació del gràfic per evitar el TypeError.
     """
     st.markdown(f"#### Anàlisi d'Interacció Vent-Orografia per a {poble_sel}")
     st.caption(timestamp_str)
@@ -8218,7 +8219,6 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
         return
         
     with st.container(border=True):
-        # Reintroduïm el selector de capa juntament amb el d'altura
         col_layer, col_height = st.columns(2)
         with col_layer:
             layer_sel = st.selectbox("Capa de dades a visualitzar:", 
@@ -8233,8 +8233,10 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     with col1:
         st.markdown("##### Perfil del Terreny i Flux Atmosfèric")
         if "transect_distances" in analisi_orografica:
-            # La crida al gràfic ara passa el 'layer_sel' de nou
-            fig = crear_grafic_perfil_orografic(analisi_orografica, params_calc, layer_sel, max_alt_sel)
+            # ### LÍNIA CORREGIDA ###
+            # La crida a la funció ara només té 3 arguments.
+            fig = crear_grafic_perfil_orografic(analisi_orografica, layer_sel, max_alt_sel)
+            # ######################
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
         else:
@@ -8260,6 +8262,7 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
         st.metric("Direcció del Vent Dominant", f"{analisi_orografica['wind_dir_from']:.0f}° ({graus_a_direccio_cardinal(analisi_orografica['wind_dir_from'])})")
         st.metric("Velocitat del Vent Dominant", f"{analisi_orografica['wind_spd_kmh']:.0f} km/h")
         st.caption("Vent dominant calculat de manera adaptativa.")
+        
         
 
 @st.cache_data(ttl=86400, show_spinner="Obtenint perfil del terreny...")
