@@ -8094,134 +8094,125 @@ def analitzar_orografia(poble_sel, data_tuple):
 
 
 
-def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m):
+def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 11.0 (Ones de Muntanya i Streamlines):
-    - VISUALITZACIÓ DE FLUX: Reemplaça les barbes de vent per un camp de streamlines
-      que mostra el flux d'aire en 2D a través del tall vertical.
-    - SIMULACIÓ D'ONES DE MUNTANYA: El flux d'aire no només segueix el terreny, sinó que
-      genera ondulacions (ones orogràfiques) a sotavent dels cims principals.
-    - FÍSICA SIMPLIFICADA: La intensitat i longitud d'ona de les ondulacions depenen
-      de la velocitat del vent i la prominència del relleu, simulant un comportament
-      atmosfèric més realista.
-    - RENDERITZACIÓ MILLORADA: Utilitza antialiasing i colormaps suaus per a una
-      presentació visual d'alta qualitat.
+    Versió 12.0 (Simulació d'Ones de Muntanya i Núvols de Rotor/Lenticulars):
+    - ESTIL VISUAL NET: Inspirat directament en el diagrama de referència, amb fons blanc
+      i elements en blanc i negre per a màxima claredat.
+    - SIMULACIÓ DE FLUX AVANÇADA: El flux d'aire (streamlines) ara genera ones orogràfiques
+      a sotavent dels cims principals.
+    - FORMACIÓ DE NÚVOLS:
+        - NÚVOLS LENTICULARS: Es generen automàticament a les crestes de les ones si
+          l'aire puja per sobre del seu Nivell de Condensació (LCL).
+        - NÚVOLS DE ROTOR: Simula la formació de núvols turbulents i esparracats a la
+          zona del rotor a sotavent, una de les zones més perilloses.
+    - ANOTACIONS DIDÀCTIQUES: Afegeix etiquetes per identificar clarament cada fenomen,
+      convertint el gràfic en una eina d'aprenentatge.
     """
     plt.style.use('default')
-    fig, ax = plt.subplots(figsize=(12, 6), dpi=140) # Mida i resolució augmentades
-    fig.patch.set_facecolor('#FFFFFF')
-    ax.set_facecolor('#E6F2FF')
+    fig, ax = plt.subplots(figsize=(12, 7), dpi=140)
+    fig.patch.set_facecolor('white')
+    ax.set_facecolor('white')
 
     dist_total_km = analisi['transect_distances'][-1]
     dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
     elev = analisi['transect_elevations']
 
-    # --- 1. Preparació de Dades i Graella ---
-    heights_m, u_ms, v_ms, rh_profile, temp_profile, wind_speed_profile = analisi['sondeig_perfil_complet']
+    # --- 1. Preparació de Paràmetres Clau ---
+    heights_m, u_ms, v_ms, _, _, wind_speed_profile = analisi['sondeig_perfil_complet']
+    wind_spd_kmh = analisi['wind_spd_kmh']
+    lcl_hgt = params_calc.get('LCL_Hgt', 9999) # Nivell de Condensació per Ascens
+    
     x_grid = dist_centrat
-    y_grid = np.linspace(0, max_alt_m, 150) # Més resolució vertical
+    y_grid = np.linspace(0, max_alt_m, 150)
     xx, zz = np.meshgrid(x_grid, y_grid)
 
-    if layer_to_show == "Humitat":
-        profile_1d = np.interp(y_grid, heights_m, rh_profile)
-        cmap_colors = ['#f0e68c', '#90ee90', '#4682b4', '#191970']; levels = [0, 30, 60, 80, 101]
-        label = "Humitat Relativa (%)"
-    elif layer_to_show == "Temperatura":
-        profile_1d = np.interp(y_grid, heights_m, temp_profile)
-        cmap_colors = ['#4b0082', '#8a2be2', '#0000cd', '#0000ff', '#1e90ff', '#00bfff', '#00ffff', '#00fa9a', '#32cd32', '#adff2f', '#ffff00', '#ffd700', '#ffa500', '#ff4500', '#ff0000']
-        levels = [-20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36]
-        label = "Temperatura (°C)"
-    else: # Vent
-        profile_1d = np.interp(y_grid, heights_m, wind_speed_profile)
-        cmap_colors = ['#d3d3d3', '#add8e6', '#90ee90', '#32cd32', '#f0e68c', '#d2b48c', '#ffb6c1', '#da70d6', '#9932cc']
-        levels = [0, 10, 25, 40, 55, 70, 85, 100, 120, 140]
-        label = "Velocitat del Vent (km/h)"
-
-    cmap = ListedColormap(cmap_colors)
-    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
-    data_grid_base = np.tile(profile_1d.reshape(-1, 1), (1, len(x_grid)))
-
-    # --- 2. SIMULACIÓ D'ONES DE MUNTANYA I REBUFOS ---
+    # --- 2. Simulació Avançada d'Ones de Muntanya ---
     deformation_grid = np.zeros_like(xx)
-    wind_spd_kmh = analisi['wind_spd_kmh']
-    
-    # Identifiquem els cims amb una prominència mínima per generar ones
-    peak_indices, properties = find_peaks(elev, prominence=150, width=5)
+    peak_indices, properties = find_peaks(elev, prominence=200, width=5) # Identifiquem cims importants
 
+    # Generem les ones a sotavent (downwind) de cada cim
     for i, peak_idx in enumerate(peak_indices):
         peak_prominence = properties["prominences"][i]
+        initial_amplitude = peak_prominence * np.clip(wind_spd_kmh / 35.0, 0.5, 2.5)
+        wavelength = wind_spd_kmh * 150
         
-        # L'amplitud inicial de l'ona depèn del vent i de la importància del pic
-        initial_amplitude = peak_prominence * np.clip(wind_spd_kmh / 40.0, 0.5, 2.0)
-        # La longitud d'ona depèn de la velocitat del vent (més vent, ones més llargues)
-        wavelength = wind_spd_kmh * 150 # Factor empíric (en metres)
-        
-        # Distància horitzontal des del pic
         dist_from_peak = (xx - x_grid[peak_idx]) * 1000
-
-        # L'ona només es forma a sotavent (downwind)
         downwind_mask = dist_from_peak > 0
         
-        # Amortiment de l'ona amb la distància i l'altura
-        decay_distance = np.exp(-dist_from_peak[downwind_mask] / (wavelength * 3))
-        decay_altitude = np.exp(-zz[downwind_mask] / 2500.0) # Atenuació forta per sobre de 2500m
+        decay_distance = np.exp(-dist_from_peak[downwind_mask] / (wavelength * 2.5))
+        decay_altitude = np.exp(-zz[downwind_mask] / 3000.0)
         
-        # Generem l'ona sinusoïdal amortida
         wave = initial_amplitude * np.sin(2 * np.pi * dist_from_peak[downwind_mask] / wavelength) * decay_distance * decay_altitude
         deformation_grid[downwind_mask] += wave
-
-    # La deformació final és la suma de l'elevació del terreny i les ones
+    
+    # La graella final deformada inclou el terreny i les ones
     zz_deformat = zz + np.interp(xx, x_grid, elev) + deformation_grid
+
+    # --- 3. Simulació i Dibuix de Núvols ---
+    cloud_density = np.zeros_like(xx)
     
-    # --- 3. PREPARACIÓ DELS CAMPS DE VENT PER A STREAMPLOT ---
-    # Component horitzontal (u): vent del sondeig (convertit a m/s)
+    # NÚVOLS LENTICULARS: A les crestes de les ones per sobre del LCL
+    vertical_displacement = zz_deformat - zz
+    # Trobem les crestes de les ones (on el desplaçament vertical és màxim)
+    wave_crests_mask = (vertical_displacement > 0.5 * np.max(vertical_displacement, axis=0)) & (zz > lcl_hgt)
+    cloud_density[wave_crests_mask] = (zz[wave_crests_mask] - lcl_hgt) / 1000.0
+
+    # NÚVOLS DE ROTOR: A la zona de turbulència just darrere del cim
+    if len(peak_indices) > 0:
+        main_peak_idx = peak_indices[np.argmax(properties["prominences"])]
+        rotor_x_center = x_grid[main_peak_idx] + 2.5 # Centrat a ~2.5km darrere del pic
+        rotor_z_center = properties["prominences"][np.argmax(properties["prominences"])] * 0.8
+        
+        if rotor_z_center > lcl_hgt:
+            # Creem una zona de densitat de núvol caòtica
+            rotor_mask = (np.abs(xx - rotor_x_center) < 2) & (np.abs(zz - rotor_z_center) < 500)
+            # Usem un patró de soroll per donar-li un aspecte trencat
+            noise = np.random.normal(0, 0.3, xx.shape)
+            cloud_density[rotor_mask] = np.clip(cloud_density[rotor_mask] + 0.8 + noise[rotor_mask], 0, 1)
+
+    # Dibuixem els núvols amb un contorn suau i ombrejat
+    cloud_cmap = ListedColormap(["#FFFFFF00", "#E0E0E0", "#C8C8C8", "#B0B0B0"])
+    cloud_levels = [0.1, 0.4, 0.7, 1.5]
+    if np.any(cloud_density > 0.1):
+        ax.contourf(xx, zz_deformat, cloud_density, levels=cloud_levels, cmap=cloud_cmap, 
+                    zorder=3, antialiased=True)
+        ax.contour(xx, zz_deformat, cloud_density, levels=cloud_levels, colors='black', 
+                   linewidths=0.6, zorder=3, antialiased=True)
+
+    # --- 4. Dibuix del Flux d'Aire (Streamlines) ---
     u_grid_ms = np.interp(zz, y_grid, np.interp(y_grid, heights_m, wind_speed_profile) / 3.6)
-    
-    # Component vertical (v): derivada de la deformació del flux
-    # L'aire puja i baixa seguint el pendent de la graella deformada
     v_grid_ms = u_grid_ms * np.gradient(zz_deformat, x_grid * 1000, axis=1)
     
-    # --- 4. DIBUIX DE LES CAPES I STREAMLINES ---
-    im = ax.contourf(xx, zz_deformat, data_grid_base, levels=levels, cmap=cmap, norm=norm,
-                     extend='both', zorder=1, antialiased=True)
+    ax.streamplot(xx, zz, u_grid_ms, v_grid_ms, 
+                  color='black', linewidth=0.8, density=[1.2, 1.5], 
+                  arrowsize=1.0, zorder=4)
 
-    # Dibuixem les streamlines en lloc de les barbes
-    speed_magnitude = np.sqrt(u_grid_ms**2 + v_grid_ms**2)
-    stream = ax.streamplot(xx, zz, u_grid_ms, v_grid_ms, 
-                           color=speed_magnitude, 
-                           cmap='viridis_r', 
-                           linewidth=1.2, 
-                           density=1.5, 
-                           arrowsize=1.2,
-                           zorder=4)
-
-    # --- 5. Dibuix d'altres elements (terreny, marcadors, etc.) ---
-    ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
+    # --- 5. Dibuix del Terreny i Anotacions Didàctiques ---
+    ax.fill_between(dist_centrat, 0, elev, color='black', zorder=5)
     
-    poble_dist_centrat = analisi['poble_dist'] - (dist_total_km / 2)
-    ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8,
-            label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
-    ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
+    # Anotacions (posicionades de manera automàtica)
+    ax.annotate('Strong winds', xy=(dist_centrat[5], max_alt_m * 0.8), xytext=(dist_centrat[5], max_alt_m * 0.9),
+                arrowprops=dict(arrowstyle="->"), fontsize=10)
+    ax.annotate('Ridge lift', xy=(dist_centrat[20], max_alt_m * 0.4), xytext=(dist_centrat[10], max_alt_m * 0.5),
+                arrowprops=dict(arrowstyle="->"), fontsize=10)
+    if np.any(wave_crests_mask):
+        crest_y, crest_x = np.unravel_index(np.argmax(cloud_density * (zz > lcl_hgt + 500)), cloud_density.shape)
+        ax.annotate('Lenticular clouds', xy=(x_grid[crest_x], zz_deformat[crest_y, crest_x]), 
+                    xytext=(x_grid[crest_x], max_alt_m * 0.9),
+                    arrowprops=dict(arrowstyle="->"), fontsize=10)
 
-    turo = analisi.get("turo_referencia")
-    if turo:
-        x_pos = dist_centrat[turo['idx']]
-        ax.annotate(f"{turo['name']}\n({turo['ele']:.0f} m)", 
-                    xy=(x_pos, elev[turo['idx']]), xytext=(x_pos, turo['ele'] + max_alt_m * 0.08),
-                    arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4),
-                    ha='center', va='bottom', fontsize=8, zorder=12,
-                    bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", lw=1, alpha=0.8))
+    if 'rotor_mask' in locals() and np.any(rotor_mask):
+         ax.annotate('Rotor clouds', xy=(rotor_x_center, rotor_z_center), 
+                    xytext=(rotor_x_center + 5, rotor_z_center - 1000),
+                    arrowprops=dict(arrowstyle="->"), fontsize=10)
 
-    # --- 6. Configuració final del gràfic ---
-    cbar_data = fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2], shrink=0.8)
-    cbar_stream = fig.colorbar(stream.lines, ax=ax, label="Velocitat del Flux (m/s)", pad=0.08, shrink=0.8)
-    
+    # --- 6. Configuració Final del Gràfic ---
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['bearing_fixe']:.0f}°)")
     ax.set_ylabel("Elevació (m)")
-    ax.set_title("Secció Transversal Atmosfèrica amb Interacció Orogràfica")
-    ax.grid(True, linestyle=':', alpha=0.5, color='black', zorder=0)
-    ax.legend(loc='upper left', fontsize=8)
+    ax.set_title("Simulació d'Ones de Muntanya i Fenòmens Associats")
+    ax.grid(False) # Eliminem la graella per a un aspecte més net
     ax.set_ylim(bottom=0, top=max_alt_m)
     ax.set_xlim(dist_centrat.min(), dist_centrat.max())
     
@@ -8232,34 +8223,32 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
 
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     """
-    Mostra la interfície per a la pestanya d'Anàlisi d'Interacció Vent-Orografia.
-    VERSIÓ CORREGIDA: Elimina l'interruptor de les barbes de vent, ja que
-    ara s'utilitzen streamlines per defecte.
+    Mostra la interfície per a la pestanya d'Anàlisi Orogràfica,
+    ara adaptada per al nou gràfic d'ones de muntanya.
     """
     st.markdown(f"#### Anàlisi d'Interacció Vent-Orografia per a {poble_sel}")
     st.caption(timestamp_str)
 
-    with st.spinner("Analitzant el flux d'aire sobre el terreny..."):
+    with st.spinner("Simulant el flux d'aire sobre el terreny amb ones de muntanya..."):
         analisi_orografica = analitzar_orografia(poble_sel, data_tuple)
 
     if "error" in analisi_orografica:
         st.error(f"No s'ha pogut realitzar l'anàlisi: {analisi_orografica['error']}")
         return
         
+    # El selector de capa ja no és necessari, només mantenim el d'altura
     with st.container(border=True):
-        # Ara només tenim dues columnes per als selectors
-        col_layer, col_height = st.columns(2)
-        with col_layer:
-            layer_sel = st.selectbox("Capa de dades a visualitzar:", options=["Vent", "Humitat", "Temperatura"], key="orog_layer_selector")
-        with col_height:
-            max_alt_sel = st.slider("Altura màxima del perfil (m):", min_value=100, max_value=12000, value=4000, step=100, key="orog_height_slider")
+        max_alt_sel = st.slider("Altura màxima del perfil (m):", 
+                                min_value=1000, max_value=12000, value=6000, step=250, 
+                                key="orog_height_slider",
+                                help="Ajusta l'altura per veure millor les ones a diferents nivells.")
 
-    col1, col2 = st.columns([0.65, 0.35], gap="large")
+    col1, col2 = st.columns([0.7, 0.3], gap="large")
     with col1:
         st.markdown("##### Perfil del Terreny i Flux Atmosfèric")
         if "transect_distances" in analisi_orografica:
-            # La crida a la funció ja no inclou 'show_barbs'
-            fig = crear_grafic_perfil_orografic(analisi_orografica, params_calc, layer_sel, max_alt_sel)
+            # La crida al gràfic ara és més simple
+            fig = crear_grafic_perfil_orografic(analisi_orografica, params_calc, max_alt_sel)
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
         else:
@@ -8286,6 +8275,7 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
         st.metric("Direcció del Vent Dominant", f"{analisi_orografica['wind_dir_from']:.0f}° ({graus_a_direccio_cardinal(analisi_orografica['wind_dir_from'])})")
         st.metric("Velocitat del Vent Dominant", f"{analisi_orografica['wind_spd_kmh']:.0f} km/h")
         st.caption("Vent dominant calculat de manera adaptativa.")
+        
 
 @st.cache_data(ttl=86400, show_spinner="Obtenint perfil del terreny...")
 def get_elevation_profile(lat_start, lon_start, bearing_deg, distance_km=80, num_points=100):
