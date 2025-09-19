@@ -8094,112 +8094,95 @@ def analitzar_orografia(poble_sel, data_tuple):
 
 
 
-def crear_grafic_perfil_orografic_adiabatic_amb_nuvols(analisi, params_calc):
+def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m, show_barbs=True):
     """
-    Crea una secció transversal atmosfàrica amb un model d'escalfament/refredament
-    adiabàtic i la formació dinàmica de núvols orogràfics.
-    Versió 2.2 (Compatibilitat amb MetPy antic):
-    - Utilitza un càlcul de dewpoint en dos passos per a ser compatible amb versions antigues de MetPy.
+    Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
+    Versió 9.0: Dibuixa l'etiqueta per al nou "Turó de Referència" en lloc
+    del "Cim de Referència" anterior, complint amb la nova lògica d'anàlisi.
     """
-    DALR_PER_METRE = 9.8 / 1000
-    MALR_PER_METRE = 6.5 / 1000
-
-    plt.style.use('default')
-    fig, ax = plt.subplots(figsize=(12, 6), dpi=130)
-    ax.set_facecolor('#E6F2FF')
-
-    dist_total_km = analisi['transect_distances'][-1]
-    dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
+    plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
+    fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#E6F2FF')
+    
+    dist_total_km = analisi['transect_distances'][-1]; dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
     elev = analisi['transect_elevations']
-    max_alt_m = np.max(elev) + 3500
-
-    heights_m, u_ms, v_ms, rh_profile, temp_profile, _ = analisi['sondeig_perfil_complet']
-    p_sfc = params_calc.get('SFC_P', 1000) * units.hPa
-    p_profile_hpa = mpcalc.height_to_pressure_std(heights_m * units.meter)
-
-    x_grid = dist_centrat
-    y_grid = np.linspace(0, max_alt_m, 150)
+    
+    # --- Dibuix de capes de dades (sense canvis) ---
+    colors_humitat = ['#f0e68c', '#90ee90', '#4682b4', '#191970']; levels_humitat = [0, 30, 60, 80, 101]
+    cmap_humitat = ListedColormap(colors_humitat); norm_humitat = BoundaryNorm(levels_humitat, ncolors=cmap_humitat.N, clip=True)
+    colors_vent = ['#d3d3d3', '#add8e6', '#48d1cc', '#90ee90', '#32cd32', '#6b8e23', '#f0e68c', '#d2b48c', '#bc8f8f', '#ffb6c1', '#da70d6', '#9932cc', '#8a2be2', '#48d1cc', '#6495ed']
+    levels_vent = [0, 4, 11, 18, 25, 32, 40, 47, 54, 61, 68, 76, 86, 97, 104, 131]
+    cmap_vent = ListedColormap(colors_vent); norm_vent = BoundaryNorm(levels_vent, ncolors=cmap_vent.N, clip=True)
+    colors_temp = ['#4b0082', '#8a2be2', '#0000cd', '#0000ff', '#1e90ff', '#00bfff', '#00ffff', '#00fa9a', '#32cd32', '#adff2f', '#ffff00', '#ffd700', '#ffa500', '#ff4500', '#ff0000', '#dc143c', '#ff00ff', '#ff69b4']
+    levels_temp = [-24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 46]
+    cmap_temp = ListedColormap(colors_temp); norm_temp = BoundaryNorm(levels_temp, ncolors=cmap_temp.N, clip=True)
+    
+    heights_m, u_ms, v_ms, rh_profile, temp_profile, wind_speed_profile = analisi['sondeig_perfil_complet']
+    x_grid = dist_centrat; y_grid = np.linspace(0, max_alt_m, 100)
     xx, zz = np.meshgrid(x_grid, y_grid)
     
-    temp_grid_final = np.zeros_like(xx)
-    rh_grid_final = np.zeros_like(xx)
+    if layer_to_show == "Humitat": profile_1d = np.interp(y_grid, heights_m, rh_profile); cmap, norm, levels, label = cmap_humitat, norm_humitat, levels_humitat, "Humitat Relativa (%)"
+    elif layer_to_show == "Temperatura": profile_1d = np.interp(y_grid, heights_m, temp_profile); cmap, norm, levels, label = cmap_temp, norm_temp, levels_temp, "Temperatura (°C)"
+    else: profile_1d = np.interp(y_grid, heights_m, wind_speed_profile); cmap, norm, levels, label = cmap_vent, norm_vent, levels_vent, "Velocitat del Vent (km/h)"
+    data_grid = np.tile(profile_1d.reshape(-1, 1), (1, len(x_grid)))
 
-    for i in range(len(x_grid)):
-        columna_z_final = zz[:, i]
-        ascens_orografic = np.interp(x_grid[i], dist_centrat, elev) * np.exp(-columna_z_final / 2500.0)
-        columna_z_original = columna_z_final - ascens_orografic
-        columna_z_original[columna_z_original < 0] = 0
+    im = ax.contourf(xx, zz, data_grid, levels=levels, cmap=cmap, norm=norm, extend='both', zorder=1)
+    contours = ax.contour(xx, zz, data_grid, levels=levels[1:-1:2], colors='black', linewidths=0.5, alpha=0.7, zorder=2)
+    ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f'); ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
 
-        temp_original = np.interp(columna_z_original, heights_m, temp_profile) * units.degC
-        rh_original = np.interp(columna_z_original, heights_m, rh_profile) * units.percent
-        p_original = np.interp(columna_z_original, heights_m, p_profile_hpa.m) * units.hPa
-        
-        td_original = mpcalc.dewpoint_from_relative_humidity(temp_original, rh_original)
-        lcl_p, _ = mpcalc.lcl(p_original, temp_original, td_original)
-        h_lcl = mpcalc.pressure_to_height_std(lcl_p).to('m').m
-        
-        delta_z = ascens_orografic
-        temp_final = np.copy(temp_original.m)
-        
-        puja_mask = delta_z > 0
-        dist_seca = np.minimum(delta_z[puja_mask], h_lcl[puja_mask] - columna_z_original[puja_mask])
-        dist_seca[dist_seca < 0] = 0
-        temp_final[puja_mask] -= dist_seca * DALR_PER_METRE
-        dist_humida = delta_z[puja_mask] - dist_seca
-        dist_humida[dist_humida < 0] = 0
-        temp_final[puja_mask] -= dist_humida * MALR_PER_METRE
+    if np.min(elev) <= 5: x_wave = np.linspace(dist_centrat.min(), dist_centrat.max(), 200); y_wave = np.sin(x_wave * 0.5) * 5 + 5; ax.fill_between(x_wave, -100, y_wave, where=y_wave > 0, color='#6495ED', alpha=0.6, zorder=2)
 
-        baixa_mask = delta_z < 0
-        temp_final[baixa_mask] -= delta_z[baixa_mask] * DALR_PER_METRE
-
-        temp_grid_final[:, i] = temp_final
-
-        mixing_ratio = mpcalc.mixing_ratio_from_relative_humidity(p_original, temp_original, rh_original)
-        p_final = np.interp(columna_z_final, heights_m, p_profile_hpa.m) * units.hPa
-        
-        # === LÍNIES CORREGIDES PER A COMPATIBILITAT ===
-        vapor_pressure_final = mpcalc.vapor_pressure(p_final, mixing_ratio)
-        td_final = mpcalc.dewpoint(vapor_pressure_final)
-        # ============================================
-
-        rh_final = mpcalc.relative_humidity_from_dewpoint(temp_final * units.degC, td_final).m * 100
-        
-        saturat_mask = (puja_mask) & (columna_z_final > h_lcl)
-        rh_final[saturat_mask] = 100.0
-
-        rh_grid_final[:, i] = rh_final
-
-    cmap_colors_temp = ['#8a2be2','#0000ff','#1e90ff','#00ffff','#32cd32','#adff2f','#ffff00','#ffa500','#ff0000','#dc143c']
-    levels_temp = [-16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24]
-    cmap_temp = ListedColormap(cmap_colors_temp)
-    norm_temp = BoundaryNorm(levels_temp, ncolors=cmap_temp.N, clip=True)
-    im = ax.contourf(xx, zz, temp_grid_final, levels=levels_temp, cmap=cmap_temp, norm=norm_temp, extend='both', zorder=1, antialiased=True)
-
-    cloud_levels = [95, 101] 
-    cloud_cmap = ListedColormap([(1, 1, 1, 0.4), (1, 1, 1, 0.9)])
-    norm_cloud = BoundaryNorm(cloud_levels, ncolors=cloud_cmap.N, clip=True)
-    ax.contourf(xx + 150, zz - 150, rh_grid_final, levels=cloud_levels, cmap=ListedColormap([(0,0,0,0.2)]), norm=norm_cloud, zorder=2)
-    ax.contourf(xx, zz, rh_grid_final, levels=cloud_levels, cmap=cloud_cmap, norm=norm_cloud, zorder=3)
-
-    ax.fill_between(dist_centrat, 0, elev, color='black', zorder=4)
+    is_convective = params_calc.get('MLCAPE', 0) > 400
+    if is_convective: lfc_hgt = params_calc.get('LFC_Hgt', 9999);
+    else: lcl_hgt = params_calc.get('LCL_Hgt', 9999)
+    if is_convective and lfc_hgt < max_alt_m: ax.axhline(y=lfc_hgt, color='white', linestyle=':', linewidth=2, label=f"LFC: {lfc_hgt:.0f} m", zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
+    elif not is_convective and lcl_hgt < max_alt_m: ax.axhline(y=lcl_hgt, color='white', linestyle=':', linewidth=2, label=f"LCL: {lcl_hgt:.0f} m", zorder=4, path_effects=[path_effects.withStroke(linewidth=3.5, foreground='black')])
     
-    poble_dist_centrat = analisi['poble_dist'] - (dist_total_km / 2)
-    ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, 
-            label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
-    ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
+    if show_barbs:
+        barb_x_upper = np.linspace(dist_centrat.min() + 5, dist_centrat.max() - 5, 7); barb_y_upper = np.arange(1000, max_alt_m, 500)
+        barb_xx, barb_zz = np.meshgrid(barb_x_upper, barb_y_upper); barb_u = np.interp(barb_zz.flatten(), heights_m, u_ms) * 1.94384; barb_v = np.interp(barb_zz.flatten(), heights_m, v_ms) * 1.94384
+        ax.barbs(barb_xx.flatten(), barb_zz.flatten(), barb_u, barb_v, length=6, zorder=5, color='white', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+        
+        barb_x_surface = np.linspace(dist_centrat.min() + 2, dist_centrat.max() - 2, 10)
+        surface_elev_at_barbs = np.interp(barb_x_surface, dist_centrat, elev)
+        barb_y_surface = surface_elev_at_barbs + 250
+        
+        barb_u_surface = np.interp(barb_y_surface, heights_m, u_ms) * 1.94384; barb_v_surface = np.interp(barb_y_surface, heights_m, v_ms) * 1.94384
+        mask = barb_y_surface < max_alt_m; calm_mask = (np.sqrt(barb_u_surface**2 + barb_v_surface**2) < 2) & mask
+        
+        ax.barbs(barb_x_surface[mask & ~calm_mask], barb_y_surface[mask & ~calm_mask], barb_u_surface[mask & ~calm_mask], barb_v_surface[mask & ~calm_mask], length=6, zorder=5, color='#F0E68C', path_effects=[path_effects.withStroke(linewidth=2, foreground='black')])
+        ax.plot(barb_x_surface[calm_mask], barb_y_surface[calm_mask], 'o', markersize=5, color='#F0E68C', markeredgecolor='black', zorder=5)
+        for x, y_terrain, y_barb in zip(barb_x_surface[mask], surface_elev_at_barbs[mask], barb_y_surface[mask]):
+            ax.plot([x, x], [y_terrain, y_barb], color='#F0E68C', lw=0.6, linestyle='--', zorder=4)
 
-    fig.colorbar(im, ax=ax, label="Temperatura (°C)", pad=0.02, ticks=levels_temp[::2])
-    ax.set_xlabel(f"Distància (km) | Vent → ({analisi['bearing_fixe']:.0f}°)")
-    ax.set_ylabel("Elevació (m)")
-    ax.set_title("Secció Transversal Atmosfèrica (Simulació Adiabàtica amb Formació de Núvols)")
+    poble_dist_centrat = analisi['poble_dist'] - (dist_total_km / 2)
+    ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
+    ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
+    
+    # --- NOVA LÒGICA D'ETIQUETAT PER AL TURÓ ---
+    turo = analisi.get("turo_referencia")
+    if turo:
+        x_pos = dist_centrat[turo['idx']]
+        altitud_real_turo = turo['ele']
+        
+        # El color de l'etiqueta depèn de si és un "Turó" o un "Pic Secundari"
+        etiqueta_color = "lightblue" if "Turó" in turo['name'] else "yellow"
+        
+        ax.annotate(f"{turo['name']}\n({altitud_real_turo:.0f} m)", 
+                    xy=(x_pos, elev[turo['idx']]), 
+                    xytext=(x_pos, altitud_real_turo + max_alt_m * 0.08),
+                    arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4), 
+                    ha='center', va='bottom', fontsize=8, zorder=12,
+                    bbox=dict(boxstyle="round,pad=0.3", fc=etiqueta_color, ec="black", lw=1, alpha=0.8))
+    # --- FI DE LA NOVA LÒGICA ---
+
+    fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
+    ax.set_xlabel(f"Distància (km) | Tall → ({analisi['bearing_fixe']:.0f}°)"); ax.set_ylabel("Elevació (m)"); ax.set_title("Secció Transversal Atmosfèrica")
     ax.grid(True, linestyle=':', alpha=0.5, color='black', zorder=0)
     ax.legend(loc='upper left', fontsize=8)
-    ax.set_ylim(bottom=0, top=max_alt_m)
-    ax.set_xlim(dist_centrat.min(), dist_centrat.max())
+    ax.set_ylim(bottom=0, top=max_alt_m); ax.set_xlim(dist_centrat.min(), dist_centrat.max())
     
     ax.invert_xaxis()
-    plt.tight_layout()
-    return fig
+    plt.tight_layout(); return fig
 
 
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
@@ -8234,7 +8217,7 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
         st.markdown("##### Perfil del Terreny i Flux Atmosfèric")
         if "transect_distances" in analisi_orografica:
             # Passem el nou paràmetre al gràfic
-            fig = crear_grafic_perfil_orografic_adiabatic_amb_nuvols(analisi_orografica, params_calc)
+            fig = crear_grafic_perfil_orografic(analisi_orografica, params_calc, layer_sel, max_alt_sel, show_barbs=show_barbs_sel)
             st.pyplot(fig, use_container_width=True)
             plt.close(fig)
         else:
