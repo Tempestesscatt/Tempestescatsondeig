@@ -50,7 +50,7 @@ import matplotlib.lines as mlines
 import scipy.ndimage as ndi
 from math import radians, sin, cos, sqrt, atan2, degrees, asin
 from scipy.signal import find_peaks
-
+from matplotlib.patches import Ellipse
 
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
