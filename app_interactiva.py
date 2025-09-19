@@ -8094,14 +8094,15 @@ def analitzar_orografia(poble_sel, data_tuple):
 
 
 
-def crear_grafic_perfil_orografic_adiabatic(analisi, params_calc):
+def crear_grafic_perfil_orografic_adiabatic_amb_nuvols(analisi, params_calc):
     """
-    Crea una secció transversal atmosfèrica amb un model d'escalfament i refredament
-    adiabàtic que reacciona al relleu, simulant l'efecte Foehn.
-    Versió 1.0 (Simulació Termodinàmica):
-    - Recalcula la temperatura a cada punt de la graella en funció de l'ascens/descens orogràfic.
-    - Distingeix entre el refredament adiabàtic sec (DALR) i humit (MALR) durant l'ascens.
-    - Simula l'escalfament adiabàtic sec durant el descens (Efecte Foehn).
+    Crea una secció transversal atmosfàrica amb un model d'escalfament/refredament
+    adiabàtic i la formació dinàmica de núvols orogràfics.
+    Versió 2.0 (Simulació de Condensació):
+    - Recalcula la temperatura i la humitat relativa a cada punt de la graella.
+    - Simula el refredament adiabàtic (sec i humit) i l'escalfament per efecte Foehn.
+    - Dibuixa un núvol blanc i translúcid a les zones on l'aire assoleix la saturació (RH > 95%)
+      a causa de l'ascens orogràfic.
     """
     # Constants físiques (aproximades)
     DALR_PER_METRE = 9.8 / 1000  # °C de refredament per metre d'ascens (aire sec)
@@ -8115,92 +8116,92 @@ def crear_grafic_perfil_orografic_adiabatic(analisi, params_calc):
     dist_total_km = analisi['transect_distances'][-1]
     dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
     elev = analisi['transect_elevations']
-    max_alt_m = np.max(elev) + 3500 # Altura màxima del gràfic
+    max_alt_m = np.max(elev) + 3500
 
-    # Dades del sondeig inicial (condicions de l'aire "sense pertorbar")
+    # Dades del sondeig inicial
     heights_m, u_ms, v_ms, rh_profile, temp_profile, _ = analisi['sondeig_perfil_complet']
-    # També necessitem el perfil de pressió per calcular el LCL
-    p_profile_hpa = np.interp(heights_m, 
-                              params_calc.get('sondeig_p_hgt', heights_m), 
-                              params_calc.get('sondeig_p_profile', np.linspace(1000, 200, len(heights_m)))) * units.hPa
+    p_sfc = params_calc.get('SFC_P', 1000) * units.hPa
+    p_profile_hpa = mpcalc.height_to_pressure_std(heights_m * units.meter)
 
     # Creació de la graella de visualització
     x_grid = dist_centrat
     y_grid = np.linspace(0, max_alt_m, 150)
     xx, zz = np.meshgrid(x_grid, y_grid)
     
-    # Graella final de temperatura que calcularem
+    # Graelles finals que calcularem
     temp_grid_final = np.zeros_like(xx)
+    rh_grid_final = np.zeros_like(xx)
 
     # --- INICI DEL CÀLCUL TERMODINÀMIC ---
-
-    # 1. Calculem la deformació vertical de l'aire
-    decay_profile = np.exp(-y_grid / 2500.0) # L'efecte del terreny disminueix amb l'altura
-    # La deformació és simplement l'altura del terreny, atenuada amb l'altitud
-    deformation_grid = elev[np.newaxis, :] * decay_profile[:, np.newaxis]
-
-    # 2. Iterem per cada columna vertical del gràfic (cada punt del transecte)
     for i in range(len(x_grid)):
         # Per a cada punt horitzontal 'i', processem tota la seva columna vertical
         columna_z_final = zz[:, i]
-        
-        # L'ascens/descens orogràfic per a aquesta columna
-        ascens_orografic = deformation_grid[:, i]
-        
-        # Altitud original de l'aire abans de ser deformat
+        ascens_orografic = np.interp(x_grid[i], dist_centrat, elev) * np.exp(-columna_z_final / 2500.0)
         columna_z_original = columna_z_final - ascens_orografic
-        columna_z_original[columna_z_original < 0] = 0 # Evitem altituds negatives
+        columna_z_original[columna_z_original < 0] = 0
 
         # Obtenim les condicions originals (T, RH, P) de l'aire a la seva altitud inicial
-        temp_original = np.interp(columna_z_original, heights_m, temp_profile)
-        rh_original = np.interp(columna_z_original, heights_m, rh_profile)
+        temp_original = np.interp(columna_z_original, heights_m, temp_profile) * units.degC
+        rh_original = np.interp(columna_z_original, heights_m, rh_profile) * units.percent
         p_original = np.interp(columna_z_original, heights_m, p_profile_hpa.m) * units.hPa
         
-        # Calculem la temperatura del punt de rosada original
-        td_original = mpcalc.dewpoint_from_relative_humidity(temp_original * units.degC, rh_original * units.percent)
-
-        # Calculem l'altura del LCL (on es formen els núvols) per a cada parcel·la d'aquesta columna
-        lcl_p, _ = mpcalc.lcl(p_original, temp_original * units.degC, td_original)
+        # Calculem l'altura del LCL per a cada parcel·la d'aquesta columna
+        td_original = mpcalc.dewpoint_from_relative_humidity(temp_original, rh_original)
+        lcl_p, _ = mpcalc.lcl(p_original, temp_original, td_original)
         h_lcl = mpcalc.pressure_to_height_std(lcl_p).to('m').m
         
-        # Ara, calculem la temperatura final després de l'ascens/descens
+        # Calculem la temperatura final després de l'ascens/descens
         delta_z = ascens_orografic
-        temp_final = np.copy(temp_original)
+        temp_final = np.copy(temp_original.m)
         
-        # Vectoritzem el càlcul per a tota la columna
-        # Cas 1: L'aire puja (delta_z > 0)
+        # Ascens (delta_z > 0)
         puja_mask = delta_z > 0
-        
-        # Part seca de l'ascens
         dist_seca = np.minimum(delta_z[puja_mask], h_lcl[puja_mask] - columna_z_original[puja_mask])
         dist_seca[dist_seca < 0] = 0
         temp_final[puja_mask] -= dist_seca * DALR_PER_METRE
-        
-        # Part humida de l'ascens
         dist_humida = delta_z[puja_mask] - dist_seca
         dist_humida[dist_humida < 0] = 0
         temp_final[puja_mask] -= dist_humida * MALR_PER_METRE
 
-        # Cas 2: L'aire baixa (delta_z < 0), sempre s'escalfa a la taxa seca (Efecte Foehn)
+        # Descens (delta_z < 0)
         baixa_mask = delta_z < 0
-        temp_final[baixa_mask] -= delta_z[baixa_mask] * DALR_PER_METRE # delta_z és negatiu, per tant, resta d'un negatiu = suma
+        temp_final[baixa_mask] -= delta_z[baixa_mask] * DALR_PER_METRE
 
         temp_grid_final[:, i] = temp_final
 
+        # Calculem la humitat relativa final
+        mixing_ratio = mpcalc.mixing_ratio_from_relative_humidity(p_original, temp_original, rh_original)
+        p_final = np.interp(columna_z_final, heights_m, p_profile_hpa.m) * units.hPa
+        td_final = mpcalc.dewpoint_from_mixing_ratio(p_final, mixing_ratio)
+        rh_final = mpcalc.relative_humidity_from_dewpoint(temp_final * units.degC, td_final).m * 100
+        
+        # Forcem RH a 100% si l'ascens supera el LCL
+        saturat_mask = (puja_mask) & (columna_z_final > h_lcl)
+        rh_final[saturat_mask] = 100.0
+
+        rh_grid_final[:, i] = rh_final
+
     # --- FINAL DEL CÀLCUL TERMODINÀMIC ---
 
-    # Dibuixem el resultat
-    cmap_colors = ['#4b0082', '#8a2be2', '#0000cd', '#0000ff', '#1e90ff', '#00bfff', '#00ffff', '#00fa9a', '#32cd32', '#adff2f', '#ffff00', '#ffd700', '#ffa500', '#ff4500', '#ff0000', '#dc143c', '#ff00ff', '#ff69b4']
-    levels = [-24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 46]
-    cmap = ListedColormap(cmap_colors)
-    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+    # Dibuixem la capa de temperatura de fons
+    cmap_colors_temp = ['#8a2be2','#0000ff','#1e90ff','#00ffff','#32cd32','#adff2f','#ffff00','#ffa500','#ff0000','#dc143c']
+    levels_temp = [-16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24]
+    cmap_temp = ListedColormap(cmap_colors_temp)
+    norm_temp = BoundaryNorm(levels_temp, ncolors=cmap_temp.N, clip=True)
+    ax.contourf(xx, zz, temp_grid_final, levels=levels_temp, cmap=cmap_temp, norm=norm_temp, extend='both', zorder=1)
+
+    # === DIBUIX DEL NÚVOL ===
+    cloud_levels = [95, 101] 
+    cloud_cmap = ListedColormap([(1, 1, 1, 0.4), (1, 1, 1, 0.9)]) # Blanc amb transparència
+    norm_cloud = BoundaryNorm(cloud_levels, ncolors=cloud_cmap.N, clip=True)
     
-    im = ax.contourf(xx, zz, temp_grid_final, levels=levels, cmap=cmap, norm=norm, extend='both', zorder=1, antialiased=True)
-    
-    # Afegim el terreny i altres elements gràfics
-    ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
-    
-    # ... (aquí aniria la resta del codi per afegir barbes de vent, etiquetes, etc.) ...
+    # Ombra del núvol per donar profunditat
+    ax.contourf(xx + 150, zz - 150, rh_grid_final, levels=cloud_levels, cmap=ListedColormap([(0,0,0,0.2)]), norm=norm_cloud, zorder=2)
+    # Núvol principal
+    ax.contourf(xx, zz, rh_grid_final, levels=cloud_levels, cmap=cloud_cmap, norm=norm_cloud, zorder=3)
+
+    # Dibuixem el terreny i altres elements
+    ax.fill_between(dist_centrat, 0, elev, color='black', zorder=4)
     
     poble_dist_centrat = analisi['poble_dist'] - (dist_total_km / 2)
     ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, 
@@ -8208,10 +8209,10 @@ def crear_grafic_perfil_orografic_adiabatic(analisi, params_calc):
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
 
     # Configuració final del gràfic
-    fig.colorbar(im, ax=ax, label="Temperatura (°C)", pad=0.02, ticks=levels[::2])
+    fig.colorbar(im, ax=ax, label="Temperatura (°C)", pad=0.02, ticks=levels_temp[::2])
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['bearing_fixe']:.0f}°)")
     ax.set_ylabel("Elevació (m)")
-    ax.set_title("Secció Transversal Atmosfèrica (Simulació Adiabàtica)")
+    ax.set_title("Secció Transversal Atmosfèrica (Simulació Adiabàtica amb Formació de Núvols)")
     ax.grid(True, linestyle=':', alpha=0.5, color='black', zorder=0)
     ax.legend(loc='upper left', fontsize=8)
     ax.set_ylim(bottom=0, top=max_alt_m)
