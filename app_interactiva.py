@@ -8094,58 +8094,42 @@ def analitzar_orografia(poble_sel, data_tuple):
 
 
 
-def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m):
+def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 18.1 (Correcció Definitiva de l'Error UnboundLocalError):
-    - CORRECCIÓ DE L'ERROR 'UnboundLocalError': S'ha reordenat la inicialització de les
-      variables per garantir que 'y_grid' es defineixi abans de ser utilitzada,
-      eliminant l'error de manera definitiva.
-    - Manté tota la funcionalitat de la versió 18.0, incloent la simulació de flux
-      vectorial, la deformació de capes de color i les streamlines superposades.
+    Versió 17.0 (Simulació de Flux Vectorial amb Validació del Sondeig):
+    - VALIDACIÓ VISUAL: Afegeix una columna a la dreta que mostra el perfil de vent
+      vertical exacte extret del sondeig AROME. L'usuari pot comparar directament
+      les dades d'entrada amb el resultat de la simulació.
+    - CAMP DE VENT VECTORIAL 2D: Construeix un camp de vent (u, w) a tota la graella.
+      La component horitzontal (u) es basa en el sondeig i la component vertical (w)
+      es simula basant-se en la interacció amb el terreny.
+    - BLOQUEIG FÍSIC I REBUFOS INDUÏTS: El relleu actua com una barrera sòlida,
+      forçant el flux a ascendir i envoltar els obstacles, generant rebufos.
+    - ESTIL CFD MANTINGUT: Conserva l'estètica neta i tècnica, centrada en la
+      dinàmica del flux.
     """
     plt.style.use('default')
-    fig, ax = plt.subplots(figsize=(14, 8), dpi=150)
+    # Augmentem l'amplada per fer lloc al perfil de vent
+    fig, ax = plt.subplots(figsize=(14, 7), dpi=150)
     fig.patch.set_facecolor('white')
-    ax.set_facecolor('#f0f5ff')
+    ax.set_facecolor('white')
 
     dist_centrat = analisi['transect_distances'] - (analisi['transect_distances'][-1] / 2)
     elev = analisi['transect_elevations']
 
-    heights_m, _, _, rh_profile, temp_profile, wind_speed_profile = analisi['sondeig_perfil_complet']
+    heights_m, _, _, _, _, wind_speed_profile = analisi['sondeig_perfil_complet']
     wind_spd_kmh = analisi['wind_spd_kmh']
 
     # --- 1. Creació de la Graella i el Camp de Vent Base ---
-    # ### BLOC DE CODI MOGUT AQUÍ (CORRECCIÓ) ###
-    # Definim les graelles abans de qualsevol operació que les necessiti.
-    y_grid = np.linspace(0, max_alt_m, 150)
-    xx, zz = np.meshgrid(dist_centrat, y_grid)
-    # ### FI DE LA CORRECCIÓ ###
-
-    # --- 2. Selecció de la Capa de Dades a Visualitzar ---
-    if layer_to_show == "Humitat":
-        profile_1d = np.interp(y_grid, heights_m, rh_profile)
-        cmap_colors = ['#f0e68c', '#90ee90', '#4682b4', '#191970']; levels = [0, 30, 60, 80, 101]
-        label = "Humitat Relativa (%)"
-    elif layer_to_show == "Temperatura":
-        profile_1d = np.interp(y_grid, heights_m, temp_profile)
-        cmap_colors = ['#8a2be2','#0000ff','#1e90ff','#00ffff','#32cd32','#ffff00','#ffa500','#ff0000','#dc143c']
-        levels = [-16, -12, -8, -4, 0, 4, 8, 12, 16, 20]
-        label = "Temperatura (°C)"
-    else: # Vent
-        profile_1d = np.interp(y_grid, heights_m, wind_speed_profile)
-        cmap_colors = ['#add8e6', '#90ee90', '#ffff00', '#ffa500', '#ff4500', '#ff0000']
-        levels = [0, 20, 40, 60, 80, 100, 120]
-        label = "Velocitat del Vent (km/h)"
-        
-    cmap = ListedColormap(cmap_colors)
-    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+    y_grid_base = np.linspace(0, max_alt_m, 150)
+    xx, zz = np.meshgrid(dist_centrat, y_grid_base)
     
-    # --- 3. Creació del Camp de Vent Vectorial 2D ---
-    u_base_ms = np.interp(y_grid, heights_m, wind_speed_profile) / 3.6
+    u_base_ms = np.interp(y_grid_base, heights_m, wind_speed_profile) / 3.6
     u_grid = np.tile(u_base_ms, (xx.shape[1], 1)).T
     w_grid = np.zeros_like(xx)
 
+    # --- 2. Simulació de la Interacció del Flux amb el Terreny ---
     terrain_slope = np.gradient(elev, dist_centrat * 1000)
     slope_grid = np.tile(terrain_slope, (xx.shape[0], 1))
     
@@ -8153,66 +8137,65 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     decay_lift = np.exp(-zz / 1500.0)
     w_grid[lift_mask] += (u_grid * slope_grid * decay_lift)[lift_mask]
 
-    peak_indices, properties = find_peaks(elev, prominence=300, width=5)
-    for i, peak_idx in enumerate(peak_indices):
-        peak_prominence = properties["prominences"][i]
+    peak_indices, _ = find_peaks(elev, prominence=300, width=5)
+    for peak_idx in peak_indices:
+        # (La lògica dels vòrtexs es manté igual)
+        peak_prominence = elev[peak_idx] - np.min(elev)
         rotor_x_center = dist_centrat[peak_idx] + 2.5
         rotor_z_center = peak_prominence * 0.8
         rotor_radius = peak_prominence * 1.5
         vortex_strength = (peak_prominence / 400) * (wind_spd_kmh / 3.6) * -20
-
         dist_x_from_center = (xx - rotor_x_center) * 1000
         dist_z_from_center = zz - rotor_z_center
         r_sq = dist_x_from_center**2 + dist_z_from_center**2
         r_sq[r_sq == 0] = 1e-6
-        
         u_vortex = vortex_strength * dist_z_from_center / r_sq
         w_vortex = -vortex_strength * dist_x_from_center / r_sq
         vortex_mask = np.exp(-(r_sq / (rotor_radius**2)))
         u_grid += u_vortex * vortex_mask
         w_grid += w_vortex * vortex_mask
 
+    # --- 3. Aplicació del Bloqueig Físic del Terreny ---
     terrain_mask = zz < np.interp(xx, dist_centrat, elev)
     u_grid[terrain_mask] = 0
     w_grid[terrain_mask] = 0
 
-    # --- 4. Dibuix de la Capa de Color Deformada ---
-    data_grid_base = np.tile(profile_1d, (xx.shape[1], 1)).T
-    dt = (dist_centrat[1] - dist_centrat[0]) * 1000 / u_grid
-    dt[u_grid < 1] = 0
-    vertical_displacement = np.cumsum(w_grid * dt, axis=1)
-    zz_deformat = zz + vertical_displacement
-    
-    im = ax.contourf(xx, zz_deformat, data_grid_base, levels=levels, cmap=cmap, norm=norm,
-                     extend='both', zorder=1, antialiased=True, alpha=0.9)
-    
-    # --- 5. Dibuix del Flux d'Aire (Streamlines) ---
+    # --- 4. Dibuix del Flux d'Aire (Streamlines) ---
     ax.streamplot(xx, zz, u_grid, w_grid, 
                   color='black', 
-                  linewidth=0.7, 
+                  linewidth=0.8, 
                   density=2.0,
                   arrowsize=0.8,
                   zorder=4)
 
-    # --- 6. Dibuix del Terreny i Anotacions ---
+    # --- 5. Dibuix del Terreny ---
     ax.fill_between(dist_centrat, 0, elev, color='black', zorder=5)
-    ax.plot(dist_centrat, elev, color='gray', linewidth=0.5, zorder=6)
+
+    # --- 6. Dibuix del Perfil de Vent del Sondeig (NOVA SECCIÓ) ---
+    # Posicionem la columna a la dreta del gràfic
+    x_profile_pos = dist_centrat.max() + 3
+    ax.axvline(x=x_profile_pos, color='gray', linestyle='--', linewidth=1)
+    ax.text(x_profile_pos, max_alt_m, 'Perfil de Vent (Sondeig)', ha='center', va='bottom', fontsize=9)
     
-    dist_total_km = analisi['transect_distances'][-1]
-    poble_dist_centrat = analisi['poble_dist'] - (dist_total_km / 2)
-    ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8,
-            label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
-    ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1.2, zorder=1)
+    for alt in np.arange(250, max_alt_m, 250):
+        # Obtenim la velocitat del vent directament del sondeig a cada altura
+        wind_at_alt_kmh = np.interp(alt, heights_m, wind_speed_profile)
+        # La longitud de la fletxa és proporcional a la velocitat
+        arrow_length = wind_at_alt_kmh / 15.0 # Factor d'escala per a la visualització
+        
+        # Dibuixem una fletxa que representa el vent a aquella altura
+        # La fletxa apunta en la direcció del flux (d'esquerra a dreta)
+        ax.arrow(x_profile_pos - arrow_length / 2, alt, arrow_length, 0, 
+                 head_width=100, head_length=0.8, fc='k', ec='k', length_includes_head=True)
 
     # --- 7. Configuració Final del Gràfic ---
-    fig.colorbar(im, ax=ax, label=label, pad=0.02, shrink=0.8)
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['bearing_fixe']:.0f}°)")
     ax.set_ylabel("Elevació (m)")
-    ax.set_title("Simulació de Flux Orogràfic amb Interacció Física")
-    ax.grid(True, linestyle=':', alpha=0.5, color='gray', zorder=0)
-    ax.legend(loc='upper left', fontsize=8)
+    ax.set_title("Simulació de Flux Orogràfic (Basat en Sondeig AROME)")
+    ax.grid(False)
     ax.set_ylim(bottom=0, top=max_alt_m)
-    ax.set_xlim(dist_centrat.min(), dist_centrat.max())
+    # Ampliem el límit de l'eix X per fer lloc a la nova columna de vent
+    ax.set_xlim(dist_centrat.min(), dist_centrat.max() + 8)
     
     ax.invert_xaxis()
     plt.tight_layout(pad=1.5)
