@@ -8160,10 +8160,12 @@ def analitzar_formacio_nuvols(sounding_data, params_calc):
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m, show_barbs=True):
     """
     Crea una secció transversal atmosfèrica amb interacció realista i capes de dades avançades.
-    Versió 13.1 (Correcció del Bug de la Torre Convectiva):
-    - ELIMINA la columna convectiva artificial que es dibuixava al centre.
-    - La capa "Núvols" ara simula el creixement vertical de la convecció de manera
-      realista sobre les zones de sobrevent (ascens orogràfic).
+    Versió 14.0 (Renderitzat de Núvols Orgànic):
+    - Soluciona el bug de la "torre convectiva" artificial.
+    - La capa "Núvols" ara renderitza una densitat de núvol contínua basada en la humitat.
+    - La convecció es simula com una "ploma" de densitat afegida que neix sobre
+      les zones de sobrevent, amb una forma i mida dependents del CAPE.
+    - S'utilitza imshow per a un acabat visual suau i realista.
     """
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
@@ -8207,42 +8209,53 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         im = ax.contourf(xx, zz_asl, masked_data, levels=levels, cmap=cmap, norm=norm, extend='both', zorder=1)
         contours = ax.contour(xx, zz_asl, masked_data, levels=levels[1:-1:2], colors='black', linewidths=0.5, alpha=0.7, zorder=2)
         ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
-        fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
+        if layer_to_show != "Núvols":
+            fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
     
-    # --- LÒGICA CORREGIDA I MILLORADA PER A LA CAPA DE NÚVOLS ---
+    # --- NOVA LÒGICA DE RENDERITZAT DE NÚVOLS ---
     if layer_to_show == "Núvols":
         sky_gradient = np.linspace(0.8, 0.4, 100).reshape(-1, 1)
         ax.imshow(sky_gradient, aspect='auto', cmap='Blues_r', origin='lower', extent=[dist_centrat.min(), dist_centrat.max(), 0, max_alt_m], zorder=0)
         
         rh_grid = np.interp(zz_deformat, heights_m, rh_profile)
-        cloud_data = np.zeros_like(rh_grid)
-        cloud_data[rh_grid >= 85] = 1 # Nuvolositat lleugera (base)
-        cloud_data[rh_grid >= 95] = 2 # Nucli dens
-
+        
+        # 1. Creem una densitat de núvol base contínua
+        cloud_density = np.clip((rh_grid - 80) / 19.9, 0, 1)
+        
+        # 2. Potenciem el desenvolupament convectiu de manera realista
         cape = params_calc.get('MLCAPE', 0)
         if cape > 100:
-            lcl = params_calc.get('LCL_Hgt', 9999)
-            el = params_calc.get('EL_Hgt', 0)
+            lcl = params_calc.get('LCL_Hgt', 9999); el = params_calc.get('EL_Hgt', 0)
             if el > lcl:
-                # Identifiquem les zones de sobrevent (on el pendent és positiu)
                 upslope_mask_1d = pendent > 0.03
-                # Creem una màscara 2D per a les columnes d'aire sobre aquestes zones
-                upslope_mask_2d = np.tile(upslope_mask_1d, (len(y_grid), 1))
-                # Definim la capa vertical on la convecció pot actuar (entre LCL i EL)
-                convective_layer_mask = (zz_asl >= lcl) & (zz_asl <= el)
-                # La zona final de creixement convectiu és on coincideixen totes les condicions
-                convective_growth_mask = upslope_mask_2d & convective_layer_mask
-                
-                # Potenciem la densitat del núvol en aquestes zones
-                cloud_data[convective_growth_mask] = 2 
+                if np.any(upslope_mask_1d):
+                    # Trobem el centre del principal pendent ascendent
+                    x_upslope_center = np.mean(dist_centrat[upslope_mask_1d])
+                    
+                    # Definim la ploma convectiva amb una funció Gaussiana 2D
+                    sigma_x = max(1.5, (el - lcl) / 4000) # L'amplada depèn de la profunditat de la tempesta
+                    sigma_z = (el - lcl) * 0.4
+                    center_z = lcl + sigma_z * 0.8
+                    
+                    convective_plume = np.exp(-(((xx - x_upslope_center)**2 / (2 * sigma_x**2)) + ((zz_asl - center_z)**2 / (2 * sigma_z**2))))
+                    # L'efecte de la ploma és més fort si hi ha més CAPE
+                    convective_intensity = np.clip(cape / 1200, 0.5, 1.5)
+                    
+                    # Afegim la densitat de la ploma a la densitat base
+                    cloud_density += convective_plume * convective_intensity
 
-        masked_cloud_data = np.where(zz_asl > elev, cloud_data, 0)
-        cloud_cmap = ListedColormap(['#00000000', '#dcdcdc80', '#ffffffE6'])
-        cloud_norm = BoundaryNorm([0, 1, 2, 3], ncolors=cloud_cmap.N)
-        ax.contourf(xx, zz_asl, masked_cloud_data, levels=[0.5, 1.5, 2.5], cmap=cloud_cmap, norm=cloud_norm, zorder=2)
+        # Retallem la densitat final i l'emmascarem sota el terreny
+        cloud_density = np.clip(cloud_density, 0, 1)
+        masked_density = np.where(zz_asl > elev, cloud_density, 0)
+        
+        # Dibuixem el resultat amb un mapa de colors suau i transparent
+        cloud_cmap = LinearSegmentedColormap.from_list("cloud_cmap", [(1, 1, 1, 0), (1, 1, 1, 0.4), (1, 1, 1, 0.9)])
+        ax.imshow(masked_density, cmap=cloud_cmap, origin='lower', 
+                  extent=[dist_centrat.min(), dist_centrat.max(), 0, max_alt_m], 
+                  zorder=2, vmin=0, vmax=1.2) # vmax > 1 per a nuclis més opacs
         ax.set_title(f"Secció Transversal Atmosfèrica - Nuvolositat (HR > 85%)")
 
-    # Dibuix del terreny i la resta d'elements (sense canvis)
+    # --- La resta de la funció es manté igual ---
     ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
     if np.min(elev) <= 5:
         x_wave = np.linspace(dist_centrat.min(), dist_centrat.max(), 200); y_wave = np.sin(x_wave * 0.5) * 5 + 5
