@@ -8160,10 +8160,10 @@ def analitzar_formacio_nuvols(sounding_data, params_calc):
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m, show_barbs=True):
     """
     Crea una secció transversal atmosfèrica amb interacció realista i capes de dades avançades.
-    Versió 15.0 (Solució Definitiva del Bug Visual):
-    - CORREGEIX el bug crític que col·lapsava el gràfic en una línia vertical.
-    - La capa "Núvols" ara es renderitza amb 'contourf' en lloc d''imshow', garantint consistència i estabilitat.
-    - La visualització dels núvols és ara molt més suau i orgànica, amb vores difuminades.
+    Versió 16.0 (Renderitzat de Núvols Orgànic i Localitzat):
+    - CORREGEIX el bug que creava un "pilar" convectiu artificial.
+    - El creixement convectiu ara es simula com una potenciació de la densitat de núvol
+      localitzada ÚNICAMENT sobre els pendents de sobrevent, creant un aspecte orgànic.
     """
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
@@ -8210,32 +8210,40 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         if layer_to_show != "Núvols":
             fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
     
-    # --- LÒGICA DE NÚVOLS COMPLETAMENT RECONSTRUÏDA AMB CONTOURF ---
+    # --- LÒGICA DE NÚVOLS COMPLETAMENT RECONSTRUÏDA ---
     if layer_to_show == "Núvols":
         sky_gradient = np.linspace(0.8, 0.4, 100).reshape(-1, 1)
         ax.imshow(sky_gradient, aspect='auto', cmap='Blues_r', origin='lower', extent=[dist_centrat.min(), dist_centrat.max(), 0, max_alt_m], zorder=0)
         
         rh_grid = np.interp(zz_deformat, heights_m, rh_profile)
-        cloud_density = np.clip((rh_grid - 80) / 19.9, 0, 1)
-        
+        cloud_density = np.clip((rh_grid - 80) / 19.9, 0, 1) # Densitat base contínua
+
         cape = params_calc.get('MLCAPE', 0)
         if cape > 100:
             lcl = params_calc.get('LCL_Hgt', 9999); el = params_calc.get('EL_Hgt', 0)
             if el > lcl:
+                # Creem una màscara 1D per a les zones de sobrevent
                 upslope_mask_1d = pendent > 0.03
-                if np.any(upslope_mask_1d):
-                    x_upslope_center = np.mean(dist_centrat[upslope_mask_1d])
-                    sigma_x = max(1.5, (el - lcl) / 4000); sigma_z = (el - lcl) * 0.4
-                    center_z = lcl + sigma_z * 0.8
-                    convective_plume = np.exp(-(((xx - x_upslope_center)**2 / (2 * sigma_x**2)) + ((zz_asl - center_z)**2 / (2 * sigma_z**2))))
-                    convective_intensity = np.clip(cape / 1200, 0.5, 1.5)
-                    cloud_density += convective_plume * convective_intensity
+                
+                # Creem un perfil vertical de "potenciació convectiva"
+                convective_boost_profile = np.zeros_like(y_grid)
+                convective_layer_mask = (y_grid >= lcl) & (y_grid <= el)
+                # La potenciació és màxima al centre de la capa convectiva
+                mid_convective_layer = (lcl + el) / 2
+                sigma_z = (el - lcl) * 0.4
+                convective_boost_profile[convective_layer_mask] = np.exp(-((y_grid[convective_layer_mask] - mid_convective_layer)**2 / (2 * sigma_z**2)))
+                
+                # Apliquem aquesta potenciació només a les columnes de sobrevent
+                convective_boost_2d = np.outer(convective_boost_profile, upslope_mask_1d)
+                
+                convective_intensity = np.clip(cape / 1200, 0.5, 1.5)
+                cloud_density += convective_boost_2d * convective_intensity
 
-        masked_density = np.where(zz_asl > elev, np.clip(cloud_density, 0, 1), 0)
+        masked_density = np.where(zz_asl > elev, np.clip(cloud_density, 0, 1.2), 0)
         
-        # S'utilitza contourf per a un dibuix suau i dimensionalment correcte
-        cloud_levels = np.linspace(0.1, 1.0, 10)
-        cloud_cmap = LinearSegmentedColormap.from_list("cloud_cmap", [(1, 1, 1, 0), (1, 1, 1, 0.9)])
+        # Utilitzem contourf per a un dibuix suau i dimensionalment correcte
+        cloud_levels = np.linspace(0.1, 1.2, 11)
+        cloud_cmap = LinearSegmentedColormap.from_list("cloud_cmap", [(1, 1, 1, 0), (1, 1, 1, 0.95)])
         ax.contourf(xx, zz_asl, masked_density, levels=cloud_levels, cmap=cloud_cmap, zorder=2)
         
         ax.set_title(f"Secció Transversal Atmosfèrica - Nuvolositat (HR > 85%)")
