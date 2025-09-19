@@ -8156,12 +8156,14 @@ def analitzar_formacio_nuvols(sounding_data, params_calc):
 
     return cloud_layers
 
+
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m, show_barbs=True):
     """
     Crea una secció transversal atmosfàrica amb interacció realista i capes de dades avançades.
-    Versió 12.2 (Correcció de ValueError):
-    - Soluciona l'error de desajust entre el nombre de nivells i colors per a Theta-E
-      utilitzant un mapa de colors continu de Matplotlib ('viridis').
+    Versió 13.0 (Visualització de Núvols Basada en Humitat):
+    - La capa "Núvols" ara dibuixa directament les zones on la humitat relativa > 85%.
+    - L'opacitat del núvol depèn de la intensitat de la humitat.
+    - Si hi ha CAPE, es potencia un desenvolupament vertical convectiu al centre del gràfic.
     """
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
@@ -8172,33 +8174,23 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
     elev = analisi['transect_elevations']
 
-    # --- CANVI CLAU AQUÍ: CORRECCIÓ DE LA PALETA THETA-E ---
-    # Línies originals que causaven l'error:
-    # colors_theta_e = ['#ffffcc','#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#0c2c84'] # Només 7 colors
-    # cmap_theta_e = ListedColormap(colors_theta_e)
-    
-    # Línia nova i corregida:
-    levels_theta_e = list(range(15, 75, 5)) # 12 nivells -> 11 intervals (correcte)
-    cmap_theta_e = plt.get_cmap('viridis') # Utilitzem un mapa de colors continu (amb centenars de colors)
-    norm_theta_e = BoundaryNorm(levels_theta_e, ncolors=cmap_theta_e.N, clip=True)
-    # --- FI DE LA CORRECCIÓ ---
-
-    # La resta de paletes es mantenen igual
-    levels_buoyancy = [-8, -6, -4, -2, -0.5, 0.5, 2, 4, 6, 8, 10, 12]
-    cmap_buoyancy = plt.get_cmap('bwr')
-    norm_buoyancy = BoundaryNorm(levels_buoyancy, ncolors=cmap_buoyancy.N, clip=True)
-    
+    # --- Configuració de Paletes de Colors i Nivells (sense canvis) ---
+    levels_theta_e = list(range(15, 75, 5)); cmap_theta_e = plt.get_cmap('viridis'); norm_theta_e = BoundaryNorm(levels_theta_e, ncolors=cmap_theta_e.N, clip=True)
+    levels_buoyancy = [-8, -6, -4, -2, -0.5, 0.5, 2, 4, 6, 8, 10, 12]; cmap_buoyancy = plt.get_cmap('bwr'); norm_buoyancy = BoundaryNorm(levels_buoyancy, ncolors=cmap_buoyancy.N, clip=True)
     colors_humitat = ['#f0e68c', '#90ee90', '#4682b4', '#191970']; levels_humitat = [0, 30, 60, 80, 101]; cmap_humitat = ListedColormap(colors_humitat); norm_humitat = BoundaryNorm(levels_humitat, ncolors=cmap_humitat.N, clip=True)
     colors_vent = ['#d3d3d3', '#add8e6', '#48d1cc', '#90ee90', '#32cd32', '#6b8e23', '#f0e68c', '#d2b48c', '#bc8f8f', '#ffb6c1', '#da70d6', '#9932cc', '#8a2be2']; levels_vent = [0, 11, 25, 40, 54, 68, 86, 104, 131]; cmap_vent = ListedColormap(colors_vent); norm_vent = BoundaryNorm(levels_vent, ncolors=cmap_vent.N, clip=True)
     colors_temp = ['#8a2be2', '#0000ff', '#1e90ff', '#00ffff', '#32cd32', '#ffff00', '#ffa500', '#ff0000', '#dc143c', '#ff00ff']; levels_temp = [-20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30]; cmap_temp = ListedColormap(colors_temp); norm_temp = BoundaryNorm(levels_temp, ncolors=cmap_temp.N, clip=True)
     
+    # Desempaquetem les dades del sondeig
     heights_m, u_ms, v_ms, rh_profile, temp_profile, wind_speed_profile, theta_e_profile, parcel_temp_profile = analisi['sondeig_perfil_complet']
     
+    # Creació de la graella deformada per l'orografia
     x_grid = dist_centrat; y_grid = np.linspace(0, max_alt_m, 100)
     xx, zz_asl = np.meshgrid(x_grid, y_grid)
     pendent = np.gradient(elev, dist_centrat * 1000); factor_decaiguda = np.exp(-zz_asl / 4000)
     zz_deformat = zz_asl + np.outer(np.ones(len(y_grid)), pendent * 5000) * factor_decaiguda
     
+    # --- Lògica principal de selecció i dibuix de capa ---
     data_grid = None
     label = ""
     im = None
@@ -8216,6 +8208,7 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         env_temp_grid = np.interp(zz_deformat, heights_m, temp_profile)
         data_grid = parcel_temp_grid - env_temp_grid; cmap, norm, levels, label = cmap_buoyancy, norm_buoyancy, levels_buoyancy, "Flotabilitat (°C) | CAPE > 0 / CIN < 0"
     
+    # Dibuix de les capes de dades (excepte núvols)
     if data_grid is not None:
         masked_data = np.where(zz_asl > elev, data_grid, np.nan)
         im = ax.contourf(xx, zz_asl, masked_data, levels=levels, cmap=cmap, norm=norm, extend='both', zorder=1)
@@ -8223,26 +8216,40 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
         fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
     
+    # --- NOVA LÒGICA PER A LA CAPA DE NÚVOLS ---
     if layer_to_show == "Núvols":
         sky_gradient = np.linspace(0.8, 0.4, 100).reshape(-1, 1)
         ax.imshow(sky_gradient, aspect='auto', cmap='Blues_r', origin='lower', extent=[dist_centrat.min(), dist_centrat.max(), 0, max_alt_m], zorder=0)
-        cloud_layers = analisi.get("cloud_layers", [])
-        for cloud in cloud_layers:
-            base, top, density = cloud['base_m'], cloud['top_m'], cloud['density']
-            if cloud['type'] == 'Convectiu':
-                width = (top - base) * 0.4
-                num_puffs = int(25 * density)
-                for _ in range(num_puffs):
-                    puff_x = (np.random.rand() - 0.5) * width * 1.5
-                    puff_y = base + np.random.power(2.5) * (top - base)
-                    puff_width = (np.random.rand() * 0.5 + 0.5) * (width * 0.4)
-                    puff_height = puff_width * (0.6 + np.random.rand() * 0.2)
-                    puff_alpha = (0.3 + np.random.rand() * 0.5) * density
-                    cloud_puff = Ellipse(xy=(puff_x, puff_y), width=puff_width, height=puff_height, facecolor='white', alpha=puff_alpha, zorder=2)
-                    ax.add_patch(cloud_puff)
-            else:
-                ax.fill_between(dist_centrat, base, top, color='white', alpha=0.6 * density, zorder=1, linewidth=0)
-    
+        
+        # Interpolem la humitat a la graella deformada
+        rh_grid = np.interp(zz_deformat, heights_m, rh_profile)
+        
+        # Creem una graella de dades per als núvols basada en llindars d'humitat
+        cloud_data = np.zeros_like(rh_grid)
+        cloud_data[rh_grid >= 85] = 1 # Nuvolositat lleugera
+        cloud_data[rh_grid >= 95] = 2 # Nucli dens del núvol
+
+        # Potenciem el desenvolupament vertical si hi ha CAPE
+        cape = params_calc.get('MLCAPE', 0)
+        if cape > 100:
+            lcl = params_calc.get('LCL_Hgt', 9999)
+            el = params_calc.get('EL_Hgt', 0)
+            if el > lcl:
+                # Creem una columna vertical al centre que representa la tempesta
+                width_km = (el - lcl) * 0.2 / 1000 
+                convective_mask = (zz_asl >= lcl) & (zz_asl <= el) & (np.abs(xx) < width_km)
+                cloud_data[convective_mask] = 2 # Marquem tota la columna com a nucli dens
+
+        masked_cloud_data = np.where(zz_asl > elev, cloud_data, 0)
+        
+        # Mapa de colors: 0=Transparent, 1=Gris clar semitransparent, 2=Blanc opac
+        cloud_cmap = ListedColormap(['#00000000', '#dcdcdc80', '#ffffffE6'])
+        cloud_norm = BoundaryNorm([0, 1, 2, 3], ncolors=cloud_cmap.N)
+        
+        ax.contourf(xx, zz_asl, masked_cloud_data, levels=[0.5, 1.5, 2.5], cmap=cloud_cmap, norm=cloud_norm, zorder=2)
+        ax.set_title("Secció Transversal Atmosfèrica - Nuvolositat (HR > 85%)")
+
+    # Dibuix del terreny, línies de nivell, barbes i marcadors (la resta de la funció)
     ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
     if np.min(elev) <= 5:
         x_wave = np.linspace(dist_centrat.min(), dist_centrat.max(), 200); y_wave = np.sin(x_wave * 0.5) * 5 + 5
@@ -8285,7 +8292,8 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
 
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['bearing_fixe']:.0f}°)")
     ax.set_ylabel("Elevació (m)")
-    ax.set_title("Secció Transversal Atmosfèrica")
+    if layer_to_show != "Núvols":
+        ax.set_title("Secció Transversal Atmosfèrica")
     ax.grid(True, linestyle=':', alpha=0.5, color='black', zorder=0)
     ax.legend(loc='upper left', fontsize=8)
     ax.set_ylim(bottom=0, top=max_alt_m)
