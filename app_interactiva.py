@@ -8097,23 +8097,23 @@ def analitzar_orografia(poble_sel, data_tuple):
 def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Versió 16.0 (Renderització Estil Diagrama Científic amb Flux Laminar i Turbulent):
-    - ESTIL VISUAL NET I TÈCNIC: Fons blanc i elements en blanc i negre per a una
-      claredat màxima, emulant un diagrama de publicació científica.
-    - CAPES DE FLUX LAMINAR: Dibuixa línies de flux horitzontals basades en el sondeig.
-      Aquestes línies es deformen suaument en passar sobre el relleu i generen ones
-      de muntanya a sotavent.
-    - SIMULACIÓ DE ZONES TURBULENTES (REBUFOS): A sotavent dels cims, el flux
-      laminar es trenca i es reemplaça per vòrtexs el·líptics que representen
-      la circulació caòtica del rotor (rebuf).
-    - PERFIL DE VENT REAL: Manté la columna de fletxes per mostrar el perfil de
-      vent vertical del sondeig, connectant directament les dades amb la visualització.
-    - FORMACIÓ DE NÚVOLS FÍSICA: Els núvols lenticulars i de rotor es formen com a
+    Versió 17.0 (Simulació de Flux Vectorial d'Alta Fidelitat):
+    - APROXIMACIÓ DEFINITIVA: Fusiona el realisme físic d'un model de flux amb la
+      claredat d'un diagrama científic.
+    - CAMP DE VENT VECTORIAL 2D: Construeix un camp de vent (u, w) a tota la graella.
+      La component horitzontal (u) es basa en el sondeig i la component vertical (w)
+      es simula basant-se en la interacció amb el terreny.
+    - BLOQUEIG FÍSIC I REBUFOS INDUÏTS: El relleu actua com una barrera sòlida. El
+      vent s'anul·la a l'interior, forçant el flux a ascendir i envoltar els obstacles.
+      Això genera de manera natural zones de rebuf i vòrtexs a sotavent.
+    - VISUALITZACIÓ AMB STREAMLINES: El camp de vent final es visualitza amb streamlines
+      que mostren el flux laminar, les ones de muntanya i la turbulència del rotor.
+    - FORMACIÓ DE NÚVOLS FÍSICA: Els núvols lenticulars i de rotor es generen com a
       ombrejats grisos només si les capes d'aire corresponents s'eleven per sobre
-      del nivell de condensació (LCL).
+      del nivell de condensació (LCL), integrant la termodinàmica a la dinàmica.
     """
     plt.style.use('default')
-    fig, ax = plt.subplots(figsize=(12, 7), dpi=150)
+    fig, ax = plt.subplots(figsize=(14, 8), dpi=150)
     fig.patch.set_facecolor('white')
     ax.set_facecolor('white')
 
@@ -8124,89 +8124,83 @@ def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
     wind_spd_kmh = analisi['wind_spd_kmh']
     lcl_hgt = params_calc.get('LCL_Hgt', 9999)
 
-    # --- 1. Simulació de la Deformació del Flux ---
+    # --- 1. Creació de la Graella i el Camp de Vent Base ---
     y_grid_base = np.linspace(0, max_alt_m, 150)
-    xx, zz_base = np.meshgrid(dist_centrat, y_grid_base)
+    xx, zz = np.meshgrid(dist_centrat, y_grid_base)
     
-    # Deformació deguda a les ones de muntanya
-    wave_deformation = np.zeros_like(xx)
-    peak_indices, properties = find_peaks(elev, prominence=250, width=5)
+    # Component horitzontal (u) del vent del sondeig (m/s)
+    u_base_ms = np.interp(y_grid_base, heights_m, wind_speed_profile) / 3.6
+    u_grid = np.tile(u_base_ms, (xx.shape[1], 1)).T
     
+    # Component vertical (w) inicialment zero
+    w_grid = np.zeros_like(xx)
+
+    # --- 2. Simulació de la Interacció del Flux amb el Terreny ---
+    terrain_slope = np.gradient(elev, dist_centrat * 1000)
+    slope_grid = np.tile(terrain_slope, (xx.shape[0], 1))
+    
+    # Ascens orogràfic a sobrevent
+    lift_mask = slope_grid > 0
+    decay_lift = np.exp(-zz / 1500.0)
+    w_grid[lift_mask] += (u_grid * slope_grid * decay_lift)[lift_mask]
+
+    # Vòrtexs i ones a sotavent
+    peak_indices, properties = find_peaks(elev, prominence=300, width=5)
     for i, peak_idx in enumerate(peak_indices):
         peak_prominence = properties["prominences"][i]
-        wavelength = wind_spd_kmh * 150
-        dist_from_peak = (xx - dist_centrat[peak_idx]) * 1000
-        downwind_mask = dist_from_peak > 0
         
-        initial_amplitude = peak_prominence * np.clip(wind_spd_kmh / 40.0, 0.5, 2.5)
-        decay_alt = np.exp(-zz_base / 3500.0)
-        decay_dist = np.exp(-dist_from_peak / (wavelength * 2.5))
-        wave = initial_amplitude * np.sin(2 * np.pi * dist_from_peak / wavelength) * decay_alt * decay_dist
-        wave_deformation[downwind_mask] += wave[downwind_mask]
-
-    # La graella final inclou el terreny i les ones
-    zz_deformat = zz_base + elev + wave_deformation
-
-    # --- 2. Dibuix de les Capes de Flux i els Núvols ---
-    num_layers = 40
-    altitudes_inicials = np.linspace(np.min(heights_m), max_alt_m, num_layers)
-
-    for i in range(num_layers - 1):
-        y1, y2 = altitudes_inicials[i], altitudes_inicials[i+1]
-        
-        z1_deformed = np.array([np.interp(y1, y_grid_base, zz_deformat[:, col_idx]) for col_idx in range(xx.shape[1])])
-        z2_deformed = np.array([np.interp(y2, y_grid_base, zz_deformat[:, col_idx]) for col_idx in range(xx.shape[1])])
-        
-        ax.plot(dist_centrat, z1_deformed, color='black', linewidth=0.7)
-        if i == num_layers - 2: ax.plot(dist_centrat, z2_deformed, color='black', linewidth=0.7)
-        
-        is_cloud_mask = (z1_deformed + z2_deformed) / 2 > lcl_hgt
-        ax.fill_between(dist_centrat, z1_deformed, z2_deformed, 
-                        where=is_cloud_mask, color='lightgray', interpolate=True, zorder=3)
-
-    # --- 3. Dibuix dels Vòrtexs de Rotor (Rebufos) ---
-    for i, peak_idx in enumerate(peak_indices):
-        peak_prominence = properties["prominences"][i]
-        rotor_x_center = dist_centrat[peak_idx] + 3.0
+        # Posició i força del vòrtex principal (rotor)
+        rotor_x_center = dist_centrat[peak_idx] + 2.5
         rotor_z_center = peak_prominence * 0.8
-        rotor_width = 4.0
-        rotor_height = peak_prominence * 0.8
-        
-        # Dibuixem el vòrtex amb streamlines el·líptiques
-        for scale in np.linspace(0.2, 1.0, 5):
-            ellipse = Ellipse(xy=(rotor_x_center, rotor_z_center), 
-                              width=rotor_width * scale, height=rotor_height * scale,
-                              facecolor='none', edgecolor='black', linewidth=0.7,
-                              zorder=4)
-            ax.add_patch(ellipse)
-        
-        # Fletxes per indicar la rotació
-        ax.arrow(rotor_x_center, rotor_z_center - rotor_height * 0.3, 1.0, 0, 
-                 head_width=150, head_length=0.5, fc='k', ec='k', zorder=4)
-        ax.arrow(rotor_x_center, rotor_z_center + rotor_height * 0.3, -1.0, 0, 
-                 head_width=150, head_length=0.5, fc='k', ec='k', zorder=4)
+        rotor_radius = peak_prominence * 1.5
+        vortex_strength = (peak_prominence / 400) * (wind_spd_kmh / 3.6) * -20
 
-    # --- 4. Dibuix del Terreny i Anotacions ---
+        dist_x_from_center = (xx - rotor_x_center) * 1000
+        dist_z_from_center = zz - rotor_z_center
+        r_sq = dist_x_from_center**2 + dist_z_from_center**2
+        r_sq[r_sq == 0] = 1e-6
+        
+        # Camp de vent induït pel vòrtex
+        u_vortex = vortex_strength * dist_z_from_center / r_sq
+        w_vortex = -vortex_strength * dist_x_from_center / r_sq
+        vortex_mask = np.exp(-(r_sq / (rotor_radius**2)))
+        u_grid += u_vortex * vortex_mask
+        w_grid += w_vortex * vortex_mask
+
+    # --- 3. Aplicació del Bloqueig Físic del Terreny ---
+    terrain_mask = zz < np.interp(xx, dist_centrat, elev)
+    u_grid[terrain_mask] = 0
+    w_grid[terrain_mask] = 0
+
+    # --- 4. Dibuix del Flux d'Aire (Streamlines) ---
+    ax.streamplot(xx, zz, u_grid, w_grid, 
+                  color='black', 
+                  linewidth=0.9, 
+                  density=2.0,
+                  arrowsize=0.9)
+
+    # --- 5. Simulació i Dibuix de Núvols ---
+    # Calculem l'elevació final de cada punt de la graella seguint el flux
+    # (Integració simple: posició_final = posició_inicial + velocitat_vertical * temps_de_pas)
+    dt = (dist_centrat[1] - dist_centrat[0]) * 1000 / u_grid
+    dt[u_grid < 1] = 0 # Evitar temps infinits
+    vertical_displacement = np.cumsum(w_grid * dt, axis=1)
+    zz_final = zz + vertical_displacement
+    
+    cloud_mask = (zz_final > lcl_hgt) & (zz > np.interp(xx, dist_centrat, elev))
+    
+    # Ombrejat suau per als núvols
+    ax.contourf(xx, zz_final, cloud_mask.astype(float), 
+                levels=[0.5, 1.5], colors=['lightgray'], alpha=0.8, zorder=3)
+    ax.contour(xx, zz_final, cloud_mask.astype(float),
+               levels=[0.5], colors=['black'], linewidths=0.6, zorder=3)
+
+    # --- 6. Dibuix del Terreny i Anotacions ---
     ax.fill_between(dist_centrat, 0, elev, color='black', zorder=5)
 
-    ax.annotate('Strong winds', xy=(dist_centrat[5], max_alt_m * 0.85), xytext=(dist_centrat[5], max_alt_m * 0.92),
-                arrowprops=dict(arrowstyle="->", color='black'), fontsize=10)
-    ax.annotate('Ridge lift', xy=(dist_centrat[int(len(dist_centrat)*0.3)], max_alt_m * 0.4), 
-                xytext=(dist_centrat[int(len(dist_centrat)*0.7)], max_alt_m * 0.5),
-                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=.2", color='black'), ha='center', fontsize=10)
-
-    # Perfil de vent del sondeig
-    x_perfil = dist_centrat[int(len(dist_centrat)*0.5)]
-    ax.plot([x_perfil, x_perfil], [0, max_alt_m], color='black', linestyle='-', linewidth=0.5, alpha=0.8)
-    for alt in np.arange(500, max_alt_m, 250):
-        wind_at_alt = np.interp(alt, heights_m, wind_speed_profile)
-        ax.arrow(x_perfil, alt, wind_at_alt / 10, 0, 
-                 head_width=80, head_length=1.0, fc='k', ec='k', length_includes_head=True)
-
-    # --- 5. Configuració Final del Gràfic ---
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['bearing_fixe']:.0f}°)")
     ax.set_ylabel("Elevació (m)")
-    ax.set_title("Simulació de Flux Orogràfic amb Bloqueig i Rebufos")
+    ax.set_title("Simulació de Flux Orogràfic amb Interacció Física")
     ax.grid(False)
     ax.set_ylim(bottom=0, top=max_alt_m)
     ax.set_xlim(dist_centrat.min(), dist_centrat.max())
@@ -8214,8 +8208,6 @@ def crear_grafic_perfil_orografic(analisi, params_calc, max_alt_m):
     ax.invert_xaxis()
     plt.tight_layout(pad=1.5)
     return fig
-
-
 
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     """
