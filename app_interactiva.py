@@ -7623,11 +7623,11 @@ def run_catalunya_app():
 
 def analitzar_orografia(poble_sel, data_tuple):
     """
-    Algoritme v9.5 d'anàlisi orogràfica (Diagnòstic per Pendent).
-    - DIAGNÒSTIC MILLORAT: En lloc de basar-se en la posició relativa a un cim,
-      ara analitza el pendent real del terreny en els 15 km previs a la localitat.
-      Això proporciona un diagnòstic de sobrevent/sotavent molt més precís i fiable.
-    - Textos de diagnòstic més detallats i meteorològicament rellevants.
+    Algoritme v9.5.1 d'anàlisi orogràfica (Correcció d'Error d'Atribut).
+    - CORRECCIÓ DE BUG CRÍTIC: S'ha corregit un error de tecleig ('v.ms' en lloc de 'v.m')
+      que provocava un AttributeError en preparar les dades del sondeig per al gràfic.
+    - Manté totes les funcionalitats anteriors, incloent el diagnòstic per pendent
+      i la reconstrucció de cims per a una visualització precisa.
     """
     if not data_tuple: return {"error": "Falten dades del sondeig."}
     sounding_data, params_calc = data_tuple
@@ -7670,44 +7670,41 @@ def analitzar_orografia(poble_sel, data_tuple):
     dist_al_poble = [haversine_distance(poble_coords['lat'], poble_coords['lon'], lat, lon) for lat, lon in zip(profile_data['lats'], profile_data['lons'])]
     idx_poble = np.argmin(dist_al_poble); elev_poble = elevations[idx_poble]
     
-    # --- NOU SISTEMA DE DIAGNÒSTIC BASAT EN PENDENT ---
     if wind_spd_kmh < 15:
         posicio, diagnostico, detalls = "Indeterminat (Vent Feble)", "Efecte Orogràfic Menyspreable", "El vent és massa feble per a interactuar de manera significativa amb el terreny."
     else:
-        # Analitzem el terreny en els 15 km previs (uns 20 punts en el nostre transecte de 80km/100p)
         idx_inici_analisi = max(0, idx_poble - 20)
-        
-        # Assegurem que hi hagi prou punts per a un càlcul de pendent fiable
         if idx_poble > idx_inici_analisi + 5:
             dist_tram = distances[idx_inici_analisi:idx_poble]
             elev_tram = elevations[idx_inici_analisi:idx_poble]
-            # Calculem el pendent (metres d'ascens per metre de distància horitzontal)
             pendent = np.polyfit(dist_tram * 1000, elev_tram, 1)[0]
-            
-            if abs(pendent) < 0.01: # Menys d'un 1% de pendent mitjà
+            if abs(pendent) < 0.01:
                  posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "El flux de vent travessa un terreny majoritàriament pla, sense forçaments verticals notables."
-            elif pendent > 0.03: # Més d'un 3% de pendent positiu
+            elif pendent > 0.03:
                 posicio, diagnostico, detalls = "Sobrevent", "Ascens Orogràfic Forçat", "El flux d'aire impacta directament contra un pendent ascendent. Aquest mecanisme refreda l'aire i n'augmenta la humitat relativa, podent actuar com a disparador de nuvolositat o precipitació si hi ha prou humitat."
-            elif pendent < -0.03: # Més d'un 3% de pendent negatiu
+            elif pendent < -0.03:
                 posicio, diagnostico, detalls = "Sotavent", "Subsidència i Efecte Foehn", "L'aire descendeix per un pendent. Aquest moviment comprimeix i reescalfa l'aire, dissipant la nuvolositat i provocant un augment de la temperatura i una forta caiguda de la humitat (efecte Foehn)."
             else:
                 posicio, diagnostico, detalls = "Flux Paral·lel / Terreny Ondulat", "Efectes Locals Menors", "El vent es mou paral·lel a les principals línies orogràfiques o sobre un terreny amb ondulacions suaus. Es poden produir turbulències locals però sense un forçament a gran escala."
         else:
              posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "La localitat es troba a l'inici del transecte, en una zona oberta sense obstacles orogràfics previs."
-    # --- FI DEL NOU SISTEMA ---
 
     cim_principal_info = { "name": "Cim de Referència", "ele": np.max(elevations), "lat": profile_data['lats'][np.argmax(elevations)], "lon": profile_data['lons'][np.argmax(elevations)] }
     
     rh_profile = (mpcalc.relative_humidity_from_dewpoint(T, Td) * 100).m
     wind_speed_profile = mpcalc.wind_speed(u, v).to('km/h').m; temp_profile = T.m
 
+    # <<<--- LÍNIA CORREGIDA AQUÍ ---
+    # S'ha canviat 'v.ms' per 'v.m' per a evitar l'AttributeError.
+    sondeig_complet_per_grafic = (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile)
+
     return {
         "transect_distances": distances, "transect_elevations": elevations, "poble_sel": poble_sel, "poble_dist": distances[idx_poble], "poble_elev": elev_poble,
         "wind_dir_from": wind_dir_from_real, "wind_spd_kmh": wind_spd_kmh, "posicio": posicio, "diagnostico": diagnostico, "detalls": detalls,
         "cim_principal": cim_principal_info, "altres_cims": cims_propers,
-        "sondeig_perfil_complet": (heights.m, u.m, v.ms, rh_profile, temp_profile, wind_speed_profile),
+        "sondeig_perfil_complet": sondeig_complet_per_grafic,
         "transect_coords": (profile_data['lats'], profile_data['lons']),
-        "bearing_fixe": wind_dir_from_real # L'etiqueta del gràfic ara mostrarà el vent real
+        "bearing_fixe": wind_dir_from_real
     }
 
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
