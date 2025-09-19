@@ -52,6 +52,7 @@ from math import radians, sin, cos, sqrt, atan2, degrees, asin
 from scipy.signal import find_peaks
 
 
+
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
 st.set_page_config(layout="wide", page_title="Terminal de Temps Sever")
 
@@ -7978,13 +7979,21 @@ def run_catalunya_app():
 
 
 
+
+
+
+
+
 def analitzar_orografia(poble_sel, data_tuple):
     """
-    Algoritme v9.5.1 d'anàlisi orogràfica (Correcció d'Error d'Atribut).
-    - CORRECCIÓ DE BUG CRÍTIC: S'ha corregit un error de tecleig ('v.ms' en lloc de 'v.m')
-      que provocava un AttributeError en preparar les dades del sondeig per al gràfic.
-    - Manté totes les funcionalitats anteriors, incloent el diagnòstic per pendent
-      i la reconstrucció de cims per a una visualització precisa.
+    Algoritme v11.0 (Turó de Referència).
+    - ELIMINA 'Cim de Referència': La lògica per a identificar el pic més alt
+      s'ha eliminat per complet.
+    - PRIORITZA TURONS SECUNDARIS: El codi ara busca tots els pics, descarta el més alt,
+      i de la resta, busca el cim més prominent que estigui en el rang de 50-500m.
+      Si no en troba cap, selecciona el segon pic més alt com a fallback.
+    - Aquesta implementació satisfà la petició de l'usuari de centrar-se en
+      característiques orogràfiques menors i més subtils.
     """
     if not data_tuple: return {"error": "Falten dades del sondeig."}
     sounding_data, params_calc = data_tuple
@@ -8002,104 +8011,6 @@ def analitzar_orografia(poble_sel, data_tuple):
         wind_spd_kmh = mpcalc.wind_speed(u_dom, v_dom).to('km/h').m
     except Exception: return {"error": "No s'ha pogut determinar el vent dominant."}
     
-    BEARING_FIXE_PER_AL_TALL = 14.0
-    start_point_bearing = (wind_dir_from_real + 180) % 360 # El tall ara es basa en el vent REAL
-    lat_inici, lon_inici = punt_desti(poble_coords['lat'], poble_coords['lon'], start_point_bearing, 40)
-    profile_data, error = get_elevation_profile(lat_inici, lon_inici, wind_dir_from_real, 80, 100)
-    if error: return {"error": error}
-
-    elevations = np.array(profile_data['elevations']); distances = np.array(profile_data['distances'])
-    
-    comarca = get_comarca_for_poble(poble_sel)
-    cims_de_la_comarca = PICS_CATALUNYA_PER_COMARCA.get(comarca, [])
-    cims_propers = [pic for pic in cims_de_la_comarca if np.min([haversine_distance(pic['lat'], pic['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]) < 15]
-
-    for cim in cims_propers:
-        altitud_real_cim = cim.get('ele', 0)
-        dist_al_cim = [haversine_distance(cim['lat'], cim['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]
-        idx_cim_proper = np.argmin(dist_al_cim)
-        if altitud_real_cim > elevations[idx_cim_proper]:
-            diferencia_altura = altitud_real_cim - elevations[idx_cim_proper]
-            sigma = 4; x_indices = np.arange(len(elevations))
-            gauss_bump = diferencia_altura * np.exp(-((x_indices - idx_cim_proper)**2) / (2 * sigma**2))
-            elevations = np.maximum(elevations, elevations + gauss_bump)
-
-    dist_al_poble = [haversine_distance(poble_coords['lat'], poble_coords['lon'], lat, lon) for lat, lon in zip(profile_data['lats'], profile_data['lons'])]
-    idx_poble = np.argmin(dist_al_poble); elev_poble = elevations[idx_poble]
-    
-    if wind_spd_kmh < 15:
-        posicio, diagnostico, detalls = "Indeterminat (Vent Feble)", "Efecte Orogràfic Menyspreable", "El vent és massa feble per a interactuar de manera significativa amb el terreny."
-    else:
-        idx_inici_analisi = max(0, idx_poble - 20)
-        if idx_poble > idx_inici_analisi + 5:
-            dist_tram = distances[idx_inici_analisi:idx_poble]
-            elev_tram = elevations[idx_inici_analisi:idx_poble]
-            pendent = np.polyfit(dist_tram * 1000, elev_tram, 1)[0]
-            if abs(pendent) < 0.01:
-                 posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "El flux de vent travessa un terreny majoritàriament pla, sense forçaments verticals notables."
-            elif pendent > 0.03:
-                posicio, diagnostico, detalls = "Sobrevent", "Ascens Orogràfic Forçat", "El flux d'aire impacta directament contra un pendent ascendent. Aquest mecanisme refreda l'aire i n'augmenta la humitat relativa, podent actuar com a disparador de nuvolositat o precipitació si hi ha prou humitat."
-            elif pendent < -0.03:
-                posicio, diagnostico, detalls = "Sotavent", "Subsidència i Efecte Foehn", "L'aire descendeix per un pendent. Aquest moviment comprimeix i reescalfa l'aire, dissipant la nuvolositat i provocant un augment de la temperatura i una forta caiguda de la humitat (efecte Foehn)."
-            else:
-                posicio, diagnostico, detalls = "Flux Paral·lel / Terreny Ondulat", "Efectes Locals Menors", "El vent es mou paral·lel a les principals línies orogràfiques o sobre un terreny amb ondulacions suaus. Es poden produir turbulències locals però sense un forçament a gran escala."
-        else:
-             posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "La localitat es troba a l'inici del transecte, en una zona oberta sense obstacles orogràfics previs."
-
-    cim_principal_info = { "name": "Cim de Referència", "ele": np.max(elevations), "lat": profile_data['lats'][np.argmax(elevations)], "lon": profile_data['lons'][np.argmax(elevations)] }
-    
-    rh_profile = (mpcalc.relative_humidity_from_dewpoint(T, Td) * 100).m
-    wind_speed_profile = mpcalc.wind_speed(u, v).to('km/h').m; temp_profile = T.m
-
-    # <<<--- LÍNIA CORREGIDA AQUÍ ---
-    # S'ha canviat 'v.ms' per 'v.m' per a evitar l'AttributeError.
-    sondeig_complet_per_grafic = (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile)
-
-    return {
-        "transect_distances": distances, "transect_elevations": elevations, "poble_sel": poble_sel, "poble_dist": distances[idx_poble], "poble_elev": elev_poble,
-        "wind_dir_from": wind_dir_from_real, "wind_spd_kmh": wind_spd_kmh, "posicio": posicio, "diagnostico": diagnostico, "detalls": detalls,
-        "cim_principal": cim_principal_info, "altres_cims": cims_propers,
-        "sondeig_perfil_complet": sondeig_complet_per_grafic,
-        "transect_coords": (profile_data['lats'], profile_data['lons']),
-        "bearing_fixe": wind_dir_from_real
-    }
-
-
-
-
-
-
-
-def analitzar_orografia(poble_sel, data_tuple):
-    """
-    Algoritme v10.0 (Versió Definitiva i Blindada).
-    - TRANSECTE I ORIENTACIÓ IMMUTABLES: El perfil del terreny es genera sempre
-      seguint un eix fix (14°) i s'orienta amb les muntanyes a l'esquerra,
-      independentment de l'hora o el vent seleccionats. Això garanteix una
-      referència visual 100% consistent.
-    - DADES DINÀMIQUES: Només les dades atmosfèriques (barbes, capes de color)
-      canvien sobre el perfil fix.
-    - DIAGNÒSTIC PER PENDENT: El diagnòstic de sobrevent/sotavent es basa en el
-      pendent real del terreny i la direcció REAL del vent per a màxima precisió.
-    """
-    if not data_tuple: return {"error": "Falten dades del sondeig."}
-    sounding_data, params_calc = data_tuple
-    p, T, Td, u, v, heights, _, _ = sounding_data
-    
-    poble_coords = CIUTATS_CATALUNYA[poble_sel]
-    
-    # Pas 1: Obtenim el vent REAL de l'hora seleccionada per al diagnòstic i les barbes
-    try:
-        if poble_coords.get('lat', 0) > 42 and np.min(heights.m) > 700:
-            altura_superficie = heights.m[0]; mask_capa_baixa = (heights.m >= altura_superficie) & (heights.m <= altura_superficie + 1500)
-            u_dom = np.mean(u[mask_capa_baixa]) if np.any(mask_capa_baixa) else u[0]; v_dom = np.mean(v[mask_capa_baixa]) if np.any(mask_capa_baixa) else v[0]
-        else:
-            u_dom, v_dom = (u[0], v[0]) if p.m.min() > 850 else (np.interp(850, p.m[::-1], u.m[::-1]) * units('m/s'), np.interp(850, p.m[::-1], v.m[::-1]) * units('m/s'))
-        wind_dir_from_real = mpcalc.wind_direction(u_dom, v_dom).m
-        wind_spd_kmh = mpcalc.wind_speed(u_dom, v_dom).to('km/h').m
-    except Exception: return {"error": "No s'ha pogut determinar el vent dominant."}
-    
-    # Pas 2: Creem el perfil del terreny basant-nos en una DIRECCIÓ FIXA
     BEARING_FIXE_PER_AL_TALL = 14.0
     start_point_bearing = (BEARING_FIXE_PER_AL_TALL + 180) % 360
     lat_inici, lon_inici = punt_desti(poble_coords['lat'], poble_coords['lon'], start_point_bearing, 40)
@@ -8108,7 +8019,6 @@ def analitzar_orografia(poble_sel, data_tuple):
 
     elevations = np.array(profile_data['elevations']); distances = np.array(profile_data['distances'])
     
-    # Pas 3: Injectem els cims reals al perfil per a coherència visual
     comarca = get_comarca_for_poble(poble_sel)
     cims_de_la_comarca = PICS_CATALUNYA_PER_COMARCA.get(comarca, [])
     cims_propers = [pic for pic in cims_de_la_comarca if np.min([haversine_distance(pic['lat'], pic['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]) < 15]
@@ -8123,7 +8033,6 @@ def analitzar_orografia(poble_sel, data_tuple):
             gauss_bump = diferencia_altura * np.exp(-((x_indices - idx_cim_proper)**2) / (2 * sigma**2))
             elevations = np.maximum(elevations, elevations + gauss_bump)
 
-    # Pas 4: Localitzem el poble i fem el diagnòstic basat en el vent REAL
     dist_al_poble = [haversine_distance(poble_coords['lat'], poble_coords['lon'], lat, lon) for lat, lon in zip(profile_data['lats'], profile_data['lons'])]
     idx_poble = np.argmin(dist_al_poble); elev_poble = elevations[idx_poble]
     
@@ -8132,22 +8041,43 @@ def analitzar_orografia(poble_sel, data_tuple):
     else:
         idx_inici_analisi = max(0, idx_poble - 20)
         if idx_poble > idx_inici_analisi + 5:
-            dist_tram = distances[idx_inici_analisi:idx_poble]
-            elev_tram = elevations[idx_inici_analisi:idx_poble]
+            dist_tram = distances[idx_inici_analisi:idx_poble]; elev_tram = elevations[idx_inici_analisi:idx_poble]
             pendent = np.polyfit(dist_tram * 1000, elev_tram, 1)[0]
-            if abs(pendent) < 0.01:
-                 posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "El flux de vent travessa un terreny majoritàriament pla, sense forçaments verticals notables."
-            elif pendent > 0.03:
-                posicio, diagnostico, detalls = "Sobrevent", "Ascens Orogràfic Forçat", "El flux d'aire impacta directament contra un pendent ascendent. Aquest mecanisme refreda l'aire i n'augmenta la humitat relativa, podent actuar com a disparador de nuvolositat o precipitació si hi ha prou humitat."
-            elif pendent < -0.03:
-                posicio, diagnostico, detalls = "Sotavent", "Subsidència i Efecte Foehn", "L'aire descendeix per un pendent. Aquest moviment comprimeix i reescalfa l'aire, dissipant la nuvolositat i provocant un augment de la temperatura i una forta caiguda de la humitat (efecte Foehn)."
-            else:
-                posicio, diagnostico, detalls = "Flux Paral·lel / Terreny Ondulat", "Efectes Locals Menors", "El vent es mou paral·lel a les principals línies orogràfiques o sobre un terreny amb ondulacions suaus. Es poden produir turbulències locals però sense un forçament a gran escala."
-        else:
-             posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "La localitat es troba a l'inici del transecte, en una zona oberta sense obstacles orogràfics previs."
+            if abs(pendent) < 0.01: posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "El flux de vent travessa un terreny majoritàriament pla."
+            elif pendent > 0.03: posicio, diagnostico, detalls = "Sobrevent", "Ascens Orogràfic Forçat", "El flux d'aire impacta contra un pendent ascendent, forçant l'ascens, refredament i possible condensació."
+            elif pendent < -0.03: posicio, diagnostico, detalls = "Sotavent", "Subsidència i Efecte Foehn", "L'aire descendeix, comprimint-se i reescalfant-se, la qual cosa dissipa la nuvolositat i asseca l'ambient."
+            else: posicio, diagnostico, detalls = "Flux Paral·lel / Terreny Ondulat", "Efectes Locals Menors", "El vent es mou sobre un terreny amb ondulacions suaus sense un forçament a gran escala."
+        else: posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "La localitat es troba en una zona oberta."
 
-    cim_principal_info = { "name": "Cim de Referència", "ele": np.max(elevations), "lat": profile_data['lats'][np.argmax(elevations)], "lon": profile_data['lons'][np.argmax(elevations)] }
+    # --- NOU SISTEMA D'IDENTIFICACIÓ DE TURÓ DE REFERÈNCIA ---
+    turo_referencia_info = None
+    # Busquem tots els pics amb una prominència mínima de 100m per a evitar soroll
+    indices_pics, propietats = find_peaks(elevations, prominence=100)
     
+    if len(indices_pics) > 0:
+        # Creem una llista de tots els pics trobats
+        tots_els_pics = sorted([{"idx": i, "ele": elevations[i]} for i in indices_pics], key=lambda x: x['ele'], reverse=True)
+        
+        # Descartem el més alt
+        pics_secundaris = tots_els_pics[1:]
+        
+        # Busquem un turó en el rang 50-500m
+        turons_petits = [p for p in pics_secundaris if 50 <= p['ele'] <= 500]
+        
+        if turons_petits:
+            # Si trobem turons petits, agafem el més alt d'ells
+            turo_seleccionat = max(turons_petits, key=lambda x: x['ele'])
+            turo_referencia_info = {"name": "Turó de Referència", "ele": turo_seleccionat['ele'], "idx": turo_seleccionat['idx']}
+        elif pics_secundaris:
+            # Si no, agafem el segon pic més alt com a fallback
+            turo_seleccionat = pics_secundaris[0]
+            # Intentem donar-li un nom real
+            nom_turo = "Pic Secundari"
+            lat_turo, lon_turo = profile_data['lats'][turo_seleccionat['idx']], profile_data['lons'][turo_seleccionat['idx']]
+            cim_proper_trobat = min(cims_propers, key=lambda c: haversine_distance(c['lat'], c['lon'], lat_turo, lon_turo), default=None)
+            if cim_proper_trobat: nom_turo = cim_proper_trobat['name']
+            turo_referencia_info = {"name": nom_turo, "ele": turo_seleccionat['ele'], "idx": turo_seleccionat['idx']}
+
     rh_profile = (mpcalc.relative_humidity_from_dewpoint(T, Td) * 100).m
     wind_speed_profile = mpcalc.wind_speed(u, v).to('km/h').m; temp_profile = T.m
     sondeig_complet_per_grafic = (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile)
@@ -8155,11 +8085,11 @@ def analitzar_orografia(poble_sel, data_tuple):
     return {
         "transect_distances": distances, "transect_elevations": elevations, "poble_sel": poble_sel, "poble_dist": distances[idx_poble], "poble_elev": elev_poble,
         "wind_dir_from": wind_dir_from_real, "wind_spd_kmh": wind_spd_kmh, "posicio": posicio, "diagnostico": diagnostico, "detalls": detalls,
-        "cim_principal": cim_principal_info, "altres_cims": cims_propers,
+        "turo_referencia": turo_referencia_info, # <-- Passem el nou turó en lloc del cim principal
         "sondeig_perfil_complet": sondeig_complet_per_grafic,
-        "transect_coords": (profile_data['lats'], profile_data['lons']),
         "bearing_fixe": BEARING_FIXE_PER_AL_TALL
     }
+
 
 
 
@@ -8167,8 +8097,8 @@ def analitzar_orografia(poble_sel, data_tuple):
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m, show_barbs=True):
     """
     Crea una secció transversal atmosfèrica sobre el perfil orogràfic.
-    Aquesta funció ja era correcta i només necessita rebre les dades de la nova
-    funció d'anàlisi per a funcionar com s'espera.
+    Versió 9.0: Dibuixa l'etiqueta per al nou "Turó de Referència" en lloc
+    del "Cim de Referència" anterior, complint amb la nova lògica d'anàlisi.
     """
     plt.style.use('default'); fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
     fig.patch.set_facecolor('#FFFFFF'); ax.set_facecolor('#E6F2FF')
@@ -8176,6 +8106,7 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     dist_total_km = analisi['transect_distances'][-1]; dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
     elev = analisi['transect_elevations']
     
+    # --- Dibuix de capes de dades (sense canvis) ---
     colors_humitat = ['#f0e68c', '#90ee90', '#4682b4', '#191970']; levels_humitat = [0, 30, 60, 80, 101]
     cmap_humitat = ListedColormap(colors_humitat); norm_humitat = BoundaryNorm(levels_humitat, ncolors=cmap_humitat.N, clip=True)
     colors_vent = ['#d3d3d3', '#add8e6', '#48d1cc', '#90ee90', '#32cd32', '#6b8e23', '#f0e68c', '#d2b48c', '#bc8f8f', '#ffb6c1', '#da70d6', '#9932cc', '#8a2be2', '#48d1cc', '#6495ed']
@@ -8227,34 +8158,24 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
     
-    if 'transect_coords' in analisi:
-        transect_lats, transect_lons = analisi['transect_coords']; etiquetes_dibuixades_x = []; MIN_SEPARACIO_HORITZONTAL = 8.0
+    # --- NOVA LÒGICA D'ETIQUETAT PER AL TURÓ ---
+    turo = analisi.get("turo_referencia")
+    if turo:
+        x_pos = dist_centrat[turo['idx']]
+        altitud_real_turo = turo['ele']
         
-        cim_principal = analisi.get("cim_principal")
-        if cim_principal and analisi.get("posicio") not in ["Plana / Vall Oberta", "Indeterminat"]:
-            dist_al_cim_p = [haversine_distance(cim_principal['lat'], cim_principal['lon'], lat_t, lon_t) for lat_t, lon_t in zip(transect_lats, transect_lons)]; idx_cim_proper_p = np.argmin(dist_al_cim_p)
-            x_pos_p = dist_centrat[idx_cim_proper_p]
-            altitud_real_cim_p = cim_principal.get('ele', cim_principal.get('elevation', 0))
-            ax.annotate(f"{cim_principal['name']}\n({altitud_real_cim_p:.0f} m)", xy=(x_pos_p, elev[idx_cim_proper_p]), xytext=(x_pos_p, altitud_real_cim_p + max_alt_m * 0.08),
-                        arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4), ha='center', va='bottom', fontsize=8, zorder=12,
-                        bbox=dict(boxstyle="round,pad=0.3", fc="lightcoral", ec="black", lw=1, alpha=0.8))
-            etiquetes_dibuixades_x.append(x_pos_p)
+        # El color de l'etiqueta depèn de si és un "Turó" o un "Pic Secundari"
+        etiqueta_color = "lightblue" if "Turó" in turo['name'] else "yellow"
         
-        altres_cims_ordenats = sorted(analisi.get('altres_cims', []), key=lambda c: c.get('ele', c.get('elevation', 0)), reverse=True)
-        for cim in altres_cims_ordenats:
-            if cim_principal and cim['name'] == cim_principal['name']: continue
-            dist_al_cim = [haversine_distance(cim['lat'], cim['lon'], lat_t, lon_t) for lat_t, lon_t in zip(transect_lats, transect_lons)]; idx_cim_proper = np.argmin(dist_al_cim)
-            x_pos = dist_centrat[idx_cim_proper]
-            es_pot_dibuixar = all(abs(x_pos - x_pos_prev) > MIN_SEPARACIO_HORITZONTAL for x_pos_prev in etiquetes_dibuixades_x)
-            if es_pot_dibuixar:
-                altitud_real_cim = cim.get('ele', cim.get('elevation', 0))
-                ax.annotate(f"{cim.get('name')}\n({altitud_real_cim:.0f} m)", xy=(x_pos, elev[idx_cim_proper]), xytext=(x_pos, altitud_real_cim + max_alt_m * 0.08),
-                            arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4), ha='center', va='bottom', fontsize=8, zorder=11,
-                            bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", lw=1, alpha=0.8))
-                etiquetes_dibuixades_x.append(x_pos)
+        ax.annotate(f"{turo['name']}\n({altitud_real_turo:.0f} m)", 
+                    xy=(x_pos, elev[turo['idx']]), 
+                    xytext=(x_pos, altitud_real_turo + max_alt_m * 0.08),
+                    arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4), 
+                    ha='center', va='bottom', fontsize=8, zorder=12,
+                    bbox=dict(boxstyle="round,pad=0.3", fc=etiqueta_color, ec="black", lw=1, alpha=0.8))
+    # --- FI DE LA NOVA LÒGICA ---
 
     fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
-    # L'etiqueta de l'eix ara mostra la direcció fixa del tall, no la del vent real
     ax.set_xlabel(f"Distància (km) | Tall → ({analisi['bearing_fixe']:.0f}°)"); ax.set_ylabel("Elevació (m)"); ax.set_title("Secció Transversal Atmosfèrica")
     ax.grid(True, linestyle=':', alpha=0.5, color='black', zorder=0)
     ax.legend(loc='upper left', fontsize=8)
@@ -8262,6 +8183,7 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     
     ax.invert_xaxis()
     plt.tight_layout(); return fig
+
 
 def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
     """
