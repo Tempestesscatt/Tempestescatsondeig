@@ -8151,12 +8151,9 @@ def run_catalunya_app():
 
 def analitzar_orografia(poble_sel, data_tuple):
     """
-    Algoritme v18.0 (Realisme Orogràfic amb Font de Dades Única).
-    - El perfil del terreny es genera exclusivament a partir de l'API d'elevació d'alta resolució.
-    - S'elimina completament la lògica que afegia "cims artificials", solucionant el bug de les "muntanyes fantasma".
-    - La llista de cims famosos ara s'utilitza només per a identificar i etiquetar els pics
-      que ja existeixen al perfil real del terreny.
-    - L'elevació del poble es determina amb precisió a partir del perfil del terreny.
+    Algoritme v18.2 (Correcció AttributeError).
+    - Soluciona el bug crític que passava en intentar accedir a l'atribut '.ms' inexistent
+      en les variables de vent. S'ha corregit per a utilitzar l'atribut correcte '.m'.
     """
     if not data_tuple: return {"error": "Falten dades del sondeig."}
     sounding_data, params_calc = data_tuple
@@ -8180,36 +8177,23 @@ def analitzar_orografia(poble_sel, data_tuple):
     profile_data, error = get_elevation_profile(lat_inici, lon_inici, BEARING_FIXE_PER_AL_TALL, 80, 100)
     if error: return {"error": error}
     
-    elevations = np.array(profile_data['elevations'])
-    distances = np.array(profile_data['distances'])
-    
+    elevations = np.array(profile_data['elevations']); distances = np.array(profile_data['distances'])
     dist_al_poble = [haversine_distance(poble_coords['lat'], poble_coords['lon'], lat, lon) for lat, lon in zip(profile_data['lats'], profile_data['lons'])]
-    idx_poble = np.argmin(dist_al_poble)
-    elev_poble_precisa = elevations[idx_poble]
+    idx_poble = np.argmin(dist_al_poble); elev_poble_precisa = elevations[idx_poble]
     
-    # --- NOVA LÒGICA D'ETIQUETAT (SENSE MODIFICAR EL TERRENY) ---
     punts_dinteres_etiquetes = []
     comarca = get_comarca_for_poble(poble_sel)
     cims_de_la_comarca = PICS_CATALUNYA_PER_COMARCA.get(comarca, [])
     cims_propers = [pic for pic in cims_de_la_comarca if np.min([haversine_distance(pic['lat'], pic['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]) < 10]
-    
     for cim in cims_propers:
         dist_al_cim = [haversine_distance(cim['lat'], cim['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]
         idx_cim_proper = np.argmin(dist_al_cim)
-        
-        # Comprovem si el punt del perfil és realment un pic prominent
         indices_pics_locals, _ = find_peaks(elevations[max(0, idx_cim_proper-10):idx_cim_proper+10], prominence=100)
         if any(p + max(0, idx_cim_proper-10) == idx_cim_proper for p in indices_pics_locals):
-            punts_dinteres_etiquetes.append({
-                "name": cim['name'],
-                "ele_oficial": cim['ele'],
-                "idx": idx_cim_proper
-            })
-    # --- FI DE LA NOVA LÒGICA ---
+            punts_dinteres_etiquetes.append({"name": cim['name'], "ele_oficial": cim['ele'], "idx": idx_cim_proper})
 
-    # ... (la resta de la funció per al diagnòstic de posició i preparació de dades de sondeig es manté igual) ...
     if wind_spd_kmh < 15: posicio, diagnostico, detalls = "Indeterminat (Vent Feble)", "Efecte Orogràfic Menyspreable", "El vent és massa feble per a interactuar de manera significativa amb el terreny."
-    else: # ... (la teva lògica de sobrevent/sotavent aquí)
+    else:
         idx_inici_analisi = max(0, idx_poble - 20)
         if idx_poble > idx_inici_analisi + 5:
             dist_tram = distances[idx_inici_analisi:idx_poble]; elev_tram = elevations[idx_inici_analisi:idx_poble]; pendent = np.polyfit(dist_tram * 1000, elev_tram, 1)[0]
@@ -8223,19 +8207,22 @@ def analitzar_orografia(poble_sel, data_tuple):
     wind_speed_profile = mpcalc.wind_speed(u, v).to('km/h').m; temp_profile = T.m
     theta_e_profile = mpcalc.equivalent_potential_temperature(p, T, Td).to('K').m
     parcel_profile = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC').m
-    sondeig_complet_per_grafic = (heights.m, u.ms, v.ms, rh_profile, temp_profile, wind_speed_profile, theta_e_profile, parcel_profile)
+    
+    # --- LÍNIA CORREGIDA ---
+    # S'ha canviat u.ms per u.m i v.ms per v.m
+    sondeig_complet_per_grafic = (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile, theta_e_profile, parcel_profile)
+    # --- FI DE LA CORRECCIÓ ---
+    
     cloud_layers = analitzar_formacio_nuvols(sounding_data, params_calc)
 
     return {
-        "transect_distances": distances, "transect_elevations": elevations,
-        "poble_sel": poble_sel, "poble_dist": distances[idx_poble], "poble_elev": elev_poble_precisa,
-        "wind_dir_from": wind_dir_from_real, "wind_spd_kmh": wind_spd_kmh,
-        "posicio": posicio, "diagnostico": diagnostico, "detalls": detalls,
-        "punts_dinteres": punts_dinteres_etiquetes, # Passem la nova llista d'etiquetes
+        "transect_distances": distances, "transect_elevations": elevations, "poble_sel": poble_sel, 
+        "poble_dist": distances[idx_poble], "poble_elev": elev_poble_precisa,
+        "wind_dir_from": wind_dir_from_real, "wind_spd_kmh": wind_spd_kmh, "posicio": posicio, 
+        "diagnostico": diagnostico, "detalls": detalls, "punts_dinteres": punts_dinteres_etiquetes,
         "sondeig_perfil_complet": sondeig_complet_per_grafic, "cloud_layers": cloud_layers,
         "bearing_fixe": BEARING_FIXE_PER_AL_TALL
     }
-
 
 def analitzar_formacio_nuvols(sounding_data, params_calc):
     """
