@@ -8151,106 +8151,88 @@ def run_catalunya_app():
 
 def analitzar_orografia(poble_sel, data_tuple):
     """
-    Algoritme v13.0 (Anàlisi de Nuvolositat Integrada).
-    - Crida a la nova funció 'analitzar_formacio_nuvols' per obtenir una descripció de les capes de núvols.
-    - Passa la informació dels núvols, juntament amb els perfils de Theta-E i de la bombolla,
-      al diccionari de resultats per a la seva posterior visualització.
+    Algoritme v18.0 (Realisme Orogràfic amb Font de Dades Única).
+    - El perfil del terreny es genera exclusivament a partir de l'API d'elevació d'alta resolució.
+    - S'elimina completament la lògica que afegia "cims artificials", solucionant el bug de les "muntanyes fantasma".
+    - La llista de cims famosos ara s'utilitza només per a identificar i etiquetar els pics
+      que ja existeixen al perfil real del terreny.
+    - L'elevació del poble es determina amb precisió a partir del perfil del terreny.
     """
-    if not data_tuple:
-        return {"error": "Falten dades del sondeig."}
-    
+    if not data_tuple: return {"error": "Falten dades del sondeig."}
     sounding_data, params_calc = data_tuple
     p, T, Td, u, v, heights, _, _ = sounding_data
-
-    # ... (tota la lògica de càlcul del vent, obtenció del perfil del terreny i diagnòstic es manté igual) ...
+    
     poble_coords = CIUTATS_CATALUNYA[poble_sel]
+    
     try:
         if poble_coords.get('lat', 0) > 42 and np.min(heights.m) > 700:
-            altura_superficie = heights.m[0]
-            mask_capa_baixa = (heights.m >= altura_superficie) & (heights.m <= altura_superficie + 1500)
-            u_dom = np.mean(u[mask_capa_baixa]) if np.any(mask_capa_baixa) else u[0]
-            v_dom = np.mean(v[mask_capa_baixa]) if np.any(mask_capa_baixa) else v[0]
+            altura_superficie = heights.m[0]; mask_capa_baixa = (heights.m >= altura_superficie) & (heights.m <= altura_superficie + 1500)
+            u_dom, v_dom = (np.mean(u[mask_capa_baixa]), np.mean(v[mask_capa_baixa])) if np.any(mask_capa_baixa) else (u[0], v[0])
         else:
             u_dom, v_dom = (u[0], v[0]) if p.m.min() > 850 else (np.interp(850, p.m[::-1], u.m[::-1]) * units('m/s'), np.interp(850, p.m[::-1], v.m[::-1]) * units('m/s'))
         wind_dir_from_real = mpcalc.wind_direction(u_dom, v_dom).m
         wind_spd_kmh = mpcalc.wind_speed(u_dom, v_dom).to('km/h').m
-    except Exception:
-        return {"error": "No s'ha pogut determinar el vent dominant."}
-
+    except Exception: return {"error": "No s'ha pogut determinar el vent dominant."}
+    
     BEARING_FIXE_PER_AL_TALL = 14.0
     start_point_bearing = (BEARING_FIXE_PER_AL_TALL + 180) % 360
     lat_inici, lon_inici = punt_desti(poble_coords['lat'], poble_coords['lon'], start_point_bearing, 40)
     profile_data, error = get_elevation_profile(lat_inici, lon_inici, BEARING_FIXE_PER_AL_TALL, 80, 100)
-    if error:
-        return {"error": error}
+    if error: return {"error": error}
     
     elevations = np.array(profile_data['elevations'])
     distances = np.array(profile_data['distances'])
-    comarca = get_comarca_for_poble(poble_sel)
-    cims_de_la_comarca = PICS_CATALUNYA_PER_COMARCA.get(comarca, [])
-    cims_propers = [pic for pic in cims_de_la_comarca if np.min([haversine_distance(pic['lat'], pic['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]) < 15]
-    for cim in cims_propers:
-        altitud_real_cim = cim.get('ele', 0)
-        dist_al_cim = [haversine_distance(cim['lat'], cim['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]
-        idx_cim_proper = np.argmin(dist_al_cim)
-        if altitud_real_cim > elevations[idx_cim_proper]:
-            diferencia_altura = altitud_real_cim - elevations[idx_cim_proper]
-            sigma = 4; x_indices = np.arange(len(elevations))
-            gauss_bump = diferencia_altura * np.exp(-((x_indices - idx_cim_proper)**2) / (2 * sigma**2))
-            elevations = np.maximum(elevations, elevations + gauss_bump)
-
+    
     dist_al_poble = [haversine_distance(poble_coords['lat'], poble_coords['lon'], lat, lon) for lat, lon in zip(profile_data['lats'], profile_data['lons'])]
     idx_poble = np.argmin(dist_al_poble)
-    elev_poble = elevations[idx_poble]
+    elev_poble_precisa = elevations[idx_poble]
     
-    if wind_spd_kmh < 15:
-        posicio, diagnostico, detalls = "Indeterminat (Vent Feble)", "Efecte Orogràfic Menyspreable", "El vent és massa feble per a interactuar de manera significativa amb el terreny."
-    else:
+    # --- NOVA LÒGICA D'ETIQUETAT (SENSE MODIFICAR EL TERRENY) ---
+    punts_dinteres_etiquetes = []
+    comarca = get_comarca_for_poble(poble_sel)
+    cims_de_la_comarca = PICS_CATALUNYA_PER_COMARCA.get(comarca, [])
+    cims_propers = [pic for pic in cims_de_la_comarca if np.min([haversine_distance(pic['lat'], pic['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]) < 10]
+    
+    for cim in cims_propers:
+        dist_al_cim = [haversine_distance(cim['lat'], cim['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]
+        idx_cim_proper = np.argmin(dist_al_cim)
+        
+        # Comprovem si el punt del perfil és realment un pic prominent
+        indices_pics_locals, _ = find_peaks(elevations[max(0, idx_cim_proper-10):idx_cim_proper+10], prominence=100)
+        if any(p + max(0, idx_cim_proper-10) == idx_cim_proper for p in indices_pics_locals):
+            punts_dinteres_etiquetes.append({
+                "name": cim['name'],
+                "ele_oficial": cim['ele'],
+                "idx": idx_cim_proper
+            })
+    # --- FI DE LA NOVA LÒGICA ---
+
+    # ... (la resta de la funció per al diagnòstic de posició i preparació de dades de sondeig es manté igual) ...
+    if wind_spd_kmh < 15: posicio, diagnostico, detalls = "Indeterminat (Vent Feble)", "Efecte Orogràfic Menyspreable", "El vent és massa feble per a interactuar de manera significativa amb el terreny."
+    else: # ... (la teva lògica de sobrevent/sotavent aquí)
         idx_inici_analisi = max(0, idx_poble - 20)
         if idx_poble > idx_inici_analisi + 5:
-            dist_tram = distances[idx_inici_analisi:idx_poble]; elev_tram = elevations[idx_inici_analisi:idx_poble]
-            pendent = np.polyfit(dist_tram * 1000, elev_tram, 1)[0]
+            dist_tram = distances[idx_inici_analisi:idx_poble]; elev_tram = elevations[idx_inici_analisi:idx_poble]; pendent = np.polyfit(dist_tram * 1000, elev_tram, 1)[0]
             if abs(pendent) < 0.01: posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "El flux de vent travessa un terreny majoritàriament pla."
             elif pendent > 0.03: posicio, diagnostico, detalls = "Sobrevent", "Ascens Orogràfic Forçat", "El flux d'aire impacta contra un pendent ascendent, forçant l'ascens, refredament i possible condensació."
             elif pendent < -0.03: posicio, diagnostico, detalls = "Sotavent", "Subsidència i Efecte Foehn", "L'aire descendeix, comprimint-se i reescalfant-se, la qual cosa dissipa la nuvolositat i asseca l'ambient."
             else: posicio, diagnostico, detalls = "Flux Paral·lel / Terreny Ondulat", "Efectes Locals Menors", "El vent es mou sobre un terreny amb ondulacions suaus sense un forçament a gran escala."
         else: posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "La localitat es troba en una zona oberta."
-    
-    turo_referencia_info = None
-    indices_pics, _ = find_peaks(elevations, prominence=100)
-    if len(indices_pics) > 0:
-        tots_els_pics = sorted([{"idx": i, "ele": elevations[i]} for i in indices_pics], key=lambda x: x['ele'], reverse=True)
-        pics_secundaris = tots_els_pics[1:]
-        turons_petits = [p for p in pics_secundaris if 50 <= p['ele'] <= 500]
-        if turons_petits:
-            turo_seleccionat = max(turons_petits, key=lambda x: x['ele'])
-            turo_referencia_info = {"name": "Turó de Referència", "ele": turo_seleccionat['ele'], "idx": turo_seleccionat['idx']}
-        elif pics_secundaris:
-            turo_seleccionat = pics_secundaris[0]; nom_turo = "Pic Secundari"
-            lat_turo, lon_turo = profile_data['lats'][turo_seleccionat['idx']], profile_data['lons'][turo_seleccionat['idx']]
-            cim_proper_trobat = min(cims_propers, key=lambda c: haversine_distance(c['lat'], c['lon'], lat_turo, lon_turo), default=None)
-            if cim_proper_trobat: nom_turo = cim_proper_trobat['name']
-            turo_referencia_info = {"name": nom_turo, "ele": turo_seleccionat['ele'], "idx": turo_seleccionat['idx']}
-
-    # Càlculs termodinàmics per al gràfic
+        
     rh_profile = (mpcalc.relative_humidity_from_dewpoint(T, Td) * 100).m
-    wind_speed_profile = mpcalc.wind_speed(u, v).to('km/h').m
-    temp_profile = T.m
+    wind_speed_profile = mpcalc.wind_speed(u, v).to('km/h').m; temp_profile = T.m
     theta_e_profile = mpcalc.equivalent_potential_temperature(p, T, Td).to('K').m
     parcel_profile = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC').m
-    sondeig_complet_per_grafic = (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile, theta_e_profile, parcel_profile)
-
-    # Anàlisi de la formació de núvols
+    sondeig_complet_per_grafic = (heights.m, u.ms, v.ms, rh_profile, temp_profile, wind_speed_profile, theta_e_profile, parcel_profile)
     cloud_layers = analitzar_formacio_nuvols(sounding_data, params_calc)
 
     return {
         "transect_distances": distances, "transect_elevations": elevations,
-        "poble_sel": poble_sel, "poble_dist": distances[idx_poble], "poble_elev": elev_poble,
+        "poble_sel": poble_sel, "poble_dist": distances[idx_poble], "poble_elev": elev_poble_precisa,
         "wind_dir_from": wind_dir_from_real, "wind_spd_kmh": wind_spd_kmh,
         "posicio": posicio, "diagnostico": diagnostico, "detalls": detalls,
-        "turo_referencia": turo_referencia_info,
-        "sondeig_perfil_complet": sondeig_complet_per_grafic,
-        "cloud_layers": cloud_layers, # Passem la informació dels núvols
+        "punts_dinteres": punts_dinteres_etiquetes, # Passem la nova llista d'etiquetes
+        "sondeig_perfil_complet": sondeig_complet_per_grafic, "cloud_layers": cloud_layers,
         "bearing_fixe": BEARING_FIXE_PER_AL_TALL
     }
 
@@ -8325,9 +8307,10 @@ def analitzar_formacio_nuvols(sounding_data, params_calc):
 def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m, show_barbs=True):
     """
     Crea una secció transversal atmosfèrica amb interacció realista i capes de dades avançades.
-    Versió 17.0 (Isolínia de Flotabilitat Significativa):
-    - AFEGEIX una isolínia verda destacada al nivell de +2°C a la vista de "CAPE (Flotabilitat)"
-      per a marcar l'inici d'una acceleració vertical important.
+    Versió 18.1 (Final i Completa):
+    - Dibuixa un flux d'aire amb ondulació subtil i realista sobre l'orografia.
+    - Utilitza una font de dades d'elevació única i precisa per al terreny i totes les etiquetes.
+    - Inclou totes les capes de visualització (Vent, Humitat, Temperatura, Theta-E, CAPE, Núvols).
     """
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(10, 5), dpi=130)
@@ -8338,7 +8321,7 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     dist_centrat = analisi['transect_distances'] - (dist_total_km / 2)
     elev = analisi['transect_elevations']
 
-    # --- Configuració de Paletes de Colors i Nivells (sense canvis) ---
+    # --- Configuració de Paletes de Colors i Nivells ---
     levels_theta_e = list(range(15, 75, 5)); cmap_theta_e = plt.get_cmap('viridis'); norm_theta_e = BoundaryNorm(levels_theta_e, ncolors=cmap_theta_e.N, clip=True)
     levels_buoyancy = [-8, -6, -4, -2, -0.5, 0.5, 2, 4, 6, 8, 10, 12]; cmap_buoyancy = plt.get_cmap('bwr'); norm_buoyancy = BoundaryNorm(levels_buoyancy, ncolors=cmap_buoyancy.N, clip=True)
     colors_humitat = ['#f0e68c', '#90ee90', '#4682b4', '#191970']; levels_humitat = [0, 30, 60, 80, 101]; cmap_humitat = ListedColormap(colors_humitat); norm_humitat = BoundaryNorm(levels_humitat, ncolors=cmap_humitat.N, clip=True)
@@ -8349,49 +8332,38 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     
     x_grid = dist_centrat; y_grid = np.linspace(0, max_alt_m, 100)
     xx, zz_asl = np.meshgrid(x_grid, y_grid)
-    pendent = np.gradient(elev, dist_centrat * 1000); factor_decaiguda = np.exp(-zz_asl / 4000)
-    zz_deformat = zz_asl + np.outer(np.ones(len(y_grid)), pendent * 5000) * factor_decaiguda
+    
+    # --- Algoritme de Deformació Subtil ---
+    max_displacement_factor = 0.4; decay_scale_height = 3000.0
+    displacement_decay = np.exp(-zz_asl / decay_scale_height)
+    vertical_displacement = np.outer(np.ones(len(y_grid)), elev) * max_displacement_factor * displacement_decay
+    zz_deformat = zz_asl + vertical_displacement
     
     data_grid, label, im = None, "", None
-    if layer_to_show == "Humitat":
-        data_grid = np.interp(zz_deformat, heights_m, rh_profile); cmap, norm, levels, label = cmap_humitat, norm_humitat, levels_humitat, "Humitat Relativa (%)"
-    elif layer_to_show == "Temperatura":
-        data_grid = np.interp(zz_deformat, heights_m, temp_profile); cmap, norm, levels, label = cmap_temp, norm_temp, levels_temp, "Temperatura (°C)"
-    elif layer_to_show == "Vent":
-        data_grid = np.interp(zz_deformat, heights_m, wind_speed_profile); cmap, norm, levels, label = cmap_vent, norm_vent, levels_vent, "Velocitat del Vent (km/h)"
-    elif layer_to_show == "Theta-E":
-        profile_celsius = theta_e_profile - 273.15
-        data_grid = np.interp(zz_deformat, heights_m, profile_celsius); cmap, norm, levels, label = cmap_theta_e, norm_theta_e, levels_theta_e, "Theta-E (°C)"
-    elif layer_to_show == "CAPE (Flotabilitat)":
-        parcel_temp_grid = np.interp(zz_deformat, heights_m, parcel_temp_profile); env_temp_grid = np.interp(zz_deformat, heights_m, temp_profile)
-        data_grid = parcel_temp_grid - env_temp_grid; cmap, norm, levels, label = cmap_buoyancy, norm_buoyancy, levels_buoyancy, "Flotabilitat (°C) | CAPE > 0 / CIN < 0"
-    
-    if data_grid is not None:
-        masked_data = np.where(zz_asl > elev, data_grid, np.nan)
+    if layer_to_show != "Núvols":
+        if layer_to_show == "Humitat":
+            profile_1d = np.interp(zz_deformat, heights_m, rh_profile); cmap, norm, levels, label = cmap_humitat, norm_humitat, levels_humitat, "Humitat Relativa (%)"
+        elif layer_to_show == "Temperatura":
+            profile_1d = np.interp(zz_deformat, heights_m, temp_profile); cmap, norm, levels, label = cmap_temp, norm_temp, levels_temp, "Temperatura (°C)"
+        elif layer_to_show == "Vent":
+            profile_1d = np.interp(zz_deformat, heights_m, wind_speed_profile); cmap, norm, levels, label = cmap_vent, norm_vent, levels_vent, "Velocitat del Vent (km/h)"
+        elif layer_to_show == "Theta-E":
+            profile_1d = np.interp(zz_deformat, heights_m, theta_e_profile - 273.15); cmap, norm, levels, label = cmap_theta_e, norm_theta_e, levels_theta_e, "Theta-E (°C)"
+        elif layer_to_show == "CAPE (Flotabilitat)":
+            parcel_temp_interp = np.interp(zz_deformat, heights_m, parcel_temp_profile); env_temp_interp = np.interp(zz_deformat, heights_m, temp_profile)
+            profile_1d = parcel_temp_interp - env_temp_interp; cmap, norm, levels, label = cmap_buoyancy, norm_buoyancy, levels_buoyancy, "Flotabilitat (°C)"
+        
+        masked_data = np.where(zz_asl > elev, profile_1d, np.nan)
         im = ax.contourf(xx, zz_asl, masked_data, levels=levels, cmap=cmap, norm=norm, extend='both', zorder=1)
-        contours = ax.contour(xx, zz_asl, masked_data, levels=levels[1:-1:2], colors='black', linewidths=0.5, alpha=0.7, zorder=2)
+        contours = ax.contour(xx, zz_asl, masked_data, levels=levels[1:-1:2], colors='white', linewidths=0.6, alpha=0.8, zorder=2)
         ax.clabel(contours, inline=True, fontsize=7, fmt='%1.0f')
-        if layer_to_show != "Núvols":
-            fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
-    
-    # --- CANVI CLAU: AFEGIM LA ISOLÍNEA ESPECIAL PER A CAPE ---
-    if layer_to_show == "CAPE (Flotabilitat)":
-        SIGNIFICANT_BUOYANCY_LEVEL = [2] # Llindar de +2°C
-        if np.nanmax(masked_data) > SIGNIFICANT_BUOYANCY_LEVEL[0]:
-            buoyancy_contour = ax.contour(
-                xx, zz_asl, masked_data,
-                levels=SIGNIFICANT_BUOYANCY_LEVEL,
-                colors=['#00FF00'], # Verd llima
-                linewidths=[2.0],
-                linestyles=['--'],
-                zorder=4
-            )
-            clabels = ax.clabel(buoyancy_contour, inline=True, fontsize=9, fmt='+%1.0f°C (Inici Acceleració)')
+        fig.colorbar(im, ax=ax, label=label, pad=0.02, ticks=levels[::2])
+        if layer_to_show == "CAPE (Flotabilitat)":
+            buoyancy_contour = ax.contour(xx, zz_asl, masked_data, levels=[2], colors=['#00FF00'], linewidths=[2.0], linestyles=['--'], zorder=4)
+            clabels = ax.clabel(buoyancy_contour, inline=True, fontsize=9, fmt='+%1.0f°C Accel.')
             for label_obj in clabels:
-                label_obj.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')])
-                label_obj.set_color('white')
-    # --- FI DEL CANVI ---
-    
+                label_obj.set_path_effects([path_effects.withStroke(linewidth=2.5, foreground='black')]); label_obj.set_color('white')
+
     if layer_to_show == "Núvols":
         sky_gradient = np.linspace(0.8, 0.4, 100).reshape(-1, 1)
         ax.imshow(sky_gradient, aspect='auto', cmap='Blues_r', origin='lower', extent=[dist_centrat.min(), dist_centrat.max(), 0, max_alt_m], zorder=0)
@@ -8401,20 +8373,20 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
         if cape > 100:
             lcl = params_calc.get('LCL_Hgt', 9999); el = params_calc.get('EL_Hgt', 0)
             if el > lcl:
-                upslope_mask_1d = pendent > 0.03
+                pendent_1d = np.gradient(elev, dist_centrat * 1000); upslope_mask_1d = pendent_1d > 0.03
                 if np.any(upslope_mask_1d):
-                    x_upslope_center = np.mean(dist_centrat[upslope_mask_1d])
-                    sigma_x = max(1.5, (el - lcl) / 4000); sigma_z = (el - lcl) * 0.4; center_z = lcl + sigma_z * 0.8
-                    convective_plume = np.exp(-(((xx - x_upslope_center)**2 / (2 * sigma_x**2)) + ((zz_asl - center_z)**2 / (2 * sigma_z**2))))
+                    convective_boost_profile = np.zeros_like(y_grid); convective_layer_mask = (y_grid >= lcl) & (y_grid <= el)
+                    mid_convective_layer = (lcl + el) / 2; sigma_z = (el - lcl) * 0.4
+                    convective_boost_profile[convective_layer_mask] = np.exp(-((y_grid[convective_layer_mask] - mid_convective_layer)**2 / (2 * sigma_z**2)))
+                    convective_boost_2d = np.outer(convective_boost_profile, upslope_mask_1d)
                     convective_intensity = np.clip(cape / 1200, 0.5, 1.5)
-                    cloud_density += convective_plume * convective_intensity
+                    cloud_density += convective_boost_2d * convective_intensity
         masked_density = np.where(zz_asl > elev, np.clip(cloud_density, 0, 1.2), 0)
         cloud_levels = np.linspace(0.1, 1.2, 11)
         cloud_cmap = LinearSegmentedColormap.from_list("cloud_cmap", [(1, 1, 1, 0), (1, 1, 1, 0.95)])
         ax.contourf(xx, zz_asl, masked_density, levels=cloud_levels, cmap=cloud_cmap, zorder=2)
         ax.set_title(f"Secció Transversal Atmosfèrica - Nuvolositat (HR > 85%)")
 
-    # La resta de la funció es manté igual
     ax.fill_between(dist_centrat, 0, elev, color='black', zorder=3)
     if np.min(elev) <= 5:
         x_wave = np.linspace(dist_centrat.min(), dist_centrat.max(), 200); y_wave = np.sin(x_wave * 0.5) * 5 + 5
@@ -8445,12 +8417,11 @@ def crear_grafic_perfil_orografic(analisi, params_calc, layer_to_show, max_alt_m
     ax.plot(poble_dist_centrat, analisi['poble_elev'], 'o', color='red', markersize=8, label=f"{analisi['poble_sel']} ({analisi['poble_elev']:.0f} m)", zorder=10, markeredgecolor='white')
     ax.axvline(x=poble_dist_centrat, color='red', linestyle='--', linewidth=1, zorder=1)
 
-    turo = analisi.get("turo_referencia")
-    if turo:
-        x_pos = dist_centrat[turo['idx']]
-        ax.annotate(f"{turo['name']}\n({turo['ele']:.0f} m)", xy=(x_pos, elev[turo['idx']]), xytext=(x_pos, turo['ele'] + max_alt_m * 0.08),
+    for punt in analisi.get("punts_dinteres", []):
+        x_pos = dist_centrat[punt['idx']]; y_pos_terreny = elev[punt['idx']]; altitud_oficial = punt['ele_oficial']
+        ax.annotate(f"{punt['name']}\n({altitud_oficial:.0f} m)", xy=(x_pos, y_pos_terreny), xytext=(x_pos, y_pos_terreny + max_alt_m * 0.08),
                     arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=4), ha='center', va='bottom', fontsize=8, zorder=12,
-                    bbox=dict(boxstyle="round,pad=0.3", fc="lightblue", ec="black", lw=1, alpha=0.8))
+                    bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", lw=1, alpha=0.8))
 
     ax.set_xlabel(f"Distància (km) | Vent → ({analisi['bearing_fixe']:.0f}°)")
     ax.set_ylabel("Elevació (m)")
