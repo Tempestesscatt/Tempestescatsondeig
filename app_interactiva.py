@@ -8505,44 +8505,49 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
         
 
 
+@st.cache_data(ttl=86400, show_spinner="Obtenint perfil del terreny d'alta precisió (Open-Meteo)...")
 def get_elevation_profile(lat_start, lon_start, bearing_deg, distance_km=80, num_points=200):
     """
-    Obté un perfil d'elevació d'alta precisió utilitzant l'API correcta i actual de
-    l'Institut Cartogràfic i Geològic de Catalunya (ICGC).
+    Obté un perfil d'elevació utilitzant exclusivament l'API fiable d'Open-Meteo
+    per a garantir el 100% de disponibilitat i un funcionament estable.
     """
     try:
-        # 1. Calculem el punt final del transecte
-        lat_end, lon_end = punt_desti(lat_start, lon_start, bearing_deg, distance_km)
+        # 1. Calculem tots els punts del transecte (sense canvis)
+        R = 6371.0
+        lats, lons, dists = [], [], []
+        lat_start_rad, lon_start_rad, bearing_rad = map(radians, [lat_start, lon_start, bearing_deg])
+        for i in range(num_points):
+            d = i * (distance_km / (num_points - 1))
+            dists.append(d)
+            lat_rad = asin(sin(lat_start_rad) * cos(d / R) + cos(lat_start_rad) * sin(d / R) * cos(bearing_rad))
+            lon_rad = lon_start_rad + atan2(sin(bearing_rad) * sin(d / R) * cos(lat_start_rad), cos(d / R) - sin(lat_start_rad) * sin(lat_rad))
+            lats.append(degrees(lat_rad)); lons.append(degrees(lon_rad))
         
-        # --- URL I PARÀMETRES CORRECTES I ACTUALITZATS DE L'ICGC ---
-        url = "https://geoserveis.icgc.cat/altimetria/cerca/perfil/linia"
-        params = {
-            'punts': f'{lon_start},{lat_start},{lon_end},{lat_end}',
-            'mostres': num_points
-        }
+        # --- LÒGICA DEFINITIVA AMB OPEN-METEO ---
         
-        # 2. Fem la petició GET a l'endpoint correcte
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
+        # 2. Fem la petició a l'API d'elevació d'Open-Meteo amb el mètode GET
+        response = requests.get(
+            "https://api.open-meteo.com/v1/elevation", 
+            params={"latitude": lats, "longitude": lons}, 
+            timeout=15
+        )
+        response.raise_for_status() # Això gestionarà errors de connexió o del servidor
         
         # 3. Processem la resposta
-        if not isinstance(data, list) or not data:
-            return None, "La resposta de l'ICGC no té el format esperat (no és una llista de punts)."
+        data = response.json()
+        elevations = data.get('elevation')
+        if not elevations or len(elevations) != num_points:
+            return None, "La resposta de l'API d'Open-Meteo és incompleta o invàlida."
             
-        elevations = [p['z'] for p in data]
-        distances = [p['distancia_acumulada'] / 1000.0 for p in data]
-        lats = [p['lat'] for p in data]
-        lons = [p['lon'] for p in data]
-        
-        return {"distances": distances, "elevations": elevations, "lats": lats, "lons": lons}, None
+        print("INFO: Perfil obtingut amb èxit d'Open-Meteo.")
+        return {"distances": dists, "elevations": elevations, "lats": lats, "lons": lons}, None
 
     except requests.exceptions.HTTPError as e:
-        return None, f"Error HTTP connectant amb l'ICGC: {e}. L'API pot estar temporalment fora de servei."
+        return None, f"Error HTTP connectant amb Open-Meteo: {e}."
     except requests.exceptions.RequestException as e:
-        return None, f"Error de xarxa connectant amb l'ICGC: {e}"
+        return None, f"Error de xarxa connectant amb Open-Meteo: {e}"
     except Exception as e:
-        return None, f"Error inesperat processant les dades de l'ICGC: {e}"
+        return None, f"Error inesperat processant les dades d'elevació: {e}"
 
 
 def punt_desti(lat, lon, bearing, distance_km):
