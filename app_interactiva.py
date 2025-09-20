@@ -9832,18 +9832,63 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 
 
+def analitzar_precipitacio_no_severa(params):
+    """
+    Sistema expert per a diagnosticar el tipus de precipitació estable o de convecció dèbil.
+    Utilitza una combinació de PWAT, CAPE_0-3km, LCL i humitat per capes per a donar
+    un diagnòstic extremadament detallat, des de "4 gotes" fins a "risc d'inundacions".
+    """
+    rh_baixa = params.get('RH_CAPES', {}).get('baixa', 0)
+    rh_mitjana = params.get('RH_CAPES', {}).get('mitjana', 0)
+    pwat = params.get('PWAT', 0)
+    cape_0_3km = params.get('CAPE_0-3km', 0)
+    lcl_hgt = params.get('LCL_Hgt', 9999)
+    max_cape = max(params.get('MLCAPE', 0), params.get('MUCAPE', 0))
+
+    # --- JERARQUIA DE RISC (DE MÉS A MENYS INTENS) ---
+
+    # 1. Condicions d'aiguats extrems i inundacions
+    if pwat > 50 and cape_0_3km > 200 and lcl_hgt < 800 and rh_baixa > 90 and rh_mitjana > 85:
+        return {'descripcio': "Petacs d'aigua molt forts", 'veredicte': "Potencial extrem per a aiguats torrencials de curta durada. Hi ha risc d'inundacions sobtades."}
+    if pwat > 40 and cape_0_3km > 150 and lcl_hgt < 1000 and rh_baixa > 88:
+        return {'descripcio': "Petac d'aigua (aiguat local)", 'veredicte': "Condicions molt favorables per a xàfecs d'intensitat torrencial i gran acumulació en poca estona."}
+
+    # 2. Condicions de xàfecs convectius forts
+    if pwat > 35 and cape_0_3km > 100 and rh_baixa > 85:
+        return {'descripcio': "Xàfecs agressius", 'veredicte': "Es preveuen xàfecs de gran intensitat, possiblement acompanyats de calamarsa petita i ratxes de vent fortes."}
+    if pwat > 30 and cape_0_3km > 75 and rh_baixa > 80:
+        return {'descripcio': "Xàfecs forts", 'veredicte': "Formació de xàfecs localment forts que poden deixar acumulacions importants."}
+
+    # 3. Condicions de ruixats (convecció dèbil)
+    if pwat > 25 and cape_0_3km > 50 and rh_baixa > 75:
+        return {'descripcio': "Ruixats dispersos", 'veredicte': "L'atmosfera té prou humitat i inestabilitat per a generar ruixats de distribució irregular."}
+    
+    # 4. Condicions de precipitació estable (sense inestabilitat a baixos nivells)
+    if cape_0_3km < 40:
+        if rh_baixa >= 90 and rh_mitjana >= 80 and max_cape < 300:
+             return {'descripcio': "Nimbostratus (Pluja Contínua)", 'veredicte': "Saturació profunda i estable, favorable a pluges extenses, persistents i d'intensitat feble a moderada."}
+        if rh_baixa > 90 and lcl_hgt < 400:
+            return {'descripcio': "Plugims o ruixadet local", 'veredicte': "Capa de núvols baixos molt saturada i enganxada a terra, produint precipitació molt fina però persistent."}
+        if rh_baixa > 85 and lcl_hgt < 600:
+            return {'descripcio': "Espurnes o 4 gotes", 'veredicte': "La base dels núvols és prou humida per a deixar escapar algunes gotes, però sense acumulació."}
+
+    # Si no es compleix cap condició de precipitació, no retornem res
+    return None
+
+
+
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Expert v78.0 (Diagnòstic de Plugims Refinat).
-    - L'anàlisi d'Estratus ara avalua la profunditat i l'alçada de la capa humida.
-    - El veredicte sobre la possibilitat de plugims es basa en si la capa saturada
-      és prou gruixuda i baixa per a generar precipitació.
+    Sistema de Diagnòstic Expert v78.0 (Diagnòstic de Precipitació Refinat).
+    - Utilitza una nova funció auxiliar 'analitzar_precipitacio_no_severa' per a un diagnòstic
+      extremadament detallat de la precipitació estable i de convecció dèbil.
+    - L'anàlisi de núvols inestables i estables es manté independent.
     """
     
     # --- 1. Extracció de Paràmetres ---
     mlcape = params.get('MLCAPE', 0) or 0; mucape = params.get('MUCAPE', 0) or 0; max_cape = max(mlcape, mucape)
     cin = min(params.get('SBCIN', 0), params.get('MUCIN', 0)) or 0
-    lfc_hgt = params.get('LFC_Hgt', 9999) or 9999; lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
+    lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     rh_capes = params.get('RH_CAPES', {}); rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
     rh_mitjana = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0; rh_alta = rh_capes.get('alta', 0) if pd.notna(rh_capes.get('alta')) else 0
@@ -9851,7 +9896,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
 
     resultat = {"inestable": None, "estable": None}
     
-    # --- BLOC 1: ANÀLISI DEL POTENCIAL INESTABLE (sense canvis) ---
+    # --- BLOC 1: ANÀLISI DEL POTENCIAL INESTABLE (Tempestes fortes a severes) ---
     condicions_de_dispar = (cin > -100 and lfc_hgt < 2200 and conv > 10)
     
     if max_cape > 1500 and bwd_6km >= 35 and condicions_de_dispar:
@@ -9873,19 +9918,13 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     elif 40 <= rh_baixa < 60 and max_cape > 50:
         resultat["inestable"] = {'descripcio': "Cúmuls de bon temps", 'veredicte': "Humitat suficient per a formar petits cúmuls dispersos sense desenvolupament."}
 
-    # --- BLOC 2: ANÀLISI INDEPENDENT DE LA NUVOLOSITAT ESTABLE (amb la millora) ---
-    
-    if rh_baixa >= 85 and rh_mitjana < 50: # Humitat atrapada a sota
-        # --- LÒGICA MILLORADA PER A PLUGIMS ---
-        veredicte_plugims = "és molt probable que produeixi plugims." if lcl_hgt < 400 and rh_baixa > 90 else "no s'espera precipitació associada."
-        resultat["estable"] = {
-            'descripcio': "Estratus (Boira alta - Cel tancat)", 
-            'veredicte': f"Capa de núvols baixos atrapada sota una capa seca. Aquesta situació {veredicte_plugims}"
-        }
-        # --- FI DE LA LÒGICA MILLORADA ---
-        
-    elif rh_baixa >= 80 and rh_mitjana >= 80 and max_cape < 300: # Nimbostratus
-        resultat["estable"] = {'descripcio': "Nimbostratus (Pluja Contínua)", 'veredicte': "Saturació profunda i estable, favorable a pluges extenses i persistents."}
+    # --- BLOC 2: ANÀLISI INDEPENDENT DE LA NUVOLOSITAT I PRECIPITACIÓ ESTABLE ---
+    # Primer, cridem la nova funció experta en precipitació no-severa
+    precip_estable_info = analitzar_precipitacio_no_severa(params)
+
+    if precip_estable_info:
+        resultat["estable"] = precip_estable_info
+    # Si no hi ha precipitació, mirem la resta de núvols estables
     elif rh_baixa >= 75 and rh_mitjana < 60:
         resultat["estable"] = {'descripcio': "Estratocúmuls (Cel trencat)", 'veredicte': "Bancs de núvols baixos amb zones clares, típic d'inversions de temperatura."}
     elif rh_mitjana >= 70 and rh_baixa < 70:
@@ -9896,7 +9935,7 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     elif rh_alta >= 60 and rh_mitjana < 50:
         resultat["estable"] = {'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Presència de núvols alts de tipus cirrus que poden produir un halo solar/lunar."}
     
-    # --- BLOC 3: CONDICIÓ PER DEFECTE ---
+    # --- BLOC 3: CONDICIÓ PER DEFECTE SI NO S'HA TROBAT CAP NÚVOL ESTABLE ---
     if resultat["estable"] is None:
         if rh_baixa < 40 and rh_mitjana < 40 and rh_alta < 40:
              resultat["estable"] = {'descripcio': "Cel Serè", 'veredicte': "Atmosfera seca a tots els nivells. Absència de nuvolositat."}
