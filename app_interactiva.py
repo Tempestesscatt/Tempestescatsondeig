@@ -9832,22 +9832,21 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 
 
-
-
-
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Expert v76.0 (Anàlisi Estable Basada en Humitat).
-    - La detecció de núvols estables ara es basa exclusivament en una jerarquia de llindars
-      d'humitat per capes (baixa, mitjana, alta), fent-la independent d'altres paràmetres.
-    - L'anàlisi de núvols inestables i estables es realitza de forma totalment independent,
-      permetent la coexistència de diagnòstics.
+    Sistema de Diagnòstic Expert v77.0 (Diagnòstic Estable Refinat i Detallat).
+    - L'anàlisi de núvols estables ara és extremadament detallada, distingint entre
+      Estratus, Estratocúmuls, Nimbostratus, Altocúmuls/Altostratus, Lenticulars i Cirrostratus.
+    - La detecció es basa en una jerarquia estricta de capes d'humitat (baixa -> mitjana -> alta).
+    - Es diferencia entre 'Cel Serè' (atmosfera seca) i 'Cel amb núvols fragmentats'.
+    - L'anàlisi inestable també es refina per a incloure 'Cúmuls mediocris'.
+    - L'anàlisi de les dues categories (estable/inestable) es manté totalment independent.
     """
     
     # --- 1. Extracció de Paràmetres ---
     mlcape = params.get('MLCAPE', 0) or 0; mucape = params.get('MUCAPE', 0) or 0; max_cape = max(mlcape, mucape)
     cin = min(params.get('SBCIN', 0), params.get('MUCIN', 0)) or 0
-    lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
+    lfc_hgt = params.get('LFC_Hgt', 9999) or 9999; lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
     bwd_6km = params.get('BWD_0-6km', 0) or 0
     rh_capes = params.get('RH_CAPES', {}); rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
     rh_mitjana = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0; rh_alta = rh_capes.get('alta', 0) if pd.notna(rh_capes.get('alta')) else 0
@@ -9870,31 +9869,35 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
         resultat["inestable"] = {'descripcio': "Cúmuls de creixement", 'veredicte': "Inici de convecció amb creixement vertical. Precursors de possibles tempestes."}
     elif rh_alta >= 60 and (params.get('LI', 5) < 0 or params.get('T_500hPa', 0) < -15):
         resultat["inestable"] = {'descripcio': "Cirrus Castellanus", 'veredicte': "Núvols alts amb petites 'torres', indiquen inestabilitat en nivells superiors."}
-    elif 40 <= rh_baixa < 75 and max_cape > 50:
+    elif 60 <= rh_baixa < 75 and max_cape > 150:
+         resultat["inestable"] = {'descripcio': "Cúmuls mediocris", 'veredicte': "Núvols baixos amb cert desenvolupament vertical, però sense arribar a ser tempestes."}
+    elif 40 <= rh_baixa < 60 and max_cape > 50:
         resultat["inestable"] = {'descripcio': "Cúmuls de bon temps", 'veredicte': "Humitat suficient per a formar petits cúmuls dispersos sense desenvolupament."}
 
     # --- BLOC 2: ANÀLISI INDEPENDENT DE LA NUVOLOSITAT ESTABLE (ESTRATIFORME) ---
-    # Aquesta anàlisi s'executa sempre. Es prioritza la capa de núvols més baixa.
-    
-    if rh_baixa >= 85: # Llindar alt per a núvols baixos sòlids
-        if rh_mitjana >= 75 and max_cape < 300: # Condició per a Nimbostratus (profund i no convectiu)
+    if rh_baixa >= 85:
+        if rh_mitjana >= 75 and max_cape < 300:
             resultat["estable"] = {'descripcio': "Nimbostratus (Pluja Contínua)", 'veredicte': "Capa de núvols molt humida i gruixuda, favorable a pluges extenses i persistents."}
         else:
             resultat["estable"] = {'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos i cel cobert, pot produir plugims."}
+    elif rh_baixa >= 75:
+        resultat["estable"] = {'descripcio': "Estratocúmuls (Cel trencat)", 'veredicte': "Bancs de núvols baixos amb zones clares. Típic de situacions post-frontals."}
     
-    elif rh_mitjana >= 75: # Si no hi ha núvols baixos, mirem els mitjans
-        if bwd_6km > 40: # Condició especial per a lenticulars
+    elif rh_mitjana >= 70:
+        if bwd_6km > 40:
              resultat["estable"] = {'descripcio': "Altocúmulus Lenticular", 'veredicte': "Núvols en forma de 'plat volador', indiquen vent fort i turbulència en alçada."}
         else:
             resultat["estable"] = {'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Cel cobert o parcialment cobert per núvols a nivells mitjans."}
 
-    elif rh_alta >= 70: # Finalment, mirem els núvols alts
+    elif rh_alta >= 60:
         resultat["estable"] = {'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Presència de núvols alts de tipus cirrus que poden produir un halo solar/lunar."}
     
     # --- BLOC 3: CONDICIÓ PER DEFECTE SI NO S'HA TROBAT NUVOLOSITAT ESTABLE ---
     if resultat["estable"] is None:
-        if rh_baixa < 40 and rh_mitjana < 40:
-             resultat["estable"] = {'descripcio': "Cel Serè", 'veredicte': "Atmosfera seca a nivells baixos i mitjans. Absència de nuvolositat estable."}
+        if rh_baixa < 40 and rh_mitjana < 40 and rh_alta < 40:
+             resultat["estable"] = {'descripcio': "Cel Serè", 'veredicte': "Atmosfera seca a tots els nivells. Absència de nuvolositat."}
+        elif rh_baixa < 60 and rh_mitjana < 50:
+             resultat["estable"] = {'descripcio': "Cel amb núvols fragmentats", 'veredicte': "Cel majoritàriament serè amb possibles fractostratus o cúmuls molt aïllats."}
         else:
              resultat["estable"] = {'descripcio': "Sense nuvolositat estable significativa", 'veredicte': "Les condicions no afavoreixen la formació de capes de núvols estables."}
              
