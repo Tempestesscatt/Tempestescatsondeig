@@ -6891,10 +6891,9 @@ def on_manual_poble_select():
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya", convergencies=None):
     """
     Mostra la capçalera de l'aplicació amb els selectors de navegació.
-    Versió 2.0:
-    - Afegeix un selector de "Cerca Directa" per a navegar a qualsevol localitat
-      de la zona activa de manera instantània.
-    - Reorganitza les columnes per a una millor distribució.
+    Versió 3.0:
+    - Afegeix un selector de NIVELL DE PRESSIÓ (hPa) global a la capçalera.
+    - El nivell seleccionat es desa a st.session_state['nivell_analisi_global'].
     """
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
@@ -6907,13 +6906,13 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
     if zona_activa in altres_zones:
         del altres_zones[zona_activa]
     
-    # --- NOU DISSENY DE COLUMNES ---
-    col_text, col_manual_select, col_zone_change, col_actions = st.columns([0.35, 0.3, 0.2, 0.15])
+    # --- NOU DISSENY DE COLUMNES PER A 4 SELECTORS ---
+    col_text, col_manual_select, col_level_select, col_zone_change, col_actions = st.columns([0.25, 0.25, 0.2, 0.15, 0.15])
     
     with col_text:
         if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username', 'Usuari')}**!")
 
-    # --- NOU SELECTOR DE CERCA DIRECTA ---
+    # Selector de Cerca Directa (sense canvis)
     with col_manual_select:
         ZONE_CITIES_MAP = {
             'catalunya': CIUTATS_CATALUNYA, 'est_peninsula': CIUTATS_EST_PENINSULA,
@@ -6921,17 +6920,27 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             'holanda': CIUTATS_HOLANDA, 'japo': CIUTATS_JAPO, 'uk': CIUTATS_UK,
             'canada': CIUTATS_CANADA, 'noruega': CIUTATS_NORUEGA
         }
-        
         ciutats_zona_actual = ZONE_CITIES_MAP.get(zona_activa, {})
         if ciutats_zona_actual:
             opcions = ["--- Anar a... ---"] + sorted(list(ciutats_zona_actual.keys()))
-            st.selectbox(
-                "Cerca Directa:", 
-                options=opcions, 
-                key="manual_selector_widget", 
-                on_change=on_manual_poble_select,
-                help="Selecciona qualsevol localitat per anar directament a la seva anàlisi."
-            )
+            st.selectbox("Cerca Directa:", options=opcions, key="manual_selector_widget", on_change=on_manual_poble_select, help="Selecciona qualsevol localitat per anar directament a la seva anàlisi.")
+
+    # --- NOU SELECTOR DE NIVELL DE PRESSIÓ GLOBAL ---
+    with col_level_select:
+        # La llista de nivells disponibles depèn de la zona
+        if zona_activa in ['catalunya', 'est_peninsula']:
+            available_levels = [1000, 950, 925, 900, 850, 800, 700, 500, 300]
+        else: # La majoria de models globals tenen menys resolució a baixos nivells
+            available_levels = [1000, 925, 850, 700, 500, 300]
+        
+        st.selectbox(
+            "Nivell (hPa):",
+            options=available_levels,
+            key='nivell_analisi_global', # Clau centralitzada
+            index=available_levels.index(st.session_state.get('nivell_analisi_global', 925)), # Recorda l'última selecció
+            help="Selecciona el nivell de pressió per a l'anàlisi de mapes i convergència."
+        )
+    # --- FI DEL NOU SELECTOR ---
 
     with col_zone_change:
         nova_zona_key = st.selectbox("Canviar a:", options=list(altres_zones.keys()), format_func=lambda k: altres_zones[k], index=None, placeholder="Altres zones...")
@@ -6940,7 +6949,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             st.rerun()
             
     with col_actions:
-        # Usem subcolumnes per als botons
         col_back, col_logout = st.columns(2)
         with col_back:
             if st.button("⬅️", use_container_width=True, help="Tornar a la selecció de zona"):
@@ -6951,7 +6959,6 @@ def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalu
             if st.button("🚪", use_container_width=True, help="Sortir / Tancar Sessió"):
                 for key in list(st.session_state.keys()): del st.session_state[key]
                 st.rerun()
-
     st.divider()
 
     # --- BLOC DE SELECTORS RESTAURAT ---
@@ -7987,7 +7994,7 @@ def ui_vista_maritima(hourly_index):
 
 def run_catalunya_app():
     """
-    Versió Final amb selector de vista Terra/Mar i correcció del bug de crida a la funció de mapes.
+    Versió Final amb selector de nivell global.
     """
     # --- PAS 1: CAPÇALERA I INICIALITZACIÓ D'ESTAT ---
     ui_capcalera_selectors(None, zona_activa="catalunya")
@@ -7996,12 +8003,16 @@ def run_catalunya_app():
     
     # --- PAS 2: SELECTORS GLOBALS I CÀLCUL DE TEMPS ---
     with st.container(border=True):
-        col_dia, col_hora = st.columns(2) # Eliminem la columna de nivell d'aquí
+        col_dia, col_hora = st.columns(2)
         with col_dia:
             dies_disponibles = [(datetime.now(TIMEZONE_CAT) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)]
             dia_sel_str = st.selectbox("Dia:", options=dies_disponibles, key="dia_selector")
         with col_hora:
             hora_sel_str = st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector", index=datetime.now(TIMEZONE_CAT).hour)
+    
+    # --- CANVI CLAU AQUÍ: LLEGIM EL NIVELL DEL SESSION_STATE GLOBAL ---
+    nivell_sel = st.session_state.get('nivell_analisi_global', 925)
+    # --- FI DEL CANVI ---
     
     st.caption("ℹ️ Dades del model AROME 2.5km. L'aplicació es refresca cada 10 minuts.")
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
