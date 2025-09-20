@@ -8151,78 +8151,113 @@ def run_catalunya_app():
 
 def analitzar_orografia(poble_sel, data_tuple):
     """
-    Algoritme v18.2 (Correcció AttributeError).
-    - Soluciona el bug crític que passava en intentar accedir a l'atribut '.ms' inexistent
-      en les variables de vent. S'ha corregit per a utilitzar l'atribut correcte '.m'.
+    Algoritme v19.0 (Precisió ICGC).
+    - Utilitza el perfil d'alta resolució de l'ICGC com a única font per al terreny.
+    - S'elimina completament la lògica que afegia "cims artificials", solucionant el bug de les "muntanyes fantasma".
+    - La llista de cims famosos s'utilitza només per a identificar i etiquetar els pics
+      que ja existeixen al perfil real del terreny.
     """
-    if not data_tuple: return {"error": "Falten dades del sondeig."}
+    if not data_tuple: 
+        return {"error": "Falten dades del sondeig."}
+        
     sounding_data, params_calc = data_tuple
     p, T, Td, u, v, heights, _, _ = sounding_data
     
-    poble_coords = CIUTATS_CATALUNYA[poble_sel]
+    poble_coords = CIUTATS_CATALUNYA.get(poble_sel)
+    if not poble_coords:
+        return {"error": f"No s'han trobat les coordenades per a {poble_sel}."}
     
+    # --- 1. Determinar el vent dominant ---
     try:
+        # Lògica adaptativa per determinar el vent (muntanya vs. plana)
         if poble_coords.get('lat', 0) > 42 and np.min(heights.m) > 700:
-            altura_superficie = heights.m[0]; mask_capa_baixa = (heights.m >= altura_superficie) & (heights.m <= altura_superficie + 1500)
+            altura_superficie = heights.m[0]
+            mask_capa_baixa = (heights.m >= altura_superficie) & (heights.m <= altura_superficie + 1500)
             u_dom, v_dom = (np.mean(u[mask_capa_baixa]), np.mean(v[mask_capa_baixa])) if np.any(mask_capa_baixa) else (u[0], v[0])
         else:
             u_dom, v_dom = (u[0], v[0]) if p.m.min() > 850 else (np.interp(850, p.m[::-1], u.m[::-1]) * units('m/s'), np.interp(850, p.m[::-1], v.m[::-1]) * units('m/s'))
         wind_dir_from_real = mpcalc.wind_direction(u_dom, v_dom).m
         wind_spd_kmh = mpcalc.wind_speed(u_dom, v_dom).to('km/h').m
-    except Exception: return {"error": "No s'ha pogut determinar el vent dominant."}
+    except Exception as e:
+        return {"error": f"No s'ha pogut determinar el vent dominant: {e}"}
     
+    # --- 2. Obtenir perfil del terreny d'alta precisió ---
     BEARING_FIXE_PER_AL_TALL = 14.0
     start_point_bearing = (BEARING_FIXE_PER_AL_TALL + 180) % 360
     lat_inici, lon_inici = punt_desti(poble_coords['lat'], poble_coords['lon'], start_point_bearing, 40)
-    profile_data, error = get_elevation_profile(lat_inici, lon_inici, BEARING_FIXE_PER_AL_TALL, 80, 100)
-    if error: return {"error": error}
     
-    elevations = np.array(profile_data['elevations']); distances = np.array(profile_data['distances'])
+    profile_data, error = get_elevation_profile(lat_inici, lon_inici, BEARING_FIXE_PER_AL_TALL, 80, 200) # Més punts per a més detall
+    if error: 
+        return {"error": error}
+    
+    elevations = np.array(profile_data['elevations'])
+    distances = np.array(profile_data['distances'])
+    
+    # --- 3. Localitzar el poble i els cims al perfil real ---
     dist_al_poble = [haversine_distance(poble_coords['lat'], poble_coords['lon'], lat, lon) for lat, lon in zip(profile_data['lats'], profile_data['lons'])]
-    idx_poble = np.argmin(dist_al_poble); elev_poble_precisa = elevations[idx_poble]
+    idx_poble = np.argmin(dist_al_poble)
+    elev_poble_precisa = elevations[idx_poble]
     
     punts_dinteres_etiquetes = []
     comarca = get_comarca_for_poble(poble_sel)
-    cims_de_la_comarca = PICS_CATALUNYA_PER_COMARCA.get(comarca, [])
-    cims_propers = [pic for pic in cims_de_la_comarca if np.min([haversine_distance(pic['lat'], pic['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]) < 10]
-    for cim in cims_propers:
-        dist_al_cim = [haversine_distance(cim['lat'], cim['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]
-        idx_cim_proper = np.argmin(dist_al_cim)
-        indices_pics_locals, _ = find_peaks(elevations[max(0, idx_cim_proper-10):idx_cim_proper+10], prominence=100)
-        if any(p + max(0, idx_cim_proper-10) == idx_cim_proper for p in indices_pics_locals):
-            punts_dinteres_etiquetes.append({"name": cim['name'], "ele_oficial": cim['ele'], "idx": idx_cim_proper})
+    if comarca:
+        cims_de_la_comarca = PICS_CATALUNYA_PER_COMARCA.get(comarca, [])
+        cims_propers = [pic for pic in cims_de_la_comarca if np.min([haversine_distance(pic['lat'], pic['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]) < 10]
+        
+        for cim in cims_propers:
+            dist_al_cim = [haversine_distance(cim['lat'], cim['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]
+            idx_cim_proper = np.argmin(dist_al_cim)
+            
+            # Verifiquem si el punt del perfil és realment un pic prominent
+            indices_pics_locals, _ = find_peaks(elevations[max(0, idx_cim_proper-10):idx_cim_proper+10], prominence=150)
+            if any(p + max(0, idx_cim_proper-10) == idx_cim_proper for p in indices_pics_locals):
+                punts_dinteres_etiquetes.append({"name": cim['name'], "ele_oficial": cim['ele'], "idx": idx_cim_proper})
 
-    if wind_spd_kmh < 15: posicio, diagnostico, detalls = "Indeterminat (Vent Feble)", "Efecte Orogràfic Menyspreable", "El vent és massa feble per a interactuar de manera significativa amb el terreny."
+    # --- 4. Diagnòstic de posició orogràfica ---
+    if wind_spd_kmh < 15: 
+        posicio, diagnostico, detalls = "Indeterminat (Vent Feble)", "Efecte Orogràfic Menyspreable", "El vent és massa feble per a interactuar de manera significativa amb el terreny."
     else:
         idx_inici_analisi = max(0, idx_poble - 20)
         if idx_poble > idx_inici_analisi + 5:
-            dist_tram = distances[idx_inici_analisi:idx_poble]; elev_tram = elevations[idx_inici_analisi:idx_poble]; pendent = np.polyfit(dist_tram * 1000, elev_tram, 1)[0]
+            dist_tram = distances[idx_inici_analisi:idx_poble]; elev_tram = elevations[idx_inici_analisi:idx_poble]; 
+            pendent = np.polyfit(dist_tram * 1000, elev_tram, 1)[0]
+            
             if abs(pendent) < 0.01: posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "El flux de vent travessa un terreny majoritàriament pla."
             elif pendent > 0.03: posicio, diagnostico, detalls = "Sobrevent", "Ascens Orogràfic Forçat", "El flux d'aire impacta contra un pendent ascendent, forçant l'ascens, refredament i possible condensació."
             elif pendent < -0.03: posicio, diagnostico, detalls = "Sotavent", "Subsidència i Efecte Foehn", "L'aire descendeix, comprimint-se i reescalfant-se, la qual cosa dissipa la nuvolositat i asseca l'ambient."
             else: posicio, diagnostico, detalls = "Flux Paral·lel / Terreny Ondulat", "Efectes Locals Menors", "El vent es mou sobre un terreny amb ondulacions suaus sense un forçament a gran escala."
-        else: posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "La localitat es troba en una zona oberta."
+        else: 
+            posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "La localitat es troba en una zona oberta."
         
+    # --- 5. Preparació de les dades de sondeig per al gràfic ---
     rh_profile = (mpcalc.relative_humidity_from_dewpoint(T, Td) * 100).m
     wind_speed_profile = mpcalc.wind_speed(u, v).to('km/h').m; temp_profile = T.m
     theta_e_profile = mpcalc.equivalent_potential_temperature(p, T, Td).to('K').m
     parcel_profile = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC').m
     
-    # --- LÍNIA CORREGIDA ---
-    # S'ha canviat u.ms per u.m i v.ms per v.m
     sondeig_complet_per_grafic = (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile, theta_e_profile, parcel_profile)
-    # --- FI DE LA CORRECCIÓ ---
     
+    # --- 6. Anàlisi final de núvols ---
     cloud_layers = analitzar_formacio_nuvols(sounding_data, params_calc)
 
+    # --- 7. Retorn de totes les dades processades ---
     return {
-        "transect_distances": distances, "transect_elevations": elevations, "poble_sel": poble_sel, 
-        "poble_dist": distances[idx_poble], "poble_elev": elev_poble_precisa,
-        "wind_dir_from": wind_dir_from_real, "wind_spd_kmh": wind_spd_kmh, "posicio": posicio, 
-        "diagnostico": diagnostico, "detalls": detalls, "punts_dinteres": punts_dinteres_etiquetes,
-        "sondeig_perfil_complet": sondeig_complet_per_grafic, "cloud_layers": cloud_layers,
+        "transect_distances": distances, 
+        "transect_elevations": elevations,
+        "poble_sel": poble_sel, 
+        "poble_dist": distances[idx_poble], 
+        "poble_elev": elev_poble_precisa,
+        "wind_dir_from": wind_dir_from_real, 
+        "wind_spd_kmh": wind_spd_kmh,
+        "posicio": posicio, 
+        "diagnostico": diagnostico, 
+        "detalls": detalls,
+        "punts_dinteres": punts_dinteres_etiquetes,
+        "sondeig_perfil_complet": sondeig_complet_per_grafic, 
+        "cloud_layers": cloud_layers,
         "bearing_fixe": BEARING_FIXE_PER_AL_TALL
     }
+
 
 def analitzar_formacio_nuvols(sounding_data, params_calc):
     """
@@ -8500,30 +8535,37 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
         st.caption("Vent dominant calculat de manera adaptativa segons l'entorn.")
         
 
-@st.cache_data(ttl=86400, show_spinner="Obtenint perfil del terreny...")
-def get_elevation_profile(lat_start, lon_start, bearing_deg, distance_km=80, num_points=100):
+@st.cache_data(ttl=86400, show_spinner="Obtenint perfil del terreny d'alta precisió (ICGC)...")
+def get_elevation_profile(lat_start, lon_start, bearing_deg, distance_km=80, num_points=200):
     """
-    Obté un perfil d'elevació al llarg d'un transecte des d'un punt inicial.
-    Retorna les coordenades dels punts, les seves distàncies i les seves elevacions.
+    Obté un perfil d'elevació d'alta precisió utilitzant l'API de l'Institut
+    Cartogràfic i Geològic de Catalunya (ICGC).
     """
-    R = 6371.0
-    lats, lons, dists = [], [], []
-    lat_start_rad, lon_start_rad, bearing_rad = map(radians, [lat_start, lon_start, bearing_deg])
-
-    for i in range(num_points):
-        d = i * (distance_km / (num_points - 1))
-        dists.append(d)
-        lat_rad = asin(sin(lat_start_rad) * cos(d / R) + cos(lat_start_rad) * sin(d / R) * cos(bearing_rad))
-        lon_rad = lon_start_rad + atan2(sin(bearing_rad) * sin(d / R) * cos(lat_start_rad), cos(d / R) - sin(lat_start_rad) * sin(lat_rad))
-        lats.append(degrees(lat_rad)); lons.append(degrees(lon_rad))
-        
     try:
-        response = requests.get("https://api.open-meteo.com/v1/elevation", params={"latitude": lats, "longitude": lons}, timeout=10)
+        # 1. Calculem el punt final del transecte
+        lat_end, lon_end = punt_desti(lat_start, lon_start, bearing_deg, distance_km)
+        
+        # 2. Construïm la URL per a l'API de l'ICGC
+        punts_str = f"{lon_start},{lat_start},{lon_end},{lat_end}"
+        url = f"https://geoserveis.icgc.cat/altimetria/cerca/perfil/linia?punts={punts_str}&mostres={num_points}"
+        
+        # 3. Fem la petició a l'API
+        response = requests.get(url, timeout=15)
         response.raise_for_status()
-        elevations = response.json().get('elevation', [0] * num_points)
-        return {"distances": dists, "elevations": elevations, "lats": lats, "lons": lons}, None
+        data = response.json()
+        
+        # 4. Processem la resposta de l'ICGC
+        elevations = [p['z'] for p in data]
+        distances = [p['distancia_acumulada'] / 1000.0 for p in data] # Convertim a km
+        lats = [p['lat'] for p in data]
+        lons = [p['lon'] for p in data]
+        
+        return {"distances": distances, "elevations": elevations, "lats": lats, "lons": lons}, None
+
+    except requests.exceptions.RequestException as e:
+        return None, f"Error de xarxa connectant amb l'ICGC: {e}"
     except Exception as e:
-        return None, f"Error obtenint dades d'elevació: {e}"
+        return None, f"Error processant les dades de l'ICGC: {e}"
 
 
 def punt_desti(lat, lon, bearing, distance_km):
