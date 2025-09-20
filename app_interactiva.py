@@ -8147,15 +8147,24 @@ def run_catalunya_app():
 
 
 
+PERFILS_OROGRAFICS_PRECALCULATS = {
+    "Arbúcies": {
+        "distances": [0.0, 4.0, 8.0, 12.0, 16.0, 20.0, 24.0, 28.0, 32.0, 36.0, 40.0, 44.0, 48.0, 52.0, 56.0, 60.0, 64.0, 68.0, 72.0, 76.0, 80.0],
+        "elevations": [180, 210, 250, 290, 350, 480, 650, 950, 1450, 1706, 1500, 1100, 800, 650, 450, 320, 280, 250, 230, 215, 200]
+    },
+    # Pots afegir més perfils aquí. Per exemple:
+    # "Berga": { ... },
+    # "Vielha": { ... }
+}
 
 
 def analitzar_orografia(poble_sel, data_tuple):
     """
-    Algoritme v19.0 (Precisió ICGC).
-    - Utilitza el perfil d'alta resolució de l'ICGC com a única font per al terreny.
-    - S'elimina completament la lògica que afegia "cims artificials", solucionant el bug de les "muntanyes fantasma".
-    - La llista de cims famosos s'utilitza només per a identificar i etiquetar els pics
-      que ja existeixen al perfil real del terreny.
+    Algoritme v23.0 (Dades Manuals Primer).
+    - Primer intenta carregar un perfil orogràfic d'alta qualitat des de la base de dades
+      interna 'PERFILS_OROGRAFICS_PRECALCULATS'.
+    - Si no troba un perfil precalculat, activa el sistema de fallback (Pla B) que
+      utilitza l'API d'Open-Meteo per a garantir la compatibilitat amb qualsevol localitat.
     """
     if not data_tuple: 
         return {"error": "Falten dades del sondeig."}
@@ -8169,7 +8178,6 @@ def analitzar_orografia(poble_sel, data_tuple):
     
     # --- 1. Determinar el vent dominant ---
     try:
-        # Lògica adaptativa per determinar el vent (muntanya vs. plana)
         if poble_coords.get('lat', 0) > 42 and np.min(heights.m) > 700:
             altura_superficie = heights.m[0]
             mask_capa_baixa = (heights.m >= altura_superficie) & (heights.m <= altura_superficie + 1500)
@@ -8180,22 +8188,37 @@ def analitzar_orografia(poble_sel, data_tuple):
         wind_spd_kmh = mpcalc.wind_speed(u_dom, v_dom).to('km/h').m
     except Exception as e:
         return {"error": f"No s'ha pogut determinar el vent dominant: {e}"}
+
+    # --- 2. Sistema de Càrrega de Perfils (Manual Primer, API com a Fallback) ---
+    profile_data = None
+    bearing_fixe = 14.0 # El rumb del tall és sempre constant
     
-    # --- 2. Obtenir perfil del terreny d'alta precisió ---
-    BEARING_FIXE_PER_AL_TALL = 14.0
-    start_point_bearing = (BEARING_FIXE_PER_AL_TALL + 180) % 360
-    lat_inici, lon_inici = punt_desti(poble_coords['lat'], poble_coords['lon'], start_point_bearing, 40)
-    
-    profile_data, error = get_elevation_profile(lat_inici, lon_inici, BEARING_FIXE_PER_AL_TALL, 80, 200) # Més punts per a més detall
-    if error: 
-        return {"error": error}
-    
+    if poble_sel in PERFILS_OROGRAFICS_PRECALCULATS:
+        print(f"INFO: Carregant perfil precalculat per a {poble_sel}.")
+        profile_data = PERFILS_OROGRAFICS_PRECALCULATS[poble_sel]
+        # Simulem les coordenades per a mantenir la compatibilitat amb la resta de la funció
+        lats_simulades = np.linspace(poble_coords['lat'] - 0.3, poble_coords['lat'] + 0.3, len(profile_data['distances']))
+        lons_simulats = np.linspace(poble_coords['lon'] - 0.3, poble_coords['lon'] + 0.3, len(profile_data['distances']))
+        profile_data['lats'], profile_data['lons'] = lats_simulades, lons_simulats
+    else:
+        print(f"ADVERTÈNCIA: No s'ha trobat perfil precalculat per a {poble_sel}. Utilitzant API de fallback.")
+        start_point_bearing = (bearing_fixe + 180) % 360
+        lat_inici, lon_inici = punt_desti(poble_coords['lat'], poble_coords['lon'], start_point_bearing, 40)
+        profile_data, error = get_elevation_profile(lat_inici, lon_inici, bearing_fixe, 80, 200)
+        if error: return {"error": error}
+
     elevations = np.array(profile_data['elevations'])
     distances = np.array(profile_data['distances'])
     
-    # --- 3. Localitzar el poble i els cims al perfil real ---
-    dist_al_poble = [haversine_distance(poble_coords['lat'], poble_coords['lon'], lat, lon) for lat, lon in zip(profile_data['lats'], profile_data['lons'])]
-    idx_poble = np.argmin(dist_al_poble)
+    # --- 3. Localitzar el poble i els cims al perfil obtingut ---
+    if poble_sel in PERFILS_OROGRAFICS_PRECALCULATS:
+        # Per als perfils manuals, el poble sempre està al centre
+        idx_poble = int(len(distances) / 2)
+    else:
+        # Per als perfils d'API, el busquem per la distància mínima
+        dist_al_poble = [haversine_distance(poble_coords['lat'], poble_coords['lon'], lat, lon) for lat, lon in zip(profile_data['lats'], profile_data['lons'])]
+        idx_poble = np.argmin(dist_al_poble)
+    
     elev_poble_precisa = elevations[idx_poble]
     
     punts_dinteres_etiquetes = []
@@ -8203,12 +8226,9 @@ def analitzar_orografia(poble_sel, data_tuple):
     if comarca:
         cims_de_la_comarca = PICS_CATALUNYA_PER_COMARCA.get(comarca, [])
         cims_propers = [pic for pic in cims_de_la_comarca if np.min([haversine_distance(pic['lat'], pic['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]) < 10]
-        
         for cim in cims_propers:
             dist_al_cim = [haversine_distance(cim['lat'], cim['lon'], lat_t, lon_t) for lat_t, lon_t in zip(profile_data['lats'], profile_data['lons'])]
             idx_cim_proper = np.argmin(dist_al_cim)
-            
-            # Verifiquem si el punt del perfil és realment un pic prominent
             indices_pics_locals, _ = find_peaks(elevations[max(0, idx_cim_proper-10):idx_cim_proper+10], prominence=150)
             if any(p + max(0, idx_cim_proper-10) == idx_cim_proper for p in indices_pics_locals):
                 punts_dinteres_etiquetes.append({"name": cim['name'], "ele_oficial": cim['ele'], "idx": idx_cim_proper})
@@ -8221,7 +8241,6 @@ def analitzar_orografia(poble_sel, data_tuple):
         if idx_poble > idx_inici_analisi + 5:
             dist_tram = distances[idx_inici_analisi:idx_poble]; elev_tram = elevations[idx_inici_analisi:idx_poble]; 
             pendent = np.polyfit(dist_tram * 1000, elev_tram, 1)[0]
-            
             if abs(pendent) < 0.01: posicio, diagnostico, detalls = "Plana / Vall Oberta", "Sense Efecte Orogràfic Dominant", "El flux de vent travessa un terreny majoritàriament pla."
             elif pendent > 0.03: posicio, diagnostico, detalls = "Sobrevent", "Ascens Orogràfic Forçat", "El flux d'aire impacta contra un pendent ascendent, forçant l'ascens, refredament i possible condensació."
             elif pendent < -0.03: posicio, diagnostico, detalls = "Sotavent", "Subsidència i Efecte Foehn", "L'aire descendeix, comprimint-se i reescalfant-se, la qual cosa dissipa la nuvolositat i asseca l'ambient."
@@ -8234,7 +8253,6 @@ def analitzar_orografia(poble_sel, data_tuple):
     wind_speed_profile = mpcalc.wind_speed(u, v).to('km/h').m; temp_profile = T.m
     theta_e_profile = mpcalc.equivalent_potential_temperature(p, T, Td).to('K').m
     parcel_profile = mpcalc.parcel_profile(p, T[0], Td[0]).to('degC').m
-    
     sondeig_complet_per_grafic = (heights.m, u.m, v.m, rh_profile, temp_profile, wind_speed_profile, theta_e_profile, parcel_profile)
     
     # --- 6. Anàlisi final de núvols ---
@@ -8255,8 +8273,9 @@ def analitzar_orografia(poble_sel, data_tuple):
         "punts_dinteres": punts_dinteres_etiquetes,
         "sondeig_perfil_complet": sondeig_complet_per_grafic, 
         "cloud_layers": cloud_layers,
-        "bearing_fixe": BEARING_FIXE_PER_AL_TALL
+        "bearing_fixe": bearing_fixe
     }
+
 
 
 def analitzar_formacio_nuvols(sounding_data, params_calc):
