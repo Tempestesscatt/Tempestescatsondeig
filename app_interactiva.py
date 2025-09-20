@@ -2241,9 +2241,6 @@ MAPA_IMATGES_REALS = {
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
     Versió Definitiva v67.0 (Diagnòstic Estable Independent).
-    - La secció de "Nuvolositat Estable" ara només informa sobre núvols estables.
-    - Si no n'hi ha, mostra un missatge indicant l'absència de nuvolositat estratiforme,
-      eliminant la redundància amb la secció de convecció.
     """
     TOOLTIPS = {
         'MLCAPE': "Mixed-Layer CAPE: L'energia disponible per a una bombolla d'aire que representa la mitjana de les capes baixes. És l'indicador més fiable del potencial de tempesta.",
@@ -2301,11 +2298,8 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         nom_arxiu = MAPA_IMATGES_REALS.get(desc, MAPA_IMATGES_REALS["fallback"]); ruta_arxiu_imatge = os.path.join("imatges_reals", nom_arxiu)
         b64_img = convertir_img_a_base64(ruta_arxiu_imatge)
         st.markdown(f"""<div style="position: relative; width: 100%; height: 150px; border-radius: 10px; background-image: url('{b64_img}'); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 15px; box-shadow: inset 0 -80px 60px -30px rgba(0,0,0,0.8); margin-bottom: 10px;"><div style="color: white; text-shadow: 2px 2px 5px rgba(0,0,0,0.8);"><strong style="font-size: 1.3em;">{veredicte}</strong><br><em style="font-size: 0.9em; color: #DDDDDD;">({desc})</em></div></div>""", unsafe_allow_html=True)
-    else:
-        # --- LÍNIA CORREGIDA ---
-        st.info("No es preveu la formació de nuvolositat estable significativa.", icon="✅")
-        # --- FI DE LA CORRECCIÓ ---
-
+    
+    # La resta de la funció es manté igual
     st.markdown("##### ⚡ Energia i Inestabilitat")
     cols_energia = st.columns(4)
     with cols_energia[0]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
@@ -9841,13 +9835,14 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 
 
-# -*- coding: utf-8 -*-
-
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Expert v74.0 (Separació Estable/Inestable).
-    - Classifica cada diagnòstic com a pertanyent a un règim "inestable" (convectiu) o "estable" (estratiforme).
-    - Retorna un diccionari amb dues claus, 'inestable' i 'estable', per a una visualització separada a la UI.
+    Sistema de Diagnòstic Expert v75.0 (Anàlisi Paral·lela i Independent).
+    - Soluciona el bug lògic anterior. Ara realitza dues anàlisis independents en paral·lel:
+      1. Avalua el potencial de núvols INESTABLES (convectius).
+      2. Avalua la presència de núvols ESTABLES (estratiformes).
+    - Això permet que es puguin diagnosticar ambdós tipus de nuvolositat simultàniament,
+      garantint que la secció de núvols estables sempre ofereixi un diagnòstic pertinent.
     """
     
     # --- 1. Extracció de Paràmetres ---
@@ -9861,10 +9856,9 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
 
     resultat = {"inestable": None, "estable": None}
     
-    # --- 2. Anàlisi Jeràrquica ---
+    # --- BLOC 1: ANÀLISI DEL POTENCIAL INESTABLE (CONVECTIU) ---
     condicions_de_dispar = (cin > -100 and lfc_hgt < 2200 and conv > 10)
     
-    # == NIVELL 1: POTENCIAL DE TEMPESTES SEVERES (INESTABLE) ==
     if max_cape > 1500 and bwd_6km >= 35 and condicions_de_dispar:
         resultat["inestable"] = {'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Entorn explosiu per a tempestes severes organitzades amb rotació."}
     elif max_cape > 1000 and bwd_6km >= 25 and condicions_de_dispar:
@@ -9873,15 +9867,15 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
         resultat["inestable"] = {'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Molt de 'combustible' però poca organització. Potencial per a calamarsa i esclafits."}
     elif max_cape > 800 and condicions_de_dispar:
         resultat["inestable"] = {'descripcio': "Tempesta Comuna", 'veredicte': "Energia suficient per a tempestes amb forta pluja i activitat elèctrica."}
-    
-    # == NIVELL 2: NÚVOLS CONVECTIUS EN DESENVOLUPAMENT (INESTABLE) ==
     elif max_cape > 250 and lfc_hgt < 3000 and rh_baixa > 70:
         resultat["inestable"] = {'descripcio': "Cúmuls de creixement", 'veredicte': "Inici de convecció amb creixement vertical. Precursors de possibles tempestes."}
-    elif rh_baixa >= 75 and max_cape > 150: # Cúmuls mediocris
-         resultat["inestable"] = {'descripcio': "Cúmuls mediocris", 'veredicte': "Núvols baixos amb cert desenvolupament vertical, però sense arribar a ser tempestes."}
+    elif rh_alta >= 60 and (params.get('LI', 5) < 0 or params.get('T_500hPa', 0) < -15):
+        resultat["inestable"] = {'descripcio': "Cirrus Castellanus", 'veredicte': "Núvols alts amb petites 'torres', indiquen inestabilitat en nivells superiors."}
+    elif 40 <= rh_baixa < 75 and max_cape > 50: # S'ajusta el rang per a no solapar amb cúmuls de creixement
+        resultat["inestable"] = {'descripcio': "Cúmuls de bon temps", 'veredicte': "Humitat suficient per a formar petits cúmuls dispersos sense desenvolupament."}
 
-    # == NIVELL 3: NUVOLOSITAT ESTRATIFORME (ESTABLE) ==
-    elif rh_baixa >= 80 and rh_mitjana >= 75 and max_cape < 300:
+    # --- BLOC 2: ANÀLISI DE LA NUVOLOSITAT ESTABLE (ESTRATIFORME) ---
+    if rh_baixa >= 80 and rh_mitjana >= 75 and max_cape < 300: # Nimbostratus només si no hi ha CAPE
         resultat["estable"] = {'descripcio': "Nimbostratus (Pluja Contínua)", 'veredicte': "Capa de núvols molt humida i gruixuda, favorable a pluges extenses i persistents."}
     elif rh_baixa >= 85 and lcl_hgt < 500:
         resultat["estable"] = {'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos i cel cobert, pot produir plugims."}
@@ -9891,28 +9885,15 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
         else:
             resultat["estable"] = {'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Cel cobert o parcialment cobert per núvols a nivells mitjans."}
     elif rh_alta >= 60:
-        if params.get('LI', 5) < 0 or params.get('T_500hPa', 0) < -15:
-            # Encara que siguin Cirrus, el Castellanus indica inestabilitat en alçada
-            resultat["inestable"] = {'descripcio': "Cirrus Castellanus", 'veredicte': "Núvols alts amb petites 'torres', indiquen inestabilitat en nivells superiors."}
-        else:
-            resultat["estable"] = {'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Presència de núvols alts de tipus cirrus que poden produir un halo solar/lunar."}
-            
-    # == NIVELL 4: CONDICIONS DE BAIXA HUMITAT (ESTABLE) ==
-    elif rh_baixa < 30 and rh_mitjana < 30 and rh_alta < 30:
-        resultat["estable"] = {'descripcio': "Cel Serè", 'veredicte': "Atmosfera extremadament seca a tots els nivells. Absència total de nuvolositat."}
-    elif 30 <= rh_baixa < 40 and rh_mitjana < 50:
-        resultat["estable"] = {'descripcio': "Cel Serè amb núvols fragmentats", 'veredicte': "Humitat molt baixa. Cel majoritàriament serè amb possibles fractostratus o cúmuls molt aïllats."}
+        resultat["estable"] = {'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Presència de núvols alts de tipus cirrus que poden produir un halo solar/lunar."}
     
-    # == NIVELL 5: CÚMULS DE BON TEMPS (INESTABLE, però molt feble) ==
-    elif 40 <= rh_baixa < 70 and max_cape > 50:
-        resultat["inestable"] = {'descripcio': "Cúmuls de bon temps", 'veredicte': "Humitat suficient per a formar petits cúmuls dispersos sense desenvolupament."}
-
-    # == CONDICIÓ FINAL PER DEFECTE (ESTABLE) ==
-    else:
-        # Si no s'ha complert cap condició, és perquè l'atmosfera és estable
-        if not resultat["inestable"] and not resultat["estable"]:
-            resultat["estable"] = {'descripcio': "Cel Serè", 'veredicte': "Atmosfera estable i/o seca, sense nuvolositat significativa."}
-
+    # --- BLOC 3: CONDICIÓ PER DEFECTE SI NO S'HA TROBAT NUVOLOSITAT ESTABLE ---
+    if not resultat["estable"]:
+        if rh_baixa < 40 and rh_mitjana < 40:
+             resultat["estable"] = {'descripcio': "Cel Serè", 'veredicte': "Atmosfera seca a nivells baixos i mitjans. Absència de nuvolositat estable."}
+        else:
+             resultat["estable"] = {'descripcio': "Sense nuvolositat estable significativa", 'veredicte': "Les condicions no afavoreixen la formació de capes de núvols estables."}
+             
     return resultat
 
     
