@@ -8509,7 +8509,8 @@ def ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calc):
 def get_elevation_profile(lat_start, lon_start, bearing_deg, distance_km=80, num_points=200):
     """
     Obté un perfil d'elevació utilitzant l'API d'Open-Meteo amb el mètode POST
-    per a evitar errors de 'Request-URI Too Long'. Aquesta és la implementació robusta i definitiva.
+    i el format de dades JSON correcte per a peticions massives, solucionant
+    l'error '400 Bad Request'. Aquesta és la implementació robusta i definitiva.
     """
     try:
         # 1. Calculem tots els punts del transecte (sense canvis)
@@ -8523,31 +8524,36 @@ def get_elevation_profile(lat_start, lon_start, bearing_deg, distance_km=80, num
             lon_rad = lon_start_rad + atan2(sin(bearing_rad) * sin(d / R) * cos(lat_start_rad), cos(d / R) - sin(lat_start_rad) * sin(lat_rad))
             lats.append(degrees(lat_rad)); lons.append(degrees(lon_rad))
         
-        # --- LÒGICA DEFINITIVA AMB POST REQUEST ---
+        # --- LÒGICA DEFINITIVA AMB POST REQUEST I FORMAT JSON CORRECTE ---
         
         # 2. La URL de l'API és la mateixa
         url = "https://api.open-meteo.com/v1/elevation"
         
-        # 3. Preparem les dades en el format JSON que requereix l'API per a una petició POST
-        locations_data = {"locations": [{"latitude": lat, "longitude": lon} for lat, lon in zip(lats, lons)]}
+        # 3. Preparem les dades en el format JSON correcte: {"latitude": [lat1, lat2,...], "longitude": [lon1, lon2,...]}
+        payload = {
+            "latitude": lats,
+            "longitude": lons
+        }
         
         # 4. Fem la petició utilitzant POST. L'argument 'json' s'encarrega de formatar-ho tot correctament.
-        response = requests.post(url, json=locations_data, timeout=20)
-        response.raise_for_status()
+        #    És crucial utilitzar el paràmetre 'json=' de la llibreria 'requests' que gestiona les capçaleres automàticament.
+        response = requests.post(url, json=payload, timeout=20)
+        
+        response.raise_for_status() # Això llançarà una excepció per a errors 4xx o 5xx
         data = response.json()
         
         # 5. Processem la resposta
-        results = data.get('results', [])
-        if not results or len(results) != num_points:
+        elevations = data.get('elevation')
+        if not elevations or len(elevations) != num_points:
             return None, "La resposta de l'API d'Open-Meteo és incompleta o invàlida."
             
-        elevations = [p['elevation'] for p in results]
-        
         print("INFO: Perfil obtingut amb èxit d'Open-Meteo via POST.")
         return {"distances": dists, "elevations": elevations, "lats": lats, "lons": lons}, None
 
     except requests.exceptions.HTTPError as e:
-        return None, f"Error HTTP connectant amb Open-Meteo: {e}."
+        # Intentem obtenir més detalls de l'error des de la resposta del servidor
+        error_details = e.response.text if e.response else "No additional details."
+        return None, f"Error HTTP connectant amb Open-Meteo: {e}. Detalls del servidor: {error_details}"
     except requests.exceptions.RequestException as e:
         return None, f"Error de xarxa connectant amb Open-Meteo: {e}"
     except Exception as e:
