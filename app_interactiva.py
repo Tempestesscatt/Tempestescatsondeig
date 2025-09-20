@@ -9834,12 +9834,10 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Expert v77.0 (Anàlisi de Patrons Multi-Capa).
-    - L'anàlisi de núvols estables ara és extremadament detallada, identificant patrons
-      complexos basats en la combinació d'humitat a les capes baixa, mitjana i alta.
-    - Reconeix patrons clau com inversions, capes seques a nivells mitjans i saturació profunda.
-    - L'anàlisi inestable es refina per a identificar l'escenari de "pistola carregada" (alt CAPE sota una tapa forta).
-    - L'anàlisi de les dues categories (estable/inestable) es manté totalment independent.
+    Sistema de Diagnòstic Expert v78.0 (Diagnòstic de Plugims Refinat).
+    - L'anàlisi d'Estratus ara avalua la profunditat i l'alçada de la capa humida.
+    - El veredicte sobre la possibilitat de plugims es basa en si la capa saturada
+      és prou gruixuda i baixa per a generar precipitació.
     """
     
     # --- 1. Extracció de Paràmetres ---
@@ -9853,10 +9851,9 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
 
     resultat = {"inestable": None, "estable": None}
     
-    # --- BLOC 1: ANÀLISI DEL POTENCIAL INESTABLE (CONVECTIU) ---
+    # --- BLOC 1: ANÀLISI DEL POTENCIAL INESTABLE (sense canvis) ---
     condicions_de_dispar = (cin > -100 and lfc_hgt < 2200 and conv > 10)
     
-    # Escenaris de temps sever (màxima prioritat)
     if max_cape > 1500 and bwd_6km >= 35 and condicions_de_dispar:
         resultat["inestable"] = {'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Entorn explosiu per a tempestes severes organitzades amb rotació."}
     elif max_cape > 1000 and bwd_6km >= 25 and condicions_de_dispar:
@@ -9865,12 +9862,8 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
         resultat["inestable"] = {'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Molt de 'combustible' però poca organització. Potencial per a calamarsa i esclafits."}
     elif max_cape > 800 and condicions_de_dispar:
         resultat["inestable"] = {'descripcio': "Tempesta Comuna", 'veredicte': "Energia suficient per a tempestes amb forta pluja i activitat elèctrica."}
-    
-    # Escenari especial: "Pistola Carregada"
     elif max_cape > 2000 and cin < -125:
          resultat["inestable"] = {'descripcio': "Potencial Explosiu (Pistola Carregada)", 'veredicte': "Molta energia atrapada sota una forta 'tapa'. Si un disparador la trenca, les tempestes seran violentes."}
-
-    # Convecció més moderada
     elif max_cape > 250 and lfc_hgt < 3000 and rh_baixa > 70:
         resultat["inestable"] = {'descripcio': "Cúmuls de creixement", 'veredicte': "Inici de convecció amb creixement vertical. Precursors de possibles tempestes."}
     elif rh_alta >= 60 and (params.get('LI', 5) < 0 or params.get('T_500hPa', 0) < -15):
@@ -9880,22 +9873,30 @@ def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     elif 40 <= rh_baixa < 60 and max_cape > 50:
         resultat["inestable"] = {'descripcio': "Cúmuls de bon temps", 'veredicte': "Humitat suficient per a formar petits cúmuls dispersos sense desenvolupament."}
 
-    # --- BLOC 2: ANÀLISI INDEPENDENT DE LA NUVOLOSITAT ESTABLE (ESTRATIFORME) ---
-    if rh_baixa >= 85 and rh_mitjana >= 80 and max_cape < 300:
+    # --- BLOC 2: ANÀLISI INDEPENDENT DE LA NUVOLOSITAT ESTABLE (amb la millora) ---
+    
+    if rh_baixa >= 85 and rh_mitjana < 50: # Humitat atrapada a sota
+        # --- LÒGICA MILLORADA PER A PLUGIMS ---
+        veredicte_plugims = "és molt probable que produeixi plugims." if lcl_hgt < 400 and rh_baixa > 90 else "no s'espera precipitació associada."
+        resultat["estable"] = {
+            'descripcio': "Estratus (Boira alta - Cel tancat)", 
+            'veredicte': f"Capa de núvols baixos atrapada sota una capa seca. Aquesta situació {veredicte_plugims}"
+        }
+        # --- FI DE LA LÒGICA MILLORADA ---
+        
+    elif rh_baixa >= 80 and rh_mitjana >= 80 and max_cape < 300: # Nimbostratus
         resultat["estable"] = {'descripcio': "Nimbostratus (Pluja Contínua)", 'veredicte': "Saturació profunda i estable, favorable a pluges extenses i persistents."}
-    elif rh_baixa >= 85 and rh_mitjana < 50: # Humitat atrapada a sota
-        resultat["estable"] = {'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos atrapada sota una capa seca. Pot produir plugims."}
     elif rh_baixa >= 75 and rh_mitjana < 60:
         resultat["estable"] = {'descripcio': "Estratocúmuls (Cel trencat)", 'veredicte': "Bancs de núvols baixos amb zones clares, típic d'inversions de temperatura."}
-    elif rh_mitjana >= 75 and rh_baixa < 70: # Capa de núvols elevada
+    elif rh_mitjana >= 70 and rh_baixa < 70:
         if bwd_6km > 40:
              resultat["estable"] = {'descripcio': "Altocúmulus Lenticular", 'veredicte': "Núvols en forma de 'plat volador', indiquen vent fort i turbulència en alçada."}
         else:
             resultat["estable"] = {'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Cel cobert o parcialment cobert per una capa de núvols a nivells mitjans."}
-    elif rh_alta >= 60 and rh_mitjana < 50: # Només humitat a nivells alts
+    elif rh_alta >= 60 and rh_mitjana < 50:
         resultat["estable"] = {'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Presència de núvols alts de tipus cirrus que poden produir un halo solar/lunar."}
     
-    # --- BLOC 3: CONDICIÓ PER DEFECTE SI NO S'HA TROBAT NUVOLOSITAT ESTABLE ---
+    # --- BLOC 3: CONDICIÓ PER DEFECTE ---
     if resultat["estable"] is None:
         if rh_baixa < 40 and rh_mitjana < 40 and rh_alta < 40:
              resultat["estable"] = {'descripcio': "Cel Serè", 'veredicte': "Atmosfera seca a tots els nivells. Absència de nuvolositat."}
