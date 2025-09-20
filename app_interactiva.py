@@ -51,6 +51,7 @@ import scipy.ndimage as ndi
 from math import radians, sin, cos, sqrt, atan2, degrees, asin
 from scipy.signal import find_peaks
 from matplotlib.patches import Ellipse
+from scipy.ndimage import label
 
 
 # --- 0. CONFIGURACIÓ I CONSTANTS ---
@@ -5844,10 +5845,62 @@ def direccio_moviment(des_de_graus):
     return cap_on_va
 
 
+def trobar_poblacions_properes_a_convergencia(smoothed_convergence, grid_lon, grid_lat, poblacions_dict, llindar=20):
+    """
+    Analitza un mapa de convergència per trobar els focus més intensos i retorna
+    una llista ordenada de les poblacions més properes a aquests focus.
+    """
+    # 1. Identificar els "blobs" o regions de convergència que superen el llindar
+    labeled_array, num_features = label(smoothed_convergence >= llindar)
+    if num_features == 0:
+        return []
 
+    focus_info = {}
+    
+    # 2. Per a cada blob, trobar el seu punt de màxima intensitat
+    for i in range(1, num_features + 1):
+        blob_mask = (labeled_array == i)
+        max_conv_in_blob = smoothed_convergence[blob_mask].max()
+        
+        # Trobem les coordenades del punt màxim
+        temp_grid = np.where(blob_mask, smoothed_convergence, 0)
+        max_idx = np.unravel_index(np.argmax(temp_grid), temp_grid.shape)
+        max_lon, max_lat = grid_lon[max_idx], grid_lat[max_idx]
+
+        # 3. Trobar la població més propera a aquest punt màxim
+        poble_mes_proper = min(
+            poblacions_dict.keys(),
+            key=lambda poble: haversine_distance(max_lat, max_lon, poblacions_dict[poble]['lat'], poblacions_dict[poble]['lon'])
+        )
+        
+        # 4. Guardem la convergència màxima associada a cada població
+        if poble_mes_proper not in focus_info or max_conv_in_blob > focus_info[poble_mes_proper]:
+            focus_info[poble_mes_proper] = max_conv_in_blob
+
+    # 5. Ordenem els resultats de major a menor intensitat de convergència
+    pobles_ordenats = sorted(focus_info.keys(), key=lambda p: focus_info[p], reverse=True)
+    
+    return pobles_ordenats
+
+
+
+def on_focus_select():
+    """
+    Callback que s'activa en seleccionar un focus de tempesta.
+    Canvia la vista a l'anàlisi detallada de la població seleccionada.
+    """
+    focus_poble = st.session_state.get("focus_selector_widget")
+    if focus_poble and "---" not in focus_poble:
+        st.session_state.poble_sel = focus_poble
+
+
+        
 def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
     """
     Gestiona la interfície de la pestanya "Anàlisi de Mapes" per a Catalunya.
+    Versió 2.0:
+    - Identifica els focus de convergència i mostra les poblacions properes en un selector.
+    - Permet la navegació ràpida a l'anàlisi d'aquestes poblacions.
     """
     st.markdown("#### Mapes de Pronòstic (Model AROME)")
     
@@ -5855,63 +5908,67 @@ def ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel):
                            ["Anàlisi de Vent i Convergència", "Anàlisi d'Advecció (Fronts)", "Vent a 700hPa", "Vent a 300hPa"], 
                            key="map_cat")
     
-    col_zoom, col_filtre = st.columns(2)
+    # --- ANÀLISI PRÈVIA PER A OBTENIR ELS FOCUS ---
+    pobles_focus = []
+    map_data_raw, error_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
+    
+    if "Convergència" in mapa_sel and not error_map and map_data_raw:
+        selected_extent = MAP_ZOOM_LEVELS_CAT[st.session_state.get("zoom_cat", "Catalunya (Complet)")]
+        grid_lon, grid_lat = np.meshgrid(np.linspace(selected_extent[0], selected_extent[1], 150), np.linspace(selected_extent[2], selected_extent[3], 150))
+        
+        # Calculem la convergència (aquesta lògica es repeteix al gràfic, però és necessària aquí)
+        u_comp, v_comp = mpcalc.wind_components(np.array(map_data_raw['speed_data']) * units('km/h'), np.array(map_data_raw['dir_data']) * units.degrees)
+        grid_u = griddata((map_data_raw['lons'], map_data_raw['lats']), u_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+        grid_v = griddata((map_data_raw['lons'], map_data_raw['lats']), v_comp.to('m/s').m, (grid_lon, grid_lat), 'linear')
+        dx, dy = mpcalc.lat_lon_grid_deltas(grid_lon, grid_lat)
+        convergence = (-(mpcalc.divergence(grid_u * units('m/s'), grid_v * units('m/s'), dx=dx, dy=dy)).to('1/s')).magnitude * 1e5
+        smoothed_convergence = gaussian_filter(np.nan_to_num(convergence), sigma=2.5)
+        
+        pobles_focus = trobar_poblacions_properes_a_convergencia(smoothed_convergence, grid_lon, grid_lat, CIUTATS_CATALUNYA)
+
+    # --- NOU DISSENY AMB 3 COLUMNES ---
+    col_zoom, col_filtre, col_focus = st.columns(3)
     with col_zoom: 
         zoom_sel = st.selectbox("Nivell de Zoom:", 
                                options=list(MAP_ZOOM_LEVELS_CAT.keys()), 
                                key="zoom_cat")
     
-    if "Convergència" in mapa_sel:
-        FILTRES_CAPE = {
-            "Detectar totes les convergències amb CAPE (>100)": 100,
-            "Detectar convergències amb CAPE Significatiu (>500)": 500,
-            "Detectar convergències amb Alt CAPE (>1000)": 1000,
-            "Detectar convergències amb Molt de CAPE (>2000)": 2000
-        }
-        with col_filtre:
+    with col_filtre:
+        if "Convergència" in mapa_sel:
+            FILTRES_CAPE = {"Detectar totes les convergències amb CAPE (>100)": 100, "Detectar convergències amb CAPE Significatiu (>500)": 500, "Detectar convergències amb Alt CAPE (>1000)": 1000, "Detectar convergències amb Molt de CAPE (>2000)": 2000}
             filtre_sel = st.selectbox("Filtre de CAPE per a la Convergència:", options=list(FILTRES_CAPE.keys()), key="cape_filter_cat")
     
+    with col_focus:
+        if "Convergència" in mapa_sel:
+            opcions_focus = ["--- Viatge Ràpid ---"] + pobles_focus
+            st.selectbox(
+                "Focus de Tempesta:", 
+                options=opcions_focus, 
+                key="focus_selector_widget",
+                on_change=on_focus_select,
+                help="Viatja directament a l'anàlisi de la població més propera a un focus de convergència."
+            )
+            
     selected_extent = MAP_ZOOM_LEVELS_CAT[zoom_sel]
     
     with st.spinner(f"Carregant i generant mapa..."):
         if "Convergència" in mapa_sel:
-            cape_min_seleccionat = FILTRES_CAPE[filtre_sel]
-            
-            fig = generar_mapa_cachejat_cat(
-                hourly_index=hourly_index_sel, 
-                nivell=nivell_sel, 
-                timestamp_str=timestamp_str, 
-                map_extent_tuple=tuple(selected_extent),
-                cape_min_filter=cape_min_seleccionat,
-                cape_max_filter=6000,
-                convergence_min_filter=1
-            )
-            
-            if fig is None:
-                st.error(f"Error en carregar les dades per al mapa de convergència.")
+            if error_map or not map_data_raw:
+                st.error(f"Error en carregar les dades per al mapa: {error_map}")
             else:
+                cape_min_seleccionat = FILTRES_CAPE[filtre_sel]
+                fig = crear_mapa_forecast_combinat_cat(map_data_raw['lons'], map_data_raw['lats'], map_data_raw['speed_data'], map_data_raw['dir_data'], map_data_raw['dewpoint_data'], map_data_raw['cape_data'], nivell_sel, timestamp_str, selected_extent, cape_min_seleccionat, 6000, 1)
                 st.pyplot(fig, use_container_width=True)
                 plt.close(fig)
         
         elif "Advecció" in mapa_sel:
-            nivell_adveccio = st.selectbox(
-                "Nivell per a l'anàlisi d'advecció:",
-                options=[1000, 925, 850, 700, 500],
-                format_func=lambda x: f"{x} hPa", key="advection_level_selector_tab"
-            )
+            nivell_adveccio = st.selectbox("Nivell per a l'anàlisi d'advecció:", options=[1000, 925, 850, 700, 500], format_func=lambda x: f"{x} hPa", key="advection_level_selector_tab")
             map_data_adv, error_adv = carregar_dades_mapa_adveccio_cat(nivell_adveccio, hourly_index_sel)
             if error_adv or not map_data_adv:
                 st.error(f"Error en carregar les dades d'advecció: {error_adv}")
             else:
                 timestamp_str_mapa = timestamp_str.split('|')[1].strip() if '|' in timestamp_str else timestamp_str
-                fig_adv = crear_mapa_adveccio_cat(
-                    map_data_adv['lons'], map_data_adv['lats'],
-                    map_data_adv['temp_data'], map_data_adv['speed_data'],
-                    map_data_adv['dir_data'], 
-                    nivell_adveccio,
-                    timestamp_str_mapa, 
-                    selected_extent
-                )
+                fig_adv = crear_mapa_adveccio_cat(map_data_adv['lons'], map_data_adv['lats'], map_data_adv['temp_data'], map_data_adv['speed_data'], map_data_adv['dir_data'], nivell_adveccio, timestamp_str_mapa, selected_extent)
                 st.pyplot(fig_adv, use_container_width=True)
                 plt.close(fig_adv)
                 ui_explicacio_adveccio()
