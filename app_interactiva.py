@@ -2240,10 +2240,10 @@ MAPA_IMATGES_REALS = {
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva v66.0 (Separació Estable/Inestable).
-    - La interfície ara es divideix en dues seccions: "Potencial de Núvols Inestables" i
-      "Tipus de Nuvolositat Estable Prevista", cadascuna amb el seu diagnòstic visual.
-    - S'inclouen totes les seccions de paràmetres numèrics per a una anàlisi completa.
+    Versió Definitiva v67.0 (Diagnòstic Estable Independent).
+    - La secció de "Nuvolositat Estable" ara només informa sobre núvols estables.
+    - Si no n'hi ha, mostra un missatge indicant l'absència de nuvolositat estratiforme,
+      eliminant la redundància amb la secció de convecció.
     """
     TOOLTIPS = {
         'MLCAPE': "Mixed-Layer CAPE: L'energia disponible per a una bombolla d'aire que representa la mitjana de les capes baixes. És l'indicador més fiable del potencial de tempesta.",
@@ -2270,8 +2270,8 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         if pd.notna(value) and is_numeric:
             if 'CONV' in param_key:
                 conv_thresholds = [5, 15, 30, 40]; conv_colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
-                color_idx = np.searchsorted(conv_thresholds, abs(value)) # Usem valor absolut per a la divergència
-                color = conv_colors[color_idx] if value >= 0 else "#6495ED" # Blau per a divergència
+                color_idx = np.searchsorted(conv_thresholds, abs(value))
+                color = conv_colors[color_idx] if value >= 0 else "#6495ED"
             else: 
                 color = get_color_global(value, param_key, reverse_colors)
             val_str = f"{value:.{precision}f}"
@@ -2282,8 +2282,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br><strong style="font-size: 1.6em; color: {color};">{text}</strong></div>""", unsafe_allow_html=True)
 
-    # --- INICI DE LA NOVA ESTRUCTURA VISUAL ---
-    
     analisi_temps_dict = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
 
     st.markdown("##### 🌩️ Potencial de Núvols Inestables")
@@ -2304,10 +2302,10 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         b64_img = convertir_img_a_base64(ruta_arxiu_imatge)
         st.markdown(f"""<div style="position: relative; width: 100%; height: 150px; border-radius: 10px; background-image: url('{b64_img}'); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 15px; box-shadow: inset 0 -80px 60px -30px rgba(0,0,0,0.8); margin-bottom: 10px;"><div style="color: white; text-shadow: 2px 2px 5px rgba(0,0,0,0.8);"><strong style="font-size: 1.3em;">{veredicte}</strong><br><em style="font-size: 0.9em; color: #DDDDDD;">({desc})</em></div></div>""", unsafe_allow_html=True)
     else:
-        st.info("La nuvolositat prevista és principalment de tipus convectiu o de tempesta.", icon="ℹ️")
+        # --- LÍNIA CORREGIDA ---
+        st.info("No es preveu la formació de nuvolositat estable significativa.", icon="✅")
+        # --- FI DE LA CORRECCIÓ ---
 
-    # --- SECCIONS DE PARÀMETRES NUMÈRICS ---
-    
     st.markdown("##### ⚡ Energia i Inestabilitat")
     cols_energia = st.columns(4)
     with cols_energia[0]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
