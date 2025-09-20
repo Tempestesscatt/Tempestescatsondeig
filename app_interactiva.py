@@ -5845,6 +5845,19 @@ def direccio_moviment(des_de_graus):
     return cap_on_va
 
 
+
+def get_emoji_for_cape(cape_value):
+    """Retorna un emoji de color basat en el valor de CAPE."""
+    if not isinstance(cape_value, (int, float, np.number)) or pd.isna(cape_value) or cape_value < 500:
+        return "⚪"  # Gris/Blanc (Baix)
+    if cape_value < 1000:
+        return "🟢"  # Verd (Moderat)
+    if cape_value < 2000:
+        return "🟡"  # Groc (Alt)
+    if cape_value < 3000:
+        return "🟠"  # Taronja (Molt Alt)
+    return "🔴"      # Vermell (Extrem)
+
 def trobar_poblacions_properes_a_convergencia(smoothed_convergence, grid_lon, grid_lat, grid_cape, poblacions_dict, conv_llindar=20, cape_llindar=100):
     """
     Analitza mapes de convergència i CAPE per trobar els focus més rellevants.
