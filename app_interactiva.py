@@ -6857,47 +6857,101 @@ def ui_pestanya_analisi_provincial(provincia, valor_conv, poble_sel, timestamp_s
         crear_llegenda_direccionalitat()
 
 
+
+def on_manual_poble_select():
+    """
+    Callback que s'activa en seleccionar una localitat del menú de cerca directa.
+    Actualitza la clau de session_state correcta per a la zona activa.
+    """
+    zona_activa = st.session_state.get('zone_selected')
+    poble_seleccionat = st.session_state.get("manual_selector_widget")
+
+    if not zona_activa or not poble_seleccionat or "---" in poble_seleccionat:
+        return
+
+    # Diccionari que mapeja la zona activa amb la seva clau de session_state
+    ZONE_SESSION_KEYS = {
+        'catalunya': 'poble_sel',
+        'est_peninsula': 'poble_selector_est_peninsula',
+        'valley_halley': 'poble_selector_usa',
+        'alemanya': 'poble_selector_alemanya',
+        'italia': 'poble_selector_italia',
+        'holanda': 'poble_selector_holanda',
+        'japo': 'poble_selector_japo',
+        'uk': 'poble_selector_uk',
+        'canada': 'poble_selector_canada',
+        'noruega': 'poble_selector_noruega'
+    }
+    
+    session_key = ZONE_SESSION_KEYS.get(zona_activa)
+    if session_key:
+        st.session_state[session_key] = poble_seleccionat
+
+
 def ui_capcalera_selectors(ciutats_a_mostrar, info_msg=None, zona_activa="catalunya", convergencies=None):
+    """
+    Mostra la capçalera de l'aplicació amb els selectors de navegació.
+    Versió 2.0:
+    - Afegeix un selector de "Cerca Directa" per a navegar a qualsevol localitat
+      de la zona activa de manera instantània.
+    - Reorganitza les columnes per a una millor distribució.
+    """
     st.markdown(f'<h1 style="text-align: center; color: #FF4B4B;">Terminal de Temps Sever | {zona_activa.replace("_", " ").title()}</h1>', unsafe_allow_html=True)
     is_guest = st.session_state.get('guest_mode', False)
     
     altres_zones = {
-        'catalunya': 'Catalunya', 
-        'valley_halley': 'Tornado Alley', 
-        'alemanya': 'Alemanya', 
-        'italia': 'Itàlia', 
-        'holanda': 'Holanda', 
-        'japo': 'Japó', 
-        'uk': 'Regne Unit', 
-        'canada': 'Canadà', 
-        'noruega': 'Noruega',
-        'est_peninsula': 'Est Península'
+        'catalunya': 'Catalunya', 'valley_halley': 'Tornado Alley', 'alemanya': 'Alemanya', 
+        'italia': 'Itàlia', 'holanda': 'Holanda', 'japo': 'Japó', 'uk': 'Regne Unit', 
+        'canada': 'Canadà', 'noruega': 'Noruega', 'est_peninsula': 'Est Península'
     }
     if zona_activa in altres_zones:
         del altres_zones[zona_activa]
     
-    col_text, col_nav, col_back, col_logout = st.columns([0.5, 0.2, 0.15, 0.15])
+    # --- NOU DISSENY DE COLUMNES ---
+    col_text, col_manual_select, col_zone_change, col_actions = st.columns([0.35, 0.3, 0.2, 0.15])
     
     with col_text:
         if not is_guest: st.markdown(f"Benvingut/da, **{st.session_state.get('username', 'Usuari')}**!")
-    with col_nav:
-        nova_zona_key = st.selectbox("Canviar a:", options=list(altres_zones.keys()), format_func=lambda k: altres_zones[k], index=None, placeholder="Anar a...")
+
+    # --- NOU SELECTOR DE CERCA DIRECTA ---
+    with col_manual_select:
+        ZONE_CITIES_MAP = {
+            'catalunya': CIUTATS_CATALUNYA, 'est_peninsula': CIUTATS_EST_PENINSULA,
+            'valley_halley': USA_CITIES, 'alemanya': CIUTATS_ALEMANYA, 'italia': CIUTATS_ITALIA,
+            'holanda': CIUTATS_HOLANDA, 'japo': CIUTATS_JAPO, 'uk': CIUTATS_UK,
+            'canada': CIUTATS_CANADA, 'noruega': CIUTATS_NORUEGA
+        }
+        
+        ciutats_zona_actual = ZONE_CITIES_MAP.get(zona_activa, {})
+        if ciutats_zona_actual:
+            opcions = ["--- Anar a... ---"] + sorted(list(ciutats_zona_actual.keys()))
+            st.selectbox(
+                "Cerca Directa:", 
+                options=opcions, 
+                key="manual_selector_widget", 
+                on_change=on_manual_poble_select,
+                help="Selecciona qualsevol localitat per anar directament a la seva anàlisi."
+            )
+
+    with col_zone_change:
+        nova_zona_key = st.selectbox("Canviar a:", options=list(altres_zones.keys()), format_func=lambda k: altres_zones[k], index=None, placeholder="Altres zones...")
         if nova_zona_key:
             st.session_state.zone_selected = nova_zona_key
             st.rerun()
             
-    with col_back:
-        if st.button("⬅️ Zones", use_container_width=True, help="Tornar a la selecció de zona"):
-            keys_to_clear = [k for k in st.session_state if k not in ['logged_in', 'username', 'guest_mode', 'developer_mode']]
-            for key in keys_to_clear:
-                del st.session_state[key]
-            st.rerun()
-            
-    with col_logout:
-        if st.button("Sortir" if is_guest else "Tanca Sessió", use_container_width=True):
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.rerun()
+    with col_actions:
+        # Usem subcolumnes per als botons
+        col_back, col_logout = st.columns(2)
+        with col_back:
+            if st.button("⬅️", use_container_width=True, help="Tornar a la selecció de zona"):
+                keys_to_clear = [k for k in st.session_state if k not in ['logged_in', 'username', 'guest_mode', 'developer_mode']]
+                for key in keys_to_clear: del st.session_state[key]
+                st.rerun()
+        with col_logout:
+            if st.button("🚪", use_container_width=True, help="Sortir / Tancar Sessió"):
+                for key in list(st.session_state.keys()): del st.session_state[key]
+                st.rerun()
+
     st.divider()
 
     # --- BLOC DE SELECTORS RESTAURAT ---
