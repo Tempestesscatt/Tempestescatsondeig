@@ -2240,21 +2240,28 @@ MAPA_IMATGES_REALS = {
 
 def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual, poble_sel, avis_proximitat=None):
     """
-    Versió Definitiva v65.0 (Reorganització per Seccions).
-    - **CANVI PRINCIPAL**: La disposició dels paràmetres ha estat completament
-      reorganitzada en seccions lògiques (Energia, Humitat, Inhibició, Cinemàtica)
-      per a una anàlisi més clara i professional.
+    Versió Definitiva v66.0 (Separació Estable/Inestable).
+    - La interfície ara es divideix en dues seccions: "Potencial de Núvols Inestables" i
+      "Tipus de Nuvolositat Estable Prevista", cadascuna amb el seu diagnòstic visual.
+    - S'inclouen totes les seccions de paràmetres numèrics per a una anàlisi completa.
     """
     TOOLTIPS = {
-        'MLCAPE': "Mixed-Layer CAPE: Energia disponible.", 'LI': "Lifted Index: Indicador d'inestabilitat a 500 hPa.",
-        'CONV_PUNTUAL': "Convergència (+): Disparador. Divergència (-): Estabilitzador.", 'CAPE_0-3km': "Energia a nivells baixos, afavoreix rotació.",
-        'K_INDEX': "Índex de probabilitat de tempesta.", 'SBCIN': "Inhibició (tapa) des de la superfície.",
-        'PWAT': "Aigua Precipitable Total: Potencial per a pluges fortes.", 'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa: Energia termodinàmica.",
-        'LCL_Hgt': "Alçada de la base dels núvols.", 'LFC_Hgt': "Alçada on una bombolla d'aire comença a accelerar sola.",
-        'EL_Hgt': "Alçada del cim de la tempesta.", 'BWD_0-6km': "Cisallament del vent. Clau per a l'organització.",
-        'BWD_0-1km': "Cisallament del vent a nivells baixos.", 'T_500hPa': "Temperatura a 500 hPa.",
-        'MUCIN': "La 'tapa' més feble de l'atmosfera.", 'PUNTUACIO_TEMPESTA': "Índex global de potencial de tempesta.",
-        'AMENACA_CALAMARSA': "Potencial de calamarsa gran (>2cm).", 'AMENACA_LLAMPS': "Potencial d'activitat elèctrica."
+        'MLCAPE': "Mixed-Layer CAPE: L'energia disponible per a una bombolla d'aire que representa la mitjana de les capes baixes. És l'indicador més fiable del potencial de tempesta.",
+        'LI': "Lifted Index: Mesura la diferència de temperatura entre una bombolla d'aire elevada a 500 hPa i l'entorn. Valors molt negatius indiquen una forta inestabilitat.",
+        'CONV_PUNTUAL': "Convergència (+): Acumulació d'aire a un nivell que força l'ascens. És el 'disparador' principal per iniciar tempestes. Divergència (-): L'aire s'escampa, afavorint l'estabilitat.",
+        'CAPE_0-3km': "Energia concentrada a les capes baixes de l'atmosfera. Valors alts afavoreixen el desenvolupament de rotació (mesociclons) a les tempestes.",
+        'K_INDEX': "Índex que combina temperatura i humitat a diferents nivells per estimar el potencial de tempestes per massa d'aire. Valors > 35 indiquen alt potencial.",
+        'SBCIN': "Inhibició Convectiva (Tapa) des de la superfície. És l'energia que cal vèncer perquè comenci una tempesta. Valors molt negatius actuen com una tapa molt forta.",
+        'PWAT': "Aigua Precipitable Total: La quantitat total de vapor d'aigua en una columna d'aire. Valors alts indiquen un alt potencial per a pluges fortes o torrencials.",
+        'THETAE_850hPa': "Temperatura Potencial Equivalent a 850hPa (~1500m). Un indicador de la reserva d'energia termodinàmica (calor + humitat) a les capes baixes.",
+        'LCL_Hgt': "Nivell de Condensació per Elevació: L'alçada a la qual una bombolla d'aire es refreda fins a saturar-se i formar la base del núvol.",
+        'LFC_Hgt': "Nivell de Convecció Lliure: L'alçada a partir de la qual una bombolla d'aire ja és més càlida que l'entorn i accelera cap amunt sense necessitat de forçament extern.",
+        'EL_Hgt': "Nivell d'Equilibri: L'alçada màxima que teòricament pot assolir el cim d'una tempesta, on la bombolla d'aire es refreda i ja no pot pujar més.",
+        'BWD_0-6km': "Cisallament del Vent (Bulk Wind Difference) entre la superfície i 6 km. És el paràmetre clau per a l'organització de les tempestes. Valors > 35 nusos afavoreixen les supercèl·lules.",
+        'BWD_0-1km': "Cisallament del vent a les capes molt baixes. Important per al potencial de tornados.",
+        'T_500hPa': "Temperatura a 500 hPa (~5500m). Valors molt freds (< -12°C) indiquen una 'butxaca freda' que augmenta molt la inestabilitat.",
+        'MUCIN': "La 'tapa' més feble de tota l'atmosfera. Si fins i tot aquest valor és molt alt, la convecció és gairebé impossible.",
+        'PUNTUACIO_TEMPESTA': "Índex global de potencial de tempesta (0-10) que combina energia, cisallament i disparador.",
     }
     
     def styled_metric(label, value, unit, param_key, tooltip_text="", precision=0, reverse_colors=False):
@@ -2263,8 +2270,10 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         if pd.notna(value) and is_numeric:
             if 'CONV' in param_key:
                 conv_thresholds = [5, 15, 30, 40]; conv_colors = ["#808080", "#2ca02c", "#ffc107", "#fd7e14", "#dc3545"]
-                color = conv_colors[np.searchsorted(conv_thresholds, value)]
-            else: color = get_color_global(value, param_key, reverse_colors)
+                color_idx = np.searchsorted(conv_thresholds, abs(value)) # Usem valor absolut per a la divergència
+                color = conv_colors[color_idx] if value >= 0 else "#6495ED" # Blau per a divergència
+            else: 
+                color = get_color_global(value, param_key, reverse_colors)
             val_str = f"{value:.{precision}f}"
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label} ({unit}){tooltip_html}</span><strong style="font-size: 1.6em; color: {color}; line-height: 1.1;">{val_str}</strong></div>""", unsafe_allow_html=True)
@@ -2273,19 +2282,32 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         tooltip_html = f' <span title="{tooltip_text}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span>' if tooltip_text else ""
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">{label}{tooltip_html}</span><br><strong style="font-size: 1.6em; color: {color};">{text}</strong></div>""", unsafe_allow_html=True)
 
-    # --- INICI DE LA NOVA ESTRUCTURA PER SECCIONS ---
+    # --- INICI DE LA NOVA ESTRUCTURA VISUAL ---
     
-    # --- Secció 1: Diagnòstic Visual del Cel ---
     analisi_temps_dict = analitzar_potencial_meteorologic(params, nivell_conv, hora_actual)
-    if analisi_temps_dict:
-        desc, veredicte = analisi_temps_dict.get("descripcio", "Desconegut"), analisi_temps_dict.get("veredicte", "")
+
+    st.markdown("##### 🌩️ Potencial de Núvols Inestables")
+    analisi_inestable = analisi_temps_dict.get("inestable")
+    if analisi_inestable:
+        desc, veredicte = analisi_inestable.get("descripcio"), analisi_inestable.get("veredicte")
         nom_arxiu = MAPA_IMATGES_REALS.get(desc, MAPA_IMATGES_REALS["fallback"]); ruta_arxiu_imatge = os.path.join("imatges_reals", nom_arxiu)
         b64_img = convertir_img_a_base64(ruta_arxiu_imatge)
         st.markdown(f"""<div style="position: relative; width: 100%; height: 150px; border-radius: 10px; background-image: url('{b64_img}'); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 15px; box-shadow: inset 0 -80px 60px -30px rgba(0,0,0,0.8); margin-bottom: 10px;"><div style="color: white; text-shadow: 2px 2px 5px rgba(0,0,0,0.8);"><strong style="font-size: 1.3em;">{veredicte}</strong><br><em style="font-size: 0.9em; color: #DDDDDD;">({desc})</em></div></div>""", unsafe_allow_html=True)
     else:
-        with st.container(border=True): st.warning("No s'ha pogut determinar el tipus de cel.")
+        st.info("L'atmosfera és estable. No s'espera formació de núvols de tempesta.", icon="✅")
 
-    # --- Secció 2: Energia i Inestabilitat ---
+    st.markdown("##### ☁️ Tipus de Nuvolositat Estable Prevista")
+    analisi_estable = analisi_temps_dict.get("estable")
+    if analisi_estable:
+        desc, veredicte = analisi_estable.get("descripcio"), analisi_estable.get("veredicte")
+        nom_arxiu = MAPA_IMATGES_REALS.get(desc, MAPA_IMATGES_REALS["fallback"]); ruta_arxiu_imatge = os.path.join("imatges_reals", nom_arxiu)
+        b64_img = convertir_img_a_base64(ruta_arxiu_imatge)
+        st.markdown(f"""<div style="position: relative; width: 100%; height: 150px; border-radius: 10px; background-image: url('{b64_img}'); background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 15px; box-shadow: inset 0 -80px 60px -30px rgba(0,0,0,0.8); margin-bottom: 10px;"><div style="color: white; text-shadow: 2px 2px 5px rgba(0,0,0,0.8);"><strong style="font-size: 1.3em;">{veredicte}</strong><br><em style="font-size: 0.9em; color: #DDDDDD;">({desc})</em></div></div>""", unsafe_allow_html=True)
+    else:
+        st.info("La nuvolositat prevista és principalment de tipus convectiu o de tempesta.", icon="ℹ️")
+
+    # --- SECCIONS DE PARÀMETRES NUMÈRICS ---
+    
     st.markdown("##### ⚡ Energia i Inestabilitat")
     cols_energia = st.columns(4)
     with cols_energia[0]: styled_metric("MLCAPE", params.get('MLCAPE', np.nan), "J/kg", 'MLCAPE', tooltip_text=TOOLTIPS.get('MLCAPE'))
@@ -2293,7 +2315,6 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     with cols_energia[2]: styled_metric("3CAPE", params.get('CAPE_0-3km', np.nan), "J/kg", 'CAPE_0-3km', tooltip_text=TOOLTIPS.get('CAPE_0-3km'))
     with cols_energia[3]: styled_metric("K-Index", params.get('K_INDEX', np.nan), "", 'K_INDEX', tooltip_text=TOOLTIPS.get('K_INDEX'))
 
-    # --- Secció 3: Humitat i Potencial de Precipitació ---
     st.markdown("##### 💧 Humitat i Potencial de Precipitació")
     cols_humitat = st.columns(3)
     with cols_humitat[0]: styled_metric("PWAT", params.get('PWAT', np.nan), "mm", 'PWAT', tooltip_text=TOOLTIPS.get('PWAT'), precision=1)
@@ -2321,21 +2342,17 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
     rh_b_str = f"{rh_b:.0f}%" if pd.notna(rh_b) else "---"; rh_m_str = f"{rh_m:.0f}%" if pd.notna(rh_m) else "---"; rh_a_str = f"{rh_a:.0f}%" if pd.notna(rh_a) else "---"
     st.markdown(f"""<div style="padding: 10px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px;"><p style="text-align:center; font-size: 0.8em; color: #FAFAFA; margin-bottom: 8px; margin-top: -5px;">Humitat Relativa (RH %)</p><div style="display: flex; justify-content: space-around; text-align: center;"><div><span style="font-size: 0.8em; color: #A0A0B0;">Baixa</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_b)}; line-height: 1.1;">{rh_b_str}</strong></div><div><span style="font-size: 0.8em; color: #A0A0B0;">Mitjana</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_m)}; line-height: 1.1;">{rh_m_str}</strong></div><div><span style="font-size: 0.8em; color: #A0A0B0;">Alta</span><strong style="display: block; font-size: 1.6em; color: {get_rh_color(rh_a)}; line-height: 1.1;">{rh_a_str}</strong></div></div></div>""", unsafe_allow_html=True)
 
-    # --- Secció 4: Inhibició, Disparador i Nivells Clau ---
     st.markdown("##### ⛔ Inhibició, Disparador i Nivells Clau")
     cols_nivells = st.columns(5)
     with cols_nivells[0]: styled_metric("SBCIN", params.get('SBCIN', np.nan), "J/kg", 'SBCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('SBCIN'))
     with cols_nivells[1]: styled_metric("MUCIN", params.get('MUCIN', np.nan), "J/kg", 'MUCIN', reverse_colors=True, tooltip_text=TOOLTIPS.get('MUCIN'))
     with cols_nivells[2]:
         conv_key = f'CONV_{nivell_conv}hPa'; conv_value = params.get(conv_key, np.nan)
-        if pd.notna(conv_value):
-            if conv_value >= 0: styled_metric("Convergència", conv_value, "unitats", "CONV_PUNTUAL", tooltip_text=TOOLTIPS.get('CONV_PUNTUAL'), precision=1)
-            else: st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">Divergència (unitats) <span title="{TOOLTIPS.get('CONV_PUNTUAL')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: #6495ED; line-height: 1.1;">{conv_value:.1f}</strong></div>""", unsafe_allow_html=True)
-        else: styled_metric("Convergència", np.nan, "unitats", "CONV_PUNTUAL")
+        label_conv = "Convergència" if pd.isna(conv_value) or conv_value >= 0 else "Divergència"
+        styled_metric(label_conv, conv_value, "×10⁻⁵ s⁻¹", "CONV_PUNTUAL", tooltip_text=TOOLTIPS.get('CONV_PUNTUAL'), precision=1)
     with cols_nivells[3]: styled_metric("LCL", params.get('LCL_Hgt', np.nan), "m", 'LCL_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LCL_Hgt'))
     with cols_nivells[4]: styled_metric("LFC", params.get('LFC_Hgt', np.nan), "m", 'LFC_Hgt', precision=0, tooltip_text=TOOLTIPS.get('LFC_Hgt'))
 
-    # --- Secció 5: Cinemàtica (Vent i Cisallament) ---
     st.markdown("##### 💨 Cinemàtica (Vent i Cisallament)")
     cols_cinematica = st.columns(3)
     with cols_cinematica[0]: styled_metric("BWD 0-6km", params.get('BWD_0-6km', np.nan), "nusos", 'BWD_0-6km', tooltip_text=TOOLTIPS.get('BWD_0-6km'))
@@ -2349,19 +2366,16 @@ def ui_caixa_parametres_sondeig(sounding_data, params, nivell_conv, hora_actual,
         el_val_str = f"{el_hgt_val:.0f}" if pd.notna(el_hgt_val) else "---"
         st.markdown(f"""<div style="text-align: center; padding: 5px; border-radius: 10px; background-color: #2a2c34; margin-bottom: 10px; height: 78px; display: flex; flex-direction: column; justify-content: center;"><span style="font-size: 0.8em; color: #FAFAFA;">CIM (EL) (m) <span title="{TOOLTIPS.get('EL_Hgt')}" style="cursor: help; font-size: 0.8em; opacity: 0.7;">❓</span></span><strong style="font-size: 1.6em; color: {el_color}; line-height: 1.1;">{el_val_str}</strong></div>""", unsafe_allow_html=True)
 
-    # --- Secció Final: Potencial d'Amenaces Severes ---
     st.markdown("##### ⛈️ Potencial d'Amenaces Severes")
     amenaces = analitzar_amenaces_severes(params, sounding_data, nivell_conv)
     cols_amenaces = st.columns(3)
     with cols_amenaces[0]:
-        precip_data = amenaces['precipitacio']
-        styled_qualitative(precip_data['label'], precip_data['text'], precip_data['color'])
+        precip_data = amenaces['precipitacio']; styled_qualitative(precip_data['label'], precip_data['text'], precip_data['color'])
     with cols_amenaces[1]:
-        potencial_data = amenaces['potencial']
-        styled_qualitative(potencial_data['label'], potencial_data['text'], potencial_data['color'])
+        potencial_data = amenaces['potencial']; styled_qualitative(potencial_data['label'], potencial_data['text'], potencial_data['color'])
     with cols_amenaces[2]:
-        electricitat_data = amenaces['electricitat']
-        styled_qualitative(electricitat_data['label'], electricitat_data['text'], electricitat_data['color'])
+        electricitat_data = amenaces['electricitat']; styled_qualitative(electricitat_data['label'], electricitat_data['text'], electricitat_data['color'])
+
         
         
 def analitzar_vents_locals(sounding_data, poble_sel, hora_actual_str):
@@ -9833,90 +9847,75 @@ La imatge superior és la confirmació visual del que les dades ens estaven dien
 
 def analitzar_potencial_meteorologic(params, nivell_conv, hora_actual=None):
     """
-    Sistema de Diagnòstic Expert v73.0 (Diagnòstic de Baixa Humitat Refinat).
-    - **NOVA LÒGICA PER A CEL SERÈ**:
-        - Si RH < 30% a totes les capes -> "Cel Serè" (absolut).
-        - Si 30% <= RH Baixa < 40% -> "Cel Serè amb núvols fragmentats" (possible fractostratus/fractocúmuls).
-    - **LLINDARS AJUSTATS**: El diagnòstic "Cúmuls de bon temps" ara requereix una humitat mínima del 40%.
-    - **DIAGNÒSTIC EXHAUSTIU**: La funció cobreix tots els escenaris de manera determinista, eliminant qualsevol ambigüitat.
-    - Manté la jerarquia i precisió per a la resta de fenòmens de versions anteriors.
+    Sistema de Diagnòstic Expert v74.0 (Separació Estable/Inestable).
+    - Classifica cada diagnòstic com a pertanyent a un règim "inestable" (convectiu) o "estable" (estratiforme).
+    - Retorna un diccionari amb dues claus, 'inestable' i 'estable', per a una visualització separada a la UI.
     """
     
-    # --- 1. Extracció Exhaustiva i Robusta de Paràmetres ---
-    mlcape = params.get('MLCAPE', 0) or 0
-    mucape = params.get('MUCAPE', 0) or 0
-    max_cape = max(mlcape, mucape)
-    
+    # --- 1. Extracció de Paràmetres ---
+    mlcape = params.get('MLCAPE', 0) or 0; mucape = params.get('MUCAPE', 0) or 0; max_cape = max(mlcape, mucape)
     cin = min(params.get('SBCIN', 0), params.get('MUCIN', 0)) or 0
-    lfc_hgt = params.get('LFC_Hgt', 9999) or 9999
-    lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
-    
+    lfc_hgt = params.get('LFC_Hgt', 9999) or 9999; lcl_hgt = params.get('LCL_Hgt', 9999) or 9999
     bwd_6km = params.get('BWD_0-6km', 0) or 0
-    
-    rh_capes = params.get('RH_CAPES', {})
-    rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
-    rh_mitjana = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0
-    rh_alta = rh_capes.get('alta', 0) if pd.notna(rh_capes.get('alta')) else 0
-    
-    conv_key = f'CONV_{nivell_conv}hPa'
-    conv = params.get(conv_key, 0) or 0
+    rh_capes = params.get('RH_CAPES', {}); rh_baixa = rh_capes.get('baixa', 0) if pd.notna(rh_capes.get('baixa')) else 0
+    rh_mitjana = rh_capes.get('mitjana', 0) if pd.notna(rh_capes.get('mitjana')) else 0; rh_alta = rh_capes.get('alta', 0) if pd.notna(rh_capes.get('alta')) else 0
+    conv_key = f'CONV_{nivell_conv}hPa'; conv = params.get(conv_key, 0) or 0
 
-    # --- 2. Anàlisi Jeràrquica del Potencial Meteorològic (de major a menor impacte) ---
-
-    # == NIVELL 1: POTENCIAL DE TEMPESTES SEVERES ==
+    resultat = {"inestable": None, "estable": None}
+    
+    # --- 2. Anàlisi Jeràrquica ---
     condicions_de_dispar = (cin > -100 and lfc_hgt < 2200 and conv > 10)
     
+    # == NIVELL 1: POTENCIAL DE TEMPESTES SEVERES (INESTABLE) ==
     if max_cape > 1500 and bwd_6km >= 35 and condicions_de_dispar:
-        return {'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Entorn explosiu per a tempestes severes organitzades amb rotació."}
-        
-    if max_cape > 1000 and bwd_6km >= 25 and condicions_de_dispar:
-        return {'descripcio': "Tempestes Organitzades", 'veredicte': "Potencial per a la formació de sistemes multicel·lulars o línies de tempesta."}
-
-    if max_cape > 2500 and bwd_6km < 20 and condicions_de_dispar:
-         return {'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Molt de 'combustible' però poca organització. Potencial per a calamarsa i esclafits."}
-         
-    if max_cape > 800 and condicions_de_dispar:
-        return {'descripcio': "Tempesta Comuna", 'veredicte': "Energia suficient per a tempestes amb forta pluja i activitat elèctrica."}
-
-    # == NIVELL 2: PLUJA CONTÍNUA O NÚVOLS CONVECTIUS EN DESENVOLUPAMENT ==
-    if rh_baixa >= 80 and rh_mitjana >= 75 and max_cape < 300:
-        return {'descripcio': "Nimbostratus (Pluja Contínua)", 'veredicte': "Capa de núvols molt humida i gruixuda, favorable a pluges extenses i persistents."}
-
-    if max_cape > 250 and lfc_hgt < 3000 and rh_baixa > 70:
-        return {'descripcio': "Cúmuls de creixement", 'veredicte': "Inici de convecció amb creixement vertical. Precursors de possibles tempestes."}
-
-    # == NIVELL 3: NUVOLOSITAT ESTRATIFORME PER CAPES (DE BAIX A DALT) ==
-    if rh_baixa >= 85 and lcl_hgt < 500:
-         return {'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos i cel cobert, pot produir plugims."}
-    if rh_baixa >= 75:
-        return {'descripcio': "Cúmuls mediocris", 'veredicte': "Núvols baixos amb cert desenvolupament vertical, però sense arribar a ser tempestes."}
+        resultat["inestable"] = {'descripcio': "Potencial de Supercèl·lula", 'veredicte': "Entorn explosiu per a tempestes severes organitzades amb rotació."}
+    elif max_cape > 1000 and bwd_6km >= 25 and condicions_de_dispar:
+        resultat["inestable"] = {'descripcio': "Tempestes Organitzades", 'veredicte': "Potencial per a la formació de sistemes multicel·lulars o línies de tempesta."}
+    elif max_cape > 2500 and bwd_6km < 20 and condicions_de_dispar:
+        resultat["inestable"] = {'descripcio': "Tempesta Aïllada (Molt energètica)", 'veredicte': "Molt de 'combustible' però poca organització. Potencial per a calamarsa i esclafits."}
+    elif max_cape > 800 and condicions_de_dispar:
+        resultat["inestable"] = {'descripcio': "Tempesta Comuna", 'veredicte': "Energia suficient per a tempestes amb forta pluja i activitat elèctrica."}
     
-    if rh_mitjana >= 70:
+    # == NIVELL 2: NÚVOLS CONVECTIUS EN DESENVOLUPAMENT (INESTABLE) ==
+    elif max_cape > 250 and lfc_hgt < 3000 and rh_baixa > 70:
+        resultat["inestable"] = {'descripcio': "Cúmuls de creixement", 'veredicte': "Inici de convecció amb creixement vertical. Precursors de possibles tempestes."}
+    elif rh_baixa >= 75 and max_cape > 150: # Cúmuls mediocris
+         resultat["inestable"] = {'descripcio': "Cúmuls mediocris", 'veredicte': "Núvols baixos amb cert desenvolupament vertical, però sense arribar a ser tempestes."}
+
+    # == NIVELL 3: NUVOLOSITAT ESTRATIFORME (ESTABLE) ==
+    elif rh_baixa >= 80 and rh_mitjana >= 75 and max_cape < 300:
+        resultat["estable"] = {'descripcio': "Nimbostratus (Pluja Contínua)", 'veredicte': "Capa de núvols molt humida i gruixuda, favorable a pluges extenses i persistents."}
+    elif rh_baixa >= 85 and lcl_hgt < 500:
+        resultat["estable"] = {'descripcio': "Estratus (Boira alta - Cel tancat)", 'veredicte': "Capa de núvols baixos i cel cobert, pot produir plugims."}
+    elif rh_mitjana >= 70:
         if bwd_6km > 40:
-             return {'descripcio': "Altocúmulus Lenticular", 'veredicte': "Núvols en forma de 'plat volador', indiquen vent fort i turbulència en alçada."}
-        return {'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Cel cobert o parcialment cobert per núvols a nivells mitjans."}
-    
-    if rh_alta >= 60:
+             resultat["estable"] = {'descripcio': "Altocúmulus Lenticular", 'veredicte': "Núvols en forma de 'plat volador', indiquen vent fort i turbulència en alçada."}
+        else:
+            resultat["estable"] = {'descripcio': "Altostratus - Altocúmulus", 'veredicte': "Cel cobert o parcialment cobert per núvols a nivells mitjans."}
+    elif rh_alta >= 60:
         if params.get('LI', 5) < 0 or params.get('T_500hPa', 0) < -15:
-            return {'descripcio': "Cirrus Castellanus", 'veredicte': "Núvols alts amb petites 'torres', indiquen inestabilitat en nivells superiors."}
-        return {'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Presència de núvols alts de tipus cirrus que poden produir un halo solar/lunar."}
-        
-    # == NIVELL 4: LÒGICA DEFINITIVA PER A CONDICIONS DE BAIXA HUMITAT ==
-
-    # Condició d'extrema sequedat
-    if rh_baixa < 30 and rh_mitjana < 30 and rh_alta < 30:
-        return {'descripcio': "Cel Serè", 'veredicte': "Atmosfera extremadament seca a tots els nivells. Absència total de nuvolositat."}
-
-    # Condició de sequedat amb possible formació de núvols fragmentats
-    if 30 <= rh_baixa < 40 and rh_mitjana < 50:
-        return {'descripcio': "Cel Serè amb núvols fragmentats", 'veredicte': "Humitat molt baixa. Cel majoritàriament serè amb possibles fractostratus o cúmuls molt aïllats."}
+            # Encara que siguin Cirrus, el Castellanus indica inestabilitat en alçada
+            resultat["inestable"] = {'descripcio': "Cirrus Castellanus", 'veredicte': "Núvols alts amb petites 'torres', indiquen inestabilitat en nivells superiors."}
+        else:
+            resultat["estable"] = {'descripcio': "Cirrostratus (Cel blanquinós)", 'veredicte': "Presència de núvols alts de tipus cirrus que poden produir un halo solar/lunar."}
+            
+    # == NIVELL 4: CONDICIONS DE BAIXA HUMITAT (ESTABLE) ==
+    elif rh_baixa < 30 and rh_mitjana < 30 and rh_alta < 30:
+        resultat["estable"] = {'descripcio': "Cel Serè", 'veredicte': "Atmosfera extremadament seca a tots els nivells. Absència total de nuvolositat."}
+    elif 30 <= rh_baixa < 40 and rh_mitjana < 50:
+        resultat["estable"] = {'descripcio': "Cel Serè amb núvols fragmentats", 'veredicte': "Humitat molt baixa. Cel majoritàriament serè amb possibles fractostratus o cúmuls molt aïllats."}
     
-    # Condició per a cúmuls de bon temps (humitat baixa però suficient)
-    if 40 <= rh_baixa < 70 and max_cape > 50:
-        return {'descripcio': "Cúmuls de bon temps", 'veredicte': "Humitat suficient per a formar petits cúmuls dispersos sense desenvolupament."}
-        
-    # Si arribem aquí, les condicions restants no afavoreixen la formació de núvols.
-    return {'descripcio': "Cel Serè", 'veredicte': "Atmosfera estable i/o seca, sense nuvolositat significativa."}
+    # == NIVELL 5: CÚMULS DE BON TEMPS (INESTABLE, però molt feble) ==
+    elif 40 <= rh_baixa < 70 and max_cape > 50:
+        resultat["inestable"] = {'descripcio': "Cúmuls de bon temps", 'veredicte': "Humitat suficient per a formar petits cúmuls dispersos sense desenvolupament."}
+
+    # == CONDICIÓ FINAL PER DEFECTE (ESTABLE) ==
+    else:
+        # Si no s'ha complert cap condició, és perquè l'atmosfera és estable
+        if not resultat["inestable"] and not resultat["estable"]:
+            resultat["estable"] = {'descripcio': "Cel Serè", 'veredicte': "Atmosfera estable i/o seca, sense nuvolositat significativa."}
+
+    return resultat
 
     
 if __name__ == "__main__":
