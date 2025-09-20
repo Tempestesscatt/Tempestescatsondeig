@@ -7897,12 +7897,9 @@ def ui_vista_maritima(hourly_index):
                   
 
 
-# -*- coding: utf-8 -*-
-
 def run_catalunya_app():
     """
-    Versió Final amb selector de vista Terra/Mar i correcció del bug de convergència.
-    INCLOU LA NOVA PESTANYA "ANÀLISI OROGRÀFICA".
+    Versió Final amb selector de vista Terra/Mar i correcció del bug de crida a la funció de mapes.
     """
     # --- PAS 1: CAPÇALERA I INICIALITZACIÓ D'ESTAT ---
     ui_capcalera_selectors(None, zona_activa="catalunya")
@@ -7911,14 +7908,12 @@ def run_catalunya_app():
     
     # --- PAS 2: SELECTORS GLOBALS I CÀLCUL DE TEMPS ---
     with st.container(border=True):
-        col_dia, col_hora, col_nivell = st.columns(3)
+        col_dia, col_hora = st.columns(2) # Eliminem la columna de nivell d'aquí
         with col_dia:
             dies_disponibles = [(datetime.now(TIMEZONE_CAT) + timedelta(days=i)).strftime('%d/%m/%Y') for i in range(2)]
             dia_sel_str = st.selectbox("Dia:", options=dies_disponibles, key="dia_selector")
         with col_hora:
             hora_sel_str = st.selectbox("Hora:", options=[f"{h:02d}:00h" for h in range(24)], key="hora_selector", index=datetime.now(TIMEZONE_CAT).hour)
-        with col_nivell:
-            nivell_sel = st.selectbox("Nivell d'Anàlisi:", options=[1000, 950, 925, 900, 850, 800, 700], key="level_cat_main", index=2, format_func=lambda x: f"{x} hPa")
     
     st.caption("ℹ️ Dades del model AROME 2.5km. L'aplicació es refresca cada 10 minuts.")
     target_date = datetime.strptime(dia_sel_str, '%d/%m/%Y').date()
@@ -7937,10 +7932,13 @@ def run_catalunya_app():
         with col_nav2: st.button("🗺️ Tornar al Mapa General", on_click=tornar_al_mapa_general, use_container_width=True)
         timestamp_str = f"{poble_sel} | {dia_sel_str} a les {hora_sel_str} (Local)"
         
+        # El nivell per a l'anàlisi vertical el definim aquí
+        nivell_analisi_vertical = 925
+        
         with st.spinner(f"Carregant dades del sondeig i mapa per a {poble_sel}..."):
             lat_sel, lon_sel = CIUTATS_CATALUNYA[poble_sel]['lat'], CIUTATS_CATALUNYA[poble_sel]['lon']
             data_tuple, final_index, error_msg_sounding = carregar_dades_sondeig_cat(lat_sel, lon_sel, hourly_index_sel)
-            map_data_conv, error_msg_map = carregar_dades_mapa_cat(nivell_sel, hourly_index_sel)
+            map_data_conv, error_msg_map = carregar_dades_mapa_cat(nivell_analisi_vertical, hourly_index_sel)
 
         if error_msg_sounding or not data_tuple:
             st.error(f"No s'ha pogut carregar el sondeig: {error_msg_sounding if error_msg_sounding else 'Dades no disponibles.'}")
@@ -7951,40 +7949,42 @@ def run_catalunya_app():
         if not error_msg_map and map_data_conv:
             conv_puntual = calcular_convergencia_puntual(map_data_conv, lat_sel, lon_sel)
             if pd.notna(conv_puntual):
-                params_calculats[f'CONV_{nivell_sel}hPa'] = conv_puntual
+                params_calculats[f'CONV_{nivell_analisi_vertical}hPa'] = conv_puntual
 
         if final_index is not None and final_index != hourly_index_sel:
             adjusted_utc = start_of_today_utc + timedelta(hours=final_index)
             adjusted_local_time = adjusted_utc.astimezone(TIMEZONE_CAT)
             st.warning(f"Avís: Dades no disponibles per a les {hora_sel_str}. Es mostren les de l'hora vàlida més propera: {adjusted_local_time.strftime('%H:%Mh')}.")
         
-        # --- CANVI AQUÍ: AFEGIM LA NOVA PESTANYA AL MENÚ ---
         menu_options = ["Anàlisi Comarcal", "Anàlisi Vertical", "Anàlisi Orogràfica", "Anàlisi de Mapes", "Simulació de Núvol"]
         menu_icons = ["fullscreen", "graph-up-arrow", "bar-chart-line", "map", "cloud-upload"]
         active_tab = option_menu(None, menu_options, icons=menu_icons, menu_icon="cast", orientation="horizontal", key=f'option_menu_{poble_sel}')
         
         if active_tab == "Anàlisi Comarcal":
             with st.spinner("Carregant anàlisi comarcal completa..."):
-                alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
+                alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_analisi_vertical)
             comarca_actual = get_comarca_for_poble(poble_sel)
             if comarca_actual:
                 valor_conv_comarcal = alertes_totals.get(comarca_actual, {}).get('conv', 0)
-                ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_sel, map_data_conv, params_calculats, hora_sel_str, data_tuple, alertes_totals)
+                ui_pestanya_analisi_comarcal(comarca_actual, valor_conv_comarcal, poble_sel, timestamp_str, nivell_analisi_vertical, map_data_conv, params_calculats, hora_sel_str, data_tuple, alertes_totals)
         
         elif active_tab == "Anàlisi Vertical":
-            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_sel, hora_sel_str, timestamp_str)
+            ui_pestanya_vertical(data_tuple, poble_sel, lat_sel, lon_sel, nivell_analisi_vertical, hora_sel_str, timestamp_str)
         
-        # --- CANVI AQUÍ: AFEGIM LA CRIDA A LA FUNCIÓ DE LA NOVA PESTANYA ---
         elif active_tab == "Anàlisi Orogràfica":
             ui_pestanya_orografia(data_tuple, poble_sel, timestamp_str, params_calculats)
 
         elif active_tab == "Anàlisi de Mapes":
-            ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str, nivell_sel)
+            # --- LÍNIA CORREGIDA ---
+            # La crida ara només passa els dos arguments que la funció espera.
+            ui_pestanya_mapes_cat(hourly_index_sel, timestamp_str)
+            # --- FI DE LA CORRECCIÓ ---
 
         elif active_tab == "Simulació de Núvol":
             ui_pestanya_simulacio_nuvol(params_calculats, timestamp_str, poble_sel)
     else: 
-        # ... (la resta de la funció 'run_catalunya_app' es manté exactament igual) ...
+        # ... (la resta de la teva funció run_catalunya_app per a la vista general es manté igual) ...
+        # Aquesta part ja estava correcta.
         st.session_state.setdefault('analysis_view', 'Terra')
         st.session_state.setdefault('show_comarca_labels', False)
         st.session_state.setdefault('alert_filter_level_cape', 'Energia Baixa i superior')
@@ -8005,8 +8005,10 @@ def run_catalunya_app():
                     st.toggle("Mostrar detalls de les zones actives", key="show_comarca_labels")
         
         if st.session_state.analysis_view == 'Terra':
+            # Nivell per defecte per al mapa general
+            nivell_mapa_general = 925 
             with st.spinner("Analitzant focus de convergència a tot Catalunya..."):
-                alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_sel)
+                alertes_totals = calcular_alertes_per_comarca(hourly_index_sel, nivell_mapa_general)
             
             LLINDARS_CAPE = {"Tots": 0, "Energia Baixa i superior": 500, "Energia Moderada i superior": 1000, "Energia Alta i superior": 2000, "Només Extrems": 3500}
             llindar_cape_sel = LLINDARS_CAPE.get(st.session_state.alert_filter_level_cape, 500)
